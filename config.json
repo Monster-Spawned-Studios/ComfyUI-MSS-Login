@@ -1,21 +1,27 @@
 {
     "secret_key_env": "SECRET_KEY",
     "users_db": "users/users_db.json",
-    "access_token_expiration_hours": 12,
+    "access_token_expiration_hours": 24,
     "max_access_token_expiration_hours": 8760,
     "log": "usgromana.log",
     "log_levels": ["INFO"],
     "whitelist": "security/whitelist.txt",
     "blacklist": "security/blacklist.txt",
-    "blacklist_after_attempts": 0,
+    "blacklist_after_attempts": 10,
     "free_memory_on_logout": true,
     "force_https": false,
     "seperate_users": true,
     "manager_admin_only": true,
     "api_token_store": {
         "backend": "json",
-        "json_path": "users/api_tokens.json"
+        "json_path": "users/api_tokens.json",
+        "sqlite_path": "users/api_tokens.db",
+        "postgres_host": "localhost",
+        "postgres_port": 5432,
+        "postgres_database": "usgromana",
+        "postgres_user": "usgromana"
     },
     "require_auth_for_remote_api": true,
-    "local_network_cidrs": []
+    "local_network_cidrs": [],
+    "debug_mode": false
 }

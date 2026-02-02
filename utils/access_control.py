@@ -121,15 +121,37 @@ class AccessControl:
             # 3. Resolve User
             role, perms, username = self._get_user_role_and_permissions(request)
 
-            # 4. Check Permissions
+            # 4. Check Permissions (token-authenticated users get standard ComfyUI + custom endpoints
+            #    e.g. comfy-portal / Comfy Portal iOS when can_run/can_access_api are true)
             is_queue = path.startswith(("/prompt", "/api/prompt", "/api/queue", "/queue"))
             is_upload = path.startswith(("/upload", "/api/upload"))
             is_userdata_workflow = path.startswith(("/api/userdata/workflows", "/api/userdata/workflows:"))
 
             if is_queue and perms.get("can_run") is False:
+                # #region agent log
+                try:
+                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH
+                    if DEBUG_MODE:
+                        import json, os, time
+                        os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
+                        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+                            f.write(json.dumps({"location": "access_control", "message": "deny_403", "data": {"path": path, "reason": "can_run"}, "timestamp": int(time.time() * 1000), "hypothesisId": "D"}) + "\n")
+                except Exception:
+                    pass
+                # #endregion
                 return web.json_response({"error": "Usgromana: Execution Denied"}, status=403)
 
             if is_upload and perms.get("can_upload") is False:
+                # #region agent log
+                try:
+                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH
+                    if DEBUG_MODE:
+                        import json, os, time
+                        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+                            f.write(json.dumps({"location": "access_control", "message": "deny_403", "data": {"path": path, "reason": "can_upload"}, "timestamp": int(time.time() * 1000), "hypothesisId": "D"}) + "\n")
+                except Exception:
+                    pass
+                # #endregion
                 return web.json_response({"error": "Usgromana: Upload Denied"}, status=403)
 
             if is_userdata_workflow and request.method in ("POST", "PUT", "DELETE", "PATCH"):
@@ -151,6 +173,16 @@ class AccessControl:
 
             if not is_queue and not is_upload and path.startswith("/api/"):
                 if perms.get("can_access_api") is False:
+                    # #region agent log
+                    try:
+                        from ..constants import DEBUG_MODE, DEBUG_LOG_PATH
+                        if DEBUG_MODE:
+                            import json, os, time
+                            with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+                                f.write(json.dumps({"location": "access_control", "message": "deny_403", "data": {"path": path, "reason": "can_access_api"}, "timestamp": int(time.time() * 1000), "hypothesisId": "D"}) + "\n")
+                    except Exception:
+                        pass
+                    # #endregion
                     return web.json_response({"error": "Usgromana: API Denied"}, status=403)
 
             return await handler(request)

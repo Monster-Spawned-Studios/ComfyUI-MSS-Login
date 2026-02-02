@@ -72,6 +72,12 @@ if not os.path.isabs(API_TOKEN_STORE_CONFIG["sqlite_path"]):
 REQUIRE_AUTH_FOR_REMOTE_API = config_data.get("require_auth_for_remote_api", True)
 LOCAL_NETWORK_CIDRS = config_data.get("local_network_cidrs") or []
 
+# DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
+DEBUG_MODE = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
+if not DEBUG_MODE:
+    DEBUG_MODE = bool(config_data.get("debug_mode", False))
+DEBUG_LOG_PATH = os.path.join(CURRENT_DIR, "logs", "debug.log")
+
 
 def reload_api_token_store_config() -> dict:
     """Re-read config.json and refresh API_TOKEN_STORE_CONFIG (used after saving token storage config)."""

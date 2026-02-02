@@ -547,6 +547,14 @@ in `usgromana_groups.json`.
 - Verify write permissions in the output directory
 - Ensure metadata files aren't being deleted by cleanup scripts
 
+### DEBUG_MODE for token / "Unable to connect to server" issues
+When using API tokens (e.g. Comfy Portal iOS) and seeing "Unable to connect to server", enable debug logging to see where the request is blocked (remote API guard, JWT/token validation, or access control).
+
+- **Environment (Docker/Compose):** set `DEBUG_MODE=1` or `DEBUG_MODE=true` in your env or Compose file.
+- **Config:** in `config.json` set `"debug_mode": true`.
+- Logs are written to `.cursor/debug.log` (NDJSON). Check for `location` values: `remote_api_guard` (blocked before auth), `jwt_auth` (token not found or invalid), `access_control` (403 after auth).
+- 401 responses include a `debug` hint when DEBUG_MODE is on. Do not leave DEBUG_MODE enabled in production.
+
 ---
 
 ## License
