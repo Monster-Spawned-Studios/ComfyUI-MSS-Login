@@ -1,6 +1,5 @@
 aiohttp
 PyJWT
-bcrypt
 bleach
 psycopg2-binary
 bcrypt
