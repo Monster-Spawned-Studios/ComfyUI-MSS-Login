@@ -98,7 +98,7 @@ async def api_get_token_storage_config(request):
     cfg = load_json_file(CONFIG_FILE_PATH, {})
     store_cfg = cfg.get("api_token_store") or {}
     out = {
-        "backend": store_cfg.get("backend", "json"),
+        "backend": store_cfg.get("backend", "sqlite"),
         "json_path": store_cfg.get("json_path", "users/api_tokens.json"),
         "sqlite_path": store_cfg.get("sqlite_path", "users/api_tokens.db"),
         "postgres_host": store_cfg.get("postgres_host", "localhost"),
@@ -116,7 +116,7 @@ async def api_put_token_storage_config(request):
         return web.json_response({"error": "Admin only"}, status=403)
     try:
         data = await request.json()
-        backend = (data.get("backend") or "json").lower()
+        backend = (data.get("backend") or "sqlite").lower()
         if backend not in ("json", "sqlite", "postgresql"):
             return web.json_response({"error": "Invalid backend"}, status=400)
         cfg = load_json_file(CONFIG_FILE_PATH, {})

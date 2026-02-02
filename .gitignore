@@ -1,1 +1,6 @@
 .venv/
+.env
+.env.*
+!.env.example
+usgromana.log
+logs/

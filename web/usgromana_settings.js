@@ -1563,7 +1563,7 @@ renderNsfwManagement(container) {
 }
 
 async renderTokenStorage(container) {
-    let cfg = { backend: "json", json_path: "users/api_tokens.json", sqlite_path: "users/api_tokens.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "usgromana", postgres_user: "usgromana" };
+    let cfg = { backend: "sqlite", json_path: "users/api_tokens.json", sqlite_path: "users/api_tokens.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "usgromana", postgres_user: "usgromana" };
     try {
         const res = await api.fetchApi("/usgromana/api/token-storage-config", { method: "GET" });
         if (res.ok) {
@@ -1572,7 +1572,7 @@ async renderTokenStorage(container) {
     } catch (e) {
         console.warn("[Usgromana] Token storage config load failed:", e);
     }
-    const backend = (cfg.backend || "json").toLowerCase();
+    const backend = (cfg.backend || "sqlite").toLowerCase();
     container.innerHTML = `
         <div class="usgromana-section">
             <h3>API Token Storage</h3>
@@ -1620,14 +1620,14 @@ async renderTokenStorage(container) {
     const postgresFields = container.querySelector("#usgromana-token-postgres-fields");
     const statusEl = container.querySelector("#usgromana-token-status");
     function showFields() {
-        const b = (backendSelect.value || "json").toLowerCase();
+        const b = (backendSelect.value || "sqlite").toLowerCase();
         jsonFields.style.display = b === "json" ? "" : "none";
         sqliteFields.style.display = b === "sqlite" ? "" : "none";
         postgresFields.style.display = b === "postgresql" ? "" : "none";
     }
     backendSelect.onchange = showFields;
     container.querySelector("#usgromana-token-save").onclick = async () => {
-        const b = (backendSelect.value || "json").toLowerCase();
+        const b = (backendSelect.value || "sqlite").toLowerCase();
         const body = {
             backend: b,
             json_path: container.querySelector("#usgromana-token-json-path").value.trim() || "users/api_tokens.json",

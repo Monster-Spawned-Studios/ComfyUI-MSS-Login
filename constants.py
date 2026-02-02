@@ -1,11 +1,26 @@
 # --- START OF FILE constants.py ---
 import os
+import sys
 import json
 import warnings
 import uuid
 
 # --- Base Directories ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# --- Load .env from node root (sensitive vars; OS env fallback for Docker/Compose) ---
+# SECRET_KEY and other secrets can be in .env (optionally encrypted via dotenvx encrypt).
+_env_path = os.path.join(CURRENT_DIR, ".env")
+try:
+    from dotenvx import load_dotenvx
+    load_dotenvx(dotenv_path=_env_path, override=True)
+except ImportError:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(dotenv_path=_env_path, override=True)
+    except ImportError:
+        pass
+
 WEB_DIR = os.path.join(CURRENT_DIR, "web")
 
 # NOTE: If your html files are directly in web/, remove the 'html' part below
@@ -17,12 +32,33 @@ ASSETS_DIR = os.path.join(WEB_DIR, "assets")
 
 # --- Load config.json ---
 CONFIG_FILE_PATH = os.path.join(CURRENT_DIR, "config.json")
+
+
 def _load_config(path):
     if os.path.exists(path):
         try:
-            with open(path, "r") as f: return json.load(f)
-        except: pass
+            with open(path, "r") as f:
+                return json.load(f)
+        except Exception:
+            pass
     return {}
+
+
+def _env_or_config(env_key: str, config_value: str):
+    """Resolve sensitive value: env (including from .env) wins, then config. For Docker/Compose compatibility."""
+    return (os.getenv(env_key) or "").strip() or config_value or ""
+
+
+def _default_sqlite_path() -> str:
+    """Cross-platform default SQLite path: user-writable on Windows, macOS, Linux. Not written to config."""
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", "") or os.path.expanduser("~\\AppData\\Local")
+    elif sys.platform == "darwin":
+        base = os.path.expanduser("~/Library/Application Support")
+    else:
+        base = os.environ.get("XDG_DATA_HOME", "") or os.path.expanduser("~/.local/share")
+    return os.path.join(base, "Usgromana", "api_tokens.db")
+
 
 config_data = _load_config(CONFIG_FILE_PATH)
 
@@ -52,16 +88,19 @@ SEPERATE_USERS = config_data.get("seperate_users", True)
 MANAGER_ADMIN_ONLY = config_data.get("manager_admin_only", True)
 MATCH_HEADERS = {"X-Forwarded-Proto": "https"}
 
-# API token store (long-lived Bearer tokens)
+# API token store (long-lived Bearer tokens). Sensitive values: env (including .env) then config.
 _api_token_cfg = config_data.get("api_token_store") or {}
+_sqlite_from_env = _env_or_config("SQLITE_PATH", "") or _env_or_config("API_TOKEN_SQLITE_PATH", "")
+_sqlite_from_config = _api_token_cfg.get("sqlite_path") or ""
+_sqlite_path = _sqlite_from_env or _sqlite_from_config or _default_sqlite_path()
 API_TOKEN_STORE_CONFIG = {
-    "backend": _api_token_cfg.get("backend", "json"),
-    "json_path": _api_token_cfg.get("json_path", "users/api_tokens.json"),
-    "sqlite_path": _api_token_cfg.get("sqlite_path", "users/api_tokens.db"),
-    "postgres_host": _api_token_cfg.get("postgres_host", "localhost"),
-    "postgres_port": _api_token_cfg.get("postgres_port", 5432),
-    "postgres_database": _api_token_cfg.get("postgres_database", "usgromana"),
-    "postgres_user": _api_token_cfg.get("postgres_user", "usgromana"),
+    "backend": (_api_token_cfg.get("backend") or "sqlite").lower(),
+    "json_path": _env_or_config("API_TOKEN_JSON_PATH", _api_token_cfg.get("json_path", "users/api_tokens.json")),
+    "sqlite_path": _sqlite_path,
+    "postgres_host": _env_or_config("POSTGRES_HOST", _api_token_cfg.get("postgres_host", "localhost")),
+    "postgres_port": _env_or_config("POSTGRES_PORT", str(_api_token_cfg.get("postgres_port", 5432))),
+    "postgres_database": _env_or_config("POSTGRES_DATABASE", _api_token_cfg.get("postgres_database", "usgromana")),
+    "postgres_user": _env_or_config("POSTGRES_USER", _api_token_cfg.get("postgres_user", "usgromana")),
 }
 if not os.path.isabs(API_TOKEN_STORE_CONFIG["json_path"]):
     API_TOKEN_STORE_CONFIG["json_path"] = os.path.join(CURRENT_DIR, API_TOKEN_STORE_CONFIG["json_path"])
@@ -84,14 +123,17 @@ def reload_api_token_store_config() -> dict:
     global API_TOKEN_STORE_CONFIG
     cfg = _load_config(CONFIG_FILE_PATH)
     _api_token_cfg = cfg.get("api_token_store") or {}
+    _sqlite_from_env = _env_or_config("SQLITE_PATH", "") or _env_or_config("API_TOKEN_SQLITE_PATH", "")
+    _sqlite_from_config = _api_token_cfg.get("sqlite_path") or ""
+    _sqlite_path = _sqlite_from_env or _sqlite_from_config or _default_sqlite_path()
     API_TOKEN_STORE_CONFIG = {
-        "backend": _api_token_cfg.get("backend", "json"),
-        "json_path": _api_token_cfg.get("json_path", "users/api_tokens.json"),
-        "sqlite_path": _api_token_cfg.get("sqlite_path", "users/api_tokens.db"),
-        "postgres_host": _api_token_cfg.get("postgres_host", "localhost"),
-        "postgres_port": _api_token_cfg.get("postgres_port", 5432),
-        "postgres_database": _api_token_cfg.get("postgres_database", "usgromana"),
-        "postgres_user": _api_token_cfg.get("postgres_user", "usgromana"),
+        "backend": (_api_token_cfg.get("backend") or "sqlite").lower(),
+        "json_path": _env_or_config("API_TOKEN_JSON_PATH", _api_token_cfg.get("json_path", "users/api_tokens.json")),
+        "sqlite_path": _sqlite_path,
+        "postgres_host": _env_or_config("POSTGRES_HOST", _api_token_cfg.get("postgres_host", "localhost")),
+        "postgres_port": _env_or_config("POSTGRES_PORT", str(_api_token_cfg.get("postgres_port", 5432))),
+        "postgres_database": _env_or_config("POSTGRES_DATABASE", _api_token_cfg.get("postgres_database", "usgromana")),
+        "postgres_user": _env_or_config("POSTGRES_USER", _api_token_cfg.get("postgres_user", "usgromana")),
     }
     if not os.path.isabs(API_TOKEN_STORE_CONFIG["json_path"]):
         API_TOKEN_STORE_CONFIG["json_path"] = os.path.join(CURRENT_DIR, API_TOKEN_STORE_CONFIG["json_path"])

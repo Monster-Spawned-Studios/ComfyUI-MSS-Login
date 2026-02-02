@@ -13,7 +13,7 @@
     "seperate_users": true,
     "manager_admin_only": true,
     "api_token_store": {
-        "backend": "json",
+        "backend": "sqlite",
         "json_path": "users/api_tokens.json",
         "sqlite_path": "users/api_tokens.db",
         "postgres_host": "localhost",

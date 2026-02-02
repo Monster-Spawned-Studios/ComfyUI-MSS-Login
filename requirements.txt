@@ -2,6 +2,6 @@ aiohttp
 PyJWT
 bcrypt
 bleach
-# Optional: for API token store backend "postgresql"
 psycopg2-binary
 bcrypt
+python-dotenvx>=0.3.0

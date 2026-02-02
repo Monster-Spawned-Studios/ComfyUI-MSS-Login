@@ -12,6 +12,19 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
+try:
+    from ..constants import _default_sqlite_path
+except ImportError:
+    def _default_sqlite_path() -> str:
+        import sys
+        if sys.platform == "win32":
+            base = os.environ.get("LOCALAPPDATA", "") or os.path.expanduser("~\\AppData\\Local")
+        elif sys.platform == "darwin":
+            base = os.path.expanduser("~/Library/Application Support")
+        else:
+            base = os.environ.get("XDG_DATA_HOME", "") or os.path.expanduser("~/.local/share")
+        return os.path.join(base, "Usgromana", "api_tokens.db")
+
 # Default local-network CIDRs (used by remote_api_guard; defined here for reference only)
 DEFAULT_LOCAL_NETWORK_CIDRS = [
     "127.0.0.0/8",
@@ -275,7 +288,7 @@ def get_api_token_store(config: Optional[dict] = None):
     store_cfg = config.get("api_token_store") if "api_token_store" in config else config
     if not store_cfg:
         store_cfg = {}
-    backend = (store_cfg.get("backend") or "json").lower()
+    backend = (store_cfg.get("backend") or "sqlite").lower()
     if _api_token_store_instance is not None:
         return _api_token_store_instance
 
@@ -285,22 +298,18 @@ def get_api_token_store(config: Optional[dict] = None):
         )
         _api_token_store_instance = _JsonTokenStore(path)
     elif backend == "sqlite":
-        path = store_cfg.get("sqlite_path") or os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "users", "api_tokens.db"
-        )
+        path = store_cfg.get("sqlite_path") or _default_sqlite_path()
         _api_token_store_instance = _SqliteTokenStore(path)
     elif backend == "postgresql":
         host = store_cfg.get("postgres_host", "localhost")
         port = int(store_cfg.get("postgres_port", 5432))
         database = store_cfg.get("postgres_database", "usgromana")
         user = store_cfg.get("postgres_user", "usgromana")
-        password = os.getenv("API_TOKEN_DB_PASSWORD", "") or store_cfg.get("postgres_password", "")
+        password = (os.getenv("API_TOKEN_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "").strip()
         _api_token_store_instance = _get_postgres_store(host, port, database, user, password)
     else:
-        path = store_cfg.get("json_path") or os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "users", "api_tokens.json"
-        )
-        _api_token_store_instance = _JsonTokenStore(path)
+        path = store_cfg.get("sqlite_path") or _default_sqlite_path()
+        _api_token_store_instance = _SqliteTokenStore(path)
     return _api_token_store_instance
 
 
