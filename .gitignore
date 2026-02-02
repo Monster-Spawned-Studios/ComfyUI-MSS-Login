@@ -4,3 +4,4 @@
 !.env.example
 usgromana.log
 logs/
+__pycache__/

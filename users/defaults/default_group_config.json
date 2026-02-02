@@ -5,7 +5,8 @@
         "can_access_manager": true,
         "can_access_api": true,
         "can_see_restricted_settings": true,
-        "can_have_api_tokens": true
+        "can_have_api_tokens": true,
+        "can_have_non_expiring_jwt": true
     },
     "power": {
         "can_run": true,
@@ -13,7 +14,8 @@
         "can_access_manager": true,
         "can_access_api": true,
         "can_see_restricted_settings": false,
-        "can_have_api_tokens": true
+        "can_have_api_tokens": true,
+        "can_have_non_expiring_jwt": false
     },
     "user":  {
         "can_run": true,
@@ -22,6 +24,7 @@
         "can_access_api": true,
         "can_see_restricted_settings": false,
         "can_have_api_tokens": false,
+        "can_have_non_expiring_jwt": false,
         "ui_clear": true,
         "cat_Appearance": true,
         "cat_LiteGraph": false,
@@ -89,6 +92,7 @@
         "can_access_api": true,
         "can_see_restricted_settings": false,
         "can_have_api_tokens": false,
+        "can_have_non_expiring_jwt": false,
         "settings_user": false,
         "ui_queue_button": true,
         "ui_batch_widget": false,

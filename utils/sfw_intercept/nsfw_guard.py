@@ -782,6 +782,16 @@ def should_block_image_for_current_user(path: str, quiet: bool = False, use_cach
                         f"[Usgromana::NSFWGuard] 🛑 BLOCKED NSFW file (cached): "
                         f"{os.path.basename(path)} (Score: {cached_score:.2f})"
                     )
+                try:
+                    from ...utils.ntfy_notifier import send_notification
+                    username = current_username_var.get() or _LATEST_PROMPT_USER or "unknown"
+                    send_notification(
+                        "nsfw_block",
+                        "Usgromana: NSFW blocked",
+                        f"User {username} attempted to view/generate NSFW image: {os.path.basename(path)} (cached)",
+                    )
+                except Exception:
+                    pass
                 return True
             else:
                 # Cached as safe, allow
@@ -804,6 +814,16 @@ def should_block_image_for_current_user(path: str, quiet: bool = False, use_cach
                 f"[Usgromana::NSFWGuard] 🛑 BLOCKED NSFW file: "
                 f"{os.path.basename(path)} (Score: {score:.2f})"
             )
+        try:
+            from ...utils.ntfy_notifier import send_notification
+            username = current_username_var.get() or _LATEST_PROMPT_USER or "unknown"
+            send_notification(
+                "nsfw_block",
+                "Usgromana: NSFW blocked",
+                f"User {username} attempted to view/generate NSFW image: {os.path.basename(path)} (Score: {score:.2f})",
+            )
+        except Exception:
+            pass
         return True
 
     return False

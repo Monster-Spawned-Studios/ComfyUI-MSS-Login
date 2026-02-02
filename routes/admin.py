@@ -4,12 +4,14 @@ from aiohttp import web
 from ..globals import routes, jwt_auth, users_db, ip_filter
 from ..constants import (
     GROUPS_CONFIG_FILE, DEFAULT_GROUP_CONFIG_PATH, WHITELIST_FILE, BLACKLIST_FILE, USERS_FILE,
-    CONFIG_FILE_PATH, reload_api_token_store_config,
+    CONFIG_FILE_PATH, reload_api_token_store_config, reload_allow_guest_jwt,
 )
 from ..utils.json_utils import load_json_file, save_json_file
 from ..utils.admin_logic import patch_user_group, delete_user_record
 from ..utils.bootstrap import load_default_groups
 from ..utils.api_token_store import reset_api_token_store
+from ..utils.user_console_log import get_lines as get_user_console_lines, list_users as list_console_users
+from ..utils.ntfy_notifier import get_ntfy_config, save_ntfy_config, send_notification, EVENT_KEYS
 
 def is_admin(request):
     token = jwt_auth.get_token_from_request(request)
@@ -19,6 +21,89 @@ def is_admin(request):
         _, u = users_db.get_user(p['username'])
         return u.get('admin', False) or "admin" in u.get('groups', [])
     except: return False
+
+@routes.get("/usgromana/api/settings/guest-jwt")
+async def api_get_guest_jwt(request):
+    """Return allow_guest_jwt (authenticated; any user can read)."""
+    token = jwt_auth.get_token_from_request(request)
+    if not token:
+        return web.json_response({"error": "Authentication required"}, status=401)
+    try:
+        cfg = load_json_file(CONFIG_FILE_PATH, {})
+        allow = bool(cfg.get("allow_guest_jwt", False))
+        return web.json_response({"allow_guest_jwt": allow})
+    except Exception:
+        return web.json_response({"allow_guest_jwt": False})
+
+
+@routes.put("/usgromana/api/settings/guest-jwt")
+async def api_put_guest_jwt(request):
+    """Update allow_guest_jwt (Admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    try:
+        data = await request.json()
+        allow = bool(data.get("allow_guest_jwt", False))
+        cfg = load_json_file(CONFIG_FILE_PATH, {})
+        if not isinstance(cfg, dict):
+            cfg = {}
+        cfg["allow_guest_jwt"] = allow
+        save_json_file(CONFIG_FILE_PATH, cfg)
+        reload_allow_guest_jwt()
+        return web.json_response({"status": "ok", "allow_guest_jwt": allow})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+@routes.get("/usgromana/api/settings/ntfy")
+async def api_get_ntfy_settings(request):
+    """Return ntfy config (topic, enabled_events). Authenticated; read available to all."""
+    token = jwt_auth.get_token_from_request(request)
+    if not token:
+        return web.json_response({"error": "Authentication required"}, status=401)
+    cfg = get_ntfy_config()
+    return web.json_response({
+        "topic": cfg.get("topic", ""),
+        "enabled_events": cfg.get("enabled_events", []),
+        "event_keys": EVENT_KEYS,
+    })
+
+
+@routes.put("/usgromana/api/settings/ntfy")
+async def api_put_ntfy_settings(request):
+    """Update ntfy config (Admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    try:
+        data = await request.json()
+        topic = (data.get("topic") or "").strip()
+        enabled = data.get("enabled_events")
+        if not isinstance(enabled, list):
+            enabled = []
+        save_ntfy_config(topic, enabled)
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+@routes.get("/usgromana/api/admin/consoles")
+async def api_admin_consoles_list(request):
+    """Return list of usernames that have console log entries (Admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    users = list_console_users()
+    return web.json_response({"users": users})
+
+
+@routes.get("/usgromana/api/admin/consoles/{username}")
+async def api_admin_consoles_user(request):
+    """Return console log lines for the given user (Admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    username = request.match_info.get("username", "")
+    lines = get_user_console_lines(username)
+    return web.json_response({"username": username, "lines": lines})
+
 
 @routes.get("/usgromana/api/groups")
 async def api_groups(request):

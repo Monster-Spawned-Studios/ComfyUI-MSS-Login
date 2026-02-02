@@ -105,3 +105,20 @@ class Logger:
 
     def logout(self, ip: str, username: str) -> None:
         self.info(f"User: '{username}' logged out from IP: {ip}")
+
+    def log_jwt_if_debug(self, token: str, username: str) -> None:
+        """When DEBUG_MODE is on: write JWT token to log file and ComfyUI console. Do not call when DEBUG_MODE is off."""
+        try:
+            from ..constants import DEBUG_MODE
+            if not DEBUG_MODE:
+                return
+            msg = f"JWT token (DEBUG_MODE): {token}"
+            with open(self.log_file, "a") as f:
+                f.write(f"{datetime.now().isoformat()} - INFO - {msg}\n")
+            self.logger.info(msg)
+        except Exception:
+            pass
+
+    def log_jwt_created_console_only(self, username: str) -> None:
+        """Log that a JWT token was created for the user. ComfyUI console only; no file writes (for when DEBUG_MODE is off)."""
+        self.logger.info(f"JWT token created for user: {username}")

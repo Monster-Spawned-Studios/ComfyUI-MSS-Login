@@ -107,6 +107,12 @@ if not os.path.isabs(API_TOKEN_STORE_CONFIG["json_path"]):
 if not os.path.isabs(API_TOKEN_STORE_CONFIG["sqlite_path"]):
     API_TOKEN_STORE_CONFIG["sqlite_path"] = os.path.join(CURRENT_DIR, API_TOKEN_STORE_CONFIG["sqlite_path"])
 
+# Session JWT store (jti tracking and blocklist for list/revoke)
+_session_store_path = config_data.get("session_token_store_path", "users/session_tokens.json")
+if not os.path.isabs(_session_store_path):
+    _session_store_path = os.path.join(CURRENT_DIR, _session_store_path)
+SESSION_TOKEN_STORE_PATH = _session_store_path
+
 # Remote API guard: require auth for non-local clients
 REQUIRE_AUTH_FOR_REMOTE_API = config_data.get("require_auth_for_remote_api", True)
 LOCAL_NETWORK_CIDRS = config_data.get("local_network_cidrs") or []
@@ -116,6 +122,26 @@ DEBUG_MODE = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "tru
 if not DEBUG_MODE:
     DEBUG_MODE = bool(config_data.get("debug_mode", False))
 DEBUG_LOG_PATH = os.path.join(CURRENT_DIR, "logs", "debug.log")
+
+# Guest JWT: allow guest login to receive a session JWT (default False for security)
+def _get_allow_guest_jwt():
+    env_val = str(os.environ.get("ALLOW_GUEST_JWT", "")).strip().lower()
+    if env_val in ("1", "true", "yes"):
+        return True
+    if env_val in ("0", "false", "no"):
+        return False
+    cfg = _load_config(CONFIG_FILE_PATH)
+    return bool(cfg.get("allow_guest_jwt", False))
+
+
+ALLOW_GUEST_JWT = _get_allow_guest_jwt()
+
+
+def reload_allow_guest_jwt() -> bool:
+    """Re-read config and refresh ALLOW_GUEST_JWT (used after Admin saves guest-JWT setting)."""
+    global ALLOW_GUEST_JWT
+    ALLOW_GUEST_JWT = _get_allow_guest_jwt()
+    return ALLOW_GUEST_JWT
 
 
 def reload_api_token_store_config() -> dict:

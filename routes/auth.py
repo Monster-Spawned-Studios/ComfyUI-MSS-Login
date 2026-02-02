@@ -3,7 +3,11 @@ import os
 import uuid
 from aiohttp import web
 from ..globals import routes, users_db, jwt_auth, logger, timeout, access_control
-from ..constants import HTML_DIR, MAX_TOKEN_EXPIRE_MINUTES
+from ..constants import HTML_DIR, MAX_TOKEN_EXPIRE_MINUTES, DEBUG_MODE, SESSION_TOKEN_STORE_PATH
+from .. import constants as constants_module
+from ..utils.session_token_store import get_session_token_store
+from ..utils.user_console_log import append as user_console_append
+from ..utils.ntfy_notifier import send_notification
 from ..utils.bootstrap import ensure_guest_user, ensure_groups_config
 from ..utils.ip_filter import get_ip
 from ..utils import user_env
@@ -51,6 +55,14 @@ async def post_register(request: web.Request) -> web.Response:
         ensure_guest_user()
 
     logger.registration_success(ip, new_username, username if not is_first_admin else None)
+    try:
+        send_notification(
+            "user_created",
+            "Usgromana: User created",
+            f"New user: {new_username} (registered by {username if not is_first_admin else 'first admin'}) from IP: {ip}",
+        )
+    except Exception:
+        pass
     timeout.remove_failed_attempts(ip)
     return web.json_response({"message": "User registered"})
 
@@ -67,6 +79,11 @@ async def post_login(request: web.Request) -> web.Response:
     ip = get_ip(request)
     
     if str(sanitized_data.get("guest_login", "false")).lower() == "true":
+        if not constants_module.ALLOW_GUEST_JWT:
+            return web.json_response(
+                {"error": "Guest login is disabled. Guests cannot obtain JWT tokens."},
+                status=403,
+            )
         ensure_guest_user()
         guest_id, _ = users_db.get_user("guest")
         if not guest_id: return web.json_response({"error": "Guest disabled"}, status=500)
@@ -74,6 +91,23 @@ async def post_login(request: web.Request) -> web.Response:
         user_env.get_user_workflow_dir("guest")
         
         token = jwt_auth.create_access_token({"id": guest_id, "username": "guest"})
+        try:
+            payload = jwt_auth.decode_access_token(token)
+            jti = payload.get("jti")
+            exp = payload.get("exp")
+            from datetime import datetime, timezone
+            exp_at_iso = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat() if exp else None
+            if jti:
+                get_session_token_store(SESSION_TOKEN_STORE_PATH).register_session(
+                    jti, guest_id, "guest", exp_at_iso
+                )
+        except Exception:
+            pass
+        if DEBUG_MODE:
+            logger.log_jwt_if_debug(token, "guest")
+        else:
+            logger.log_jwt_created_console_only("guest")
+        user_console_append("guest", "JWT token created for user: guest")
         resp = web.json_response({"message": "Guest login", "jwt_token": token})
         resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
         logger.login_success(ip, "guest")
@@ -88,7 +122,32 @@ async def post_login(request: web.Request) -> web.Response:
         
         user_env.get_user_workflow_dir(username)
         
-        token = jwt_auth.create_access_token({"id": user_id, "username": username})
+        no_exp = _user_can_have_non_expiring_jwt(username)
+        token = jwt_auth.create_access_token(
+            {"id": user_id, "username": username},
+            no_expiration=no_exp,
+        )
+        try:
+            payload = jwt_auth.decode_access_token(token)
+            jti = payload.get("jti")
+            exp = payload.get("exp")
+            from datetime import datetime, timezone
+            exp_at_iso = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat() if exp else None
+            if jti:
+                get_session_token_store(SESSION_TOKEN_STORE_PATH).register_session(
+                    jti, user_id, username, exp_at_iso
+                )
+        except Exception:
+            pass
+        if DEBUG_MODE:
+            logger.log_jwt_if_debug(token, username)
+        else:
+            logger.log_jwt_created_console_only(username)
+        user_console_append(username, f"JWT token created for user: {username}")
+        try:
+            send_notification("user_login", "Usgromana: User login", f"User {username} logged in from IP: {ip}")
+        except Exception:
+            pass
         resp = web.json_response({"message": "Login successful", "jwt_token": token})
         resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
         logger.login_success(ip, username)
@@ -96,10 +155,28 @@ async def post_login(request: web.Request) -> web.Response:
         return resp
 
     timeout.add_failed_attempt(ip)
+    try:
+        send_notification(
+            "login_failure",
+            "Usgromana: Login failure",
+            f"Failed login attempt for username '{username}' from IP: {ip}",
+        )
+    except Exception:
+        pass
     return web.json_response({"error": "Invalid credentials"}, status=401)
 
 @routes.get("/logout")
 async def get_logout(request: web.Request) -> web.Response:
+    try:
+        token = jwt_auth.get_token_from_request(request)
+        if token and token.count(".") >= 2:
+            payload = jwt_auth.decode_access_token(token)
+            username = payload.get("username")
+            if username:
+                from ..utils.ip_filter import get_ip
+                send_notification("user_logout", "Usgromana: User logout", f"User {username} logged out from IP: {get_ip(request)}")
+    except Exception:
+        pass
     resp = web.HTTPFound("/login")
     resp.del_cookie("jwt_token", path="/")
     return resp
@@ -117,6 +194,20 @@ def _user_can_have_api_tokens(username: str) -> bool:
     if role == "admin":
         return True
     return perms.get("can_have_api_tokens", False) is True
+
+
+def _user_can_have_non_expiring_jwt(username: str) -> bool:
+    """Return True if the user's role has can_have_non_expiring_jwt (admin only by default)."""
+    user_id, user_rec = users_db.get_user(username)
+    if not user_rec:
+        return False
+    groups = [g.lower() for g in user_rec.get("groups", [])]
+    role = groups[0] if groups else "user"
+    cfg = access_control._load_group_config()
+    perms = cfg.get(role, {})
+    if role == "admin":
+        return True
+    return perms.get("can_have_non_expiring_jwt", False) is True
 
 
 @routes.get("/usgromana/generate_token")
@@ -157,6 +248,15 @@ async def post_generate_token(request: web.Request) -> web.Response:
                 user_id, _ = users_db.get_user(jwt_username)
                 store = get_api_token_store(API_TOKEN_STORE_CONFIG)
                 raw_token = store.create_token(user_id, jwt_username, expire_hours)
+                if DEBUG_MODE:
+                    logger.log_jwt_if_debug(raw_token, jwt_username)
+                else:
+                    logger.log_jwt_created_console_only(jwt_username)
+                user_console_append(jwt_username, f"API token created for user: {jwt_username}")
+                try:
+                    send_notification("api_token_created", "Usgromana: API token created", f"User {jwt_username} created API token from IP: {ip}")
+                except Exception:
+                    pass
                 logger.generate_success(ip, jwt_username, int(expire_hours))
                 return web.json_response({
                     "message": "API token created.",
@@ -181,6 +281,15 @@ async def post_generate_token(request: web.Request) -> web.Response:
     user_id, _ = users_db.get_user(username)
     store = get_api_token_store(API_TOKEN_STORE_CONFIG)
     raw_token = store.create_token(user_id, username, expire_hours)
+    if DEBUG_MODE:
+        logger.log_jwt_if_debug(raw_token, username)
+    else:
+        logger.log_jwt_created_console_only(username)
+    user_console_append(username, f"API token created for user: {username}")
+    try:
+        send_notification("api_token_created", "Usgromana: API token created", f"User {username} created API token from IP: {ip}")
+    except Exception:
+        pass
     logger.generate_success(ip, username, int(expire_hours))
     timeout.remove_failed_attempts(ip)
     return web.json_response({

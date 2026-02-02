@@ -1721,6 +1721,7 @@ async renderTokenStorage(container) {
         html += drawRow("Modify Workflows (Save)", "can_modify_workflows");
         html += drawRow("Upload Files", "can_upload");
         html += drawRow("Can Have API Tokens", "can_have_api_tokens");
+        html += drawRow("Non-expiring JWT", "can_have_non_expiring_jwt");
         html += drawRow("SettingsExtension", "settings_extension");
         html += drawRow("See Restricted Settings", "can_see_restricted_settings");
 
@@ -2522,6 +2523,227 @@ app.ui.settings.addSetting({
 
         wrapper.appendChild(logoutBtn);
         wrapper.appendChild(btn);
+
+        // Guest JWT toggle (Admin only)
+        const guestJwtRow = document.createElement("div");
+        guestJwtRow.id = "usgromana-guest-jwt-row";
+        guestJwtRow.style.display = "none";
+        guestJwtRow.style.alignItems = "center";
+        guestJwtRow.style.gap = "8px";
+        guestJwtRow.style.marginTop = "6px";
+        const guestJwtLabel = document.createElement("label");
+        guestJwtLabel.style.display = "flex";
+        guestJwtLabel.style.alignItems = "center";
+        guestJwtLabel.style.gap = "8px";
+        guestJwtLabel.style.cursor = "pointer";
+        const guestJwtCheck = document.createElement("input");
+        guestJwtCheck.type = "checkbox";
+        guestJwtCheck.id = "usgromana-allow-guest-jwt";
+        guestJwtLabel.appendChild(guestJwtCheck);
+        guestJwtLabel.appendChild(document.createTextNode("Allow guest JWT tokens (guest login issues session JWT)"));
+        guestJwtRow.appendChild(guestJwtLabel);
+        guestJwtCheck.onchange = async () => {
+            try {
+                const res = await api.fetchApi("/usgromana/api/settings/guest-jwt", {
+                    method: "PUT",
+                    body: JSON.stringify({ allow_guest_jwt: guestJwtCheck.checked })
+                });
+                if (res && res.status === "ok") {
+                    if (window.showToast) window.showToast(guestJwtCheck.checked ? "Guest JWT enabled." : "Guest JWT disabled.");
+                } else {
+                    guestJwtCheck.checked = !guestJwtCheck.checked;
+                }
+            } catch (e) {
+                guestJwtCheck.checked = !guestJwtCheck.checked;
+            }
+        };
+        wrapper.appendChild(guestJwtRow);
+        (async () => {
+            try {
+                const me = await getData("/usgromana/api/me");
+                if (me && me.is_admin) {
+                    const cfg = await getData("/usgromana/api/settings/guest-jwt");
+                    guestJwtRow.style.display = "flex";
+                    guestJwtCheck.checked = !!cfg.allow_guest_jwt;
+                }
+            } catch (_) {}
+        })();
+
+        // Push notifications (ntfy) - Admin only
+        const ntfySection = document.createElement("div");
+        ntfySection.id = "usgromana-ntfy-section";
+        ntfySection.style.display = "none";
+        ntfySection.style.marginTop = "12px";
+        const ntfyHeading = document.createElement("h4");
+        ntfyHeading.style.margin = "0 0 8px 0";
+        ntfyHeading.textContent = "Push notifications (ntfy)";
+        ntfySection.appendChild(ntfyHeading);
+        const ntfyTopicLabel = document.createElement("label");
+        ntfyTopicLabel.textContent = "Topic (e.g. my-secret-topic): ";
+        const ntfyTopicInput = document.createElement("input");
+        ntfyTopicInput.type = "text";
+        ntfyTopicInput.placeholder = "ntfy.sh topic";
+        ntfyTopicInput.style.width = "200px";
+        ntfyTopicInput.style.marginLeft = "6px";
+        ntfyTopicLabel.appendChild(ntfyTopicInput);
+        ntfySection.appendChild(ntfyTopicLabel);
+        const ntfyCheckWrap = document.createElement("div");
+        ntfyCheckWrap.style.marginTop = "8px";
+        ntfyCheckWrap.id = "usgromana-ntfy-checks";
+        ntfySection.appendChild(ntfyCheckWrap);
+        const ntfySaveBtn = document.createElement("button");
+        ntfySaveBtn.className = "usgromana-launch-btn";
+        ntfySaveBtn.textContent = "Save ntfy settings";
+        ntfySaveBtn.style.marginTop = "8px";
+        ntfySaveBtn.onclick = async () => {
+            try {
+                const enabled = [];
+                ntfyCheckWrap.querySelectorAll("input[type=checkbox]:checked").forEach(cb => enabled.push(cb.value));
+                const res = await api.fetchApi("/usgromana/api/settings/ntfy", {
+                    method: "PUT",
+                    body: JSON.stringify({ topic: ntfyTopicInput.value.trim(), enabled_events: enabled })
+                });
+                if (res && res.status === "ok") {
+                    if (window.showToast) window.showToast("ntfy settings saved.");
+                }
+            } catch (_) {}
+        };
+        ntfySection.appendChild(ntfySaveBtn);
+        wrapper.appendChild(ntfySection);
+        (async () => {
+            try {
+                const me = await getData("/usgromana/api/me");
+                if (me && me.is_admin) {
+                    const cfg = await getData("/usgromana/api/settings/ntfy");
+                    ntfySection.style.display = "block";
+                    ntfyTopicInput.value = cfg.topic || "";
+                    const eventLabels = {
+                        nsfw_block: "Notify when user blocked for NSFW",
+                        user_created: "Notify when new user created",
+                        user_login: "Notify when user logs in (include IP)",
+                        user_logout: "Notify when user logs out",
+                        api_token_created: "Notify when API/JWT token created",
+                        login_failure: "Notify on login failure"
+                    };
+                    const keys = cfg.event_keys || ["nsfw_block", "user_created", "user_login", "user_logout", "api_token_created", "login_failure"];
+                    ntfyCheckWrap.innerHTML = "";
+                    keys.forEach(k => {
+                        const label = document.createElement("label");
+                        label.style.display = "block";
+                        label.style.marginBottom = "4px";
+                        const cb = document.createElement("input");
+                        cb.type = "checkbox";
+                        cb.value = k;
+                        if ((cfg.enabled_events || []).includes(k)) cb.checked = true;
+                        label.appendChild(cb);
+                        label.appendChild(document.createTextNode(" " + (eventLabels[k] || k)));
+                        ntfyCheckWrap.appendChild(label);
+                    });
+                }
+            } catch (_) {}
+        })();
+
+        // View my console button (per-user console log)
+        const consoleBtn = document.createElement("button");
+        consoleBtn.className = "usgromana-launch-btn";
+        consoleBtn.textContent = "View my console";
+        consoleBtn.style.marginTop = "6px";
+        consoleBtn.onclick = async () => {
+            try {
+                const r = await getData("/usgromana/me/console");
+                const lines = (r && r.lines) ? r.lines : [];
+                const text = lines.length ? lines.join("\n") : "(No log entries yet.)";
+                const pre = document.createElement("pre");
+                pre.style.whiteSpace = "pre-wrap";
+                pre.style.maxHeight = "400px";
+                pre.style.overflow = "auto";
+                pre.textContent = text;
+                const dlg = new ComfyDialog();
+                dlg.show("My console", [pre]);
+            } catch (_) {}
+        };
+        wrapper.appendChild(consoleBtn);
+
+        // My JWT Tokens section (list, masked by default, eye to reveal, revoke)
+        const jwtSection = document.createElement("div");
+        jwtSection.id = "usgromana-my-jwt-tokens";
+        jwtSection.style.marginTop = "12px";
+        const jwtHeading = document.createElement("h4");
+        jwtHeading.style.margin = "0 0 8px 0";
+        jwtHeading.textContent = "My JWT Tokens";
+        jwtSection.appendChild(jwtHeading);
+        const jwtTableWrap = document.createElement("div");
+        jwtTableWrap.innerHTML = "<table class='usgromana-sessions-table'><thead><tr><th>Token</th><th>Created</th><th>Actions</th></tr></thead><tbody id='usgromana-sessions-tbody'></tbody></table>";
+        jwtSection.appendChild(jwtTableWrap);
+        wrapper.appendChild(jwtSection);
+        (async () => {
+            try {
+                const res = await getData("/usgromana/me/sessions");
+                const sessions = (res && res.sessions) ? res.sessions : [];
+                const tbody = document.getElementById("usgromana-sessions-tbody");
+                if (!tbody) return;
+                tbody.innerHTML = "";
+                for (const s of sessions) {
+                    const jti = s.jti || "";
+                    const last4 = jti.slice(-4);
+                    const tr = document.createElement("tr");
+                    const tdToken = document.createElement("td");
+                    tdToken.style.fontFamily = "monospace";
+                    const maskedSpan = document.createElement("span");
+                    maskedSpan.textContent = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022-" + last4;
+                    maskedSpan.setAttribute("data-jti", jti);
+                    tdToken.appendChild(maskedSpan);
+                    tr.appendChild(tdToken);
+                    const tdCreated = document.createElement("td");
+                    tdCreated.textContent = s.created_at_iso ? new Date(s.created_at_iso).toLocaleString() : "";
+                    tr.appendChild(tdCreated);
+                    const tdActions = document.createElement("td");
+                    if (s.is_current) {
+                        const eyeBtn = document.createElement("button");
+                        eyeBtn.textContent = "\uD83D\uDC41\uFE0F";
+                        eyeBtn.title = "Reveal token";
+                        eyeBtn.style.marginRight = "6px";
+                        eyeBtn.onclick = async () => {
+                            try {
+                                const r = await api.fetchApi("/usgromana/me/current-token");
+                                const isHttps = !!r.is_https;
+                                if (!isHttps) {
+                                    const go = confirm("Connection is not secure. Revealing the token over HTTP may expose it. Please notify your administrator to enable HTTPS.\n\nReveal anyway?");
+                                    if (!go) return;
+                                }
+                                const token = r.token;
+                                if (token) {
+                                    if (maskedSpan.textContent === "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022-" + last4) {
+                                        maskedSpan.textContent = token;
+                                        eyeBtn.textContent = "\uD83D\uDD12";
+                                        eyeBtn.title = "Hide token";
+                                    } else {
+                                        maskedSpan.textContent = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022-" + last4;
+                                        eyeBtn.textContent = "\uD83D\uDC41\uFE0F";
+                                        eyeBtn.title = "Reveal token";
+                                    }
+                                }
+                            } catch (_) {}
+                        };
+                        tdActions.appendChild(eyeBtn);
+                    }
+                    const revokeBtn = document.createElement("button");
+                    revokeBtn.textContent = "Revoke";
+                    revokeBtn.onclick = async () => {
+                        try {
+                            const r = await api.fetchApi("/usgromana/me/sessions/revoke", { method: "POST", body: JSON.stringify({ jti }) });
+                            if (r && r.status === "ok") {
+                                tr.remove();
+                                if (s.is_current) window.location.href = "/logout";
+                            }
+                        } catch (_) {}
+                    };
+                    tdActions.appendChild(revokeBtn);
+                    tr.appendChild(tdActions);
+                    tbody.appendChild(tr);
+                }
+            } catch (_) {}
+        })();
 
         // Layout helper for settings table
         setTimeout(() => {

@@ -23,5 +23,6 @@
     },
     "require_auth_for_remote_api": true,
     "local_network_cidrs": [],
-    "debug_mode": false
+    "debug_mode": false,
+    "allow_guest_jwt": false
 }

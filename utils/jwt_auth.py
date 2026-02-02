@@ -1,3 +1,4 @@
+import uuid
 import jwt
 from aiohttp import web
 from datetime import datetime, timedelta, timezone
@@ -6,6 +7,7 @@ from .users_db import UsersDB
 from .access_control import AccessControl
 from .logger import Logger
 from .api_token_store import get_api_token_store
+from .session_token_store import get_session_token_store
 
 
 class JWTAuth:
@@ -38,13 +40,17 @@ class JWTAuth:
         cookie = request.cookies.get("jwt_token")
         return (cookie or "").strip()
 
-    def create_access_token(self, data: dict, expire_minutes=None) -> str:
-        """Create a JWT access token."""
+    def create_access_token(self, data: dict, expire_minutes=None, no_expiration: bool = False) -> str:
+        """Create a JWT access token. When no_expiration=True, omit exp (Admin permission only)."""
         to_encode = data.copy()
-        if not expire_minutes:
-            expire_minutes = self.expire_minutes
-        expire = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
-        to_encode.update({"exp": expire})
+        to_encode["jti"] = uuid.uuid4().hex
+        if no_expiration:
+            pass  # do not add exp
+        else:
+            if not expire_minutes:
+                expire_minutes = self.expire_minutes
+            expire = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
+            to_encode["exp"] = expire
         return jwt.encode(to_encode, self.__secret_key, algorithm=self.algorithm)
 
     def decode_access_token(self, token: str) -> dict:
@@ -117,10 +123,22 @@ class JWTAuth:
                 user = self.decode_access_token(token)
                 user_id = user.get("id")
                 username = user.get("username")
+                jti = user.get("jti")
                 if not user_id == self.users_db.get_user(username)[0]:
                     raise ValueError(
                         f"User with username: {username} is not in the database"
                     )
+                # Session JWT blocklist check (revoked tokens)
+                if jti:
+                    try:
+                        from ..constants import SESSION_TOKEN_STORE_PATH
+                        store = get_session_token_store(SESSION_TOKEN_STORE_PATH)
+                        if store.is_revoked(jti):
+                            return await handle_unauthorized_access(
+                                request, "/login", message="Token has been revoked"
+                            )
+                    except Exception:
+                        pass
 
                 request["user_id"] = user_id
                 request["user"] = username
