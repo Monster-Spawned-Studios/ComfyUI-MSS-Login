@@ -555,6 +555,9 @@ When using API tokens (e.g. Comfy Portal iOS) and seeing "Unable to connect to s
 - Logs are written to `.cursor/debug.log` (NDJSON). Check for `location` values: `remote_api_guard` (blocked before auth), `jwt_auth` (token not found or invalid), `access_control` (403 after auth).
 - 401 responses include a `debug` hint when DEBUG_MODE is on. Do not leave DEBUG_MODE enabled in production.
 
+### API token "not found or expired"
+If the client sends a Bearer token but the server returns "API token not found or expired", the token is not in this server's token store. **Generate the token on the same ComfyUI instance (and same container/host) that the client connects to.** In Docker, ensure the token store path (e.g. `users/api_tokens.json` or the path set in Usgromana → Token Storage) is on a **persisted volume** so tokens survive restarts and are the same instance the client hits.
+
 ---
 
 ## License

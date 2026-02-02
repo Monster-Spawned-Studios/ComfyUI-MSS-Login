@@ -31,11 +31,12 @@ class JWTAuth:
 
     @staticmethod
     def get_token_from_request(request: web.Request) -> str:
-        """Extract token from request headers or cookies."""
+        """Extract token from request headers or cookies. Strips whitespace."""
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
-            return auth_header[len("Bearer ") :]
-        return request.cookies.get("jwt_token")
+            return (auth_header[len("Bearer "):] or "").strip()
+        cookie = request.cookies.get("jwt_token")
+        return (cookie or "").strip()
 
     def create_access_token(self, data: dict, expire_minutes=None) -> str:
         """Create a JWT access token."""
@@ -106,6 +107,13 @@ class JWTAuth:
                     self.access_control.set_current_user_id(user_id, set_fallback)
                     return await handler(request)
 
+                # API token not found: if token doesn't look like a JWT (no dots), return clear message
+                if token.count(".") < 2:
+                    return await handle_unauthorized_access(
+                        request, "/login",
+                        message="API token not found or expired. Generate a new token on this server (Settings → Usgromana → Generate Token).",
+                    )
+
                 user = self.decode_access_token(token)
                 user_id = user.get("id")
                 username = user.get("username")
@@ -145,8 +153,10 @@ class JWTAuth:
                 except Exception:
                     pass
                 # #endregion
+                # Likely an API token that wasn't in the store (wrong server or expired)
                 return await handle_unauthorized_access(
-                    request, "/logout", message="Token is invalid"
+                    request, "/login",
+                    message="API token not found or expired. Generate a new token on this server (Settings → Usgromana → Generate Token).",
                 )
             except Exception as e:
                 # #region agent log

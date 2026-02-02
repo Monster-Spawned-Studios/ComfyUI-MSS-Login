@@ -23,6 +23,11 @@ DEFAULT_LOCAL_NETWORK_CIDRS = [
 ]
 
 
+def _normalize_lookup_token(token: str) -> str:
+    """Strip token for lookup so client whitespace doesn't break matching."""
+    return (token or "").strip()
+
+
 def _hash_token(token: str) -> str:
     """Return SHA-256 hex digest of token. Never log the result in user-facing logs."""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -68,7 +73,7 @@ class _JsonTokenStore:
             json.dump(self._data, f, indent=2)
 
     def get_user_for_token(self, token: str):
-        h = _hash_token(token)
+        h = _hash_token(_normalize_lookup_token(token))
         rec = self._data.get(h)
         if not rec:
             return None
@@ -90,7 +95,7 @@ class _JsonTokenStore:
         return raw
 
     def revoke_token(self, token: str) -> bool:
-        h = _hash_token(token)
+        h = _hash_token(_normalize_lookup_token(token))
         if h in self._data:
             del self._data[h]
             self._save()
@@ -123,7 +128,7 @@ class _SqliteTokenStore:
         self._conn.commit()
 
     def get_user_for_token(self, token: str):
-        h = _hash_token(token)
+        h = _hash_token(_normalize_lookup_token(token))
         row = self._conn.execute(
             "SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = ?", (h,)
         ).fetchone()
@@ -148,7 +153,7 @@ class _SqliteTokenStore:
         return raw
 
     def revoke_token(self, token: str) -> bool:
-        h = _hash_token(token)
+        h = _hash_token(_normalize_lookup_token(token))
         cur = self._conn.execute("DELETE FROM api_tokens WHERE token_hash = ?", (h,))
         self._conn.commit()
         return cur.rowcount > 0
@@ -204,7 +209,7 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
             return self._conn.cursor(cursor_factory=RealDictCursor)
 
         def get_user_for_token(self, token: str):
-            h = _hash_token(token)
+            h = _hash_token(_normalize_lookup_token(token))
             with self._cursor() as cur:
                 cur.execute(
                     "SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = %s", (h,)
@@ -232,7 +237,7 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
             return raw
 
         def revoke_token(self, token: str) -> bool:
-            h = _hash_token(token)
+            h = _hash_token(_normalize_lookup_token(token))
             with self._conn.cursor() as cur:
                 cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
                 self._conn.commit()
