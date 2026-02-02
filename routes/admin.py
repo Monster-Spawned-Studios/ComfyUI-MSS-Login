@@ -1,10 +1,15 @@
 # --- START OF FILE routes/admin.py ---
+import os
 from aiohttp import web
 from ..globals import routes, jwt_auth, users_db, ip_filter
-from ..constants import GROUPS_CONFIG_FILE, DEFAULT_GROUP_CONFIG_PATH, WHITELIST_FILE, BLACKLIST_FILE, USERS_FILE
+from ..constants import (
+    GROUPS_CONFIG_FILE, DEFAULT_GROUP_CONFIG_PATH, WHITELIST_FILE, BLACKLIST_FILE, USERS_FILE,
+    CONFIG_FILE_PATH, reload_api_token_store_config,
+)
 from ..utils.json_utils import load_json_file, save_json_file
 from ..utils.admin_logic import patch_user_group, delete_user_record
 from ..utils.bootstrap import load_default_groups
+from ..utils.api_token_store import reset_api_token_store
 
 def is_admin(request):
     token = jwt_auth.get_token_from_request(request)
@@ -84,6 +89,57 @@ async def api_delete_user_route(request):
     if result == "last_admin": return web.json_response({"error": "Cannot delete last admin"}, status=400)
     if result is False: return web.Response(status=404)
     return web.json_response({"status": "ok"})
+
+@routes.get("/usgromana/api/token-storage-config")
+async def api_get_token_storage_config(request):
+    """Return current API token store backend and non-secret options (admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    cfg = load_json_file(CONFIG_FILE_PATH, {})
+    store_cfg = cfg.get("api_token_store") or {}
+    out = {
+        "backend": store_cfg.get("backend", "json"),
+        "json_path": store_cfg.get("json_path", "users/api_tokens.json"),
+        "sqlite_path": store_cfg.get("sqlite_path", "users/api_tokens.db"),
+        "postgres_host": store_cfg.get("postgres_host", "localhost"),
+        "postgres_port": store_cfg.get("postgres_port", 5432),
+        "postgres_database": store_cfg.get("postgres_database", "usgromana"),
+        "postgres_user": store_cfg.get("postgres_user", "usgromana"),
+    }
+    return web.json_response(out)
+
+
+@routes.put("/usgromana/api/token-storage-config")
+async def api_put_token_storage_config(request):
+    """Update API token store config (admin only). Password from env API_TOKEN_DB_PASSWORD only."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    try:
+        data = await request.json()
+        backend = (data.get("backend") or "json").lower()
+        if backend not in ("json", "sqlite", "postgresql"):
+            return web.json_response({"error": "Invalid backend"}, status=400)
+        cfg = load_json_file(CONFIG_FILE_PATH, {})
+        if not isinstance(cfg, dict):
+            cfg = {}
+        api_cfg = cfg.get("api_token_store") or {}
+        api_cfg["backend"] = backend
+        api_cfg["json_path"] = data.get("json_path", api_cfg.get("json_path", "users/api_tokens.json"))
+        api_cfg["sqlite_path"] = data.get("sqlite_path", api_cfg.get("sqlite_path", "users/api_tokens.db"))
+        api_cfg["postgres_host"] = data.get("postgres_host", api_cfg.get("postgres_host", "localhost"))
+        api_cfg["postgres_port"] = data.get("postgres_port", api_cfg.get("postgres_port", 5432))
+        api_cfg["postgres_database"] = data.get("postgres_database", api_cfg.get("postgres_database", "usgromana"))
+        api_cfg["postgres_user"] = data.get("postgres_user", api_cfg.get("postgres_user", "usgromana"))
+        if "postgres_password" in api_cfg:
+            del api_cfg["postgres_password"]
+        cfg["api_token_store"] = api_cfg
+        save_json_file(CONFIG_FILE_PATH, cfg)
+        reload_api_token_store_config()
+        reset_api_token_store()
+        return web.json_response({"status": "ok"})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
 
 @routes.get("/usgromana/api/ip-lists")
 async def api_ip_lists(request):

@@ -11,10 +11,10 @@ def load_default_groups():
     if cfg is None:
         logger.error("[Usgromana] Missing default_group_config.json; using built-in fallback!")
         return {
-            "admin": { "can_run": True, "can_upload": True, "can_access_manager": True, "can_access_api": True, "can_see_restricted_settings": True },
-            "power": { "can_run": True, "can_upload": True, "can_access_manager": True, "can_access_api": True, "can_see_restricted_settings": False },
-            "user": { "can_run": True, "can_upload": True, "can_access_manager": False, "can_access_api": True, "can_see_restricted_settings": False },
-            "guest": { "can_run": False, "can_upload": False, "can_access_manager": False, "can_access_api": True, "can_see_restricted_settings": False },
+            "admin": { "can_run": True, "can_upload": True, "can_access_manager": True, "can_access_api": True, "can_see_restricted_settings": True, "can_have_api_tokens": True },
+            "power": { "can_run": True, "can_upload": True, "can_access_manager": True, "can_access_api": True, "can_see_restricted_settings": False, "can_have_api_tokens": True },
+            "user": { "can_run": True, "can_upload": True, "can_access_manager": False, "can_access_api": True, "can_see_restricted_settings": False, "can_have_api_tokens": False },
+            "guest": { "can_run": False, "can_upload": False, "can_access_manager": False, "can_access_api": True, "can_see_restricted_settings": False, "can_have_api_tokens": False },
         }
     return cfg
 

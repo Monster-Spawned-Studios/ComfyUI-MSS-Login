@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from .users_db import UsersDB
 from .access_control import AccessControl
 from .logger import Logger
+from .api_token_store import get_api_token_store
 
 
 class JWTAuth:
@@ -16,10 +17,12 @@ class JWTAuth:
         secret_key: str,
         expire_minutes: int = 12 * 60,
         algorithm: str = "HS256",
+        api_token_store_config: dict = None,
     ):
         self.users_db = users_db
         self.access_control = access_control
         self.logger = logger
+        self.api_token_store_config = api_token_store_config or {}
 
         self.expire_minutes = expire_minutes
         self.algorithm = algorithm
@@ -71,6 +74,17 @@ class JWTAuth:
                 return await handle_unauthorized_access(request, "/login")
 
             try:
+                # Resolve Bearer: try long-lived API token store first, then JWT
+                api_store = get_api_token_store(self.api_token_store_config)
+                api_user = api_store.get_user_for_token(token)
+                if api_user is not None:
+                    user_id, username = api_user
+                    request["user_id"] = user_id
+                    request["user"] = username
+                    set_fallback = request.path in ["/api/prompt"]
+                    self.access_control.set_current_user_id(user_id, set_fallback)
+                    return await handler(request)
+
                 user = self.decode_access_token(token)
                 user_id = user.get("id")
                 username = user.get("username")

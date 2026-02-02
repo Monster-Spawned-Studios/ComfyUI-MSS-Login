@@ -426,7 +426,7 @@ async function generate(event) {
       button.disabled = true;
       button.textContent = "Sending...";
 
-      const response = await fetch("/generate_token", {
+      const response = await fetch("/usgromana/generate_token", {
         method: "POST",
         body: formData,
       });
@@ -440,11 +440,15 @@ async function generate(event) {
         form.reset();
 
         alert("API Token:\n"+result.jwt_token+"\n\nPlease copy this token and store it in a safe place. You will not be able to retrieve it again.");
+        button.textContent = "Generate";
+        button.disabled = false;
       } else {
         addToast(
           result.error || result.message || "Generation failed",
           "error"
         );
+        button.textContent = "Generate";
+        button.disabled = false;
       }
       updateFailedAttempts(response.status, result, "generate");
     } catch (error) {

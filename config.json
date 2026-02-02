@@ -11,5 +11,11 @@
     "free_memory_on_logout": true,
     "force_https": false,
     "seperate_users": true,
-    "manager_admin_only": true
+    "manager_admin_only": true,
+    "api_token_store": {
+        "backend": "json",
+        "json_path": "users/api_tokens.json"
+    },
+    "require_auth_for_remote_api": true,
+    "local_network_cidrs": []
 }

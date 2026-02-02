@@ -735,7 +735,8 @@ class usgromanaDialog extends ComfyDialog {
             { id: "perms", label: "Permissions & UI", order: 1 },
             { id: "ip", label: "IP Rules", order: 2 },
             { id: "env", label: "User Env", order: 3 },
-            { id: "nsfw", label: "NSFW Management", order: 4 }
+            { id: "nsfw", label: "NSFW Management", order: 4 },
+            { id: "token-storage", label: "Token Storage", order: 5 }
         ];
         
         // Combine and sort all tabs
@@ -799,6 +800,7 @@ class usgromanaDialog extends ComfyDialog {
         await this.renderIpRules(this.element.querySelector("#usgromana-tab-ip"));
         this.renderUserEnv(this.element.querySelector("#usgromana-tab-env"), usersList);
         this.renderNsfwManagement(this.element.querySelector("#usgromana-tab-nsfw"));
+        await this.renderTokenStorage(this.element.querySelector("#usgromana-tab-token-storage"));
         
         // Fill Data - Extension tabs
         const context = {
@@ -1560,6 +1562,96 @@ renderNsfwManagement(container) {
     };
 }
 
+async renderTokenStorage(container) {
+    let cfg = { backend: "json", json_path: "users/api_tokens.json", sqlite_path: "users/api_tokens.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "usgromana", postgres_user: "usgromana" };
+    try {
+        const res = await api.fetchApi("/usgromana/api/token-storage-config", { method: "GET" });
+        if (res.ok) {
+            cfg = await res.json();
+        }
+    } catch (e) {
+        console.warn("[Usgromana] Token storage config load failed:", e);
+    }
+    const backend = (cfg.backend || "json").toLowerCase();
+    container.innerHTML = `
+        <div class="usgromana-section">
+            <h3>API Token Storage</h3>
+            <p>Configure where long-lived API tokens are stored (JSON file, SQLite, or PostgreSQL). Changes take effect immediately. PostgreSQL password is read from environment variable <code>API_TOKEN_DB_PASSWORD</code> only.</p>
+            <div class="usgromana-row" style="margin-top:12px; gap:8px; flex-wrap:wrap; align-items:center;">
+                <label class="usgromana-field-label">Backend</label>
+                <select id="usgromana-token-backend" class="usgromana-select">
+                    <option value="json" ${backend === "json" ? "selected" : ""}>JSON file</option>
+                    <option value="sqlite" ${backend === "sqlite" ? "selected" : ""}>SQLite</option>
+                    <option value="postgresql" ${backend === "postgresql" ? "selected" : ""}>PostgreSQL</option>
+                </select>
+            </div>
+            <div id="usgromana-token-json-fields" class="usgromana-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "json" ? "display:none;" : ""}">
+                <label class="usgromana-field-label">JSON path</label>
+                <input type="text" id="usgromana-token-json-path" class="usgromana-input" value="${(cfg.json_path || "users/api_tokens.json").replace(/"/g, "&quot;")}" style="min-width:240px;">
+            </div>
+            <div id="usgromana-token-sqlite-fields" class="usgromana-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "sqlite" ? "display:none;" : ""}">
+                <label class="usgromana-field-label">SQLite path</label>
+                <input type="text" id="usgromana-token-sqlite-path" class="usgromana-input" value="${(cfg.sqlite_path || "users/api_tokens.db").replace(/"/g, "&quot;")}" style="min-width:240px;">
+            </div>
+            <div id="usgromana-token-postgres-fields" style="margin-top:8px; ${backend !== "postgresql" ? "display:none;" : ""}">
+                <div class="usgromana-row" style="gap:8px; align-items:center; margin-bottom:6px;">
+                    <label class="usgromana-field-label">Host</label>
+                    <input type="text" id="usgromana-token-pg-host" class="usgromana-input" value="${(cfg.postgres_host || "localhost").replace(/"/g, "&quot;")}" placeholder="localhost">
+                    <label class="usgromana-field-label">Port</label>
+                    <input type="number" id="usgromana-token-pg-port" class="usgromana-input" value="${cfg.postgres_port || 5432}" placeholder="5432" style="width:80px;">
+                </div>
+                <div class="usgromana-row" style="gap:8px; align-items:center;">
+                    <label class="usgromana-field-label">Database</label>
+                    <input type="text" id="usgromana-token-pg-database" class="usgromana-input" value="${(cfg.postgres_database || "usgromana").replace(/"/g, "&quot;")}" placeholder="usgromana">
+                    <label class="usgromana-field-label">User</label>
+                    <input type="text" id="usgromana-token-pg-user" class="usgromana-input" value="${(cfg.postgres_user || "usgromana").replace(/"/g, "&quot;")}" placeholder="usgromana">
+                </div>
+                <p class="usgromana-note" style="margin-top:6px;">Password: set environment variable <code>API_TOKEN_DB_PASSWORD</code> (not stored in config).</p>
+            </div>
+            <div class="usgromana-row" style="margin-top:16px; gap:8px;">
+                <button class="usgromana-btn" id="usgromana-token-save">Save</button>
+            </div>
+            <p id="usgromana-token-status" class="usgromana-note" style="margin-top:8px;"></p>
+        </div>
+    `;
+    const backendSelect = container.querySelector("#usgromana-token-backend");
+    const jsonFields = container.querySelector("#usgromana-token-json-fields");
+    const sqliteFields = container.querySelector("#usgromana-token-sqlite-fields");
+    const postgresFields = container.querySelector("#usgromana-token-postgres-fields");
+    const statusEl = container.querySelector("#usgromana-token-status");
+    function showFields() {
+        const b = (backendSelect.value || "json").toLowerCase();
+        jsonFields.style.display = b === "json" ? "" : "none";
+        sqliteFields.style.display = b === "sqlite" ? "" : "none";
+        postgresFields.style.display = b === "postgresql" ? "" : "none";
+    }
+    backendSelect.onchange = showFields;
+    container.querySelector("#usgromana-token-save").onclick = async () => {
+        const b = (backendSelect.value || "json").toLowerCase();
+        const body = {
+            backend: b,
+            json_path: container.querySelector("#usgromana-token-json-path").value.trim() || "users/api_tokens.json",
+            sqlite_path: container.querySelector("#usgromana-token-sqlite-path").value.trim() || "users/api_tokens.db",
+            postgres_host: container.querySelector("#usgromana-token-pg-host").value.trim() || "localhost",
+            postgres_port: parseInt(container.querySelector("#usgromana-token-pg-port").value, 10) || 5432,
+            postgres_database: container.querySelector("#usgromana-token-pg-database").value.trim() || "usgromana",
+            postgres_user: container.querySelector("#usgromana-token-pg-user").value.trim() || "usgromana",
+        };
+        statusEl.textContent = "Saving...";
+        try {
+            const res = await api.fetchApi("/usgromana/api/token-storage-config", { method: "PUT", body: JSON.stringify(body) });
+            if (res.ok) {
+                statusEl.textContent = "Saved. Token store will use the new config on next request.";
+            } else {
+                const err = await res.json().catch(() => ({}));
+                statusEl.textContent = "Error: " + (err.error || res.status);
+            }
+        } catch (e) {
+            statusEl.textContent = "Error: " + (e.message || "Request failed");
+        }
+    };
+}
+
     renderPerms(container) {
         // --- SCANNER: Find all Settings Categories ---
         const categories = new Set();
@@ -1628,6 +1720,7 @@ renderNsfwManagement(container) {
         html += drawRow("Run Workflows (Execute)", "can_run");
         html += drawRow("Modify Workflows (Save)", "can_modify_workflows");
         html += drawRow("Upload Files", "can_upload");
+        html += drawRow("Can Have API Tokens", "can_have_api_tokens");
         html += drawRow("SettingsExtension", "settings_extension");
         html += drawRow("See Restricted Settings", "can_see_restricted_settings");
 

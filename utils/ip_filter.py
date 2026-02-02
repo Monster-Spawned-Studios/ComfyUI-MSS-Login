@@ -7,13 +7,17 @@ from pathlib import Path
 
 
 def get_ip(request: web.Request) -> str:
-    """Extract IP address from request headers or remote address."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        ip = forwarded.split(",")[0].strip()
-    else:
+    """Extract IP address from request headers or remote address.
+    Prefers CF-Connecting-IP (Cloudflare Tunnel / cloudflared), then X-Forwarded-For,
+    then X-Real-IP, then request.remote, so the real client IP is used behind proxies.
+    """
+    ip = request.headers.get("CF-Connecting-IP")
+    if not ip:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            ip = forwarded.split(",")[0].strip()
+    if not ip:
         ip = request.headers.get("X-Real-IP")
-
     if not ip:
         ip = request.remote
 

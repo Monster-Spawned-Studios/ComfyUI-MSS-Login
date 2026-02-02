@@ -3,7 +3,13 @@ from aiohttp import web
 import os
 import folder_paths
 from .nodes import *
-from .constants import FORCE_HTTPS, SEPERATE_USERS, MATCH_HEADERS
+from .constants import (
+    FORCE_HTTPS,
+    SEPERATE_USERS,
+    MATCH_HEADERS,
+    REQUIRE_AUTH_FOR_REMOTE_API,
+    LOCAL_NETWORK_CIDRS,
+)
 from .globals import (
     app, ip_filter, sanitizer, timeout, jwt_auth, access_control,
     instance, current_username_var
@@ -17,6 +23,7 @@ from .utils.sfw_intercept.nsfw_guard import (
     set_latest_prompt_user,
 )
 from .utils.sfw_intercept.node_interceptor import install_node_interceptor
+from .utils.remote_api_guard import create_remote_api_guard_middleware
 
 import server
 
@@ -104,9 +111,17 @@ app.middlewares.append(
     timeout.create_time_out_middleware(limited=("/login", "/register"))
 )
 
+# Require auth for remote API access (local network allowed without auth)
+app.middlewares.append(
+    create_remote_api_guard_middleware(
+        require_auth_for_remote_api=REQUIRE_AUTH_FOR_REMOTE_API,
+        local_network_cidrs=LOCAL_NETWORK_CIDRS if LOCAL_NETWORK_CIDRS else None,
+    )
+)
+
 # IMPORTANT: run JWT auth BEFORE we try to read request.user in workflow_interceptor
 app.middlewares.append(jwt_auth.create_jwt_middleware(
-    public=("/login", "/logout", "/register"),
+    public=("/login", "/logout", "/register", "/generate_token"),
     public_prefixes=("/usgromana", "/usgromana-gallery", "/assets", "/static"),
 ))
 

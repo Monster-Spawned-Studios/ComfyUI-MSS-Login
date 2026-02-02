@@ -9,6 +9,7 @@ import folder_paths
 from server import PromptServer
 from execution import PromptQueue, MAXIMUM_HISTORY_SIZE
 from .users_db import UsersDB
+from .api_token_store import get_api_token_store
 
 # Map Permission Keys -> URL Paths to Block
 EXTENSION_BLOCK_MAP = {
@@ -33,10 +34,11 @@ EXTENSION_BLOCK_MAP = {
 }
 
 class AccessControl:
-    def __init__(self, users_db: UsersDB, server: PromptServer, groups_config_file: str):
+    def __init__(self, users_db: UsersDB, server: PromptServer, groups_config_file: str, api_token_store_config: dict = None):
         self.users_db = users_db
         self.server = server
         self.groups_config_file = groups_config_file
+        self.api_token_store_config = api_token_store_config or {}
 
         self._current_user = contextvars.ContextVar("user_id", default=None)
         self.__current_user_id = None
@@ -61,9 +63,28 @@ class AccessControl:
             token = request.cookies.get("jwt_token")
         if not token and "Authorization" in request.headers:
             parts = request.headers.get("Authorization", "").split(" ")
-            if len(parts) == 2: token = parts[1]
+            if len(parts) == 2:
+                token = parts[1]
 
-        if not token: return "guest", {}, None
+        if not token:
+            return "guest", {}, None
+
+        # Try long-lived API token store first (Bearer tokens)
+        try:
+            api_store = get_api_token_store(self.api_token_store_config)
+            api_user = api_store.get_user_for_token(token)
+            if api_user is not None:
+                _user_id, username = api_user
+                _, user_rec = self.users_db.get_user(username)
+                if not user_rec:
+                    return "guest", {}, None
+                groups = [g.lower() for g in user_rec.get("groups", [])]
+                role = groups[0] if groups else "user"
+                cfg = self._load_group_config()
+                perms = cfg.get(role, {})
+                return role, perms, username
+        except Exception:
+            pass
 
         try:
             import jwt
@@ -73,7 +94,8 @@ class AccessControl:
             username = payload.get("username")
 
             _, user_rec = self.users_db.get_user(username)
-            if not user_rec: return "guest", {}, None
+            if not user_rec:
+                return "guest", {}, None
 
             groups = [g.lower() for g in user_rec.get("groups", [])]
             role = groups[0] if groups else "user"

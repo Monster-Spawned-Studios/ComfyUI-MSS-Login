@@ -23,21 +23,23 @@ routes = instance.routes
 logger = Logger(LOG_FILE, LOG_LEVELS)
 users_db = UsersDB(USERS_FILE)
 
-# 2. Access Control (Depends on DB + Server + Config Path)
+# 2. Access Control (Depends on DB + Server + Config Path; API token store for Bearer resolution)
 access_control = AccessControl(
     users_db=users_db,
     server=instance,
-    groups_config_file=GROUPS_CONFIG_FILE
+    groups_config_file=GROUPS_CONFIG_FILE,
+    api_token_store_config=API_TOKEN_STORE_CONFIG,
 )
 
-# 3. Auth (Depends on DB + Access Control)
+# 3. Auth (Depends on DB + Access Control; API token store for long-lived Bearer tokens)
 jwt_auth = JWTAuth(
     users_db=users_db,
     access_control=access_control,
     logger=logger,
     secret_key=SECRET_KEY,
     expire_minutes=TOKEN_EXPIRE_MINUTES,
-    algorithm=TOKEN_ALGORITHM
+    algorithm=TOKEN_ALGORITHM,
+    api_token_store_config=API_TOKEN_STORE_CONFIG,
 )
 
 # 4. Network Security
