@@ -111,11 +111,18 @@ app.middlewares.append(
     timeout.create_time_out_middleware(limited=("/login", "/register"))
 )
 
-# Require auth for remote API access (local network allowed without auth)
+# Require auth for remote API access (local network allowed without auth).
+# token_validator: only treat request as authenticated when token is valid (not expired/revoked).
+def _remote_guard_token_valid(request):
+    token = jwt_auth.get_token_from_request(request)
+    return bool(token and jwt_auth.is_token_valid(token))
+
+
 app.middlewares.append(
     create_remote_api_guard_middleware(
         require_auth_for_remote_api=REQUIRE_AUTH_FOR_REMOTE_API,
         local_network_cidrs=LOCAL_NETWORK_CIDRS if LOCAL_NETWORK_CIDRS else None,
+        token_validator=_remote_guard_token_valid,
     )
 )
 

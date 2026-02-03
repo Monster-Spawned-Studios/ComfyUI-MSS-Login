@@ -33,12 +33,22 @@ class JWTAuth:
 
     @staticmethod
     def get_token_from_request(request: web.Request) -> str:
-        """Extract token from request headers or cookies. Strips whitespace."""
+        """Extract token from request headers, cookies, or query (e.g. WebSocket ?token=). Strips whitespace."""
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             return (auth_header[len("Bearer "):] or "").strip()
         cookie = request.cookies.get("jwt_token")
-        return (cookie or "").strip()
+        if cookie:
+            return (cookie or "").strip()
+        # WebSocket and some clients send token in URL (e.g. ws://host/ws?token=...)
+        try:
+            query = request.rel_url.query
+            for key in ("token", "access_token"):
+                if key in query and query[key]:
+                    return (query[key] or "").strip()
+        except Exception:
+            pass
+        return ""
 
     def create_access_token(self, data: dict, expire_minutes=None, no_expiration: bool = False) -> str:
         """Create a JWT access token. When no_expiration=True, omit exp (Admin permission only)."""
@@ -56,6 +66,43 @@ class JWTAuth:
     def decode_access_token(self, token: str) -> dict:
         """Decode a JWT access token."""
         return jwt.decode(token, self.__secret_key, algorithms=[self.algorithm])
+
+    def is_token_valid(self, token: str) -> bool:
+        """
+        Return True if the token is valid (API token in store or valid non-revoked JWT).
+        Used by the remote API guard to treat only valid tokens as auth.
+        """
+        token = (token or "").strip()
+        if not token:
+            return False
+        try:
+            api_store = get_api_token_store(self.api_token_store_config)
+            if api_store.get_user_for_token(token) is not None:
+                return True
+        except Exception:
+            pass
+        if token.count(".") < 2:
+            return False
+        try:
+            user = self.decode_access_token(token)
+            user_id = user.get("id")
+            username = user.get("username")
+            if not username or user_id is None:
+                return False
+            if user_id != self.users_db.get_user(username)[0]:
+                return False
+            jti = user.get("jti")
+            if jti:
+                try:
+                    from ..constants import SESSION_TOKEN_STORE_PATH
+                    store = get_session_token_store(SESSION_TOKEN_STORE_PATH)
+                    if store.is_revoked(jti):
+                        return False
+                except Exception:
+                    pass
+            return True
+        except (jwt.ExpiredSignatureError, jwt.DecodeError, ValueError, KeyError, TypeError):
+            return False
 
     def create_jwt_middleware(
         self,
