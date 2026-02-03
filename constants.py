@@ -122,6 +122,8 @@ DEBUG_MODE = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "tru
 if not DEBUG_MODE:
     DEBUG_MODE = bool(config_data.get("debug_mode", False))
 DEBUG_LOG_PATH = os.path.join(CURRENT_DIR, "logs", "debug.log")
+# Session debug log for instrumentation (e.g. .cursor/debug.log)
+CURSOR_DEBUG_LOG = os.path.join(CURRENT_DIR, ".cursor", "debug.log")
 
 # Guest JWT: allow guest login to receive a session JWT (default False for security)
 def _get_allow_guest_jwt():

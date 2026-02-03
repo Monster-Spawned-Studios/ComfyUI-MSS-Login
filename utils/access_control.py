@@ -297,7 +297,9 @@ class AccessControl:
             item = self.__prompt_queue.currently_running.pop(item_id)
             while len(self.__prompt_queue.history) > MAXIMUM_HISTORY_SIZE:
                 self.__prompt_queue.history.pop(next(iter(self.__prompt_queue.history)))
-            prompt_tuple = item[:-1] if isinstance(item[-1], dict) else item
+            raw = item[:-1] if isinstance(item[-1], dict) else item
+            # ComfyUI comfy_execution/jobs.py normalize_history_item expects exactly 5 elements
+            prompt_tuple = tuple(raw[:5]) if len(raw) > 5 else raw
             meta = item[-1] if isinstance(item[-1], dict) else {}
             self.__prompt_queue.history[prompt_tuple[1]] = {
                 "prompt": prompt_tuple,

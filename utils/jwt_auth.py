@@ -80,12 +80,16 @@ class JWTAuth:
             if not token:
                 # #region agent log
                 try:
-                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH
+                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
                     if DEBUG_MODE:
                         import json, os, time
                         os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
                         with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
                             f.write(json.dumps({"location": "jwt_auth", "message": "no_token", "data": {"path": request.path}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
+                    import json, os, time
+                    os.makedirs(os.path.dirname(CURSOR_DEBUG_LOG), exist_ok=True)
+                    with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+                        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-B", "location": "jwt_auth.py", "message": "no_token", "data": {"path": request.path}, "timestamp": int(time.time() * 1000)}) + "\n")
                 except Exception:
                     pass
                 # #endregion
@@ -97,11 +101,15 @@ class JWTAuth:
                 api_user = api_store.get_user_for_token(token)
                 # #region agent log
                 try:
-                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH
+                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
                     if DEBUG_MODE:
                         import json, os, time
                         with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
                             f.write(json.dumps({"location": "jwt_auth", "message": "api_store_lookup", "data": {"path": request.path, "api_user_found": api_user is not None}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
+                    import json, os, time
+                    os.makedirs(os.path.dirname(CURSOR_DEBUG_LOG), exist_ok=True)
+                    with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+                        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-B", "location": "jwt_auth.py", "message": "api_store_lookup", "data": {"path": request.path, "api_user_found": api_user is not None}, "timestamp": int(time.time() * 1000)}) + "\n")
                 except Exception:
                     pass
                 # #endregion
@@ -149,11 +157,14 @@ class JWTAuth:
             except jwt.ExpiredSignatureError:
                 # #region agent log
                 try:
-                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH
+                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
                     if DEBUG_MODE:
                         import json, os, time
                         with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
                             f.write(json.dumps({"location": "jwt_auth", "message": "reject", "data": {"path": request.path, "reason": "ExpiredSignatureError"}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
+                    import json, os, time
+                    with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+                        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-B", "location": "jwt_auth.py", "message": "reject", "data": {"path": request.path, "reason": "ExpiredSignatureError"}, "timestamp": int(time.time() * 1000)}) + "\n")
                 except Exception:
                     pass
                 # #endregion
@@ -163,11 +174,14 @@ class JWTAuth:
             except jwt.DecodeError:
                 # #region agent log
                 try:
-                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH
+                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
                     if DEBUG_MODE:
                         import json, os, time
                         with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
                             f.write(json.dumps({"location": "jwt_auth", "message": "reject", "data": {"path": request.path, "reason": "DecodeError"}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
+                    import json, os, time
+                    with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+                        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-B", "location": "jwt_auth.py", "message": "reject", "data": {"path": request.path, "reason": "DecodeError"}, "timestamp": int(time.time() * 1000)}) + "\n")
                 except Exception:
                     pass
                 # #endregion
@@ -179,11 +193,14 @@ class JWTAuth:
             except Exception as e:
                 # #region agent log
                 try:
-                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH
+                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
                     if DEBUG_MODE:
                         import json, os, time
                         with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
                             f.write(json.dumps({"location": "jwt_auth", "message": "reject", "data": {"path": request.path, "reason": type(e).__name__}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
+                    import json, os, time
+                    with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+                        f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-B", "location": "jwt_auth.py", "message": "reject", "data": {"path": request.path, "reason": type(e).__name__}, "timestamp": int(time.time() * 1000)}) + "\n")
                 except Exception:
                     pass
                 # #endregion

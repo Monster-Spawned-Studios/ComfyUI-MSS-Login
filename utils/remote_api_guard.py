@@ -18,6 +18,7 @@ DEFAULT_LOCAL_CIDRS = [
     "10.0.0.0/8",
     "172.16.0.0/12",
     "192.168.0.0/16",
+    "192.168.1.0/24",
     "172.17.0.0/16",
 ]
 
@@ -104,12 +105,15 @@ def create_remote_api_guard_middleware(
         is_local = _is_local_ip(client_ip, cidrs)
         # #region agent log
         try:
-            from ..constants import DEBUG_MODE, DEBUG_LOG_PATH
+            from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
             if DEBUG_MODE:
                 import json, os, time
                 os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
                 with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
                     f.write(json.dumps({"location": "remote_api_guard", "message": "check", "data": {"path": path, "has_token": has_token, "client_ip_last": client_ip.split(".")[-1] if client_ip and "." in client_ip else "n/a", "is_local": is_local}, "timestamp": int(time.time() * 1000), "hypothesisId": "A"}) + "\n")
+            os.makedirs(os.path.dirname(CURSOR_DEBUG_LOG), exist_ok=True)
+            with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-A", "location": "remote_api_guard.py", "message": "guard_check", "data": {"path": path, "has_token": has_token, "is_local": is_local}, "timestamp": int(time.time() * 1000)}) + "\n")
         except Exception:
             pass
         # #endregion
@@ -119,11 +123,13 @@ def create_remote_api_guard_middleware(
             return await handler(request)
         # #region agent log
         try:
-            from ..constants import DEBUG_MODE, DEBUG_LOG_PATH
+            from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
             if DEBUG_MODE:
                 import json, os, time
                 with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
                     f.write(json.dumps({"location": "remote_api_guard", "message": "blocked_401", "data": {"path": path, "client_ip_last": client_ip.split(".")[-1] if client_ip and "." in client_ip else "n/a"}, "timestamp": int(time.time() * 1000), "hypothesisId": "A"}) + "\n")
+            with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-A", "location": "remote_api_guard.py", "message": "blocked_401", "data": {"path": path}, "timestamp": int(time.time() * 1000)}) + "\n")
         except Exception:
             pass
         # #endregion
@@ -131,7 +137,7 @@ def create_remote_api_guard_middleware(
         try:
             from ..constants import DEBUG_MODE
             if DEBUG_MODE:
-                body["debug"] = "DEBUG_MODE=1: see .cursor/debug.log or server logs."
+                body["debug"] = "DEBUG_MODE=1: see logs/debug.log or server logs."
         except Exception:
             pass
         return web.json_response(body, status=401)
