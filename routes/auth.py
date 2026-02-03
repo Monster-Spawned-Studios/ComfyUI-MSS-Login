@@ -233,8 +233,14 @@ async def post_generate_token(request: web.Request) -> web.Response:
         expire_hours = 720.0
 
     max_hours = MAX_TOKEN_EXPIRE_MINUTES / 60.0
-    if expire_hours <= 0 or expire_hours > max_hours:
-        expire_hours = min(max(1.0, expire_hours), max_hours)
+    # 0 = never expire (only if user has can_have_non_expiring_jwt); otherwise clamp to 1..max
+    if expire_hours <= 0:
+        # Will be validated per-user below (must have non-expiring permission)
+        pass
+    elif expire_hours > max_hours:
+        expire_hours = max_hours
+    else:
+        expire_hours = max(1.0, expire_hours)
 
     # Optionally resolve user from JWT (no password needed)
     token_from_request = jwt_auth.get_token_from_request(request)
@@ -245,6 +251,8 @@ async def post_generate_token(request: web.Request) -> web.Response:
             if jwt_username and users_db.get_user(jwt_username)[0]:
                 if not _user_can_have_api_tokens(jwt_username):
                     return web.json_response({"error": "Usgromana: You do not have permission to create API tokens."}, status=403)
+                if expire_hours <= 0 and not _user_can_have_non_expiring_jwt(jwt_username):
+                    return web.json_response({"error": "Usgromana: Never-expiring tokens (0 hours) require the Non-expiring JWT permission. Ask an admin to enable it for your role."}, status=403)
                 user_id, _ = users_db.get_user(jwt_username)
                 store = get_api_token_store(API_TOKEN_STORE_CONFIG)
                 raw_token = store.create_token(user_id, jwt_username, expire_hours)
@@ -257,11 +265,11 @@ async def post_generate_token(request: web.Request) -> web.Response:
                     send_notification("api_token_created", "Usgromana: API token created", f"User {jwt_username} created API token from IP: {ip}")
                 except Exception:
                     pass
-                logger.generate_success(ip, jwt_username, int(expire_hours))
+                logger.generate_success(ip, jwt_username, int(expire_hours) if expire_hours > 0 else 0)
                 return web.json_response({
                     "message": "API token created.",
                     "jwt_token": raw_token,
-                    "expires_in_hours": expire_hours,
+                    "expires_in_hours": expire_hours if expire_hours > 0 else None,
                 })
         except Exception:
             pass
@@ -277,6 +285,8 @@ async def post_generate_token(request: web.Request) -> web.Response:
 
     if not _user_can_have_api_tokens(username):
         return web.json_response({"error": "Usgromana: You do not have permission to create API tokens."}, status=403)
+    if expire_hours <= 0 and not _user_can_have_non_expiring_jwt(username):
+        return web.json_response({"error": "Usgromana: Never-expiring tokens (0 hours) require the Non-expiring JWT permission. Ask an admin to enable it for your role."}, status=403)
 
     user_id, _ = users_db.get_user(username)
     store = get_api_token_store(API_TOKEN_STORE_CONFIG)
@@ -290,12 +300,12 @@ async def post_generate_token(request: web.Request) -> web.Response:
         send_notification("api_token_created", "Usgromana: API token created", f"User {username} created API token from IP: {ip}")
     except Exception:
         pass
-    logger.generate_success(ip, username, int(expire_hours))
+    logger.generate_success(ip, username, int(expire_hours) if expire_hours > 0 else 0)
     timeout.remove_failed_attempts(ip)
     return web.json_response({
         "message": "API token created.",
         "jwt_token": raw_token,
-        "expires_in_hours": expire_hours,
+        "expires_in_hours": expire_hours if expire_hours > 0 else None,
     })
 
 

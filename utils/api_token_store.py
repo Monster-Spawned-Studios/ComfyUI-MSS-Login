@@ -46,13 +46,22 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+# Sentinel for "never expires" (when expire_hours is 0 and user has permission)
+NEVER_EXPIRES_ISO = "9999-12-31T23:59:59+00:00"
+
+
 def _iso_expires(expire_hours: float) -> str:
+    """Return expires_iso. If expire_hours <= 0, return never-expires sentinel."""
+    if expire_hours <= 0:
+        return NEVER_EXPIRES_ISO
     t = datetime.now(timezone.utc) + timedelta(hours=expire_hours)
     return t.isoformat()
 
 
 def _is_expired(expires_iso: str) -> bool:
     try:
+        if not expires_iso or expires_iso == NEVER_EXPIRES_ISO:
+            return False
         t = datetime.fromisoformat(expires_iso.replace("Z", "+00:00"))
         return datetime.now(timezone.utc) >= t
     except Exception:

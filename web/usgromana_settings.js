@@ -1721,7 +1721,7 @@ async renderTokenStorage(container) {
         html += drawRow("Modify Workflows (Save)", "can_modify_workflows");
         html += drawRow("Upload Files", "can_upload");
         html += drawRow("Can Have API Tokens", "can_have_api_tokens");
-        html += drawRow("Non-expiring JWT", "can_have_non_expiring_jwt");
+        html += drawRow("Non-expiring JWT (session + API token 0 = never expire)", "can_have_non_expiring_jwt");
         html += drawRow("SettingsExtension", "settings_extension");
         html += drawRow("See Restricted Settings", "can_see_restricted_settings");
 

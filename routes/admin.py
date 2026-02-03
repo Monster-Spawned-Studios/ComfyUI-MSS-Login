@@ -108,7 +108,18 @@ async def api_admin_consoles_user(request):
 @routes.get("/usgromana/api/groups")
 async def api_groups(request):
     default_cfg = load_default_groups()
-    return web.json_response({"groups": load_json_file(GROUPS_CONFIG_FILE, default_cfg)})
+    current = load_json_file(GROUPS_CONFIG_FILE, default_cfg)
+    if not isinstance(current, dict):
+        current = dict(default_cfg) if default_cfg else {}
+    # Merge default keys into each role so new permissions (e.g. can_have_non_expiring_jwt) always appear in the UI
+    for role, default_perms in (default_cfg or {}).items():
+        if role not in current:
+            current[role] = dict(default_perms)
+        elif isinstance(default_perms, dict):
+            for key, val in default_perms.items():
+                if key not in current[role]:
+                    current[role][key] = val
+    return web.json_response({"groups": current})
 
 @routes.put("/usgromana/api/groups")
 async def api_update_groups(request):
