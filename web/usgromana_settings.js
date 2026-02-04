@@ -120,6 +120,18 @@ const USER_ENV_API_ENDPOINT = "/usgromana/api/user-env";
 // --- 1. BLOCKING MAP (The Enforcer) ---
 // If a user lacks permission for the Key, these CSS selectors are hidden via !important
 const CSS_BLOCK_MAP = {
+    // --- Built-in Console (bottom-left panel): global can_view_console permission ---
+    "can_view_console": [
+        ".comfy-console",
+        "#comfy-console",
+        "[data-panel-id='console']",
+        "[aria-label='Console']",
+        ".comfy-log-panel",
+        ".comfy-bottom-panel [data-tab='console']",
+        ".p-panel-content .comfy-console",
+        "button[aria-label='Console']",
+        ".comfy-ui-panel-console"
+    ],
     // --- Core UI ---
     "ui_queue_button": ["#queue-button", ".queue-button", "button.queue-button"],
     "ui_batch_widget": [".comfy-menu-queue-batch"],
@@ -1724,6 +1736,7 @@ async renderTokenStorage(container) {
         html += drawRow("Non-expiring JWT (session + API token 0 = never expire)", "can_have_non_expiring_jwt");
         html += drawRow("SettingsExtension", "settings_extension");
         html += drawRow("See Restricted Settings", "can_see_restricted_settings");
+        html += drawRow("View built-in Console (bottom panel)", "can_view_console");
 
         // Section 2: Global UI
         html += drawRow("Interface Elements", null, true);

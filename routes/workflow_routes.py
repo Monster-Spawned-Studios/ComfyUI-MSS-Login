@@ -20,12 +20,23 @@ POTENTIAL_GLOBALS = [
 
 def get_current_user(request):
     """
-    Extract username from JWT token in the request.
-    Falls back to 'guest' on any error / no token.
+    Extract username from the request (API token or JWT).
+    Tries API token store first (for Bearer tokens from Comfy Portal, Krita, etc.),
+    then JWT decode. Falls back to 'guest' on any error / no token.
     """
     token = jwt_auth.get_token_from_request(request)
     if not token:
         return "guest"
+    try:
+        from ..utils.api_token_store import get_api_token_store
+        from ..constants import API_TOKEN_STORE_CONFIG
+        api_store = get_api_token_store(API_TOKEN_STORE_CONFIG)
+        api_user = api_store.get_user_for_token(token)
+        if api_user is not None:
+            _user_id, username = api_user
+            return username or "guest"
+    except Exception:
+        pass
     try:
         payload = jwt_auth.decode_access_token(token)
         return payload.get("username", "guest")
@@ -344,7 +355,7 @@ async def middleware_dispatch(request):
         # Fall through to normal handler if not blocked
         return None
 
-    # --- Workflow user-data endpoints ---
+    # --- Workflow user-data endpoints (per-user save/load; compatible with Comfy Portal / comfy-portal-endpoint when using API token or JWT) ---
     if path.endswith("/api/userdata") and request.query.get("dir") == "workflows":
         if method == "GET":
             return await list_workflows(request, full_info=True)

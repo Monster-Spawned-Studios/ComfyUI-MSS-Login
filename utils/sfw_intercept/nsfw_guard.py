@@ -644,7 +644,7 @@ def _resolve_effective_username() -> str:
     """
     Decide which username to use for policy:
 
-    1. Try the ContextVar (HTTP request thread).
+    1. Try the ContextVar (HTTP request thread; set by workflow_interceptor from JWT/API token, so admin/remote users are identified).
     2. If that's empty or 'guest', fall back to _LATEST_PROMPT_USER (worker bridge).
     3. If *everything* fails, use 'guest'.
     """

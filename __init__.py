@@ -51,14 +51,14 @@ async def workflow_interceptor_middleware(request, handler):
     if isinstance(response, web.StreamResponse):
         return response
 
-    # 2. User Resolution
+    # 2. User Resolution (JWT middleware sets request["user"] = username string for API token and session JWT)
     username = None
     try:
-        # If jwt_auth middleware already attached a user dict
-        if hasattr(request, "user") and request.user:
-            username = request.user.get("username")
-        else:
-            # Fallback to whatever your workflow_routes helper does
+        username = request.get("user")
+        if not username and hasattr(request, "user") and request.user:
+            u = request.user
+            username = u.get("username") if isinstance(u, dict) else u
+        if not username:
             username = workflow_routes.get_current_user(request)
     except Exception:
         username = None

@@ -65,6 +65,13 @@ class AccessControl:
             parts = request.headers.get("Authorization", "").split(" ")
             if len(parts) == 2:
                 token = parts[1]
+        if not token:
+            try:
+                q = getattr(getattr(request, "rel_url", None), "query", None)
+                if q and (q.get("token") or q.get("access_token")):
+                    token = (q.get("token") or q.get("access_token") or "").strip()
+            except Exception:
+                pass
 
         if not token:
             return "guest", {}, None
@@ -306,12 +313,17 @@ class AccessControl:
                 "outputs": {},
                 "status": {
                     "completed": kwargs.get("completed"),
-                    "messages": kwargs.get("messages"),
+                    "messages": kwargs.get("messages") or [],
                 },
                 "user_id": meta.get("user_id"),
             }
             if history_result:
                 self.__prompt_queue.history[prompt_tuple[1]].update(history_result)
+            # ComfyUI jobs.normalize_history_item iterates status.messages; ensure it is never None
+            entry = self.__prompt_queue.history[prompt_tuple[1]]
+            st = entry.get("status")
+            if isinstance(st, dict) and st.get("messages") is None:
+                st["messages"] = []
             self.server.queue_updated()
 
     def user_queue_get_current_queue(self):

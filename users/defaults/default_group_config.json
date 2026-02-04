@@ -6,7 +6,8 @@
         "can_access_api": true,
         "can_see_restricted_settings": true,
         "can_have_api_tokens": true,
-        "can_have_non_expiring_jwt": true
+        "can_have_non_expiring_jwt": true,
+        "can_view_console": true
     },
     "power": {
         "can_run": true,
@@ -15,7 +16,8 @@
         "can_access_api": true,
         "can_see_restricted_settings": false,
         "can_have_api_tokens": true,
-        "can_have_non_expiring_jwt": false
+        "can_have_non_expiring_jwt": false,
+        "can_view_console": false
     },
     "user":  {
         "can_run": true,
@@ -83,7 +85,8 @@
         "settings_maskeditor": false,
         "settings_keybinding": false,
         "settings_makadiappearance": false,
-        "ui_manage_extensions": false
+        "ui_manage_extensions": false,
+        "can_view_console": false
     },
     "guest": {
         "can_run": true,
@@ -109,6 +112,7 @@
         "settings_keybinding": false,
         "settings_makadiappearance": false,
         "settings_3d": false,
-        "settings_about": true
+        "settings_about": true,
+        "can_view_console": false
     }
 }
