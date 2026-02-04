@@ -7,7 +7,9 @@
         "can_see_restricted_settings": true,
         "can_have_api_tokens": true,
         "can_have_non_expiring_jwt": true,
-        "can_view_console": true
+        "can_view_console": true,
+        "mfa_required": true,
+        "can_view_all_comfyui_items": true
     },
     "power": {
         "can_run": true,
@@ -17,7 +19,9 @@
         "can_see_restricted_settings": false,
         "can_have_api_tokens": true,
         "can_have_non_expiring_jwt": false,
-        "can_view_console": false
+        "can_view_console": false,
+        "mfa_required": false,
+        "can_view_all_comfyui_items": false
     },
     "user":  {
         "can_run": true,
@@ -86,7 +90,9 @@
         "settings_keybinding": false,
         "settings_makadiappearance": false,
         "ui_manage_extensions": false,
-        "can_view_console": false
+        "can_view_console": false,
+        "mfa_required": false,
+        "can_view_all_comfyui_items": false
     },
     "guest": {
         "can_run": true,
@@ -113,6 +119,8 @@
         "settings_makadiappearance": false,
         "settings_3d": false,
         "settings_about": true,
-        "can_view_console": false
+        "can_view_console": false,
+        "mfa_required": false,
+        "can_view_all_comfyui_items": false
     }
 }

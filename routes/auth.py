@@ -12,6 +12,7 @@ from ..utils.bootstrap import ensure_guest_user, ensure_groups_config
 from ..utils.ip_filter import get_ip
 from ..utils import user_env
 from ..utils.api_token_store import get_api_token_store
+from ..utils.mfa_temp_store import create_mfa_temp_token
 from ..constants import API_TOKEN_STORE_CONFIG
 
 @routes.get("/register")
@@ -118,10 +119,42 @@ async def post_login(request: web.Request) -> web.Response:
     password = sanitized_data.get("password")
 
     if users_db.check_username_password(username, password):
-        user_id, _ = users_db.get_user(username)
-        
+        user_id, user_rec = users_db.get_user(username)
         user_env.get_user_workflow_dir(username)
-        
+
+        # Admin must set up MFA on next login if not already enabled
+        is_admin = user_rec.get("admin") or "admin" in [g.lower() for g in user_rec.get("groups", [])]
+        mfa_enabled = users_db.get_mfa_enabled(username)
+        role_requires_mfa = _role_requires_mfa(username)
+
+        if is_admin and not mfa_enabled:
+            # Force admin to set up MFA before issuing JWT
+            mfa_temp = create_mfa_temp_token(username)
+            timeout.remove_failed_attempts(ip)
+            return web.json_response({
+                "message": "MFA setup required for admin accounts",
+                "mfa_setup_required": True,
+                "mfa_temp_token": mfa_temp,
+            }, status=200)
+        if mfa_enabled:
+            # User has MFA; require second factor
+            mfa_temp = create_mfa_temp_token(username)
+            timeout.remove_failed_attempts(ip)
+            return web.json_response({
+                "message": "MFA verification required",
+                "mfa_required": True,
+                "mfa_temp_token": mfa_temp,
+            }, status=200)
+        if role_requires_mfa and not mfa_enabled:
+            # Role requires MFA but user has not set it up
+            mfa_temp = create_mfa_temp_token(username)
+            timeout.remove_failed_attempts(ip)
+            return web.json_response({
+                "message": "MFA setup required for your role",
+                "mfa_setup_required": True,
+                "mfa_temp_token": mfa_temp,
+            }, status=200)
+
         no_exp = _user_can_have_non_expiring_jwt(username)
         token = jwt_auth.create_access_token(
             {"id": user_id, "username": username},
@@ -180,6 +213,18 @@ async def get_logout(request: web.Request) -> web.Response:
     resp = web.HTTPFound("/login")
     resp.del_cookie("jwt_token", path="/")
     return resp
+
+
+def _role_requires_mfa(username: str) -> bool:
+    """Return True if the user's role has mfa_required (admins always treated as requiring MFA in login flow)."""
+    user_id, user_rec = users_db.get_user(username)
+    if not user_rec:
+        return False
+    groups = [g.lower() for g in user_rec.get("groups", [])]
+    role = groups[0] if groups else "user"
+    cfg = access_control._load_group_config()
+    perms = cfg.get(role, {})
+    return perms.get("mfa_required", False) is True
 
 
 def _user_can_have_api_tokens(username: str) -> bool:

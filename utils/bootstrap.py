@@ -1,7 +1,7 @@
 # --- START OF FILE utils/bootstrap.py ---
 import os
 import uuid
-from ..constants import USERS_FILE, GROUPS_CONFIG_FILE, DEFAULT_GROUP_CONFIG_PATH
+from ..constants import GROUPS_CONFIG_FILE, DEFAULT_GROUP_CONFIG_PATH
 from .json_utils import load_json_file, save_json_file
 from .admin_logic import patch_user_group
 from ..globals import logger, users_db

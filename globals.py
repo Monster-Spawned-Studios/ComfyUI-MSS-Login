@@ -19,9 +19,9 @@ instance = PromptServer.instance
 app = instance.app
 routes = instance.routes
 
-# 1. Logger & DB
+# 1. Logger & DB (credentials in SQLite/PostgreSQL only; no plain-text JSON)
 logger = Logger(LOG_FILE, LOG_LEVELS)
-users_db = UsersDB(USERS_FILE)
+users_db = UsersDB(USERS_DB_CONFIG, SECRET_KEY, LEGACY_USERS_JSON_PATH)
 
 # 2. Access Control (Depends on DB + Server + Config Path; API token store for Bearer resolution)
 access_control = AccessControl(

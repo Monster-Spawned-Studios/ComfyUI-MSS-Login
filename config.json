@@ -1,6 +1,14 @@
 {
     "secret_key_env": "SECRET_KEY",
-    "users_db": "users/users_db.json",
+    "users_db": {
+        "backend": "sqlite",
+        "sqlite_path": "users/users.db",
+        "postgres_host": "localhost",
+        "postgres_port": 5432,
+        "postgres_database": "usgromana",
+        "postgres_user": "usgromana"
+    },
+    "legacy_users_json_path": "users/users.json",
     "access_token_expiration_hours": 24,
     "max_access_token_expiration_hours": 8760,
     "log": "usgromana.log",

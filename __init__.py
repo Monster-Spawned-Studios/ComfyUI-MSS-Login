@@ -9,6 +9,7 @@ from .constants import (
     MATCH_HEADERS,
     REQUIRE_AUTH_FOR_REMOTE_API,
     LOCAL_NETWORK_CIDRS,
+    USERS_DB_CONFIG,
 )
 from .globals import (
     app, ip_filter, sanitizer, timeout, jwt_auth, access_control,
@@ -16,7 +17,7 @@ from .globals import (
 )
 from .utils import watcher
 from .utils.bootstrap import ensure_groups_config
-from .routes import static, auth, admin, user, workflow_routes, me
+from .routes import static, auth, admin, user, workflow_routes, me, mfa
 from .utils.sfw_intercept.reactor_sfw_intercept import _load_reactor_module
 from .utils.sfw_intercept.nsfw_guard import (
     should_block_image_for_current_user,
@@ -24,6 +25,8 @@ from .utils.sfw_intercept.nsfw_guard import (
 )
 from .utils.sfw_intercept.node_interceptor import install_node_interceptor
 from .utils.remote_api_guard import create_remote_api_guard_middleware
+from .utils.model_filter_middleware import create_model_filter_middleware
+from .utils.shared_items_store import get_shared_items_store
 
 import server
 
@@ -135,6 +138,14 @@ app.middlewares.append(jwt_auth.create_jwt_middleware(
 # Now that jwt_auth can populate request.user, we can safely
 # resolve usernames inside workflow_interceptor_middleware.
 app.middlewares.append(workflow_interceptor_middleware)
+
+# Filter /models and /embeddings by can_view_all_comfyui_items and per-user shared items
+app.middlewares.append(create_model_filter_middleware(
+    access_control._get_user_role_and_permissions,
+    get_shared_items_store,
+    access_control.users_db,
+    USERS_DB_CONFIG,
+))
 
 if SEPERATE_USERS:
     app.middlewares.append(access_control.create_folder_access_control_middleware())

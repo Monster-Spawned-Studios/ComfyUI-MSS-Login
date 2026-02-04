@@ -3,4 +3,6 @@ PyJWT
 bleach
 psycopg2-binary
 bcrypt
+cryptography
 python-dotenvx>=0.3.0
+pyotp

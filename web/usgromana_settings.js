@@ -745,10 +745,12 @@ class usgromanaDialog extends ComfyDialog {
         const builtInTabs = [
             { id: "users", label: "Users & Roles", order: 0 },
             { id: "perms", label: "Permissions & UI", order: 1 },
-            { id: "ip", label: "IP Rules", order: 2 },
-            { id: "env", label: "User Env", order: 3 },
-            { id: "nsfw", label: "NSFW Management", order: 4 },
-            { id: "token-storage", label: "Token Storage", order: 5 }
+            { id: "shared-models", label: "Shared Models", order: 2 },
+            { id: "ip", label: "IP Rules", order: 3 },
+            { id: "env", label: "User Env", order: 4 },
+            { id: "nsfw", label: "NSFW Management", order: 5 },
+            { id: "token-storage", label: "Token Storage", order: 6 },
+            { id: "users-db", label: "Users DB", order: 7 }
         ];
         
         // Combine and sort all tabs
@@ -812,7 +814,9 @@ class usgromanaDialog extends ComfyDialog {
         await this.renderIpRules(this.element.querySelector("#usgromana-tab-ip"));
         this.renderUserEnv(this.element.querySelector("#usgromana-tab-env"), usersList);
         this.renderNsfwManagement(this.element.querySelector("#usgromana-tab-nsfw"));
+        await this.renderSharedModels(this.element.querySelector("#usgromana-tab-shared-models"), usersList);
         await this.renderTokenStorage(this.element.querySelector("#usgromana-tab-token-storage"));
+        await this.renderUsersDbConfig(this.element.querySelector("#usgromana-tab-users-db"));
         
         // Fill Data - Extension tabs
         const context = {
@@ -1467,6 +1471,145 @@ renderUserEnv(container, usersList) {
     }
 }
 
+async renderSharedModels(container, usersList) {
+    const users = (usersList || []).filter(u => (u.username || "").toLowerCase() !== "guest");
+    const userOptions = users.map(u => `<option value="${escapeHtml(u.username || "")}">${escapeHtml(u.username || "")}</option>`).join("");
+    container.innerHTML = `
+        <div class="usgromana-section">
+            <h3>Shared Models / LoRAs / VAEs / Embeddings</h3>
+            <p>Grant specific users access to specific ComfyUI items. Users without "View all ComfyUI items" see only items shared here.</p>
+            <div class="usgromana-row" style="margin-top:12px; align-items:center; gap:8px; flex-wrap:wrap;">
+                <label class="usgromana-field-label" style="margin:0;">User:</label>
+                <select id="usgromana-shared-user" style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; min-width:140px;">
+                    <option value="">-- Select user --</option>
+                    ${userOptions}
+                </select>
+            </div>
+            <div id="usgromana-shared-items-list" style="margin-top:12px; min-height:60px;">
+                <p style="opacity:0.8;">Select a user to view and manage their shared items.</p>
+            </div>
+            <div class="usgromana-section" style="margin-top:16px;">
+                <h4 style="margin:0 0 8px 0;">Add item for selected user</h4>
+                <div class="usgromana-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+                    <select id="usgromana-shared-folder" style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; min-width:160px;">
+                        <option value="">-- Folder --</option>
+                    </select>
+                    <select id="usgromana-shared-item" style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; min-width:200px;">
+                        <option value="">-- Item (select folder first) --</option>
+                    </select>
+                    <button class="usgromana-btn btn-save" id="usgromana-shared-add">Add</button>
+                </div>
+            </div>
+        </div>
+    `;
+    const userSelect = container.querySelector("#usgromana-shared-user");
+    const listEl = container.querySelector("#usgromana-shared-items-list");
+    const folderSelect = container.querySelector("#usgromana-shared-folder");
+    const itemSelect = container.querySelector("#usgromana-shared-item");
+    const addBtn = container.querySelector("#usgromana-shared-add");
+
+    let folders = [];
+    try {
+        const fr = await api.fetchApi("/usgromana/api/available-model-folders", { method: "GET" });
+        const fd = await fr.json();
+        folders = fd.folders || [];
+    } catch (e) {
+        console.error("[usgromana] Failed to load folders:", e);
+        folders = ["checkpoints", "loras", "vae", "embeddings"];
+    }
+    folderSelect.innerHTML = "<option value=\"\">-- Folder --</option>" + folders.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
+
+    async function loadItemsForFolder(folder) {
+        itemSelect.innerHTML = "<option value=\"\">Loading...</option>";
+        if (!folder) {
+            itemSelect.innerHTML = "<option value=\"\">-- Item (select folder first) --</option>";
+            return;
+        }
+        try {
+            const res = await api.fetchApi("/usgromana/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
+            const data = await res.json();
+            const items = data.items || [];
+            itemSelect.innerHTML = "<option value=\"\">-- Select item --</option>" + items.map(i => `<option value="${escapeHtml(i)}">${escapeHtml(i)}</option>`).join("");
+        } catch (e) {
+            itemSelect.innerHTML = "<option value=\"\">Error loading items</option>";
+        }
+    }
+
+    async function refreshSharedList() {
+        const username = userSelect.value;
+        if (!username) {
+            listEl.innerHTML = "<p style=\"opacity:0.8;\">Select a user to view and manage their shared items.</p>";
+            return;
+        }
+        listEl.innerHTML = "<p>Loading...</p>";
+        try {
+            const res = await api.fetchApi("/usgromana/api/users/" + encodeURIComponent(username) + "/shared-items", { method: "GET" });
+            const data = await res.json();
+            const items = data.items || [];
+            if (items.length === 0) {
+                listEl.innerHTML = "<p style=\"opacity:0.8;\">No shared items for this user. Add one below.</p>";
+                return;
+            }
+            listEl.innerHTML = `
+                <table class="usgromana-table">
+                    <thead><tr><th>Folder</th><th>Item</th><th style="width:80px;\"></th></tr></thead>
+                    <tbody>
+                    ${items.map(it => `
+                        <tr>
+                            <td>${escapeHtml(it.folder)}</td>
+                            <td>${escapeHtml(it.item_name)}</td>
+                            <td><button class="usgromana-btn usgromana-btn-danger usgromana-shared-remove" data-folder="${escapeHtml(it.folder)}" data-item="${escapeHtml(it.item_name)}">Remove</button></td>
+                        </tr>
+                    `).join("")}
+                    </tbody>
+                </table>
+            `;
+            listEl.querySelectorAll(".usgromana-shared-remove").forEach(btn => {
+                btn.onclick = async () => {
+                    const folder = btn.dataset.folder;
+                    const item = btn.dataset.item;
+                    try {
+                        await api.fetchApi("/usgromana/api/users/" + encodeURIComponent(username) + "/shared-items", {
+                            method: "DELETE",
+                            body: JSON.stringify({ folder, item_name: item }),
+                        });
+                        await refreshSharedList();
+                    } catch (e) {
+                        console.error("[usgromana] Remove shared item failed:", e);
+                    }
+                };
+            });
+        } catch (e) {
+            listEl.innerHTML = "<p style=\"color:var(--error-text,red);\">Failed to load shared items.</p>";
+        }
+    }
+
+    folderSelect.onchange = () => loadItemsForFolder(folderSelect.value);
+    userSelect.onchange = () => refreshSharedList();
+
+    addBtn.onclick = async () => {
+        const username = userSelect.value;
+        const folder = folderSelect.value;
+        const item = itemSelect.value;
+        if (!username || !folder || !item) {
+            return;
+        }
+        addBtn.disabled = true;
+        try {
+            await api.fetchApi("/usgromana/api/users/" + encodeURIComponent(username) + "/shared-items", {
+                method: "POST",
+                body: JSON.stringify({ folder, item_name: item }),
+            });
+            await refreshSharedList();
+        } catch (e) {
+            console.error("[usgromana] Add shared item failed:", e);
+        }
+        addBtn.disabled = false;
+    };
+
+    await loadItemsForFolder(folderSelect.value || (folders[0] || ""));
+}
+
 renderNsfwManagement(container) {
     container.innerHTML = `
         <div class="usgromana-section">
@@ -1657,6 +1800,86 @@ async renderTokenStorage(container) {
             } else {
                 const err = await res.json().catch(() => ({}));
                 statusEl.textContent = "Error: " + (err.error || res.status);
+            }
+        } catch (e) {
+            statusEl.textContent = "Error: " + (e.message || "Request failed");
+        }
+    };
+}
+
+async renderUsersDbConfig(container) {
+    let cfg = { backend: "sqlite", sqlite_path: "users/users.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "usgromana", postgres_user: "usgromana" };
+    try {
+        const res = await api.fetchApi("/usgromana/api/users-db-config", { method: "GET" });
+        if (res.ok) cfg = await res.json();
+    } catch (e) {
+        console.warn("[Usgromana] Users DB config load failed:", e);
+    }
+    const backend = (cfg.backend || "sqlite").toLowerCase();
+    container.innerHTML = `
+        <div class="usgromana-section">
+            <h3>Users Database (Credentials)</h3>
+            <p>Configure where user accounts are stored (SQLite or PostgreSQL). No plain-text JSON. Restart required for new backend to take effect. PostgreSQL password: environment variable <code>USERS_DB_PASSWORD</code> or <code>POSTGRES_PASSWORD</code> only.</p>
+            <div class="usgromana-row" style="margin-top:12px; gap:8px; align-items:center;">
+                <label class="usgromana-field-label">Backend</label>
+                <select id="usgromana-usersdb-backend" class="usgromana-select">
+                    <option value="sqlite" ${backend === "sqlite" ? "selected" : ""}>SQLite</option>
+                    <option value="postgresql" ${backend === "postgresql" ? "selected" : ""}>PostgreSQL</option>
+                </select>
+            </div>
+            <div id="usgromana-usersdb-sqlite-fields" class="usgromana-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "sqlite" ? "display:none;" : ""}">
+                <label class="usgromana-field-label">SQLite path</label>
+                <input type="text" id="usgromana-usersdb-sqlite-path" class="usgromana-input" value="${escapeHtml(cfg.sqlite_path || "users/users.db")}" style="min-width:240px;">
+            </div>
+            <div id="usgromana-usersdb-postgres-fields" style="margin-top:8px; ${backend !== "postgresql" ? "display:none;" : ""}">
+                <div class="usgromana-row" style="gap:8px; align-items:center; margin-bottom:6px;">
+                    <label class="usgromana-field-label">Host</label>
+                    <input type="text" id="usgromana-usersdb-pg-host" class="usgromana-input" value="${escapeHtml(cfg.postgres_host || "localhost")}" placeholder="localhost">
+                    <label class="usgromana-field-label">Port</label>
+                    <input type="number" id="usgromana-usersdb-pg-port" class="usgromana-input" value="${cfg.postgres_port || 5432}" placeholder="5432" style="width:80px;">
+                </div>
+                <div class="usgromana-row" style="gap:8px; align-items:center;">
+                    <label class="usgromana-field-label">Database</label>
+                    <input type="text" id="usgromana-usersdb-pg-database" class="usgromana-input" value="${escapeHtml(cfg.postgres_database || "usgromana")}" placeholder="usgromana">
+                    <label class="usgromana-field-label">User</label>
+                    <input type="text" id="usgromana-usersdb-pg-user" class="usgromana-input" value="${escapeHtml(cfg.postgres_user || "usgromana")}" placeholder="usgromana">
+                </div>
+                <p class="usgromana-note" style="margin-top:6px;">Password: set <code>USERS_DB_PASSWORD</code> or <code>POSTGRES_PASSWORD</code> in environment (never stored in config).</p>
+            </div>
+            <div class="usgromana-row" style="margin-top:16px; gap:8px;">
+                <button class="usgromana-btn" id="usgromana-usersdb-save">Save</button>
+            </div>
+            <p id="usgromana-usersdb-status" class="usgromana-note" style="margin-top:8px;"></p>
+        </div>
+    `;
+    const backendSelect = container.querySelector("#usgromana-usersdb-backend");
+    const sqliteFields = container.querySelector("#usgromana-usersdb-sqlite-fields");
+    const postgresFields = container.querySelector("#usgromana-usersdb-postgres-fields");
+    const statusEl = container.querySelector("#usgromana-usersdb-status");
+    function showFields() {
+        const b = (backendSelect.value || "sqlite").toLowerCase();
+        sqliteFields.style.display = b === "sqlite" ? "" : "none";
+        postgresFields.style.display = b === "postgresql" ? "" : "none";
+    }
+    backendSelect.onchange = showFields;
+    container.querySelector("#usgromana-usersdb-save").onclick = async () => {
+        const b = (backendSelect.value || "sqlite").toLowerCase();
+        const body = {
+            backend: b,
+            sqlite_path: container.querySelector("#usgromana-usersdb-sqlite-path").value.trim() || "users/users.db",
+            postgres_host: container.querySelector("#usgromana-usersdb-pg-host").value.trim() || "localhost",
+            postgres_port: parseInt(container.querySelector("#usgromana-usersdb-pg-port").value, 10) || 5432,
+            postgres_database: container.querySelector("#usgromana-usersdb-pg-database").value.trim() || "usgromana",
+            postgres_user: container.querySelector("#usgromana-usersdb-pg-user").value.trim() || "usgromana",
+        };
+        statusEl.textContent = "Saving...";
+        try {
+            const res = await api.fetchApi("/usgromana/api/users-db-config", { method: "PUT", body: JSON.stringify(body) });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                statusEl.textContent = data.message || "Saved. Restart required for new backend to take effect.";
+            } else {
+                statusEl.textContent = "Error: " + (data.error || res.status);
             }
         } catch (e) {
             statusEl.textContent = "Error: " + (e.message || "Request failed");

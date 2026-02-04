@@ -63,7 +63,12 @@ def _default_sqlite_path() -> str:
 config_data = _load_config(CONFIG_FILE_PATH)
 
 # --- Files & Paths ---
-USERS_FILE = os.path.join(CURRENT_DIR, "users", "users.json")
+# Legacy path for one-time migration from JSON to DB (do not use for credential storage)
+_legacy_users_path = config_data.get("legacy_users_json_path", "users/users.json")
+if not os.path.isabs(_legacy_users_path):
+    _legacy_users_path = os.path.join(CURRENT_DIR, _legacy_users_path)
+LEGACY_USERS_JSON_PATH = _legacy_users_path
+
 GROUPS_CONFIG_FILE = os.path.join(CURRENT_DIR, "users", "usgromana_groups.json")
 DEFAULT_GROUP_CONFIG_PATH = os.path.join(CURRENT_DIR, "users", "defaults", "default_group_config.json")
 WHITELIST_FILE = os.path.join(CURRENT_DIR, "users", "whitelist.txt")
@@ -106,6 +111,50 @@ if not os.path.isabs(API_TOKEN_STORE_CONFIG["json_path"]):
     API_TOKEN_STORE_CONFIG["json_path"] = os.path.join(CURRENT_DIR, API_TOKEN_STORE_CONFIG["json_path"])
 if not os.path.isabs(API_TOKEN_STORE_CONFIG["sqlite_path"]):
     API_TOKEN_STORE_CONFIG["sqlite_path"] = os.path.join(CURRENT_DIR, API_TOKEN_STORE_CONFIG["sqlite_path"])
+
+# Users DB (credentials): SQLite or PostgreSQL only; no plain-text JSON. Password from env only.
+def _default_users_sqlite_path() -> str:
+    return os.path.join(CURRENT_DIR, "users", "users.db")
+
+_users_db_cfg = config_data.get("users_db") or {}
+if isinstance(_users_db_cfg, str):
+    _users_db_cfg = {"backend": "sqlite", "sqlite_path": _users_db_cfg}
+_users_sqlite_path = _env_or_config("USERS_DB_SQLITE_PATH", _users_db_cfg.get("sqlite_path", "users/users.db"))
+if not os.path.isabs(_users_sqlite_path):
+    _users_sqlite_path = os.path.join(CURRENT_DIR, _users_sqlite_path)
+USERS_DB_CONFIG = {
+    "backend": (_users_db_cfg.get("backend") or "sqlite").lower(),
+    "sqlite_path": _users_sqlite_path,
+    "postgres_host": _env_or_config("USERS_DB_POSTGRES_HOST", _users_db_cfg.get("postgres_host", "localhost")),
+    "postgres_port": _env_or_config("USERS_DB_POSTGRES_PORT", str(_users_db_cfg.get("postgres_port", 5432))),
+    "postgres_database": _env_or_config("USERS_DB_POSTGRES_DATABASE", _users_db_cfg.get("postgres_database", "usgromana")),
+    "postgres_user": _env_or_config("USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "usgromana")),
+}
+# DB password never in config; env only
+USERS_DB_CONFIG["postgres_password"] = (os.getenv("USERS_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "").strip()
+
+
+def reload_users_db_config() -> dict:
+    """Re-read config.json and refresh USERS_DB_CONFIG (used after admin saves users DB config). Restart required to use new backend."""
+    global config_data, USERS_DB_CONFIG
+    config_data = _load_config(CONFIG_FILE_PATH)
+    _users_db_cfg = config_data.get("users_db") or {}
+    if isinstance(_users_db_cfg, str):
+        _users_db_cfg = {"backend": "sqlite", "sqlite_path": _users_db_cfg}
+    _users_sqlite_path = _env_or_config("USERS_DB_SQLITE_PATH", _users_db_cfg.get("sqlite_path", "users/users.db"))
+    if not os.path.isabs(_users_sqlite_path):
+        _users_sqlite_path = os.path.join(CURRENT_DIR, _users_sqlite_path)
+    USERS_DB_CONFIG = {
+        "backend": (_users_db_cfg.get("backend") or "sqlite").lower(),
+        "sqlite_path": _users_sqlite_path,
+        "postgres_host": _env_or_config("USERS_DB_POSTGRES_HOST", _users_db_cfg.get("postgres_host", "localhost")),
+        "postgres_port": _env_or_config("USERS_DB_POSTGRES_PORT", str(_users_db_cfg.get("postgres_port", 5432))),
+        "postgres_database": _env_or_config("USERS_DB_POSTGRES_DATABASE", _users_db_cfg.get("postgres_database", "usgromana")),
+        "postgres_user": _env_or_config("USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "usgromana")),
+    }
+    USERS_DB_CONFIG["postgres_password"] = (os.getenv("USERS_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "").strip()
+    return USERS_DB_CONFIG
+
 
 # Session JWT store (jti tracking and blocklist for list/revoke)
 _session_store_path = config_data.get("session_token_store_path", "users/session_tokens.json")

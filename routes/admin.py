@@ -3,8 +3,9 @@ import os
 from aiohttp import web
 from ..globals import routes, jwt_auth, users_db, ip_filter
 from ..constants import (
-    GROUPS_CONFIG_FILE, DEFAULT_GROUP_CONFIG_PATH, WHITELIST_FILE, BLACKLIST_FILE, USERS_FILE,
+    GROUPS_CONFIG_FILE, DEFAULT_GROUP_CONFIG_PATH, WHITELIST_FILE, BLACKLIST_FILE,
     CONFIG_FILE_PATH, reload_api_token_store_config, reload_allow_guest_jwt,
+    reload_users_db_config, USERS_DB_CONFIG,
 )
 from ..utils.json_utils import load_json_file, save_json_file
 from ..utils.admin_logic import patch_user_group, delete_user_record
@@ -12,6 +13,8 @@ from ..utils.bootstrap import load_default_groups
 from ..utils.api_token_store import reset_api_token_store
 from ..utils.user_console_log import get_lines as get_user_console_lines, list_users as list_console_users
 from ..utils.ntfy_notifier import get_ntfy_config, save_ntfy_config, send_notification, EVENT_KEYS
+from ..utils.shared_items_store import get_shared_items_store
+from ..constants import USERS_DB_CONFIG
 
 def is_admin(request):
     token = jwt_auth.get_token_from_request(request)
@@ -140,20 +143,9 @@ async def api_update_groups(request):
 
 @routes.get("/usgromana/api/users")
 async def api_users(request):
-    # Security: You might want to restrict this to admins only too
-    if not is_admin(request): return web.json_response({"error": "Admin only"}, status=403)
-    
-    raw = load_json_file(USERS_FILE, {})
-    users_list = []
-    iterable = raw.get("users", raw).values() if isinstance(raw.get("users", raw), dict) else raw.get("users", raw)
-    for u in iterable:
-        users_list.append({
-            "username": u.get("username", "unknown"),
-            "groups": [g.lower() for g in u.get("groups", ["user"])],
-            "is_admin": u.get("admin", False),
-            # NEW: per-user SFW flag; default = True (SFW enabled)
-            "sfw_check": u.get("sfw_check", True),
-        })
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    users_list = users_db.list_users_for_admin()
     return web.json_response({"users": users_list})
 
 @routes.put("/usgromana/api/users/{target_user}")
@@ -185,6 +177,52 @@ async def api_delete_user_route(request):
     if result == "last_admin": return web.json_response({"error": "Cannot delete last admin"}, status=400)
     if result is False: return web.Response(status=404)
     return web.json_response({"status": "ok"})
+
+@routes.get("/usgromana/api/users-db-config")
+async def api_get_users_db_config(request):
+    """Return current users DB backend and paths (admin only). Password never returned."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    out = {
+        "backend": USERS_DB_CONFIG.get("backend", "sqlite"),
+        "sqlite_path": USERS_DB_CONFIG.get("sqlite_path", "users/users.db"),
+        "postgres_host": USERS_DB_CONFIG.get("postgres_host", "localhost"),
+        "postgres_port": USERS_DB_CONFIG.get("postgres_port", 5432),
+        "postgres_database": USERS_DB_CONFIG.get("postgres_database", "usgromana"),
+        "postgres_user": USERS_DB_CONFIG.get("postgres_user", "usgromana"),
+    }
+    return web.json_response(out)
+
+
+@routes.put("/usgromana/api/users-db-config")
+async def api_put_users_db_config(request):
+    """Update users DB config (admin only). Restart required for new backend to take effect. Password from env only."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    try:
+        data = await request.json()
+        backend = (data.get("backend") or "sqlite").lower()
+        if backend not in ("sqlite", "postgresql"):
+            return web.json_response({"error": "Invalid backend; use sqlite or postgresql"}, status=400)
+        cfg = load_json_file(CONFIG_FILE_PATH, {})
+        if not isinstance(cfg, dict):
+            cfg = {}
+        udb = cfg.get("users_db") or {}
+        if isinstance(udb, str):
+            udb = {}
+        udb["backend"] = backend
+        udb["sqlite_path"] = data.get("sqlite_path", udb.get("sqlite_path", "users/users.db"))
+        udb["postgres_host"] = data.get("postgres_host", udb.get("postgres_host", "localhost"))
+        udb["postgres_port"] = data.get("postgres_port", udb.get("postgres_port", 5432))
+        udb["postgres_database"] = data.get("postgres_database", udb.get("postgres_database", "usgromana"))
+        udb["postgres_user"] = data.get("postgres_user", udb.get("postgres_user", "usgromana"))
+        cfg["users_db"] = udb
+        save_json_file(CONFIG_FILE_PATH, cfg)
+        reload_users_db_config()
+        return web.json_response({"status": "ok", "message": "Restart required for new backend to take effect."})
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
 
 @routes.get("/usgromana/api/token-storage-config")
 async def api_get_token_storage_config(request):
@@ -295,6 +333,93 @@ async def api_update_ip_lists(request):
         return web.json_response({"status": "ok"})
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
+
+@routes.get("/usgromana/api/available-model-folders")
+async def api_available_model_folders(request):
+    """List ComfyUI model folder names (for admin shared-items UI). Admin only."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    try:
+        import folder_paths
+        folders = list(folder_paths.folder_names_and_paths.keys())
+    except Exception:
+        folders = ["checkpoints", "loras", "vae", "embeddings", "controlnet", "clip_vision", "upscale_models"]
+    return web.json_response({"folders": folders})
+
+
+@routes.get("/usgromana/api/available-models/{folder}")
+async def api_available_models_in_folder(request):
+    """List model/item names in a folder (for admin shared-items UI). Admin only."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    folder = request.match_info.get("folder", "")
+    try:
+        import folder_paths
+        names = folder_paths.get_filename_list(folder)
+    except Exception:
+        names = []
+    return web.json_response({"folder": folder, "items": names})
+
+
+@routes.get("/usgromana/api/users/{username}/shared-items")
+async def api_get_shared_items(request):
+    """List shared ComfyUI items (models, LoRAs, VAEs, embeddings) for a user (admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    username = request.match_info.get("username", "")
+    user_id, _ = users_db.get_user(username=username)
+    if not user_id:
+        return web.json_response({"error": "User not found"}, status=404)
+    store = get_shared_items_store(USERS_DB_CONFIG)
+    items = store.list_for_user(user_id)
+    return web.json_response({"username": username, "items": items})
+
+
+@routes.post("/usgromana/api/users/{username}/shared-items")
+async def api_add_shared_item(request):
+    """Add one shared item for a user. Body: { "folder": "checkpoints", "item_name": "model.safetensors" } (admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    username = request.match_info.get("username", "")
+    user_id, _ = users_db.get_user(username=username)
+    if not user_id:
+        return web.json_response({"error": "User not found"}, status=404)
+    try:
+        data = await request.json()
+        folder = (data.get("folder") or "").strip()
+        item_name = (data.get("item_name") or "").strip()
+        if not folder or not item_name:
+            return web.json_response({"error": "folder and item_name required"}, status=400)
+        store = get_shared_items_store(USERS_DB_CONFIG)
+        if store.add(user_id, folder, item_name):
+            return web.json_response({"status": "ok", "folder": folder, "item_name": item_name})
+        return web.json_response({"error": "Failed to add (may already exist)"}, status=400)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+@routes.delete("/usgromana/api/users/{username}/shared-items")
+async def api_remove_shared_item(request):
+    """Remove one shared item for a user. Body: { "folder": "...", "item_name": "..." } (admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    username = request.match_info.get("username", "")
+    user_id, _ = users_db.get_user(username=username)
+    if not user_id:
+        return web.json_response({"error": "User not found"}, status=404)
+    try:
+        data = await request.json()
+        folder = (data.get("folder") or "").strip()
+        item_name = (data.get("item_name") or "").strip()
+        if not folder or not item_name:
+            return web.json_response({"error": "folder and item_name required"}, status=400)
+        store = get_shared_items_store(USERS_DB_CONFIG)
+        if store.remove(user_id, folder, item_name):
+            return web.json_response({"status": "ok"})
+        return web.json_response({"error": "Item not found"}, status=404)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
 
 @routes.post("/usgromana/api/nsfw-management")
 async def api_nsfw_management(request):
