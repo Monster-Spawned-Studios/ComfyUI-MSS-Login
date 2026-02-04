@@ -20,7 +20,7 @@ license = {file = "LICENSE"}
 #     "Environment :: GPU :: Apple Metal",    # Apple Metal support
 # ]
 
-dependencies = ["aiohttp", "PyJWT", "bcrypt", "bleach"]
+dependencies = ["aiohttp", "PyJWT", "bcrypt", "bleach", "pyotp", "python-dotenvx", "cryptography", "psycopg2-binary"]
 
 [project.urls]
 Repository = "https://github.com/DayMan84/ComfyUI-Usgromana"
