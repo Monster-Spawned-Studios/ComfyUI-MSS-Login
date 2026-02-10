@@ -3,14 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - 1.8.1
-      - 1.8.0
-      - 1.7.9
-      - 1.7.8
-      - 1.7.7
-      - 1.7.6
-      - 1.7.5
+      - production
     paths:
       - "pyproject.toml"
 
@@ -21,7 +14,7 @@ jobs:
   publish-node:
     name: Publish Custom Node to registry
     runs-on: ubuntu-latest
-    if: ${{ github.repository_owner == 'DayMan84' }}
+    if: ${{ github.repository_owner == 'Monster-Spawned-Studios' }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
