@@ -31,7 +31,7 @@ Documentation = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/Co
 [tool.comfy]
 PublisherId = "Monster Spawned Studios"
 DisplayName = "ComfyUI-MSS-Login"
-Icon = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login/-/raw/development/web/assets/Dark_Usgromana.png"
+Icon = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login/-/raw/development/web/assets/Dark_mss_login.png"
 includes = [] 
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
 

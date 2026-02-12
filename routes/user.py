@@ -48,15 +48,17 @@ def _get_caller_admin_info(request):
         is_admin = bool(rec and (rec.get("admin") or ("admin" in groups)))
         return is_admin, username, groups
     except Exception as e:
-        print(f"[usgromana] admin check error: {e}")
+        print(f"[MSS-Login] admin check error: {e}")
         return False, None, ["guest"]
 
 
-@routes.get("/usgromana/api/me")
+@routes.get("/mss-login/api/me")
 async def api_me(request: web.Request) -> web.Response:
     """
     Basic identity info for the frontend.
     """
+    from ..globals import users_db
+
     is_admin, username, groups = _get_caller_admin_info(request)
     if username is None:
         # no / invalid token → guest
@@ -66,6 +68,7 @@ async def api_me(request: web.Request) -> web.Response:
                 "role": "guest",
                 "groups": ["guest"],
                 "is_admin": False,
+                "mfa_enabled": False,
             }
         )
 
@@ -76,17 +79,20 @@ async def api_me(request: web.Request) -> web.Response:
             role = candidate
             break
 
+    mfa_enabled = users_db.get_mfa_enabled(username) if username and username.lower() != "guest" else False
+
     return web.json_response(
         {
             "username": username,
             "role": role,
             "groups": groups,
             "is_admin": is_admin,
+            "mfa_enabled": mfa_enabled,
         }
     )
 
 
-@routes.post("/usgromana/api/user-env")
+@routes.post("/mss-login/api/user-env")
 async def api_user_env(request: web.Request) -> web.Response:
     """
     Admin-only per-user environment + workflow management.
@@ -164,12 +170,12 @@ async def api_user_env(request: web.Request) -> web.Response:
             try:
                 os.remove(full)
                 msg = f"Deleted file '{rel}' for user '{target_user}'."
-                print(f"[usgromana] {msg}")
+                print(f"[mss_login] {msg}")
                 return web.json_response(
                     {"user": target_user, "file": rel, "message": msg}
                 )
             except Exception as e:
-                print(f"[usgromana] delete_file error: {e}")
+                print(f"[mss_login] delete_file error: {e}")
                 return web.json_response(
                     {"error": f"Failed to delete: {e}"}, status=500
                 )
@@ -183,7 +189,7 @@ async def api_user_env(request: web.Request) -> web.Response:
     if action == "purge":
         user_env.purge_user_root(target_user)
         msg = f"Purged environment folders for user '{target_user}'."
-        print(f"[usgromana] {msg}")
+        print(f"[mss_login] {msg}")
         return web.json_response({"user": target_user, "message": msg})
 
     # --- SET / CLEAR GALLERY ROOT ---------------------------------
@@ -198,7 +204,7 @@ async def api_user_env(request: web.Request) -> web.Response:
             msg = "Gallery root cleared."
             is_root = False
 
-        print(f"[usgromana] {msg}")
+        print(f"[mss_login] {msg}")
         return web.json_response(
             {"user": target_user, "message": msg, "is_gallery_root": is_root}
         )
@@ -256,14 +262,14 @@ async def api_user_env(request: web.Request) -> web.Response:
                         f"Workflow '{wf_name}' promoted to global defaults, "
                         f"but failed to delete source: {del_err}"
                     )
-                    print(f"[usgromana] promote_workflow delete_source error: {del_err}")
+                    print(f"[mss_login] promote_workflow delete_source error: {del_err}")
             else:
                 msg = (
                     f"Workflow '{wf_name}' from user '{target_user}' "
                     f"promoted to global defaults ({dst})."
                 )
 
-            print(f"[usgromana] {msg}")
+            print(f"[mss_login] {msg}")
             return web.json_response(
                 {
                     "user": target_user,
@@ -274,7 +280,7 @@ async def api_user_env(request: web.Request) -> web.Response:
                 }
             )
         except Exception as e:
-            print(f"[usgromana] promote_workflow error: {e}")
+            print(f"[mss_login] promote_workflow error: {e}")
             return web.json_response(
                 {"error": f"Failed to promote workflow: {e}"}, status=500
             )
@@ -283,7 +289,7 @@ async def api_user_env(request: web.Request) -> web.Response:
     return web.json_response({"error": f"Unknown action '{action}'"}, status=400)
 
 
-@routes.post("/usgromana-gallery/mark-nsfw")
+@routes.post("/mss-login-gallery/mark-nsfw")
 async def mark_nsfw(request: web.Request) -> web.Response:
     """
     Manually mark an image as NSFW or SFW.
@@ -352,6 +358,6 @@ async def mark_nsfw(request: web.Request) -> web.Response:
         else:
             return web.json_response({"error": "Failed to set NSFW tag"}, status=500)
     except Exception as e:
-        print(f"[Usgromana] Error in mark-nsfw endpoint: {e}")
+        print(f"[mss_login] Error in mark-nsfw endpoint: {e}")
         return web.json_response({"error": str(e)}, status=500)
 # --- END OF FILE routes/user.py ---

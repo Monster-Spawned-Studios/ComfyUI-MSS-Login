@@ -20,9 +20,9 @@ HF_MODEL_ID = "Falconsai/nsfw_image_detection"
 MODEL_FOLDER_NAME = "falconsai-nsfw-image-detection"
 
 # NSFW Metadata Keys
-NSFW_METADATA_KEY = "UsgromanaNSFW"
-NSFW_SCORE_KEY = "UsgromanaNSFWScore"
-NSFW_LABEL_KEY = "UsgromanaNSFWLabel"
+NSFW_METADATA_KEY = "mss_loginNSFW"
+NSFW_SCORE_KEY = "mss_loginNSFWScore"
+NSFW_LABEL_KEY = "mss_loginNSFWLabel"
 
 # --- GLOBAL STATE (The Bridge) ---
 # This variable holds the username of the person who most recently
@@ -334,7 +334,7 @@ def _set_nsfw_tag(path: str, is_nsfw: bool, score: float, label: str):
                     img.save(path, "JPEG", quality=95, exif=exif_bytes if exif_bytes else None, optimize=False)
             except Exception as e:
                 # If EXIF writing fails, at least try to save the image
-                print(f"[Usgromana::NSFWGuard] Warning: Could not write EXIF to {path}: {e}")
+                print(f"[mss_login::NSFWGuard] Warning: Could not write EXIF to {path}: {e}")
                 img.save(path, "JPEG", quality=95, optimize=False)
         
         # For other formats: Try to save in info
@@ -354,7 +354,7 @@ def _set_nsfw_tag(path: str, is_nsfw: bool, score: float, label: str):
         
     except Exception as e:
         # Fail silently - image may be read-only or format doesn't support metadata
-        print(f"[Usgromana::NSFWGuard] Warning: Could not write metadata to {path}: {e}")
+        print(f"[mss_login::NSFWGuard] Warning: Could not write metadata to {path}: {e}")
 
 
 def set_nsfw_tag_manual(path: str, is_nsfw: bool, score: float = 1.0, label: str = "manual"):
@@ -516,7 +516,7 @@ def clear_nsfw_tag(path: str):
                 img.save(path, "JPEG", quality=95, exif=exif_bytes, optimize=False)
         
     except Exception as e:
-        print(f"[Usgromana::NSFWGuard] Warning: Could not clear metadata from {path}: {e}")
+        print(f"[mss_login::NSFWGuard] Warning: Could not clear metadata from {path}: {e}")
 
 def set_latest_prompt_user(username: str | None):
     """
@@ -531,7 +531,7 @@ def set_latest_prompt_user(username: str | None):
     _LATEST_PROMPT_USER = effective
 
     # Debug so we can see it changing per prompt:
-    print(f"[Usgromana::NSFWGuard] set_latest_prompt_user → {effective!r}")
+    print(f"[mss_login::NSFWGuard] set_latest_prompt_user → {effective!r}")
 
 
 @lru_cache(maxsize=1)
@@ -546,10 +546,10 @@ def _get_nsfw_pipeline():
     # 1. Determine Model Source (Local vs Cloud)
     if os.path.exists(os.path.join(local_model_dir, "config.json")):
         model_source = local_model_dir
-        # print(f"[Usgromana::NSFWGuard] ✅ Loading local model from: {local_model_dir}")
+        # print(f"[mss_login::NSFWGuard] ✅ Loading local model from: {local_model_dir}")
     else:
         model_source = HF_MODEL_ID
-        print(f"[Usgromana::NSFWGuard] ⚠️ Local model missing. Downloading: {HF_MODEL_ID}")
+        print(f"[mss_login::NSFWGuard] ⚠️ Local model missing. Downloading: {HF_MODEL_ID}")
 
     # 2. Determine Compute Device
     device = model_management.get_torch_device()
@@ -571,7 +571,7 @@ def _get_nsfw_pipeline():
         clf = pipeline("image-classification", model=model_source, device=pipe_device)
         return clf
     except Exception as e:
-        print(f"[Usgromana::NSFWGuard] ❌ CRITICAL: Failed to load NSFW model. Error: {e}")
+        print(f"[mss_login::NSFWGuard] ❌ CRITICAL: Failed to load NSFW model. Error: {e}")
         return None
 
 
@@ -603,7 +603,7 @@ def _classify_image_path(path: str, use_cache: bool = True) -> Optional[Tuple[st
             img = img.convert("RGB")
             result = clf(img)
     except Exception as e:
-        print(f"[Usgromana::NSFWGuard] Error reading image {path}: {e}")
+        print(f"[mss_login::NSFWGuard] Error reading image {path}: {e}")
         return None
 
     if not result:
@@ -665,7 +665,7 @@ def _resolve_effective_username() -> str:
 
     # Debug: see what the resolver is doing
     print(
-        f"[Usgromana::NSFWGuard] DEBUG resolve_user: ctx={ctx_user!r} "
+        f"[mss_login::NSFWGuard] DEBUG resolve_user: ctx={ctx_user!r} "
         f"latest={_LATEST_PROMPT_USER!r} -> using={username!r}"
     )
 
@@ -717,14 +717,14 @@ def is_sfw_enforced_for_current_session(quiet: bool = False) -> bool:
             # Only log on first check for this user, unless quiet mode
             if not quiet:
                 if _LAST_LOGGED_USER != cache_key:
-                    print(f"[Usgromana] 🛡️ Policy Check: User='{username}' | SFW={sfw_flag}")
+                    print(f"[mss_login] 🛡️ Policy Check: User='{username}' | SFW={sfw_flag}")
                     _LAST_LOGGED_USER = cache_key
         else:
             # Cache the default
             _SFW_CACHE[cache_key] = (sfw_flag, username)
             if not quiet:
                 if _LAST_LOGGED_USER != cache_key:
-                    print(f"[Usgromana] ⚠️ User '{username}' not found in DB. Defaulting to BLOCK.")
+                    print(f"[mss_login] ⚠️ User '{username}' not found in DB. Defaulting to BLOCK.")
                     _LAST_LOGGED_USER = cache_key
     else:
         # Cache the default for None/guest
@@ -779,7 +779,7 @@ def should_block_image_for_current_user(path: str, quiet: bool = False, use_cach
                 if not quiet:
                     cached_score = tag.get("score", 0.0)
                     print(
-                        f"[Usgromana::NSFWGuard] 🛑 BLOCKED NSFW file (cached): "
+                        f"[mss_login::NSFWGuard] 🛑 BLOCKED NSFW file (cached): "
                         f"{os.path.basename(path)} (Score: {cached_score:.2f})"
                     )
                 try:
@@ -787,7 +787,7 @@ def should_block_image_for_current_user(path: str, quiet: bool = False, use_cach
                     username = current_username_var.get() or _LATEST_PROMPT_USER or "unknown"
                     send_notification(
                         "nsfw_block",
-                        "Usgromana: NSFW blocked",
+                        "mss_login: NSFW blocked",
                         f"User {username} attempted to view/generate NSFW image: {os.path.basename(path)} (cached)",
                     )
                 except Exception:
@@ -811,7 +811,7 @@ def should_block_image_for_current_user(path: str, quiet: bool = False, use_cach
     if should_block:
         if not quiet:
             print(
-                f"[Usgromana::NSFWGuard] 🛑 BLOCKED NSFW file: "
+                f"[mss_login::NSFWGuard] 🛑 BLOCKED NSFW file: "
                 f"{os.path.basename(path)} (Score: {score:.2f})"
             )
         try:
@@ -819,7 +819,7 @@ def should_block_image_for_current_user(path: str, quiet: bool = False, use_cach
             username = current_username_var.get() or _LATEST_PROMPT_USER or "unknown"
             send_notification(
                 "nsfw_block",
-                "Usgromana: NSFW blocked",
+                "mss_login: NSFW blocked",
                 f"User {username} attempted to view/generate NSFW image: {os.path.basename(path)} (Score: {score:.2f})",
             )
         except Exception:
@@ -844,7 +844,7 @@ def clear_all_nsfw_tags():
     total_images = 0
     error_count = 0
     
-    print(f"[Usgromana::NSFWGuard] Starting to clear NSFW tags from output directory: {output_dir}")
+    print(f"[mss_login::NSFWGuard] Starting to clear NSFW tags from output directory: {output_dir}")
     
     try:
         for root, dirs, files in os.walk(output_dir):
@@ -862,11 +862,11 @@ def clear_all_nsfw_tags():
                             cleared_count += 1
                     except Exception as e:
                         error_count += 1
-                        print(f"[Usgromana::NSFWGuard] Error clearing tag from {path}: {e}")
+                        print(f"[mss_login::NSFWGuard] Error clearing tag from {path}: {e}")
     except Exception as e:
-        print(f"[Usgromana::NSFWGuard] Critical error in clear_all_nsfw_tags: {e}")
+        print(f"[mss_login::NSFWGuard] Critical error in clear_all_nsfw_tags: {e}")
     
-    print(f"[Usgromana::NSFWGuard] Cleared NSFW tags from {cleared_count} images (out of {total_images} total images, {error_count} errors)")
+    print(f"[mss_login::NSFWGuard] Cleared NSFW tags from {cleared_count} images (out of {total_images} total images, {error_count} errors)")
     return cleared_count
 
 
@@ -898,9 +898,9 @@ def fix_incorrectly_cached_tags():
                     pass
     
     if fixed_count > 0:
-        print(f"[Usgromana::NSFWGuard] Fixed {fixed_count} incorrectly cached images (cleared tags for rescan)")
+        print(f"[mss_login::NSFWGuard] Fixed {fixed_count} incorrectly cached images (cleared tags for rescan)")
     else:
-        print(f"[Usgromana::NSFWGuard] No incorrectly cached images found")
+        print(f"[mss_login::NSFWGuard] No incorrectly cached images found")
     return fixed_count
 
 
@@ -923,7 +923,7 @@ def scan_all_images_in_output_directory(force_rescan: bool = False):
     nsfw_count = 0
     error_count = 0
     
-    print(f"[Usgromana::NSFWGuard] Starting batch scan of output directory: {output_dir}")
+    print(f"[mss_login::NSFWGuard] Starting batch scan of output directory: {output_dir}")
     
     for root, dirs, files in os.walk(output_dir):
         for file in files:
@@ -952,7 +952,7 @@ def scan_all_images_in_output_directory(force_rescan: bool = False):
                             nsfw_count += 1
                 except Exception as e:
                     error_count += 1
-                    print(f"[Usgromana::NSFWGuard] Error scanning {path}: {e}")
+                    print(f"[mss_login::NSFWGuard] Error scanning {path}: {e}")
     
     result = {
         "scanned": scanned_count,
@@ -961,6 +961,6 @@ def scan_all_images_in_output_directory(force_rescan: bool = False):
         "total_images": scanned_count + nsfw_count + error_count
     }
     
-    print(f"[Usgromana::NSFWGuard] Batch scan complete: {result}")
+    print(f"[mss_login::NSFWGuard] Batch scan complete: {result}")
     return result
 # --- END OF FILE utils/nsfw_guard.py ---

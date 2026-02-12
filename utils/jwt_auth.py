@@ -165,7 +165,7 @@ class JWTAuth:
                 if token.count(".") < 2:
                     return await handle_unauthorized_access(
                         request, "/login",
-                        message="API token not found or expired. Generate a new token on this server (Settings → Usgromana → Generate Token).",
+                        message="API token not found or expired. Generate a new token on this server (Settings → mss_login → Generate Token).",
                     )
 
                 user = self.decode_access_token(token)
@@ -220,7 +220,7 @@ class JWTAuth:
                 # Likely an API token that wasn't in the store (wrong server or expired)
                 return await handle_unauthorized_access(
                     request, "/login",
-                    message="API token not found or expired. Generate a new token on this server (Settings → Usgromana → Generate Token).",
+                    message="API token not found or expired. Generate a new token on this server (Settings → mss_login → Generate Token).",
                 )
             except Exception as e:
                 debug_write({"location": "jwt_auth", "message": "reject", "data": {"path": request.path, "reason": type(e).__name__}, "hypothesisId": "B"})

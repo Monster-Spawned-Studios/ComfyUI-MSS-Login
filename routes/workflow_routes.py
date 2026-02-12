@@ -52,7 +52,7 @@ def user_is_admin(username: str) -> bool:
     try:
         record = users_db.get_user(username)
         if not record:
-            print(f"[Usgromana] user_is_admin: no record for {username!r}")
+            print(f"[mss_login] user_is_admin: no record for {username!r}")
             return False
 
         # users_db.get_user(...) might return:
@@ -70,7 +70,7 @@ def user_is_admin(username: str) -> bool:
                     break
 
         if not user_obj:
-            print(f"[Usgromana] user_is_admin: unexpected record type for {username!r}: {type(record)} -> {record!r}")
+            print(f"[mss_login] user_is_admin: unexpected record type for {username!r}: {type(record)} -> {record!r}")
             return False
 
         groups = user_obj.get("groups") or user_obj.get("group") or []
@@ -78,11 +78,11 @@ def user_is_admin(username: str) -> bool:
             groups = [groups]
 
         is_admin = any(str(g).lower() == "admin" for g in groups)
-        print(f"[Usgromana] user_is_admin: {username!r} groups={groups!r} is_admin={is_admin}")
+        print(f"[mss_login] user_is_admin: {username!r} groups={groups!r} is_admin={is_admin}")
         return is_admin
 
     except Exception as e:
-        print(f"[Usgromana] user_is_admin error for {username!r}: {e}")
+        print(f"[mss_login] user_is_admin error for {username!r}: {e}")
         return False
 
 # --- Helper: Sanitize Name ---
@@ -204,7 +204,7 @@ async def save_workflow(request, name_override: str | None = None):
         user_dir = user_env.get_user_workflow_dir(user)
         file_path = os.path.join(user_dir, clean_name)
 
-        print(f"[Usgromana] User '{user}' saving workflow: {clean_name}")
+        print(f"[mss_login] User '{user}' saving workflow: {clean_name}")
 
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
@@ -234,7 +234,7 @@ async def save_workflow(request, name_override: str | None = None):
         return web.json_response(saved_info)
 
     except Exception as e:
-        print(f"[Usgromana] Save Error: {e}")
+        print(f"[mss_login] Save Error: {e}")
         return web.Response(status=500, text=str(e))
 
 
@@ -281,13 +281,13 @@ async def delete_workflow(request, name: str | None):
 
     if os.path.exists(user_path):
         os.remove(user_path)
-        print(f"[Usgromana] User '{user}' deleted workflow: {clean_name}")
+        print(f"[mss_login] User '{user}' deleted workflow: {clean_name}")
         # Match core ComfyUI: DELETE /userdata/{file} -> 204 No Content
         return web.Response(status=204)
 
     # --- 2. Try deleting from global/default folders ---
     is_admin = user_is_admin(user)
-    print(f"[Usgromana] delete_workflow user={user!r}, is_admin={is_admin}, name={clean_name!r}")
+    print(f"[mss_login] delete_workflow user={user!r}, is_admin={is_admin}, name={clean_name!r}")
 
     for global_dir in POTENTIAL_GLOBALS:
         global_path = os.path.join(global_dir, clean_name)
@@ -295,7 +295,7 @@ async def delete_workflow(request, name: str | None):
             if is_admin:
                 os.remove(global_path)
                 print(
-                    f"[Usgromana] ADMIN '{user}' deleted GLOBAL workflow: "
+                    f"[mss_login] ADMIN '{user}' deleted GLOBAL workflow: "
                     f"{clean_name} ({global_path})"
                 )
                 return web.Response(status=204)
@@ -313,15 +313,15 @@ async def middleware_dispatch(request):
 
     - For workflow paths, routes to list/save/load/delete.
     - For /prompt, tags the current username in current_username_var
-      so other parts of Usgromana know which user is executing the prompt.
+      so other parts of mss_login know which user is executing the prompt.
     - For /view, applies global NSFW enforcement for SFW users
       using utils.nsfw_guard.
     """
     path = request.path
     method = request.method
     
-    # Don't intercept usgromana-gallery routes
-    if path.startswith("/usgromana-gallery"):
+    # Don't intercept mss_login-gallery routes
+    if path.startswith("/mss_login-gallery"):
         return None
 
     # Optional bypass
@@ -332,7 +332,7 @@ async def middleware_dispatch(request):
     if path == "/view" and method == "GET":
         username = get_current_user(request)
         current_username_var.set(username)
-        print(f"[Usgromana] /view requested by user: {username!r}")
+        print(f"[mss_login] /view requested by user: {username!r}")
 
         q = request.rel_url.query
         filename = q.get("filename") or q.get("file") or q.get("name")
@@ -347,10 +347,10 @@ async def middleware_dispatch(request):
                 try:
                     if should_block_image_for_current_user(img_path):
                         # Hard global block for this user
-                        print(f"[Usgromana::NSFWGuard] Blocking NSFW image for user={username!r}: {img_path}")
+                        print(f"[mss_login::NSFWGuard] Blocking NSFW image for user={username!r}: {img_path}")
                         return web.Response(status=403, text="NSFW content blocked for this user.")
                 except Exception as e:
-                    print(f"[Usgromana::NSFWGuard] Error while checking {img_path}: {e}")
+                    print(f"[mss_login::NSFWGuard] Error while checking {img_path}: {e}")
 
         # Fall through to normal handler if not blocked
         return None
@@ -385,7 +385,7 @@ async def middleware_dispatch(request):
     if path == "/prompt" and method in ("POST", "PUT"):
         username = get_current_user(request)
         current_username_var.set(username)
-        print(f"[Usgromana] /prompt tagged for user: {username!r}")
+        print(f"[mss_login] /prompt tagged for user: {username!r}")
         # Do not block; let the normal ComfyUI /prompt handler run
         return None
 

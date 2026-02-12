@@ -150,8 +150,8 @@ def get_shared_items_store(config: dict):
         _store = _get_postgres_store(
             config.get("postgres_host", "localhost"),
             int(config.get("postgres_port", 5432)),
-            config.get("postgres_database", "usgromana"),
-            config.get("postgres_user", "usgromana"),
+            config.get("postgres_database", "mss_login"),
+            config.get("postgres_user", "mss_login"),
             config.get("postgres_password", ""),
         )
     else:

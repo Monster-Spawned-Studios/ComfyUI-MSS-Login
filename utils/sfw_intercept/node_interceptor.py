@@ -19,14 +19,14 @@ def check_tensor_nsfw(images_tensor):
     # 1. CHECK USER PERMISSIONS FIRST
     # Use quiet mode to reduce logging during node execution
     if not is_sfw_enforced_for_current_session(quiet=True):
-        # print("[Usgromana] 🛡️ SFW Disabled for this user. Bypassing scan.")
+        # print("[mss_login] 🛡️ SFW Disabled for this user. Bypassing scan.")
         return False
 
     # 2. Run Scan
-    print("[Usgromana] 🔍 Interceptor: Analysis starting...")
+    print("[mss_login] 🔍 Interceptor: Analysis starting...")
     pipeline = _get_nsfw_pipeline()
     if pipeline is None:
-        print("[Usgromana] ⚠️ WARN: Model failed. BLOCKING (Fail-Safe).")
+        print("[mss_login] ⚠️ WARN: Model failed. BLOCKING (Fail-Safe).")
         return True 
 
     try:
@@ -36,7 +36,7 @@ def check_tensor_nsfw(images_tensor):
         img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
         
         results = pipeline(img)
-        # print(f"[Usgromana] 🔍 Raw Output: {results}")
+        # print(f"[mss_login] 🔍 Raw Output: {results}")
 
         if not results: return False
             
@@ -44,14 +44,14 @@ def check_tensor_nsfw(images_tensor):
         label = top.get("label", "").lower()
         score = float(top.get("score", 0.0))
         
-        print(f"[Usgromana] 🔍 Decision: Label='{label}' Score={score:.4f}")
+        print(f"[mss_login] 🔍 Decision: Label='{label}' Score={score:.4f}")
 
         if label == "nsfw" and score > SCORE_THRESHOLD:
-            print(f"[Usgromana] 🛑 BLOCKED NSFW (Score {score:.4f})")
+            print(f"[mss_login] 🛑 BLOCKED NSFW (Score {score:.4f})")
             return True
             
     except Exception as e:
-        print(f"[Usgromana] ❌ Interceptor Error: {e}")
+        print(f"[mss_login] ❌ Interceptor Error: {e}")
         return True 
     
     return False
@@ -63,7 +63,7 @@ def disable_latent_previews():
     # Only disable previews if the CURRENT user needs protection
     # But since previewers are global singletons in ComfyUI, 
     # we default to disabling them globally to be safe.
-    print("[Usgromana] 🛡️ Disabling Latent Previews (Safe Mode)...")
+    print("[mss_login] 🛡️ Disabling Latent Previews (Safe Mode)...")
     
     class SafeDummyPreviewer:
         def __init__(self, latent_format=None): pass
@@ -84,7 +84,7 @@ def disable_latent_previews():
 # ----------------------------------------------------------------------------
 def install_node_interceptor():
     disable_latent_previews()
-    print("[Usgromana] 🛡️ Installing Node-Level Image Interceptor...")
+    print("[mss_login] 🛡️ Installing Node-Level Image Interceptor...")
 
     try:
         original_save = nodes.SaveImage.save_images
@@ -96,7 +96,7 @@ def install_node_interceptor():
         is_bad = check_tensor_nsfw(images)
 
         if is_bad:
-            print(f"[Usgromana] 🛑 BLOCKED {mode}: Replacing with BLACK SQUARE.")
+            print(f"[mss_login] 🛑 BLOCKED {mode}: Replacing with BLACK SQUARE.")
             black_images = torch.zeros_like(images)
             if mode == "save":
                 return original_save(self, black_images, filename_prefix, prompt, extra_pnginfo)
@@ -116,5 +116,5 @@ def install_node_interceptor():
 
     nodes.SaveImage.save_images = save_patch
     nodes.PreviewImage.save_images = preview_patch
-    print("[Usgromana] 🛡️ Node Interceptor Active.")
+    print("[mss_login] 🛡️ Node Interceptor Active.")
 # --- END OF FILE utils/node_interceptor.py ---

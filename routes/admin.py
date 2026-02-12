@@ -25,7 +25,7 @@ def is_admin(request):
         return u.get('admin', False) or "admin" in u.get('groups', [])
     except: return False
 
-@routes.get("/usgromana/api/settings/guest-jwt")
+@routes.get("/mss-login/api/settings/guest-jwt")
 async def api_get_guest_jwt(request):
     """Return allow_guest_jwt (authenticated; any user can read)."""
     token = jwt_auth.get_token_from_request(request)
@@ -39,7 +39,7 @@ async def api_get_guest_jwt(request):
         return web.json_response({"allow_guest_jwt": False})
 
 
-@routes.put("/usgromana/api/settings/guest-jwt")
+@routes.put("/mss-login/api/settings/guest-jwt")
 async def api_put_guest_jwt(request):
     """Update allow_guest_jwt (Admin only)."""
     if not is_admin(request):
@@ -58,7 +58,7 @@ async def api_put_guest_jwt(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-@routes.get("/usgromana/api/settings/ntfy")
+@routes.get("/mss-login/api/settings/ntfy")
 async def api_get_ntfy_settings(request):
     """Return ntfy config (topic, enabled_events). Authenticated; read available to all."""
     token = jwt_auth.get_token_from_request(request)
@@ -72,7 +72,7 @@ async def api_get_ntfy_settings(request):
     })
 
 
-@routes.put("/usgromana/api/settings/ntfy")
+@routes.put("/mss-login/api/settings/ntfy")
 async def api_put_ntfy_settings(request):
     """Update ntfy config (Admin only)."""
     if not is_admin(request):
@@ -89,7 +89,7 @@ async def api_put_ntfy_settings(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-@routes.get("/usgromana/api/admin/consoles")
+@routes.get("/mss-login/api/admin/consoles")
 async def api_admin_consoles_list(request):
     """Return list of usernames that have console log entries (Admin only)."""
     if not is_admin(request):
@@ -98,7 +98,7 @@ async def api_admin_consoles_list(request):
     return web.json_response({"users": users})
 
 
-@routes.get("/usgromana/api/admin/consoles/{username}")
+@routes.get("/mss-login/api/admin/consoles/{username}")
 async def api_admin_consoles_user(request):
     """Return console log lines for the given user (Admin only)."""
     if not is_admin(request):
@@ -108,7 +108,7 @@ async def api_admin_consoles_user(request):
     return web.json_response({"username": username, "lines": lines})
 
 
-@routes.get("/usgromana/api/groups")
+@routes.get("/mss-login/api/groups")
 async def api_groups(request):
     default_cfg = load_default_groups()
     current = load_json_file(GROUPS_CONFIG_FILE, default_cfg)
@@ -124,7 +124,7 @@ async def api_groups(request):
                     current[role][key] = val
     return web.json_response({"groups": current})
 
-@routes.put("/usgromana/api/groups")
+@routes.put("/mss-login/api/groups")
 async def api_update_groups(request):
     if not is_admin(request): return web.json_response({"error": "Admin only"}, status=403)
     try:
@@ -141,14 +141,14 @@ async def api_update_groups(request):
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
 
-@routes.get("/usgromana/api/users")
+@routes.get("/mss-login/api/users")
 async def api_users(request):
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     users_list = users_db.list_users_for_admin()
     return web.json_response({"users": users_list})
 
-@routes.put("/usgromana/api/users/{target_user}")
+@routes.put("/mss-login/api/users/{target_user}")
 async def api_update_user_route(request):
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
@@ -167,7 +167,7 @@ async def api_update_user_route(request):
         return web.json_response({"status": "ok"})
     return web.Response(status=404)
 
-@routes.delete("/usgromana/api/users/{target_user}")
+@routes.delete("/mss-login/api/users/{target_user}")
 async def api_delete_user_route(request):
     if not is_admin(request): return web.json_response({"error": "Admin only"}, status=403)
     target = request.match_info["target_user"]
@@ -178,7 +178,7 @@ async def api_delete_user_route(request):
     if result is False: return web.Response(status=404)
     return web.json_response({"status": "ok"})
 
-@routes.get("/usgromana/api/users-db-config")
+@routes.get("/mss-login/api/users-db-config")
 async def api_get_users_db_config(request):
     """Return current users DB backend and paths (admin only). Password never returned."""
     if not is_admin(request):
@@ -188,13 +188,13 @@ async def api_get_users_db_config(request):
         "sqlite_path": USERS_DB_CONFIG.get("sqlite_path", "users/users.db"),
         "postgres_host": USERS_DB_CONFIG.get("postgres_host", "localhost"),
         "postgres_port": USERS_DB_CONFIG.get("postgres_port", 5432),
-        "postgres_database": USERS_DB_CONFIG.get("postgres_database", "usgromana"),
-        "postgres_user": USERS_DB_CONFIG.get("postgres_user", "usgromana"),
+        "postgres_database": USERS_DB_CONFIG.get("postgres_database", "mss_login"),
+        "postgres_user": USERS_DB_CONFIG.get("postgres_user", "mss_login"),
     }
     return web.json_response(out)
 
 
-@routes.put("/usgromana/api/users-db-config")
+@routes.put("/mss-login/api/users-db-config")
 async def api_put_users_db_config(request):
     """Update users DB config (admin only). Restart required for new backend to take effect. Password from env only."""
     if not is_admin(request):
@@ -214,8 +214,8 @@ async def api_put_users_db_config(request):
         udb["sqlite_path"] = data.get("sqlite_path", udb.get("sqlite_path", "users/users.db"))
         udb["postgres_host"] = data.get("postgres_host", udb.get("postgres_host", "localhost"))
         udb["postgres_port"] = data.get("postgres_port", udb.get("postgres_port", 5432))
-        udb["postgres_database"] = data.get("postgres_database", udb.get("postgres_database", "usgromana"))
-        udb["postgres_user"] = data.get("postgres_user", udb.get("postgres_user", "usgromana"))
+        udb["postgres_database"] = data.get("postgres_database", udb.get("postgres_database", "mss_login"))
+        udb["postgres_user"] = data.get("postgres_user", udb.get("postgres_user", "mss_login"))
         cfg["users_db"] = udb
         save_json_file(CONFIG_FILE_PATH, cfg)
         reload_users_db_config()
@@ -224,7 +224,7 @@ async def api_put_users_db_config(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-@routes.get("/usgromana/api/token-storage-config")
+@routes.get("/mss-login/api/token-storage-config")
 async def api_get_token_storage_config(request):
     """Return current API token store backend and non-secret options (admin only)."""
     if not is_admin(request):
@@ -237,13 +237,13 @@ async def api_get_token_storage_config(request):
         "sqlite_path": store_cfg.get("sqlite_path", "users/api_tokens.db"),
         "postgres_host": store_cfg.get("postgres_host", "localhost"),
         "postgres_port": store_cfg.get("postgres_port", 5432),
-        "postgres_database": store_cfg.get("postgres_database", "usgromana"),
-        "postgres_user": store_cfg.get("postgres_user", "usgromana"),
+        "postgres_database": store_cfg.get("postgres_database", "mss_login"),
+        "postgres_user": store_cfg.get("postgres_user", "mss_login"),
     }
     return web.json_response(out)
 
 
-@routes.put("/usgromana/api/token-storage-config")
+@routes.put("/mss-login/api/token-storage-config")
 async def api_put_token_storage_config(request):
     """Update API token store config (admin only). Password from env API_TOKEN_DB_PASSWORD only."""
     if not is_admin(request):
@@ -262,8 +262,8 @@ async def api_put_token_storage_config(request):
         api_cfg["sqlite_path"] = data.get("sqlite_path", api_cfg.get("sqlite_path", "users/api_tokens.db"))
         api_cfg["postgres_host"] = data.get("postgres_host", api_cfg.get("postgres_host", "localhost"))
         api_cfg["postgres_port"] = data.get("postgres_port", api_cfg.get("postgres_port", 5432))
-        api_cfg["postgres_database"] = data.get("postgres_database", api_cfg.get("postgres_database", "usgromana"))
-        api_cfg["postgres_user"] = data.get("postgres_user", api_cfg.get("postgres_user", "usgromana"))
+        api_cfg["postgres_database"] = data.get("postgres_database", api_cfg.get("postgres_database", "mss_login"))
+        api_cfg["postgres_user"] = data.get("postgres_user", api_cfg.get("postgres_user", "mss_login"))
         if "postgres_password" in api_cfg:
             del api_cfg["postgres_password"]
         cfg["api_token_store"] = api_cfg
@@ -275,7 +275,7 @@ async def api_put_token_storage_config(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-@routes.get("/usgromana/api/ip-lists")
+@routes.get("/mss-login/api/ip-lists")
 async def api_ip_lists(request):
     whitelist, blacklist = ip_filter.load_filter_list()
     return web.json_response({
@@ -283,7 +283,7 @@ async def api_ip_lists(request):
         "blacklist": [str(ip) for ip in (blacklist or [])]
     })
 
-@routes.put("/usgromana/api/ip-lists")
+@routes.put("/mss-login/api/ip-lists")
 async def api_update_ip_lists(request):
     if not is_admin(request): 
         return web.json_response({"error": "Admin only"}, status=403)
@@ -334,7 +334,7 @@ async def api_update_ip_lists(request):
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
 
-@routes.get("/usgromana/api/available-model-folders")
+@routes.get("/mss-login/api/available-model-folders")
 async def api_available_model_folders(request):
     """List ComfyUI model folder names (for admin shared-items UI). Admin only."""
     if not is_admin(request):
@@ -347,7 +347,7 @@ async def api_available_model_folders(request):
     return web.json_response({"folders": folders})
 
 
-@routes.get("/usgromana/api/available-models/{folder}")
+@routes.get("/mss-login/api/available-models/{folder}")
 async def api_available_models_in_folder(request):
     """List model/item names in a folder (for admin shared-items UI). Admin only."""
     if not is_admin(request):
@@ -361,7 +361,7 @@ async def api_available_models_in_folder(request):
     return web.json_response({"folder": folder, "items": names})
 
 
-@routes.get("/usgromana/api/users/{username}/shared-items")
+@routes.get("/mss-login/api/users/{username}/shared-items")
 async def api_get_shared_items(request):
     """List shared ComfyUI items (models, LoRAs, VAEs, embeddings) for a user (admin only)."""
     if not is_admin(request):
@@ -375,7 +375,7 @@ async def api_get_shared_items(request):
     return web.json_response({"username": username, "items": items})
 
 
-@routes.post("/usgromana/api/users/{username}/shared-items")
+@routes.post("/mss-login/api/users/{username}/shared-items")
 async def api_add_shared_item(request):
     """Add one shared item for a user. Body: { "folder": "checkpoints", "item_name": "model.safetensors" } (admin only)."""
     if not is_admin(request):
@@ -398,7 +398,7 @@ async def api_add_shared_item(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-@routes.delete("/usgromana/api/users/{username}/shared-items")
+@routes.delete("/mss-login/api/users/{username}/shared-items")
 async def api_remove_shared_item(request):
     """Remove one shared item for a user. Body: { "folder": "...", "item_name": "..." } (admin only)."""
     if not is_admin(request):
@@ -421,7 +421,7 @@ async def api_remove_shared_item(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-@routes.post("/usgromana/api/nsfw-management")
+@routes.post("/mss-login/api/nsfw-management")
 async def api_nsfw_management(request):
     """Admin-only NSFW management endpoints."""
     if not is_admin(request):
@@ -431,7 +431,7 @@ async def api_nsfw_management(request):
         data = await request.json()
         action = data.get("action", "").strip()
         
-        print(f"[Usgromana] NSFW management action: {action}")
+        print(f"[mss_login] NSFW management action: {action}")
         
         from ..utils.sfw_intercept.nsfw_guard import (
             scan_all_images_in_output_directory,
@@ -445,13 +445,13 @@ async def api_nsfw_management(request):
         
         if action == "scan_all":
             force_rescan = bool(data.get("force_rescan", False))
-            print(f"[Usgromana] Starting scan_all (force_rescan={force_rescan}) in executor...")
+            print(f"[mss_login] Starting scan_all (force_rescan={force_rescan}) in executor...")
             result = await loop.run_in_executor(
                 None, 
                 scan_all_images_in_output_directory, 
                 force_rescan
             )
-            print(f"[Usgromana] scan_all completed: {result}")
+            print(f"[mss_login] scan_all completed: {result}")
             return web.json_response({
                 "status": "ok",
                 "message": f"Scanned {result['scanned']} images. Found {result['nsfw_found']} NSFW images.",
@@ -459,12 +459,12 @@ async def api_nsfw_management(request):
             })
         
         elif action == "fix_incorrect":
-            print(f"[Usgromana] Starting fix_incorrect in executor...")
+            print(f"[mss_login] Starting fix_incorrect in executor...")
             fixed_count = await loop.run_in_executor(
                 None,
                 fix_incorrectly_cached_tags
             )
-            print(f"[Usgromana] fix_incorrect completed: {fixed_count} fixed")
+            print(f"[mss_login] fix_incorrect completed: {fixed_count} fixed")
             return web.json_response({
                 "status": "ok",
                 "message": f"Fixed {fixed_count} incorrectly cached images.",
@@ -472,12 +472,12 @@ async def api_nsfw_management(request):
             })
         
         elif action == "clear_all_tags":
-            print(f"[Usgromana] Starting clear_all_tags in executor...")
+            print(f"[mss_login] Starting clear_all_tags in executor...")
             cleared_count = await loop.run_in_executor(
                 None,
                 clear_all_nsfw_tags
             )
-            print(f"[Usgromana] clear_all_tags completed: {cleared_count} cleared")
+            print(f"[mss_login] clear_all_tags completed: {cleared_count} cleared")
             return web.json_response({
                 "status": "ok",
                 "message": f"Cleared NSFW tags from {cleared_count} images.",
@@ -489,6 +489,6 @@ async def api_nsfw_management(request):
     
     except Exception as e:
         import traceback
-        print(f"[Usgromana] NSFW management error: {e}")
+        print(f"[mss_login] NSFW management error: {e}")
         traceback.print_exc()
         return web.json_response({"error": str(e)}, status=500)

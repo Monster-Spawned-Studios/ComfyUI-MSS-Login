@@ -20,7 +20,7 @@ except ImportError:
     Fernet = None
 
 # Fixed info string for key derivation (do not change after deployment or existing ciphertexts break)
-HKDF_INFO = b"usgromana-users-totp-v1"
+HKDF_INFO = b"mss_login-users-totp-v1"
 
 
 def _derive_key(secret_key: str) -> bytes:

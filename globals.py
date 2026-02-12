@@ -1,10 +1,26 @@
 # --- START OF FILE globals.py ---
+import os
 from server import PromptServer
-from .constants import *
+from .constants import (
+    SECRET_KEY,
+    USERS_DB_CONFIG,
+    LEGACY_USERS_JSON_PATH,
+    LOG_FILE,
+    LOG_LEVELS,
+    GROUPS_CONFIG_FILE,
+    API_TOKEN_STORE_CONFIG,
+    TOKEN_EXPIRE_MINUTES,
+    TOKEN_ALGORITHM,
+    WHITELIST_FILE,
+    BLACKLIST_FILE,
+    BLACKLIST_AFTER_ATTEMPTS,
+    EPHEMERAL_SECRET_KEY_PATH,
+    _load_ephemeral_key,
+)
 
 # Import Utils
 from .utils.access_control import AccessControl
-from .utils.users_db import UsersDB
+from .utils.users_db import UsersDB, migrate_totp_to_new_key
 from .utils.jwt_auth import JWTAuth
 from .utils.ip_filter import IPFilter
 from .utils.timeout import Timeout
@@ -13,7 +29,7 @@ from .utils.sanitizer import Sanitizer
 
 import contextvars
 
-current_username_var = contextvars.ContextVar("usgromana_current_user", default=None)
+current_username_var = contextvars.ContextVar("mss_login_current_user", default=None)
 
 instance = PromptServer.instance
 app = instance.app
@@ -21,6 +37,18 @@ routes = instance.routes
 
 # 1. Logger & DB (credentials in SQLite/PostgreSQL only; no plain-text JSON)
 logger = Logger(LOG_FILE, LOG_LEVELS)
+
+# If SECRET_KEY is now set from env and ephemeral file exists, migrate TOTP to new key then remove file
+_old_key = _load_ephemeral_key()
+if _old_key and _old_key != SECRET_KEY:
+    if migrate_totp_to_new_key(USERS_DB_CONFIG, _old_key, SECRET_KEY):
+        try:
+            if os.path.isfile(EPHEMERAL_SECRET_KEY_PATH):
+                os.remove(EPHEMERAL_SECRET_KEY_PATH)
+        except Exception:
+            pass
+        logger.info("[mss_login] Migrated TOTP secrets to new SECRET_KEY; ephemeral key file removed.")
+
 users_db = UsersDB(USERS_DB_CONFIG, SECRET_KEY, LEGACY_USERS_JSON_PATH)
 
 # 2. Access Control (Depends on DB + Server + Config Path; API token store for Bearer resolution)

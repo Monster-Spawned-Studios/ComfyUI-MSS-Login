@@ -1,5 +1,6 @@
 let failedAttempts = 0;
 let timeoutEndTime = null;
+let mfaTempToken = null;
 
 Object.defineProperty(String.prototype, 'capitalize', {
   value: function() {
@@ -272,7 +273,53 @@ async function login(event) {
       const result = await response.json();
 
       if (response.ok) {
-        // backend should return { message, token } (and optionally jwt_token)
+        // MFA required: show MFA verify UI
+        if (result.mfa_required && result.mfa_temp_token) {
+          mfaTempToken = result.mfa_temp_token;
+          document.getElementById("login-form").style.display = "none";
+          document.getElementById("mfa-verify-section").style.display = "block";
+          document.getElementById("mfa-setup-section").style.display = "none";
+          addToast(result.message || "Enter your verification code", "success");
+          document.getElementById("mfa-code").focus();
+          button.disabled = false;
+          button.textContent = "Login";
+          return;
+        }
+        // MFA setup required: fetch setup data and show QR
+        if (result.mfa_setup_required && result.mfa_temp_token) {
+          mfaTempToken = result.mfa_temp_token;
+          const setupResp = await fetch("/mss_login/api/mfa/setup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mfa_temp_token: mfaTempToken }),
+          });
+          const setupData = await setupResp.json();
+          if (!setupResp.ok) {
+            addToast(setupData.error || "MFA setup failed", "error");
+            button.disabled = false;
+            button.textContent = "Login";
+            return;
+          }
+          document.getElementById("login-form").style.display = "none";
+          document.getElementById("mfa-setup-section").style.display = "block";
+          document.getElementById("mfa-verify-section").style.display = "none";
+          const qrContainer = document.getElementById("mfa-qr-container");
+          qrContainer.innerHTML = "";
+          if (typeof QRCode !== "undefined") {
+            new QRCode(qrContainer, { text: setupData.provisioning_uri, width: 200, height: 200 });
+          } else {
+            qrContainer.innerHTML = '<p><a href="' + setupData.provisioning_uri + '" target="_blank">Open in authenticator</a></p>';
+          }
+          const backupEl = document.getElementById("mfa-backup-display");
+          document.getElementById("mfa-backup-code").textContent = setupData.backup_code || "";
+          backupEl.style.display = setupData.backup_code ? "block" : "none";
+          addToast(result.message || "Scan QR and enter code", "success");
+          document.getElementById("mfa-setup-code").focus();
+          button.disabled = false;
+          button.textContent = "Login";
+          return;
+        }
+        // Normal login: backend returned { message, token } (and optionally jwt_token)
         const token = result.token || result.jwt_token;
         if (!token) {
           addToast("Login succeeded but no token was returned", "error");
@@ -426,7 +473,7 @@ async function generate(event) {
       button.disabled = true;
       button.textContent = "Sending...";
 
-      const response = await fetch("/usgromana/generate_token", {
+      const response = await fetch("/mss_login/generate_token", {
         method: "POST",
         body: formData,
       });
@@ -434,12 +481,22 @@ async function generate(event) {
       const result = await response.json();
 
       if (response.ok) {
-        addToast(result.message, "success");
-        updateFailedAttempts(response.status, result, "generate");
-
-        form.reset();
-
-        alert("API Token:\n"+result.jwt_token+"\n\nPlease copy this token and store it in a safe place. You will not be able to retrieve it again.");
+        if (result.mfa_required && result.mfa_temp_token) {
+          mfaTempToken = result.mfa_temp_token;
+          document.getElementById("mfa-expire-hours").value = result.expire_hours || 720;
+          document.getElementById("generate-form").style.display = "none";
+          const mfaSection = document.getElementById("mfa-verify-section");
+          if (mfaSection) mfaSection.style.display = "block";
+          addToast(result.message || "Enter your verification code", "success");
+          document.getElementById("mfa-code").focus();
+        } else if (result.jwt_token) {
+          addToast(result.message, "success");
+          updateFailedAttempts(response.status, result, "generate");
+          form.reset();
+          alert("API Token:\n" + result.jwt_token + "\n\nPlease copy this token and store it in a safe place. You will not be able to retrieve it again.");
+        } else {
+          addToast(result.message || "Token created", "success");
+        }
         button.textContent = "Generate";
         button.disabled = false;
       } else {
@@ -456,6 +513,166 @@ async function generate(event) {
       button.disabled = false;
       button.textContent = "Generate";
     }
+  }
+}
+
+async function generateMfaVerify(event) {
+  event.preventDefault();
+  const code = (document.getElementById("mfa-code").value || "").replace(/\s/g, "");
+  const backupCode = (document.getElementById("mfa-backup").value || "").replace(/\s/g, "").replace(/-/g, "").toUpperCase();
+  if (!mfaTempToken) {
+    addToast("Session expired. Please try again.", "error");
+    backToGenerateForm();
+    return;
+  }
+  if (!backupCode && !code) {
+    addToast("Enter verification code or backup code", "error");
+    return;
+  }
+  const formData = new FormData();
+  formData.append("mfa_temp_token", mfaTempToken);
+  formData.append("expire_hours", document.getElementById("mfa-expire-hours").value || "720");
+  if (backupCode) formData.append("backup_code", backupCode);
+  else formData.append("code", code);
+  const button = document.querySelector("#mfa-verify-form button[type='submit']");
+  button.disabled = true;
+  button.textContent = "Verifying...";
+  try {
+    const response = await fetch("/mss_login/generate_token", {
+      method: "POST",
+      body: formData,
+    });
+    const result = await response.json();
+    if (response.ok && result.jwt_token) {
+      addToast(result.message, "success");
+      alert("API Token:\n" + result.jwt_token + "\n\nPlease copy this token and store it in a safe place. You will not be able to retrieve it again.");
+      backToGenerateForm();
+      document.getElementById("generate-form").reset();
+    } else {
+      addToast(result.error || "Invalid code", "error");
+    }
+  } catch (err) {
+    addToast("Error: " + err.message, "error");
+  }
+  button.disabled = false;
+  button.textContent = "Verify and Generate";
+}
+
+function backToGenerateForm() {
+  const form = document.getElementById("generate-form");
+  const mfaSection = document.getElementById("mfa-verify-section");
+  if (form) form.style.display = "block";
+  if (mfaSection) mfaSection.style.display = "none";
+  mfaTempToken = null;
+  const mfaCode = document.getElementById("mfa-code");
+  const mfaBackup = document.getElementById("mfa-backup");
+  if (mfaCode) mfaCode.value = "";
+  if (mfaBackup) mfaBackup.value = "";
+}
+
+function backToLogin() {
+  document.getElementById("login-form").style.display = "block";
+  document.getElementById("mfa-verify-section").style.display = "none";
+  document.getElementById("mfa-setup-section").style.display = "none";
+  mfaTempToken = null;
+  document.getElementById("mfa-code").value = "";
+  document.getElementById("mfa-backup").value = "";
+  document.getElementById("mfa-setup-code").value = "";
+}
+
+async function submitMfaVerify(event) {
+  event.preventDefault();
+  const code = (document.getElementById("mfa-code").value || "").replace(/\s/g, "");
+  const backupCode = (document.getElementById("mfa-backup").value || "").replace(/\s/g, "").replace(/-/g, "").toUpperCase();
+  if (!mfaTempToken) {
+    addToast("Session expired. Please log in again.", "error");
+    backToLogin();
+    return;
+  }
+  const body = { mfa_temp_token: mfaTempToken };
+  if (backupCode) body.backup_code = backupCode;
+  else if (code) body.code = code;
+  else {
+    addToast("Enter verification code or backup code", "error");
+    return;
+  }
+  const button = document.querySelector("#mfa-verify-form button[type='submit']");
+  button.disabled = true;
+  button.textContent = "Verifying...";
+  try {
+    const response = await fetch("/mss_login/api/mfa/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json();
+    if (response.ok && result.jwt_token) {
+      let cookieString = `jwt_token=${result.jwt_token}; path=/; HttpOnly; SameSite=Strict`;
+      if (window.location.protocol === "https:") cookieString += "; Secure";
+      document.cookie = cookieString;
+      addToast(result.message || "Login successful", "success");
+      window.location.href = "/";
+    } else {
+      addToast(result.error || "Invalid code", "error");
+      button.disabled = false;
+      button.textContent = "Verify";
+    }
+  } catch (err) {
+    addToast("Error: " + err.message, "error");
+    button.disabled = false;
+    button.textContent = "Verify";
+  }
+}
+
+async function submitMfaSetup(event) {
+  event.preventDefault();
+  const code = (document.getElementById("mfa-setup-code").value || "").replace(/\s/g, "");
+  if (!code || code.length !== 6) {
+    addToast("Enter a 6-digit code from your authenticator app", "error");
+    return;
+  }
+  if (!mfaTempToken) {
+    addToast("Session expired. Please log in again.", "error");
+    backToLogin();
+    return;
+  }
+  const button = document.querySelector("#mfa-setup-form button[type='submit']");
+  button.disabled = true;
+  button.textContent = "Verifying...";
+  try {
+    const verifySetupResp = await fetch("/mss_login/api/mfa/verify-setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mfa_temp_token: mfaTempToken, code }),
+    });
+    const verifySetupData = await verifySetupResp.json();
+    if (!verifySetupResp.ok) {
+      addToast(verifySetupData.error || "Invalid code", "error");
+      button.disabled = false;
+      button.textContent = "Complete Setup";
+      return;
+    }
+    const verifyResp = await fetch("/mss_login/api/mfa/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mfa_temp_token: mfaTempToken, code }),
+    });
+    const verifyData = await verifyResp.json();
+    if (verifyResp.ok && verifyData.jwt_token) {
+      let cookieString = `jwt_token=${verifyData.jwt_token}; path=/; HttpOnly; SameSite=Strict`;
+      if (window.location.protocol === "https:") cookieString += "; Secure";
+      document.cookie = cookieString;
+      addToast(verifyData.message || "MFA enabled. Login successful.", "success");
+      window.location.href = "/";
+    } else {
+      addToast(verifyData.error || "Verification failed", "error");
+      button.disabled = false;
+      button.textContent = "Complete Setup";
+    }
+  } catch (err) {
+    addToast("Error: " + err.message, "error");
+    button.disabled = false;
+    button.textContent = "Complete Setup";
   }
 }
 

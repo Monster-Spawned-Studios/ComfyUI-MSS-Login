@@ -1,5 +1,5 @@
 """
-Public API for ComfyUI-Usgromana NSFW Guard
+Public API for ComfyUI-mss_login NSFW Guard
 
 This module provides a public interface for other ComfyUI extensions to use
 the NSFW guard functionality for validating user permissions and checking
@@ -8,7 +8,7 @@ NSFW content.
 Example usage in another extension:
 
     try:
-        from ComfyUI_Usgromana.api import (
+        from ComfyUI_mss_login.api import (
             is_sfw_enforced_for_user,
             check_tensor_nsfw,
             check_image_path_nsfw,
@@ -151,7 +151,7 @@ def _try_imports():
         import importlib
         # Try to find the module in sys.modules or by searching
         for module_name in sys.modules:
-            if 'usgromana' in module_name.lower() or 'ComfyUI_Usgromana' in module_name:
+            if 'mss_login' in module_name.lower() or 'ComfyUI_mss_login' in module_name:
                 try:
                     mod = sys.modules[module_name]
                     if hasattr(mod, 'utils'):
@@ -287,7 +287,7 @@ def check_tensor_nsfw(images_tensor, threshold: float = 0.5) -> bool:
         return False  # Fail open
     
     if not TORCH_AVAILABLE or not PIL_AVAILABLE or not NUMPY_AVAILABLE:
-        print("[Usgromana API] Required dependencies (torch, PIL, numpy) not available")
+        print("[mss_login API] Required dependencies (torch, PIL, numpy) not available")
         return False  # Fail open
     
     # Get current user to check if guest
@@ -341,7 +341,7 @@ def check_tensor_nsfw(images_tensor, threshold: float = 0.5) -> bool:
         
         return False
     except Exception as e:
-        print(f"[Usgromana API] Error checking tensor: {e}")
+        print(f"[mss_login API] Error checking tensor: {e}")
         return False  # Fail open on error
 
 
@@ -431,7 +431,7 @@ def check_image_path_nsfw(image_path: str, username: Optional[str] = None) -> bo
                     if label == "nsfw" and score > 0.5:
                         return True
         except Exception as e:
-            print(f"[Usgromana API] Error checking image path: {e}")
+            print(f"[mss_login API] Error checking image path: {e}")
             return False
     
     return False
@@ -459,7 +459,7 @@ def check_pil_image_nsfw(image, threshold: float = 0.5) -> bool:
         return False  # Fail open
     
     if not PIL_AVAILABLE:
-        print("[Usgromana API] PIL (Pillow) not available")
+        print("[mss_login API] PIL (Pillow) not available")
         return False  # Fail open
     
     # Get current user to check if guest
@@ -510,7 +510,7 @@ def check_pil_image_nsfw(image, threshold: float = 0.5) -> bool:
         
         return False
     except Exception as e:
-        print(f"[Usgromana API] Error checking PIL image: {e}")
+        print(f"[mss_login API] Error checking PIL image: {e}")
         return False  # Fail open on error
 
 
@@ -660,7 +660,7 @@ def set_image_nsfw_tag(image_path: str, is_nsfw: bool, score: float = 1.0, label
         _set_nsfw_tag_manual(image_path, is_nsfw, score, label)
         return True
     except Exception as e:
-        print(f"[Usgromana API] Error setting NSFW tag: {e}")
+        print(f"[mss_login API] Error setting NSFW tag: {e}")
         return False
 
 

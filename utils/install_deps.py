@@ -23,16 +23,16 @@ def install_dependencies() -> None:
                 check=False,
             )
             if result.returncode != 0 and result.stderr:
-                print(f"[Usgromana] pip install warning: {result.stderr.strip()}", file=sys.stderr)
+                print(f"[mss_login] pip install warning: {result.stderr.strip()}", file=sys.stderr)
             return result.returncode == 0
         except FileNotFoundError:
-            print("[Usgromana] pip not available; skipping dependency install.", file=sys.stderr)
+            print("[mss_login] pip not available; skipping dependency install.", file=sys.stderr)
             return False
         except subprocess.TimeoutExpired:
-            print("[Usgromana] pip install timed out; dependencies may be incomplete.", file=sys.stderr)
+            print("[mss_login] pip install timed out; dependencies may be incomplete.", file=sys.stderr)
             return False
         except Exception as e:
-            print(f"[Usgromana] Dependency install failed: {e}", file=sys.stderr)
+            print(f"[mss_login] Dependency install failed: {e}", file=sys.stderr)
             return False
 
     req_txt = os.path.join(root, "requirements.txt")

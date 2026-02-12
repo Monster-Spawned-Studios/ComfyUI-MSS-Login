@@ -9,7 +9,7 @@ from ..globals import logger, users_db
 def load_default_groups():
     cfg = load_json_file(DEFAULT_GROUP_CONFIG_PATH, None)
     if cfg is None:
-        logger.error("[Usgromana] Missing default_group_config.json; using built-in fallback!")
+        logger.error("[MSS-Login] Missing default_group_config.json; using built-in fallback!")
         return {
             "admin": { "can_run": True, "can_upload": True, "can_access_manager": True, "can_access_api": True, "can_see_restricted_settings": True, "can_have_api_tokens": True, "can_have_non_expiring_jwt": True },
             "power": { "can_run": True, "can_upload": True, "can_access_manager": True, "can_access_api": True, "can_see_restricted_settings": False, "can_have_api_tokens": True, "can_have_non_expiring_jwt": False },
@@ -43,7 +43,7 @@ def ensure_guest_user():
     try:
         guest_id, guest_rec = users_db.get_user("guest")
     except Exception as e:
-        logger.error(f"[Usgromana] Error checking guest user: {e}")
+        logger.error(f"[mss_login] Error checking guest user: {e}")
         return
 
     if guest_id is not None:
@@ -55,6 +55,6 @@ def ensure_guest_user():
         new_guest_id = str(uuid.uuid4())
         users_db.add_user(new_guest_id, "guest", random_password, False)
         patch_user_group("guest", ["guest"], False)
-        logger.info("[Usgromana] Created default 'guest' user")
+        logger.info("[mss_login] Created default 'guest' user")
     except Exception as e:
-        logger.error(f"[Usgromana] Error creating guest user: {e}")
+        logger.error(f"[mss_login] Error creating guest user: {e}")

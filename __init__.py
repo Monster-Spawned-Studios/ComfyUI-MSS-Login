@@ -13,7 +13,7 @@ if os.path.isfile(_install_deps_path):
         _mod.install_dependencies()
 
 from aiohttp import web
-import folder_paths
+import folder_paths  # pyright: ignore[reportMissingImports]
 from .nodes import *
 from .constants import (
     FORCE_HTTPS,
@@ -29,7 +29,7 @@ from .globals import (
 )
 from .utils import watcher
 from .utils.bootstrap import ensure_groups_config
-from .routes import static, auth, admin, user, workflow_routes, me, mfa
+from .routes import static, auth, admin, user, workflow_routes, me, mfa, recovery
 from .utils.sfw_intercept.reactor_sfw_intercept import _load_reactor_module
 from .utils.sfw_intercept.nsfw_guard import (
     should_block_image_for_current_user,
@@ -85,7 +85,7 @@ async def workflow_interceptor_middleware(request, handler):
     if "prompt" in path and method in ("POST", "PUT"):
         # Let nsfw_guard handle defaulting/guest logic.
         set_latest_prompt_user(username)
-        print(f"[Usgromana::Middleware] PROMPT CAPTURE path={path} user={username!r}")
+        print(f"[MSS-Login::Middleware] PROMPT CAPTURE path={path} user={username!r}")
 
     # --- Case A: /view ---
     if path == "/view" and method == "GET":
@@ -144,7 +144,7 @@ app.middlewares.append(
 # IMPORTANT: run JWT auth BEFORE we try to read request.user in workflow_interceptor
 app.middlewares.append(jwt_auth.create_jwt_middleware(
     public=("/login", "/logout", "/register", "/generate_token"),
-    public_prefixes=("/usgromana", "/usgromana-gallery", "/assets", "/static"),
+    public_prefixes=("/mss-login", "/mss-login-gallery", "/assets", "/static"),
 ))
 
 # Now that jwt_auth can populate request.user, we can safely
@@ -164,7 +164,7 @@ if SEPERATE_USERS:
     access_control.patch_folder_paths()
     access_control.patch_prompt_queue()
 
-app.middlewares.append(access_control.create_usgromana_middleware())
+app.middlewares.append(access_control.create_mss_login_middleware())
 watcher.register(app)
 
 install_node_interceptor()
@@ -186,7 +186,7 @@ except Exception:
         pass  # ComfyUI may handle route registration automatically
 
 print("------------------------------------------")
-print("[Usgromana] Security System Initialized.")
-print("[Usgromana] Workflow Storage Interceptor Active.")
+print("[MSS-Login] Security System Initialized.")
+print("[MSS-Login] Workflow Storage Interceptor Active.")
 print("------------------------------------------")
 # --- END OF FILE __init__.py ---

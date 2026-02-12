@@ -1,12 +1,12 @@
 """
-ComfyUI-usgromana per-user environment helpers.
+ComfyUI-MSS-Login per-user environment helpers.
 
 Responsible for:
 - Resolving the extension root
 - Managing the shared Users/ directory
 - Creating / locating per-user folders (Users/<username>/...)
 - Loading / saving per-user settings JSON
-- Centralizing paths for user_db.json and (renamed) usgromana_settings.js
+- Centralizing paths for user_db.json and (renamed) mss_login_settings.js
 """
 
 import os
@@ -21,7 +21,7 @@ from typing import List
 
 def get_extension_root() -> str:
     """
-    Returns the root directory of the ComfyUI-Usgromana extension.
+    Returns the root directory of the ComfyUI-mss_login extension.
     Assumes this file lives in `<root>/utils/user_env.py`.
     """
     here = os.path.dirname(os.path.abspath(__file__))
@@ -30,7 +30,7 @@ def get_extension_root() -> str:
 
 def get_users_root() -> str:
     """
-    Root folder for all Usgromana user-related files:
+    Root folder for all MSS-Login user-related files:
       <ext_root>/Users/
     """
     root = os.path.join(get_extension_root(), "Users")
@@ -49,12 +49,12 @@ def get_user_db_path() -> str:
 def get_frontend_settings_js_path() -> str:
     """
     Location of the frontend settings JS file (renamed from sentinel_settings.js):
-      <ext_root>/Users/usgromana_settings.js
+      <ext_root>/Users/mss_login_settings.js
 
     This file is still served as a static asset by the backend, but physically
-    lives under Users/ so everything related to Usgromana is in one place.
+    lives under Users/ so everything related to MSS-Login is in one place.
     """
-    return os.path.join(get_users_root(), "usgromana_settings.js")
+    return os.path.join(get_users_root(), "mss_login_settings.js")
 
 
 def get_user_root(username: str) -> str:
@@ -135,11 +135,11 @@ def save_user_settings(username: str, settings: Dict[str, Any]) -> None:
 # Group / global config path helper (optional)
 # -----------------------
 
-def get_groups_config_path(filename: str = "usgromana_groups.json") -> str:
+def get_groups_config_path(filename: str = "mss_login_groups.json") -> str:
     """
     Path helper for the role/group config file.
 
-    If you want to rename sentinel_groups.json to usgromana_groups.json and keep
+    If you want to rename sentinel_groups.json to mss_login_groups.json and keep
     it in the extension root, this gives you a single place to reference it.
     """
     return os.path.join(get_extension_root(), filename)

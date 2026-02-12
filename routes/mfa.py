@@ -5,7 +5,7 @@ from ..globals import routes, users_db, jwt_auth, access_control
 from ..constants import SESSION_TOKEN_STORE_PATH
 from ..utils.session_token_store import get_session_token_store
 from ..utils.user_console_log import append as user_console_append
-from ..utils.mfa_temp_store import create_mfa_temp_token, consume_mfa_temp_token, get_username_for_mfa_temp_token
+from ..utils.mfa_temp_store import consume_mfa_temp_token, get_username_for_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
 from ..utils.ip_filter import get_ip
 
@@ -44,7 +44,7 @@ def _resolve_username_from_token_and_data(request: web.Request, data: dict) -> t
     return None, "Authentication required (JWT or mfa_temp_token)."
 
 
-@routes.post("/usgromana/api/mfa/setup")
+@routes.post("/mss_login/api/mfa/setup")
 async def api_mfa_setup(request: web.Request) -> web.Response:
     """Start MFA setup. Requires JWT (logged-in user) or mfa_temp_token (from login when mfa_setup_required).
     Returns provisioning_uri (for QR) and backup_code (show once)."""
@@ -63,7 +63,7 @@ async def api_mfa_setup(request: web.Request) -> web.Response:
     })
 
 
-@routes.post("/usgromana/api/mfa/verify-setup")
+@routes.post("/mss_login/api/mfa/verify-setup")
 async def api_mfa_verify_setup(request: web.Request) -> web.Response:
     """Verify first TOTP code and enable MFA. Body: { code: "123456" } or { mfa_temp_token, code }."""
     data = await _get_request_data(request)
@@ -76,13 +76,13 @@ async def api_mfa_verify_setup(request: web.Request) -> web.Response:
     if not users_db.mfa_verify_setup(username, code):
         return web.json_response({"error": "Invalid code or setup failed"}, status=400)
     try:
-        send_notification("mfa_enabled", "Usgromana: MFA enabled", f"User {username} enabled MFA from IP: {get_ip(request)}")
+        send_notification("mfa_enabled", "mss_login: MFA enabled", f"User {username} enabled MFA from IP: {get_ip(request)}")
     except Exception:
         pass
     return web.json_response({"message": "MFA enabled successfully"})
 
 
-@routes.post("/usgromana/api/mfa/verify")
+@routes.post("/mss_login/api/mfa/verify")
 async def api_mfa_verify(request: web.Request) -> web.Response:
     """Complete login after password: verify TOTP or backup code, issue JWT. Body: mfa_temp_token, code OR backup_code."""
     from ..globals import logger

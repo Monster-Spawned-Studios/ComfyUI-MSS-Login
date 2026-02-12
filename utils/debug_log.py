@@ -19,6 +19,6 @@ def debug_write(payload: dict) -> None:
         with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
             f.write(line + "\n")
         if DEBUG_MODE_FROM_ENV:
-            print(f"[Usgromana::DEBUG] {line}", flush=True)
+            print(f"[mss_login::DEBUG] {line}", flush=True)
     except Exception:
         pass

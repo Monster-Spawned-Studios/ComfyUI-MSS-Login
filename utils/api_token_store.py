@@ -23,7 +23,7 @@ except ImportError:
             base = os.path.expanduser("~/Library/Application Support")
         else:
             base = os.environ.get("XDG_DATA_HOME", "") or os.path.expanduser("~/.local/share")
-        return os.path.join(base, "Usgromana", "api_tokens.db")
+        return os.path.join(base, "mss_login", "api_tokens.db")
 
 # Default local-network CIDRs (used by remote_api_guard; defined here for reference only)
 DEFAULT_LOCAL_NETWORK_CIDRS = [
@@ -312,8 +312,8 @@ def get_api_token_store(config: Optional[dict] = None):
     elif backend == "postgresql":
         host = store_cfg.get("postgres_host", "localhost")
         port = int(store_cfg.get("postgres_port", 5432))
-        database = store_cfg.get("postgres_database", "usgromana")
-        user = store_cfg.get("postgres_user", "usgromana")
+        database = store_cfg.get("postgres_database", "mss_login")
+        user = store_cfg.get("postgres_user", "mss_login")
         password = (os.getenv("API_TOKEN_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "").strip()
         _api_token_store_instance = _get_postgres_store(host, port, database, user, password)
     else:

@@ -39,8 +39,12 @@ TOKEN_ALGORITHM = "HS256"
 TOKEN_EXPIRE_MINUTES = 60 * config.get("access_token_expiration_hours", 12)
 MAX_TOKEN_EXPIRE_MINUTES = 60 * config.get("max_access_token_expiration_hours", 8760)
 
-USERS_FILE = os.path.join(EXT_PATH, config.get("users_db", "users_db.json"))
-LOG_FILE = os.path.join(EXT_PATH, config.get("log", "Usgromana.log"))
+_users_db_cfg = config.get("users_db", "users_db.json")
+if isinstance(_users_db_cfg, dict):
+    USERS_FILE = os.path.join(EXT_PATH, _users_db_cfg.get("sqlite_path", "users/users.db"))
+else:
+    USERS_FILE = os.path.join(EXT_PATH, _users_db_cfg)
+LOG_FILE = os.path.join(EXT_PATH, config.get("log", "mss_login.log"))
 LOG_LEVELS = config.get("log_levels", ["INFO"])
 
 WHITELIST = os.path.join(EXT_PATH, config.get("whitelist", "whitelist.txt"))
@@ -55,7 +59,7 @@ SEPERATE_USERS = config.get("seperate_users", False)
 
 MANAGER_ADMIN_ONLY = config.get("manager_admin_only", False)
 
-WEB_DIR = os.path.join(EXT_PATH, "usgromana-web")
+WEB_DIR = os.path.join(EXT_PATH, "mss_login-web")
 HTML_DIR = WEB_DIR
 CSS_DIR = os.path.join(WEB_DIR, "css")
 JS_DIR = os.path.join(WEB_DIR, "js")

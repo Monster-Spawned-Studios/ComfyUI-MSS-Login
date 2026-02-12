@@ -9,12 +9,12 @@ for directory in [CSS_DIR, JS_DIR, ASSETS_DIR, HTML_DIR]:
     if not os.path.exists(directory):
         try:
             os.makedirs(directory, exist_ok=True)
-            print(f"[Usgromana] Created missing directory: {directory}")
+            print(f"[MSS-Login] Created missing directory: {directory}")
         except Exception as e:
-            print(f"[Usgromana] Error creating directory {directory}: {e}")
+            print(f"[MSS-Login] Error creating directory {directory}: {e}")
 
 # Register static routes
 # (aiohttp will crash if the path doesn't exist on disk, hence the loop above)
-routes.static("/usgromana/css", CSS_DIR)
-routes.static("/usgromana/js", JS_DIR)
-routes.static("/usgromana/assets", ASSETS_DIR)
+routes.static("/mss-login/css", CSS_DIR)
+routes.static("/mss-login/js", JS_DIR)
+routes.static("/mss-login/assets", ASSETS_DIR)

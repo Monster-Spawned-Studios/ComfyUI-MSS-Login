@@ -7,34 +7,34 @@
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#05060a" media="(prefers-color-scheme: dark)">
 
-    <title>ComfyUI Usgromana - Login</title>
+    <title>ComfyUI mss_login - Login</title>
 
-    <link rel="icon" href="/usgromana/assets/light_icon.ico" type="image/x-icon">
+    <link rel="icon" href="/mss_login/assets/light_icon.ico" type="image/x-icon">
 
     <!-- Light mode favicon -->
     <link rel="icon" type="image/x-icon"
-        href="/usgromana/assets/light_icon.ico"
+        href="/mss_login/assets/light_icon.ico"
         media="(prefers-color-scheme: light)">
 
     <!-- Dark mode favicon -->
     <link rel="icon" type="image/x-icon"
-        href="/usgromana/assets/dark_icon.ico"
+        href="/mss_login/assets/dark_icon.ico"
         media="(prefers-color-scheme: dark)">
 
-    <link rel="stylesheet" type="text/css" href="/usgromana/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="/mss_login/css/styles.css">
 </head>
 
 <body>
     <div class="container">
         <picture>
             <!-- Dark mode neon logo -->
-            <source srcset="/usgromana/assets/dark_logo_transparent.png"
+            <source srcset="/mss_login/assets/dark_logo_transparent.png"
                     media="(prefers-color-scheme: dark)">
             <!-- Light mode metallic logo -->
-            <source srcset="/usgromana/assets/light_logo_transparent.png"
+            <source srcset="/mss_login/assets/light_logo_transparent.png"
                     media="(prefers-color-scheme: light)">
             <img class="logo"
-                src="/usgromana/assets/logo_transparent.png"
+                src="/mss_login/assets/logo_transparent.png"
                 alt="USG Logo">
         </picture>
         <h1 class="title login">Login</h1>
@@ -48,7 +48,7 @@
                 <input type="password" id="password" name="password" required>
             </div>
             <div class="form-field">
-                <a href="/usgromana/generate_token">Get API Token</a>
+                <a href="/mss_login/generate_token">Get API Token</a>
             </div>
             <div class="form-field">
                 <a href="/register">Register a New User</a>
@@ -64,20 +64,56 @@
             <input type="hidden" id="guest_login_flag" name="guest_login" value="false">
             <!-- Version info -->
             <div>
-                <p class="version-info",
-                    style="margin-top:1rem;
-                    font-size:0.9rem;
-                    color: #888888;
-                    text-align:center;
-                    "
-                    >
-                ComfyUI Usgromana - v1.8.1</p>
+                <p class="version-info" style="margin-top:1rem; font-size:0.9rem; color: #888888; text-align:center;">
+                ComfyUI mss_login - v1.8.1</p>
             </div>
         </form>
+
+        <!-- MFA Verify (shown when mfa_required) -->
+        <div id="mfa-verify-section" style="display:none;">
+            <h2 class="title">Two-Factor Authentication</h2>
+            <p>Enter the 6-digit code from your authenticator app (e.g. Google Authenticator).</p>
+            <form id="mfa-verify-form" onsubmit="submitMfaVerify(event)">
+                <div class="form-field">
+                    <label for="mfa-code">Verification code:</label>
+                    <input type="text" id="mfa-code" name="code" maxlength="8" placeholder="000000" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9 ]*">
+                </div>
+                <div class="form-field">
+                    <label for="mfa-backup">Or use backup code:</label>
+                    <input type="text" id="mfa-backup" name="backup_code" maxlength="12" placeholder="XXXX-XXXX" autocomplete="off">
+                </div>
+                <div class="form-field">
+                    <button class="btn" type="submit">Verify</button>
+                    <button class="btn" type="button" onclick="backToLogin()">Back</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- MFA Setup (shown when mfa_setup_required) -->
+        <div id="mfa-setup-section" style="display:none;">
+            <h2 class="title">Set Up Two-Factor Authentication</h2>
+            <p>Scan the QR code with Google Authenticator (or any TOTP app), then enter the 6-digit code.</p>
+            <div id="mfa-qr-container" class="form-field" style="margin:1rem 0;"></div>
+            <div id="mfa-backup-display" class="form-field" style="display:none;">
+                <strong>Backup code (save this):</strong> <code id="mfa-backup-code"></code>
+            </div>
+            <form id="mfa-setup-form" onsubmit="submitMfaSetup(event)">
+                <div class="form-field">
+                    <label for="mfa-setup-code">Enter 6-digit code from app:</label>
+                    <input type="text" id="mfa-setup-code" name="code" maxlength="8" placeholder="000000" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9 ]*">
+                </div>
+                <div class="form-field">
+                    <button class="btn" type="submit">Complete Setup</button>
+                    <button class="btn" type="button" onclick="backToLogin()">Cancel</button>
+                </div>
+            </form>
+        </div>
     </div>
     <div class="toast-container" id="toasts"></div>
 </body>
-<script src="/usgromana/js/auth.js"></script>
+<!-- QRCode.js for MFA setup - generates QR locally (no third-party API) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
+<script src="/mss_login/js/auth.js"></script>
 
 </html>
 

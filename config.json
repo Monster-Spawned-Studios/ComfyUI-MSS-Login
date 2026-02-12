@@ -5,13 +5,13 @@
         "sqlite_path": "users/users.db",
         "postgres_host": "localhost",
         "postgres_port": 5432,
-        "postgres_database": "usgromana",
-        "postgres_user": "usgromana"
+        "postgres_database": "mss_login",
+        "postgres_user": "mss_login"
     },
     "legacy_users_json_path": "users/users.json",
     "access_token_expiration_hours": 24,
     "max_access_token_expiration_hours": 8760,
-    "log": "usgromana.log",
+    "log": "mss_login.log",
     "log_levels": ["INFO"],
     "whitelist": "security/whitelist.txt",
     "blacklist": "security/blacklist.txt",
@@ -26,8 +26,8 @@
         "sqlite_path": "users/api_tokens.db",
         "postgres_host": "localhost",
         "postgres_port": 5432,
-        "postgres_database": "usgromana",
-        "postgres_user": "usgromana"
+        "postgres_database": "mss_login",
+        "postgres_user": "mss_login"
     },
     "require_auth_for_remote_api": true,
     "local_network_cidrs": [],

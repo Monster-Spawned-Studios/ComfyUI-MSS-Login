@@ -113,17 +113,17 @@ class AccessControl:
         except Exception:
             return "guest", {}, None
 
-    def create_usgromana_middleware(self):
+    def create_mss_login_middleware(self):
         @web.middleware
         async def middleware(request: web.Request, handler):
             path = request.path
             
             # 1. Public Whitelist
-            if (path.startswith(("/login", "/register", "/logout", "/usgromana", "/usgromana-gallery", "/static", "/favicon", "/ws", "/assets")) or path == "/"):
+            if (path.startswith(("/login", "/register", "/logout", "/mss-login", "/mss-login-gallery", "/static", "/favicon", "/ws", "/assets")) or path == "/"):
                 return await handler(request)
             
             # 2. Core Extensions
-            if path.startswith(("/extensions/core", "/extensions/ComfyUI-Usgromana", "/extensions/Usgromana")):
+            if path.startswith(("/extensions/core", "/extensions/ComfyUI-MSS-Login", "/extensions/MSS-Login")):
                 return await handler(request)
 
             # 3. Resolve User
@@ -137,11 +137,11 @@ class AccessControl:
 
             if is_queue and perms.get("can_run") is False:
                 debug_write({"location": "access_control", "message": "deny_403", "data": {"path": path, "reason": "can_run"}, "hypothesisId": "D"})
-                return web.json_response({"error": "Usgromana: Execution Denied"}, status=403)
+                return web.json_response({"error": "MSS-Login: Execution Denied"}, status=403)
 
             if is_upload and perms.get("can_upload") is False:
                 debug_write({"location": "access_control", "message": "deny_403", "data": {"path": path, "reason": "can_upload"}, "hypothesisId": "D"})
-                return web.json_response({"error": "Usgromana: Upload Denied"}, status=403)
+                return web.json_response({"error": "MSS-Login: Upload Denied"}, status=403)
 
             if is_userdata_workflow and request.method in ("POST", "PUT", "DELETE", "PATCH"):
                 can_modify = perms.get("can_modify_workflows")
@@ -149,7 +149,7 @@ class AccessControl:
                 if role == "admin": can_modify = True
 
                 if not can_modify:
-                    return web.json_response({"error": "Usgromana: Workflow Denied", "code": "WORKFLOW_DENIED", "role": role}, status=403)
+                    return web.json_response({"error": "MSS-Login: Workflow Denied", "code": "WORKFLOW_DENIED", "role": role}, status=403)
 
             for perm_key, blocked_paths in EXTENSION_BLOCK_MAP.items():
                 allow = perms.get(perm_key)
@@ -158,12 +158,12 @@ class AccessControl:
                 if allow is False:
                     for blocked_prefix in blocked_paths:
                         if path.lower().startswith(blocked_prefix.lower()):
-                            return web.Response(status=403, text="Usgromana: Access Denied")
+                            return web.Response(status=403, text="mss_login: Access Denied")
 
             if not is_queue and not is_upload and path.startswith("/api/"):
                 if perms.get("can_access_api") is False:
                     debug_write({"location": "access_control", "message": "deny_403", "data": {"path": path, "reason": "can_access_api"}, "hypothesisId": "D"})
-                    return web.json_response({"error": "Usgromana: API Denied"}, status=403)
+                    return web.json_response({"error": "MSS-Login: API Denied"}, status=403)
 
             return await handler(request)
         return middleware

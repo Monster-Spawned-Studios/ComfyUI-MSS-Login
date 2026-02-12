@@ -1,14 +1,14 @@
-# Usgromana Radial Menu API
+# mss_login Radial Menu API
 
-This API allows ComfyUI extensions to add custom buttons to the Usgromana floating button's radial menu, enabling quick access to extension features.
+This API allows ComfyUI extensions to add custom buttons to the mss_login floating button's radial menu, enabling quick access to extension features.
 
 ## Overview
 
-The Usgromana floating button appears as a draggable button on the screen. When double-clicked, it opens a radial menu with buttons for Settings, Logout, and any registered extension buttons.
+The mss_login floating button appears as a draggable button on the screen. When double-clicked, it opens a radial menu with buttons for Settings, Logout, and any registered extension buttons.
 
 ## API Reference
 
-### `window.UsgromanaRadialMenu.register(config)`
+### `window.mss_loginRadialMenu.register(config)`
 
 Registers a new button in the radial menu.
 
@@ -28,19 +28,19 @@ Registers a new button in the radial menu.
 
 **Example:**
 ```javascript
-window.UsgromanaRadialMenu.register({
+window.mss_loginRadialMenu.register({
     id: "gallery",
     label: "Gallery",
     icon: "🖼️",
     order: 10,
     onClick: () => {
         // Open gallery
-        window.location.href = "/usgromana-gallery";
+        window.location.href = "/mss_login-gallery";
     }
 });
 ```
 
-### `window.UsgromanaRadialMenu.unregister(id)`
+### `window.mss_loginRadialMenu.unregister(id)`
 
 Unregisters a button by ID.
 
@@ -51,16 +51,16 @@ Unregisters a button by ID.
 
 **Example:**
 ```javascript
-window.UsgromanaRadialMenu.unregister("gallery");
+window.mss_loginRadialMenu.unregister("gallery");
 ```
 
-### `window.UsgromanaRadialMenu.getAll()`
+### `window.mss_loginRadialMenu.getAll()`
 
 Gets all registered buttons.
 
 **Returns:** `Array` - Array of button configurations
 
-### `window.UsgromanaRadialMenu.clear()`
+### `window.mss_loginRadialMenu.clear()`
 
 Clears all registered buttons.
 
@@ -74,7 +74,7 @@ app.registerExtension({
     name: "MyExtension.RadialMenu",
     async setup() {
         // Register button when extension loads
-        window.UsgromanaRadialMenu.register({
+        window.mss_loginRadialMenu.register({
             id: "myextension",
             label: "My Extension",
             icon: "🔧",  // Custom emoji icon
@@ -95,21 +95,21 @@ Extensions can use any icon they want. Here are various icon options:
 
 ```javascript
 // Emoji icons (most common and visually appealing)
-window.UsgromanaRadialMenu.register({
+window.mss_loginRadialMenu.register({
     id: "gallery",
     label: "Gallery",
     icon: "🖼️",  // Picture frame emoji
     onClick: () => { /* ... */ }
 });
 
-window.UsgromanaRadialMenu.register({
+window.mss_loginRadialMenu.register({
     id: "analytics",
     label: "Analytics",
     icon: "📊",  // Chart emoji
     onClick: () => { /* ... */ }
 });
 
-window.UsgromanaRadialMenu.register({
+window.mss_loginRadialMenu.register({
     id: "art-generator",
     label: "Art Generator",
     icon: "🎨",  // Artist palette emoji
@@ -117,14 +117,14 @@ window.UsgromanaRadialMenu.register({
 });
 
 // Unicode symbols
-window.UsgromanaRadialMenu.register({
+window.mss_loginRadialMenu.register({
     id: "favorites",
     label: "Favorites",
     icon: "★",  // Star symbol
     onClick: () => { /* ... */ }
 });
 
-window.UsgromanaRadialMenu.register({
+window.mss_loginRadialMenu.register({
     id: "settings-advanced",
     label: "Advanced Settings",
     icon: "◆",  // Diamond symbol
@@ -132,14 +132,14 @@ window.UsgromanaRadialMenu.register({
 });
 
 // Single character text
-window.UsgromanaRadialMenu.register({
+window.mss_loginRadialMenu.register({
     id: "help",
     label: "Help",
     icon: "?",  // Question mark
     onClick: () => { /* ... */ }
 });
 
-window.UsgromanaRadialMenu.register({
+window.mss_loginRadialMenu.register({
     id: "add",
     label: "Add Item",
     icon: "+",  // Plus sign
@@ -150,19 +150,19 @@ window.UsgromanaRadialMenu.register({
 ### Advanced Button with Custom Logic
 
 ```javascript
-window.UsgromanaRadialMenu.register({
+window.mss_loginRadialMenu.register({
     id: "gallery-viewer",
     label: "Gallery",
     icon: "🖼️",
     order: 10,
     onClick: () => {
         // Check if gallery is already open
-        if (window.location.pathname === "/usgromana-gallery") {
+        if (window.location.pathname === "/mss_login-gallery") {
             // Refresh gallery
             window.location.reload();
         } else {
             // Navigate to gallery
-            window.location.href = "/usgromana-gallery";
+            window.location.href = "/mss_login-gallery";
         }
     }
 });
@@ -171,7 +171,7 @@ window.UsgromanaRadialMenu.register({
 ### Button with Async Operations
 
 ```javascript
-window.UsgromanaRadialMenu.register({
+window.mss_loginRadialMenu.register({
     id: "async-action",
     label: "Sync Data",
     icon: "🔄",
@@ -192,7 +192,7 @@ window.UsgromanaRadialMenu.register({
 
 The radial menu includes two built-in buttons that cannot be unregistered:
 
-1. **Settings** (order: 0) - Opens the Usgromana admin panel
+1. **Settings** (order: 0) - Opens the mss_login admin panel
 2. **Logout** (order: 1) - Logs out the current user
 
 Extension buttons appear after these built-in buttons, sorted by their `order` value.
@@ -222,8 +222,8 @@ Extension buttons appear after these built-in buttons, sorted by their `order` v
 
 6. **Check Availability**: Before using the API, check if it's available:
    ```javascript
-   if (window.UsgromanaRadialMenu) {
-       window.UsgromanaRadialMenu.register({...});
+   if (window.mss_loginRadialMenu) {
+       window.mss_loginRadialMenu.register({...});
    }
    ```
 
@@ -233,7 +233,7 @@ The floating button:
 - Can be dragged anywhere on the screen (click and hold to move)
 - Opens the radial menu on double-click
 - Saves its position in localStorage
-- Automatically detects some extensions (like Usgromana-Gallery)
+- Automatically detects some extensions (like mss_login-Gallery)
 
 ## Notes
 

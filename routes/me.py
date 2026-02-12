@@ -7,7 +7,7 @@ from ..utils.session_token_store import get_session_token_store
 from ..utils.user_console_log import get_lines as get_user_console_lines
 
 
-@routes.get("/usgromana/api/is-https")
+@routes.get("/mss_login/api/is-https")
 async def get_is_https(request: web.Request) -> web.Response:
     """Return whether the request was over HTTPS (for 'eye to reveal' check behind reverse proxy)."""
     proto = request.headers.get("X-Forwarded-Proto", "").strip().lower()
@@ -23,7 +23,7 @@ def _get_username_from_request(request: web.Request):
     return request.get("user")
 
 
-@routes.get("/usgromana/me/console")
+@routes.get("/mss_login/me/console")
 async def get_me_console(request: web.Request) -> web.Response:
     """Return the current user's console log lines."""
     username = _get_username_from_request(request)
@@ -33,7 +33,7 @@ async def get_me_console(request: web.Request) -> web.Response:
     return web.json_response({"lines": lines})
 
 
-@routes.get("/usgromana/me/sessions")
+@routes.get("/mss_login/me/sessions")
 async def get_me_sessions(request: web.Request) -> web.Response:
     """Return list of session tokens for the current user (jti, created_at_iso, exp_at_iso, is_current)."""
     username = _get_username_from_request(request)
@@ -61,7 +61,7 @@ async def get_me_sessions(request: web.Request) -> web.Response:
     return web.json_response({"sessions": out})
 
 
-@routes.get("/usgromana/me/current-token")
+@routes.get("/mss_login/me/current-token")
 async def get_me_current_token(request: web.Request) -> web.Response:
     """Return the current request's token (for 'eye to reveal'). Auth required."""
     username = _get_username_from_request(request)
@@ -75,7 +75,7 @@ async def get_me_current_token(request: web.Request) -> web.Response:
     return web.json_response({"token": token, "is_https": is_https})
 
 
-@routes.post("/usgromana/me/sessions/revoke")
+@routes.post("/mss_login/me/sessions/revoke")
 async def post_me_sessions_revoke(request: web.Request) -> web.Response:
     """Revoke a session by jti. jti must belong to the current user."""
     username = _get_username_from_request(request)

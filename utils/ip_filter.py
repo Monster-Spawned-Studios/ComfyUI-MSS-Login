@@ -170,7 +170,7 @@ class IPFilter:
             self._blacklist_hash = self.calculate_file_hash(self.blacklist_file)
         except Exception as e:
             # Log error but don't fail - in-memory list is updated
-            print(f"[Usgromana] Warning: Failed to write IP to blacklist file: {e}")
+            print(f"[mss_login] Warning: Failed to write IP to blacklist file: {e}")
 
     def create_ip_filter_middleware(self) -> web.middleware:
         """Create the middleware for managing blacklisted and whitelisted ip."""

@@ -369,6 +369,41 @@ class _PostgresUsersBackend:
 
 
 # ---------------------------------------------------------------------------
+# SECRET_KEY migration: re-encrypt TOTP secrets from old key to new key
+# ---------------------------------------------------------------------------
+
+
+def migrate_totp_to_new_key(config: dict, old_key: str, new_key: str) -> bool:
+    """
+    Re-encrypt all TOTP secrets in the users DB from old_key to new_key.
+    Used when switching from ephemeral to permanent SECRET_KEY.
+    Returns True if migration completed successfully.
+    """
+    if not old_key or not new_key:
+        return False
+    backend_type = (config.get("backend") or "sqlite").lower()
+    if backend_type == "sqlite":
+        backend = _SqliteUsersBackend(config.get("sqlite_path", "users/users.db"))
+    elif backend_type == "postgresql":
+        backend = _PostgresUsersBackend(
+            config.get("postgres_host", "localhost"),
+            int(config.get("postgres_port", 5432)),
+            config.get("postgres_database", "mss_login"),
+            config.get("postgres_user", "mss_login"),
+            config.get("postgres_password", ""),
+        )
+    else:
+        backend = _SqliteUsersBackend(config.get("sqlite_path", "users/users.db"))
+    try:
+        users = backend.get_all(old_key)
+        for uid, user in users.items():
+            backend.update(uid, user, new_key)
+        return True
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
 # UsersDB (unified API)
 # ---------------------------------------------------------------------------
 
@@ -385,8 +420,8 @@ class UsersDB:
             self._backend = _PostgresUsersBackend(
                 config.get("postgres_host", "localhost"),
                 int(config.get("postgres_port", 5432)),
-                config.get("postgres_database", "usgromana"),
-                config.get("postgres_user", "usgromana"),
+                config.get("postgres_database", "mss_login"),
+                config.get("postgres_user", "mss_login"),
                 config.get("postgres_password", ""),
             )
         else:
@@ -551,7 +586,7 @@ class UsersDB:
         self._backend.update(user_id, user, self._secret_key)
         self.users[user_id] = user
         totp = pyotp.TOTP(secret)
-        provisioning_uri = totp.provisioning_uri(name=username, issuer_name="Usgromana")
+        provisioning_uri = totp.provisioning_uri(name=username, issuer_name="mss_login")
         return (provisioning_uri, backup_code)
 
     def mfa_verify_setup(self, username: str, code: str) -> bool:
@@ -611,3 +646,23 @@ class UsersDB:
         self._backend.update(user_id, user, self._secret_key)
         self.users[user_id] = user
         return True
+
+    def reset_mfa_for_all_users(self) -> int:
+        """
+        Clear MFA for all users (totp_secret_encrypted, backup_code_hash, mfa_enabled=0).
+        Used by recovery mode when SECRET_KEY changed and migration was not possible.
+        Returns the number of users updated.
+        """
+        self.load_users()
+        count = 0
+        for uid, user in list(self.users.items()):
+            if user.get("mfa_enabled") or user.get("totp_secret_encrypted") or user.get("backup_code_hash"):
+                user["mfa_enabled"] = False
+                user["totp_secret_encrypted"] = ""
+                user["backup_code_hash"] = ""
+                user["backup_code_used"] = False
+                if "_totp_secret_plain" in user:
+                    del user["_totp_secret_plain"]
+                self._backend.update(uid, user, self._secret_key)
+                count += 1
+        return count

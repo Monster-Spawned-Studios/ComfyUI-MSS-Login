@@ -36,7 +36,7 @@ async function setupLogout() {
           "button",
           {
             className:
-              "p-button p-component p-button-icon-only p-button-text comfy-settings-btn side-bar-button p-button-secondary usgromana-logout",
+              "p-button p-component p-button-icon-only p-button-text comfy-settings-btn side-bar-button p-button-secondary mss_login-logout",
             type: "button",
             id: "logout-button",
             ariaLabel: "Logout",
@@ -128,14 +128,14 @@ async function checkAndSetupLogout() {
 // Register as ComfyUI extension to ensure it loads
 if (typeof app !== 'undefined' && app.registerExtension) {
   app.registerExtension({
-    name: "Usgromana.Logout",
+    name: "mss_login.Logout",
     async setup() {
       // Start the interval to check for logout button
       // Only run if interval isn't already running (prevent duplicates)
       if (!logoutIntervalId) {
         logoutIntervalId = setInterval(checkAndSetupLogout, 500);
         // Store for potential cleanup
-        window._usgromanaLogoutInterval = logoutIntervalId;
+        window._mss_loginLogoutInterval = logoutIntervalId;
       }
     }
   });
@@ -144,6 +144,6 @@ if (typeof app !== 'undefined' && app.registerExtension) {
   // Only run if interval isn't already running
   if (!logoutIntervalId) {
     logoutIntervalId = setInterval(checkAndSetupLogout, 500);
-    window._usgromanaLogoutInterval = logoutIntervalId;
+    window._mss_loginLogoutInterval = logoutIntervalId;
   }
 }

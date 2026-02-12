@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
-usgromana.log
+mss_login.log
 logs/
 __pycache__/
+# Ephemeral SECRET_KEY used when env unset; deleted after migration to permanent key
+users/.ephemeral_secret_key

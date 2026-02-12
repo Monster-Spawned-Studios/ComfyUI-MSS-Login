@@ -57,7 +57,7 @@ def _default_sqlite_path() -> str:
         base = os.path.expanduser("~/Library/Application Support")
     else:
         base = os.environ.get("XDG_DATA_HOME", "") or os.path.expanduser("~/.local/share")
-    return os.path.join(base, "Usgromana", "api_tokens.db")
+    return os.path.join(base, "MSS-Login", "api_tokens.db")
 
 
 config_data = _load_config(CONFIG_FILE_PATH)
@@ -69,18 +69,49 @@ if not os.path.isabs(_legacy_users_path):
     _legacy_users_path = os.path.join(CURRENT_DIR, _legacy_users_path)
 LEGACY_USERS_JSON_PATH = _legacy_users_path
 
-GROUPS_CONFIG_FILE = os.path.join(CURRENT_DIR, "users", "usgromana_groups.json")
+GROUPS_CONFIG_FILE = os.path.join(CURRENT_DIR, "users", "mss_login_groups.json")
 DEFAULT_GROUP_CONFIG_PATH = os.path.join(CURRENT_DIR, "users", "defaults", "default_group_config.json")
 WHITELIST_FILE = os.path.join(CURRENT_DIR, "users", "whitelist.txt")
 BLACKLIST_FILE = os.path.join(CURRENT_DIR, "users", "blacklist.txt")
-LOG_FILE = os.path.join(CURRENT_DIR, config_data.get("log", "usgromana.log"))
+LOG_FILE = os.path.join(CURRENT_DIR, config_data.get("log", "mss_login.log"))
+
+# --- Ephemeral SECRET_KEY (for migration when switching to permanent SECRET_KEY) ---
+_users_dir = os.path.join(CURRENT_DIR, "users")
+EPHEMERAL_SECRET_KEY_PATH = os.path.join(_users_dir, ".ephemeral_secret_key")
+
+
+def _load_ephemeral_key() -> str:
+    """Load ephemeral secret key from file if present. Return empty string if not found or read fails."""
+    if not os.path.isfile(EPHEMERAL_SECRET_KEY_PATH):
+        return ""
+    try:
+        with open(EPHEMERAL_SECRET_KEY_PATH, "r", encoding="utf-8") as f:
+            return (f.read() or "").strip()
+    except Exception:
+        return ""
+
+
+def _persist_ephemeral_key(key: str) -> None:
+    """Write ephemeral secret key to file (mode 0o600). Used when SECRET_KEY is unset so migration can run later."""
+    if not key:
+        return
+    try:
+        os.makedirs(os.path.dirname(EPHEMERAL_SECRET_KEY_PATH), exist_ok=True)
+        with open(EPHEMERAL_SECRET_KEY_PATH, "w", encoding="utf-8") as f:
+            f.write(key)
+        os.chmod(EPHEMERAL_SECRET_KEY_PATH, 0o600)
+    except Exception:
+        pass
+
 
 # --- Configuration Values ---
 LOG_LEVELS = config_data.get("log_levels", ["INFO"])
-SECRET_KEY = os.getenv(config_data.get("secret_key_env", "SECRET_KEY"))
+_secret_key_env = config_data.get("secret_key_env", "SECRET_KEY")
+SECRET_KEY = (os.getenv(_secret_key_env) or "").strip()
 if not SECRET_KEY:
-    warnings.warn("[Usgromana] SECRET_KEY not set. Using random key (logouts on restart).")
+    warnings.warn("[MSS-Login] SECRET_KEY not set. Using random key (logouts on restart).")
     SECRET_KEY = "".join([str(uuid.uuid4().hex) for _ in range(128)])
+    _persist_ephemeral_key(SECRET_KEY)
 
 TOKEN_EXPIRE_MINUTES = 60 * config_data.get("access_token_expiration_hours", 12)
 MAX_TOKEN_EXPIRE_MINUTES = 60 * config_data.get("max_access_token_expiration_hours", 8760)
@@ -104,8 +135,8 @@ API_TOKEN_STORE_CONFIG = {
     "sqlite_path": _sqlite_path,
     "postgres_host": _env_or_config("POSTGRES_HOST", _api_token_cfg.get("postgres_host", "localhost")),
     "postgres_port": _env_or_config("POSTGRES_PORT", str(_api_token_cfg.get("postgres_port", 5432))),
-    "postgres_database": _env_or_config("POSTGRES_DATABASE", _api_token_cfg.get("postgres_database", "usgromana")),
-    "postgres_user": _env_or_config("POSTGRES_USER", _api_token_cfg.get("postgres_user", "usgromana")),
+    "postgres_database": _env_or_config("POSTGRES_DATABASE", _api_token_cfg.get("postgres_database", "mss_login")),
+    "postgres_user": _env_or_config("POSTGRES_USER", _api_token_cfg.get("postgres_user", "mss_login")),
 }
 if not os.path.isabs(API_TOKEN_STORE_CONFIG["json_path"]):
     API_TOKEN_STORE_CONFIG["json_path"] = os.path.join(CURRENT_DIR, API_TOKEN_STORE_CONFIG["json_path"])
@@ -127,8 +158,8 @@ USERS_DB_CONFIG = {
     "sqlite_path": _users_sqlite_path,
     "postgres_host": _env_or_config("USERS_DB_POSTGRES_HOST", _users_db_cfg.get("postgres_host", "localhost")),
     "postgres_port": _env_or_config("USERS_DB_POSTGRES_PORT", str(_users_db_cfg.get("postgres_port", 5432))),
-    "postgres_database": _env_or_config("USERS_DB_POSTGRES_DATABASE", _users_db_cfg.get("postgres_database", "usgromana")),
-    "postgres_user": _env_or_config("USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "usgromana")),
+    "postgres_database": _env_or_config("USERS_DB_POSTGRES_DATABASE", _users_db_cfg.get("postgres_database", "mss_login")),
+    "postgres_user": _env_or_config("USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "mss_login")),
 }
 # DB password never in config; env only
 USERS_DB_CONFIG["postgres_password"] = (os.getenv("USERS_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "").strip()
@@ -149,8 +180,8 @@ def reload_users_db_config() -> dict:
         "sqlite_path": _users_sqlite_path,
         "postgres_host": _env_or_config("USERS_DB_POSTGRES_HOST", _users_db_cfg.get("postgres_host", "localhost")),
         "postgres_port": _env_or_config("USERS_DB_POSTGRES_PORT", str(_users_db_cfg.get("postgres_port", 5432))),
-        "postgres_database": _env_or_config("USERS_DB_POSTGRES_DATABASE", _users_db_cfg.get("postgres_database", "usgromana")),
-        "postgres_user": _env_or_config("USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "usgromana")),
+        "postgres_database": _env_or_config("USERS_DB_POSTGRES_DATABASE", _users_db_cfg.get("postgres_database", "mss_login")),
+        "postgres_user": _env_or_config("USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "mss_login")),
     }
     USERS_DB_CONFIG["postgres_password"] = (os.getenv("USERS_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "").strip()
     return USERS_DB_CONFIG
@@ -187,6 +218,24 @@ def _get_allow_guest_jwt():
 ALLOW_GUEST_JWT = _get_allow_guest_jwt()
 
 
+# Recovery mode: locally-only endpoint to reset MFA when SECRET_KEY changed without migration
+def _get_recovery_mode() -> bool:
+    env_val = str(os.environ.get("RECOVERY_MODE", "") or os.environ.get("RECOVERY_MODE_ENABLED", "")).strip().lower()
+    return env_val in ("1", "true", "yes")
+
+
+def _get_recovery_mode_hosts() -> list:
+    """Allowed client IPs for recovery mode. Default 127.0.0.1, ::1. Override via RECOVERY_MODE_HOST or RECOVRY_MODE_HOST (comma-separated)."""
+    raw = (os.environ.get("RECOVERY_MODE_HOST") or os.environ.get("RECOVRY_MODE_HOST") or "").strip()
+    if not raw:
+        return ["127.0.0.1", "::1"]
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
+RECOVERY_MODE = _get_recovery_mode()
+RECOVERY_MODE_HOSTS = _get_recovery_mode_hosts()
+
+
 def reload_allow_guest_jwt() -> bool:
     """Re-read config and refresh ALLOW_GUEST_JWT (used after Admin saves guest-JWT setting)."""
     global ALLOW_GUEST_JWT
@@ -208,8 +257,8 @@ def reload_api_token_store_config() -> dict:
         "sqlite_path": _sqlite_path,
         "postgres_host": _env_or_config("POSTGRES_HOST", _api_token_cfg.get("postgres_host", "localhost")),
         "postgres_port": _env_or_config("POSTGRES_PORT", str(_api_token_cfg.get("postgres_port", 5432))),
-        "postgres_database": _env_or_config("POSTGRES_DATABASE", _api_token_cfg.get("postgres_database", "usgromana")),
-        "postgres_user": _env_or_config("POSTGRES_USER", _api_token_cfg.get("postgres_user", "usgromana")),
+        "postgres_database": _env_or_config("POSTGRES_DATABASE", _api_token_cfg.get("postgres_database", "mss_login")),
+        "postgres_user": _env_or_config("POSTGRES_USER", _api_token_cfg.get("postgres_user", "mss_login")),
     }
     if not os.path.isabs(API_TOKEN_STORE_CONFIG["json_path"]):
         API_TOKEN_STORE_CONFIG["json_path"] = os.path.join(CURRENT_DIR, API_TOKEN_STORE_CONFIG["json_path"])
