@@ -11,6 +11,7 @@ from typing import Callable, Optional
 from aiohttp import web
 
 from .ip_filter import get_ip
+from .debug_log import debug_write
 
 
 # Default CIDRs considered "local" (Docker-aware: 172.17.0.0/16 is default bridge)
@@ -119,36 +120,30 @@ def create_remote_api_guard_middleware(
         )
         client_ip = get_ip(request)
         is_local = _is_local_ip(client_ip, cidrs)
-        # #region agent log
+        debug_write({"location": "remote_api_guard", "message": "check", "data": {"path": path, "has_token": has_token, "client_ip_last": client_ip.split(".")[-1] if client_ip and "." in client_ip else "n/a", "is_local": is_local}, "hypothesisId": "A"})
         try:
-            from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
-            if DEBUG_MODE:
-                import json, os, time
-                os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
-                with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"location": "remote_api_guard", "message": "check", "data": {"path": path, "has_token": has_token, "client_ip_last": client_ip.split(".")[-1] if client_ip and "." in client_ip else "n/a", "is_local": is_local}, "timestamp": int(time.time() * 1000), "hypothesisId": "A"}) + "\n")
+            import json
+            import os
+            import time
+            from ..constants import CURSOR_DEBUG_LOG
             os.makedirs(os.path.dirname(CURSOR_DEBUG_LOG), exist_ok=True)
             with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
                 f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-A", "location": "remote_api_guard.py", "message": "guard_check", "data": {"path": path, "has_token": has_token, "is_local": is_local}, "timestamp": int(time.time() * 1000)}) + "\n")
         except Exception:
             pass
-        # #endregion
         if has_token:
             return await handler(request)
         if is_local:
             return await handler(request)
-        # #region agent log
+        debug_write({"location": "remote_api_guard", "message": "blocked_401", "data": {"path": path, "client_ip_last": client_ip.split(".")[-1] if client_ip and "." in client_ip else "n/a"}, "hypothesisId": "A"})
         try:
-            from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
-            if DEBUG_MODE:
-                import json, os, time
-                with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-                    f.write(json.dumps({"location": "remote_api_guard", "message": "blocked_401", "data": {"path": path, "client_ip_last": client_ip.split(".")[-1] if client_ip and "." in client_ip else "n/a"}, "timestamp": int(time.time() * 1000), "hypothesisId": "A"}) + "\n")
+            import json
+            import time
+            from ..constants import CURSOR_DEBUG_LOG
             with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
                 f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-A", "location": "remote_api_guard.py", "message": "blocked_401", "data": {"path": path}, "timestamp": int(time.time() * 1000)}) + "\n")
         except Exception:
             pass
-        # #endregion
         body = {"error": "Authentication required for remote API access."}
         try:
             from ..constants import DEBUG_MODE

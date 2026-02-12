@@ -167,9 +167,8 @@ REQUIRE_AUTH_FOR_REMOTE_API = config_data.get("require_auth_for_remote_api", Tru
 LOCAL_NETWORK_CIDRS = config_data.get("local_network_cidrs") or []
 
 # DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
-DEBUG_MODE = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
-if not DEBUG_MODE:
-    DEBUG_MODE = bool(config_data.get("debug_mode", False))
+DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
+DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(config_data.get("debug_mode", False))
 DEBUG_LOG_PATH = os.path.join(CURRENT_DIR, "logs", "debug.log")
 # Session debug log for instrumentation (e.g. .cursor/debug.log)
 CURSOR_DEBUG_LOG = os.path.join(CURRENT_DIR, ".cursor", "debug.log")

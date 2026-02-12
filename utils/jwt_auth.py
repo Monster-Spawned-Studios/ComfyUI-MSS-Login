@@ -1,3 +1,4 @@
+import os
 import uuid
 import jwt
 from aiohttp import web
@@ -8,6 +9,7 @@ from .access_control import AccessControl
 from .logger import Logger
 from .api_token_store import get_api_token_store
 from .session_token_store import get_session_token_store
+from .debug_log import debug_write
 
 
 class JWTAuth:
@@ -125,41 +127,32 @@ class JWTAuth:
             token = self.get_token_from_request(request)
 
             if not token:
-                # #region agent log
+                debug_write({"location": "jwt_auth", "message": "no_token", "data": {"path": request.path}, "hypothesisId": "B"})
                 try:
-                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
-                    if DEBUG_MODE:
-                        import json, os, time
-                        os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
-                        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-                            f.write(json.dumps({"location": "jwt_auth", "message": "no_token", "data": {"path": request.path}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
-                    import json, os, time
+                    import json
+                    import time
+                    from ..constants import CURSOR_DEBUG_LOG
                     os.makedirs(os.path.dirname(CURSOR_DEBUG_LOG), exist_ok=True)
                     with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
                         f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-B", "location": "jwt_auth.py", "message": "no_token", "data": {"path": request.path}, "timestamp": int(time.time() * 1000)}) + "\n")
                 except Exception:
                     pass
-                # #endregion
                 return await handle_unauthorized_access(request, "/login")
 
             try:
                 # Resolve Bearer: try long-lived API token store first, then JWT
                 api_store = get_api_token_store(self.api_token_store_config)
                 api_user = api_store.get_user_for_token(token)
-                # #region agent log
+                debug_write({"location": "jwt_auth", "message": "api_store_lookup", "data": {"path": request.path, "api_user_found": api_user is not None}, "hypothesisId": "B"})
                 try:
-                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
-                    if DEBUG_MODE:
-                        import json, os, time
-                        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-                            f.write(json.dumps({"location": "jwt_auth", "message": "api_store_lookup", "data": {"path": request.path, "api_user_found": api_user is not None}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
-                    import json, os, time
+                    import json
+                    import time
+                    from ..constants import CURSOR_DEBUG_LOG
                     os.makedirs(os.path.dirname(CURSOR_DEBUG_LOG), exist_ok=True)
                     with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
                         f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-B", "location": "jwt_auth.py", "message": "api_store_lookup", "data": {"path": request.path, "api_user_found": api_user is not None}, "timestamp": int(time.time() * 1000)}) + "\n")
                 except Exception:
                     pass
-                # #endregion
                 if api_user is not None:
                     user_id, username = api_user
                     request["user_id"] = user_id
@@ -202,55 +195,43 @@ class JWTAuth:
                 self.access_control.set_current_user_id(user_id, set_fallback)
 
             except jwt.ExpiredSignatureError:
-                # #region agent log
+                debug_write({"location": "jwt_auth", "message": "reject", "data": {"path": request.path, "reason": "ExpiredSignatureError"}, "hypothesisId": "B"})
                 try:
-                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
-                    if DEBUG_MODE:
-                        import json, os, time
-                        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-                            f.write(json.dumps({"location": "jwt_auth", "message": "reject", "data": {"path": request.path, "reason": "ExpiredSignatureError"}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
-                    import json, os, time
+                    import json
+                    import time
+                    from ..constants import CURSOR_DEBUG_LOG
                     with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
                         f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-B", "location": "jwt_auth.py", "message": "reject", "data": {"path": request.path, "reason": "ExpiredSignatureError"}, "timestamp": int(time.time() * 1000)}) + "\n")
                 except Exception:
                     pass
-                # #endregion
                 return await handle_unauthorized_access(
                     request, "/logout", message="Token has expired"
                 )
             except jwt.DecodeError:
-                # #region agent log
+                debug_write({"location": "jwt_auth", "message": "reject", "data": {"path": request.path, "reason": "DecodeError"}, "hypothesisId": "B"})
                 try:
-                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
-                    if DEBUG_MODE:
-                        import json, os, time
-                        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-                            f.write(json.dumps({"location": "jwt_auth", "message": "reject", "data": {"path": request.path, "reason": "DecodeError"}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
-                    import json, os, time
+                    import json
+                    import time
+                    from ..constants import CURSOR_DEBUG_LOG
                     with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
                         f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-B", "location": "jwt_auth.py", "message": "reject", "data": {"path": request.path, "reason": "DecodeError"}, "timestamp": int(time.time() * 1000)}) + "\n")
                 except Exception:
                     pass
-                # #endregion
                 # Likely an API token that wasn't in the store (wrong server or expired)
                 return await handle_unauthorized_access(
                     request, "/login",
                     message="API token not found or expired. Generate a new token on this server (Settings → Usgromana → Generate Token).",
                 )
             except Exception as e:
-                # #region agent log
+                debug_write({"location": "jwt_auth", "message": "reject", "data": {"path": request.path, "reason": type(e).__name__}, "hypothesisId": "B"})
                 try:
-                    from ..constants import DEBUG_MODE, DEBUG_LOG_PATH, CURSOR_DEBUG_LOG
-                    if DEBUG_MODE:
-                        import json, os, time
-                        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
-                            f.write(json.dumps({"location": "jwt_auth", "message": "reject", "data": {"path": request.path, "reason": type(e).__name__}, "timestamp": int(time.time() * 1000), "hypothesisId": "B"}) + "\n")
-                    import json, os, time
+                    import json
+                    import time
+                    from ..constants import CURSOR_DEBUG_LOG
                     with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
                         f.write(json.dumps({"sessionId": "debug-session", "runId": "run1", "hypothesisId": "JWT-B", "location": "jwt_auth.py", "message": "reject", "data": {"path": request.path, "reason": type(e).__name__}, "timestamp": int(time.time() * 1000)}) + "\n")
                 except Exception:
                     pass
-                # #endregion
                 self.logger.error(f"Unexpected error during token decoding: {e}")
                 return await handle_unauthorized_access(
                     request, "/logout", message="Unexpected error"

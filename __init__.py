@@ -1,6 +1,18 @@
 # --- START OF FILE __init__.py ---
-from aiohttp import web
+# Auto-install dependencies before any package imports
 import os
+import sys
+import importlib.util
+_root = os.path.dirname(os.path.abspath(__file__))
+_install_deps_path = os.path.join(_root, "utils", "install_deps.py")
+if os.path.isfile(_install_deps_path):
+    _spec = importlib.util.spec_from_file_location("install_deps", _install_deps_path)
+    if _spec and _spec.loader:
+        _mod = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        _mod.install_dependencies()
+
+from aiohttp import web
 import folder_paths
 from .nodes import *
 from .constants import (
