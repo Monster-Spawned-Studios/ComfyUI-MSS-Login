@@ -1500,6 +1500,14 @@ async renderSharedModels(container, usersList) {
                     <button class="usgromana-btn btn-save" id="usgromana-shared-add">Add</button>
                 </div>
             </div>
+            <div class="usgromana-section" style="margin-top:16px;">
+                <h4 style="margin:0 0 8px 0;">Toggle model access</h4>
+                <p style="opacity:0.9; font-size:13px; margin-bottom:8px;">Expand a folder and check or uncheck items to grant or revoke access. Users without "View all ComfyUI items" see only checked items.</p>
+                <div class="usgromana-row" style="gap:8px; margin-bottom:8px;">
+                    <button class="usgromana-btn" id="usgromana-toggle-refresh">Refresh folders</button>
+                </div>
+                <div id="usgromana-toggle-folders" style="max-height:400px; overflow-y:auto;"></div>
+            </div>
         </div>
     `;
     const userSelect = container.querySelector("#usgromana-shared-user");
@@ -1507,8 +1515,98 @@ async renderSharedModels(container, usersList) {
     const folderSelect = container.querySelector("#usgromana-shared-folder");
     const itemSelect = container.querySelector("#usgromana-shared-item");
     const addBtn = container.querySelector("#usgromana-shared-add");
+    const toggleFoldersEl = container.querySelector("#usgromana-toggle-folders");
+    const toggleRefreshBtn = container.querySelector("#usgromana-toggle-refresh");
 
     let folders = [];
+    const sharedSet = new Set();
+    const loadedItems = {};
+
+    async function fetchSharedSet(username) {
+        sharedSet.clear();
+        if (!username) return;
+        try {
+            const res = await api.fetchApi("/usgromana/api/users/" + encodeURIComponent(username) + "/shared-items", { method: "GET" });
+            const data = await res.json();
+            const items = data.items || [];
+            items.forEach(it => sharedSet.add((it.folder || "") + "|" + (it.item_name || "")));
+        } catch (e) {
+            console.error("[usgromana] Failed to load shared set:", e);
+        }
+    }
+
+    function renderToggleFolders() {
+        if (!toggleFoldersEl) return;
+        const username = userSelect.value;
+        if (!username) {
+            toggleFoldersEl.innerHTML = "<p style=\"opacity:0.8;\">Select a user above to toggle model access.</p>";
+            return;
+        }
+        if (folders.length === 0) {
+            toggleFoldersEl.innerHTML = "<p style=\"opacity:0.8;\">No folders loaded. Click Refresh folders.</p>";
+            return;
+        }
+        toggleFoldersEl.innerHTML = folders.map(folder => {
+            const safeFolder = escapeHtml(folder);
+            return `<details class="usgromana-toggle-folder" data-folder="${safeFolder}">
+                <summary>${safeFolder}</summary>
+                <div class="usgromana-toggle-items" data-folder="${safeFolder}" style="padding:8px 0 8px 12px; max-height:200px; overflow-y:auto;">Loading...</div>
+            </details>`;
+        }).join("");
+
+        toggleFoldersEl.querySelectorAll("details.usgromana-toggle-folder").forEach(detailsEl => {
+            detailsEl.addEventListener("toggle", async () => {
+                if (!detailsEl.open) return;
+                const folder = detailsEl.dataset.folder;
+                const itemsEl = detailsEl.querySelector(".usgromana-toggle-items");
+                if (!itemsEl || itemsEl.dataset.loaded === "1") return;
+                itemsEl.textContent = "Loading...";
+                try {
+                    const res = await api.fetchApi("/usgromana/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
+                    const data = await res.json();
+                    const items = data.items || [];
+                    loadedItems[folder] = items;
+                    itemsEl.dataset.loaded = "1";
+                    itemsEl.innerHTML = items.map(itemName => {
+                        const key = folder + "|" + itemName;
+                        const checked = sharedSet.has(key);
+                        const safeItem = escapeHtml(itemName);
+                        return `<label class="usgromana-toggle-item" style="display:block; margin:4px 0;"><input type="checkbox" class="usgromana-toggle-chk" data-folder="${escapeHtml(folder)}" data-item="${safeItem}" ${checked ? "checked" : ""}> ${safeItem}</label>`;
+                    }).join("");
+                    itemsEl.querySelectorAll(".usgromana-toggle-chk").forEach(chk => {
+                        chk.onchange = async () => {
+                            const f = chk.dataset.folder;
+                            const item = chk.dataset.item;
+                            const key = f + "|" + item;
+                            const add = chk.checked;
+                            try {
+                                if (add) {
+                                    await api.fetchApi("/usgromana/api/users/" + encodeURIComponent(username) + "/shared-items", {
+                                        method: "POST",
+                                        body: JSON.stringify({ folder: f, item_name: item }),
+                                    });
+                                    sharedSet.add(key);
+                                } else {
+                                    await api.fetchApi("/usgromana/api/users/" + encodeURIComponent(username) + "/shared-items", {
+                                        method: "DELETE",
+                                        body: JSON.stringify({ folder: f, item_name: item }),
+                                    });
+                                    sharedSet.delete(key);
+                                }
+                                await refreshSharedList();
+                            } catch (e) {
+                                console.error("[usgromana] Toggle shared item failed:", e);
+                                chk.checked = !add;
+                            }
+                        };
+                    });
+                } catch (e) {
+                    itemsEl.textContent = "Error loading items.";
+                    console.error("[usgromana] Failed to load items for folder:", e);
+                }
+            });
+        });
+    }
     try {
         const fr = await api.fetchApi("/usgromana/api/available-model-folders", { method: "GET" });
         const fd = await fr.json();
@@ -1573,7 +1671,10 @@ async renderSharedModels(container, usersList) {
                             method: "DELETE",
                             body: JSON.stringify({ folder, item_name: item }),
                         });
+                        sharedSet.delete(folder + "|" + item);
                         await refreshSharedList();
+                        const remChk = toggleFoldersEl ? Array.from(toggleFoldersEl.querySelectorAll(".usgromana-toggle-chk")).find(c => c.dataset.folder === folder && c.dataset.item === item) : null;
+                        if (remChk) remChk.checked = false;
                     } catch (e) {
                         console.error("[usgromana] Remove shared item failed:", e);
                     }
@@ -1585,7 +1686,11 @@ async renderSharedModels(container, usersList) {
     }
 
     folderSelect.onchange = () => loadItemsForFolder(folderSelect.value);
-    userSelect.onchange = () => refreshSharedList();
+    userSelect.onchange = async () => {
+        await fetchSharedSet(userSelect.value);
+        await refreshSharedList();
+        renderToggleFolders();
+    };
 
     addBtn.onclick = async () => {
         const username = userSelect.value;
@@ -1600,14 +1705,35 @@ async renderSharedModels(container, usersList) {
                 method: "POST",
                 body: JSON.stringify({ folder, item_name: item }),
             });
+            sharedSet.add(folder + "|" + item);
             await refreshSharedList();
+            const addChk = toggleFoldersEl ? Array.from(toggleFoldersEl.querySelectorAll(".usgromana-toggle-chk")).find(c => c.dataset.folder === folder && c.dataset.item === item) : null;
+            if (addChk) addChk.checked = true;
         } catch (e) {
             console.error("[usgromana] Add shared item failed:", e);
         }
         addBtn.disabled = false;
     };
 
+    toggleRefreshBtn.onclick = async () => {
+        toggleRefreshBtn.disabled = true;
+        try {
+            const fr = await api.fetchApi("/usgromana/api/available-model-folders", { method: "GET" });
+            const fd = await fr.json();
+            folders = fd.folders || [];
+            Object.keys(loadedItems).forEach(k => delete loadedItems[k]);
+            folderSelect.innerHTML = "<option value=\"\">-- Folder --</option>" + folders.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
+            await loadItemsForFolder(folderSelect.value || (folders[0] || ""));
+            renderToggleFolders();
+        } catch (e) {
+            console.error("[usgromana] Failed to refresh folders:", e);
+        }
+        toggleRefreshBtn.disabled = false;
+    };
+
     await loadItemsForFolder(folderSelect.value || (folders[0] || ""));
+    await fetchSharedSet(userSelect.value);
+    renderToggleFolders();
 }
 
 renderNsfwManagement(container) {
@@ -1960,6 +2086,7 @@ async renderUsersDbConfig(container) {
         html += drawRow("SettingsExtension", "settings_extension");
         html += drawRow("See Restricted Settings", "can_see_restricted_settings");
         html += drawRow("View built-in Console (bottom panel)", "can_view_console");
+        html += drawRow("View all ComfyUI items (models, LoRAs, VAEs, embeddings)", "can_view_all_comfyui_items");
 
         // Section 2: Global UI
         html += drawRow("Interface Elements", null, true);
@@ -2054,7 +2181,7 @@ async function updateEnforcementStyles() {
 
     // --- BYPASS ADMIN COMPLETELY ---
     if (currentUser.is_admin) {
-        const style = document.getElementById("Usgromana-css-block");
+        const style = document.getElementById("usgromana-css-block");
         if (style) style.textContent = "";
         return;
     }

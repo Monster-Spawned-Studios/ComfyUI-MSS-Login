@@ -340,7 +340,7 @@ async def api_available_model_folders(request):
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     try:
-        import folder_paths
+        import folder_paths  # type: ignore[import-untyped]  # ComfyUI core module; resolves at runtime
         folders = list(folder_paths.folder_names_and_paths.keys())
     except Exception:
         folders = ["checkpoints", "loras", "vae", "embeddings", "controlnet", "clip_vision", "upscale_models"]
@@ -354,7 +354,7 @@ async def api_available_models_in_folder(request):
         return web.json_response({"error": "Admin only"}, status=403)
     folder = request.match_info.get("folder", "")
     try:
-        import folder_paths
+        import folder_paths  # type: ignore[import-untyped]  # ComfyUI core module; resolves at runtime
         names = folder_paths.get_filename_list(folder)
     except Exception:
         names = []
