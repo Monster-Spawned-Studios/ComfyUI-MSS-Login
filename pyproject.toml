@@ -20,7 +20,7 @@ license = {file = "readme/LICENSE.md"}
 #     "Environment :: GPU :: Apple Metal",    # Apple Metal support
 # ]
 
-dependencies = ["aiohttp", "PyJWT", "bcrypt", "bleach", "pyotp", "python-dotenvx", "cryptography", "psycopg2-binary", "argon2-cffi"]
+dependencies = ["aiohttp", "PyJWT", "bcrypt", "bleach", "pyotp", "python-dotenvx", "cryptography", "psycopg2-binary", "argon2-cffi", "pillow", "numpy", "torch"]
 
 [project.urls]
 Repository = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login"
@@ -35,3 +35,27 @@ Icon = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS
 includes = [] 
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
 
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "site",
+]
+# Lint: use defaults (E, F, W, I, UP, B, C4, etc.); ignore a few noisy rules.
+[tool.ruff.lint]
+extend-ignore = [
+    "ARG001",   # Unused function argument (often required for callbacks/signatures)
+    "PLR0913",  # Too many arguments (noisy in route/handler code),
+    "F401"      # Ignore unused variables, as we might use them later.
+]
+# Isort: treat repo as single first-party; stdlib then third-party then local.
+[tool.ruff.lint.isort]
+known-first-party = ["utils", "routes"]
+# Format: match EditorConfig and common Python style (4 spaces, LF).
+[tool.ruff.format]
+indent-style = "tab"
+line-ending = "lf"

@@ -15,413 +15,499 @@ from ..utils.api_token_store import get_api_token_store
 from ..utils.mfa_temp_store import create_mfa_temp_token
 from ..constants import API_TOKEN_STORE_CONFIG
 
+
 @routes.get("/register")
 async def get_register(request: web.Request) -> web.Response:
-    path = os.path.join(HTML_DIR, "register.html")
-    if not os.path.exists(path): return web.Response(text="register.html not found", status=404)
-    with open(path, "r") as f: html_content = f.read()
-    if not users_db.load_users():
-        html_content = html_content.replace("{{ X-Admin-User }}", "true")
-    else:
-        html_content = html_content.replace("{{ X-Admin-User }}", "false")
-    return web.Response(body=html_content, content_type="text/html")
+	path = os.path.join(HTML_DIR, "register.html")
+	if not os.path.exists(path):
+		return web.Response(text="register.html not found", status=404)
+	with open(path, "r") as f:
+		html_content = f.read()
+	if not users_db.load_users():
+		html_content = html_content.replace("{{ X-Admin-User }}", "true")
+	else:
+		html_content = html_content.replace("{{ X-Admin-User }}", "false")
+	return web.Response(body=html_content, content_type="text/html")
+
 
 @routes.post("/register")
 async def post_register(request: web.Request) -> web.Response:
-    sanitized_data = request.get("_sanitized_data", {})
-    ip = get_ip(request)
-    new_username = sanitized_data.get("new_user_username")
-    new_password = sanitized_data.get("new_user_password")
-    username = sanitized_data.get("username")
-    password = sanitized_data.get("password")
+	sanitized_data = request.get("_sanitized_data", {})
+	ip = get_ip(request)
+	new_username = sanitized_data.get("new_user_username")
+	new_password = sanitized_data.get("new_user_password")
+	username = sanitized_data.get("username")
+	password = sanitized_data.get("password")
 
-    admin_user = users_db.get_admin_user()
-    is_first_admin = (admin_user[0] is None)
+	admin_user = users_db.get_admin_user()
+	is_first_admin = admin_user[0] is None
 
-    if not is_first_admin:
-        if not users_db.check_username_password(username, password):
-            timeout.add_failed_attempt(ip)
-            return web.json_response({"error": "Invalid admin credentials"}, status=403)
+	if not is_first_admin:
+		if not users_db.check_username_password(username, password):
+			timeout.add_failed_attempt(ip)
+			return web.json_response({"error": "Invalid admin credentials"}, status=403)
 
-    if None not in users_db.get_user(new_username):
-        return web.json_response({"error": "Username exists"}, status=400)
+	if None not in users_db.get_user(new_username):
+		return web.json_response({"error": "Username exists"}, status=400)
 
-    users_db.add_user(str(uuid.uuid4()), new_username, new_password, is_first_admin)
+	users_db.add_user(str(uuid.uuid4()), new_username, new_password, is_first_admin)
 
-    # Create directory immediately
-    user_env.get_user_workflow_dir(new_username)
+	# Create directory immediately
+	user_env.get_user_workflow_dir(new_username)
 
-    if is_first_admin:
-        ensure_groups_config()
-        ensure_guest_user()
+	if is_first_admin:
+		ensure_groups_config()
+		ensure_guest_user()
 
-    logger.registration_success(ip, new_username, username if not is_first_admin else None)
-    try:
-        send_notification(
-            "user_created",
-            "MSS-Login: User created",
-            f"New user: {new_username} (registered by {username if not is_first_admin else 'first admin'}) from IP: {ip}",
-        )
-    except Exception:
-        pass
-    timeout.remove_failed_attempts(ip)
-    return web.json_response({"message": "User registered"})
+	logger.registration_success(ip, new_username, username if not is_first_admin else None)
+	try:
+		send_notification(
+			"user_created",
+			"MSS-Login: User created",
+			f"New user: {new_username} (registered by {username if not is_first_admin else 'first admin'}) from IP: {ip}",
+		)
+	except Exception:
+		pass
+	timeout.remove_failed_attempts(ip)
+	return web.json_response({"message": "User registered"})
+
 
 @routes.get("/login")
 async def get_login(request: web.Request) -> web.Response:
-    if not users_db.load_users(): return web.HTTPFound("/register")
-    if jwt_auth.get_token_from_request(request): return web.HTTPFound("/logout")
-    path = os.path.join(HTML_DIR, "login.html")
-    return web.FileResponse(path) if os.path.exists(path) else web.Response(text="login.html not found", status=404)
+	if not users_db.load_users():
+		return web.HTTPFound("/register")
+	if jwt_auth.get_token_from_request(request):
+		return web.HTTPFound("/logout")
+	path = os.path.join(HTML_DIR, "login.html")
+	return (
+		web.FileResponse(path)
+		if os.path.exists(path)
+		else web.Response(text="login.html not found", status=404)
+	)
+
 
 @routes.post("/login")
 async def post_login(request: web.Request) -> web.Response:
-    sanitized_data = request.get("_sanitized_data", {})
-    ip = get_ip(request)
-    
-    if str(sanitized_data.get("guest_login", "false")).lower() == "true":
-        if not constants_module.ALLOW_GUEST_JWT:
-            return web.json_response(
-                {"error": "Guest login is disabled. Guests cannot obtain JWT tokens."},
-                status=403,
-            )
-        ensure_guest_user()
-        guest_id, _ = users_db.get_user("guest")
-        if not guest_id: return web.json_response({"error": "Guest disabled"}, status=500)
-        
-        user_env.get_user_workflow_dir("guest")
-        
-        token = jwt_auth.create_access_token({"id": guest_id, "username": "guest"})
-        try:
-            payload = jwt_auth.decode_access_token(token)
-            jti = payload.get("jti")
-            exp = payload.get("exp")
-            from datetime import datetime, timezone
-            exp_at_iso = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat() if exp else None
-            if jti:
-                get_session_token_store(SESSION_TOKEN_STORE_PATH).register_session(
-                    jti, guest_id, "guest", exp_at_iso
-                )
-        except Exception:
-            pass
-        if DEBUG_MODE:
-            logger.log_jwt_if_debug(token, "guest")
-        else:
-            logger.log_jwt_created_console_only("guest")
-        user_console_append("guest", "JWT token created for user: guest")
-        resp = web.json_response({"message": "Guest login", "jwt_token": token})
-        resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
-        logger.login_success(ip, "guest")
-        timeout.remove_failed_attempts(ip)
-        return resp
+	sanitized_data = request.get("_sanitized_data", {})
+	ip = get_ip(request)
 
-    username = sanitized_data.get("username")
-    password = sanitized_data.get("password")
+	if str(sanitized_data.get("guest_login", "false")).lower() == "true":
+		if not constants_module.ALLOW_GUEST_JWT:
+			return web.json_response(
+				{"error": "Guest login is disabled. Guests cannot obtain JWT tokens."},
+				status=403,
+			)
+		ensure_guest_user()
+		guest_id, _ = users_db.get_user("guest")
+		if not guest_id:
+			return web.json_response({"error": "Guest disabled"}, status=500)
 
-    if users_db.check_username_password(username, password):
-        user_id, user_rec = users_db.get_user(username)
-        user_env.get_user_workflow_dir(username)
+		user_env.get_user_workflow_dir("guest")
 
-        # Admin must set up MFA on next login if not already enabled
-        is_admin = user_rec.get("admin") or "admin" in [g.lower() for g in user_rec.get("groups", [])]
-        mfa_enabled = users_db.get_mfa_enabled(username)
-        role_requires_mfa = _role_requires_mfa(username)
+		token = jwt_auth.create_access_token({"id": guest_id, "username": "guest"})
+		try:
+			payload = jwt_auth.decode_access_token(token)
+			jti = payload.get("jti")
+			exp = payload.get("exp")
+			from datetime import datetime, timezone
 
-        if is_admin and not mfa_enabled:
-            # Force admin to set up MFA before issuing JWT
-            mfa_temp = create_mfa_temp_token(username)
-            timeout.remove_failed_attempts(ip)
-            return web.json_response({
-                "message": "MFA setup required for admin accounts",
-                "mfa_setup_required": True,
-                "mfa_temp_token": mfa_temp,
-            }, status=200)
-        if mfa_enabled:
-            # User has MFA; require second factor
-            mfa_temp = create_mfa_temp_token(username)
-            timeout.remove_failed_attempts(ip)
-            return web.json_response({
-                "message": "MFA verification required",
-                "mfa_required": True,
-                "mfa_temp_token": mfa_temp,
-            }, status=200)
-        if role_requires_mfa and not mfa_enabled:
-            # Role requires MFA but user has not set it up
-            mfa_temp = create_mfa_temp_token(username)
-            timeout.remove_failed_attempts(ip)
-            return web.json_response({
-                "message": "MFA setup required for your role",
-                "mfa_setup_required": True,
-                "mfa_temp_token": mfa_temp,
-            }, status=200)
+			exp_at_iso = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat() if exp else None
+			if jti:
+				get_session_token_store(SESSION_TOKEN_STORE_PATH).register_session(
+					jti, guest_id, "guest", exp_at_iso
+				)
+		except Exception:
+			pass
+		if DEBUG_MODE:
+			logger.log_jwt_if_debug(token, "guest")
+		else:
+			logger.log_jwt_created_console_only("guest")
+		user_console_append("guest", "JWT token created for user: guest")
+		resp = web.json_response({"message": "Guest login", "jwt_token": token})
+		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
+		logger.login_success(ip, "guest")
+		timeout.remove_failed_attempts(ip)
+		return resp
 
-        no_exp = _user_can_have_non_expiring_jwt(username)
-        token = jwt_auth.create_access_token(
-            {"id": user_id, "username": username},
-            no_expiration=no_exp,
-        )
-        try:
-            payload = jwt_auth.decode_access_token(token)
-            jti = payload.get("jti")
-            exp = payload.get("exp")
-            from datetime import datetime, timezone
-            exp_at_iso = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat() if exp else None
-            if jti:
-                get_session_token_store(SESSION_TOKEN_STORE_PATH).register_session(
-                    jti, user_id, username, exp_at_iso
-                )
-        except Exception:
-            pass
-        if DEBUG_MODE:
-            logger.log_jwt_if_debug(token, username)
-        else:
-            logger.log_jwt_created_console_only(username)
-        user_console_append(username, f"JWT token created for user: {username}")
-        try:
-            send_notification("user_login", "mss_login: User login", f"User {username} logged in from IP: {ip}")
-        except Exception:
-            pass
-        resp = web.json_response({"message": "Login successful", "jwt_token": token})
-        resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
-        logger.login_success(ip, username)
-        timeout.remove_failed_attempts(ip)
-        return resp
+	username = sanitized_data.get("username")
+	password = sanitized_data.get("password")
 
-    timeout.add_failed_attempt(ip)
-    try:
-        send_notification(
-            "login_failure",
-            "mss_login: Login failure",
-            f"Failed login attempt for username '{username}' from IP: {ip}",
-        )
-    except Exception:
-        pass
-    return web.json_response({"error": "Invalid credentials"}, status=401)
+	if users_db.check_username_password(username, password):
+		user_id, user_rec = users_db.get_user(username)
+		user_env.get_user_workflow_dir(username)
+
+		# Admin must set up MFA on next login if not already enabled
+		is_admin = user_rec.get("admin") or "admin" in [
+			g.lower() for g in user_rec.get("groups", [])
+		]
+		mfa_enabled = users_db.get_mfa_enabled(username)
+		role_requires_mfa = _role_requires_mfa(username)
+
+		if is_admin and not mfa_enabled:
+			# Force admin to set up MFA before issuing JWT
+			mfa_temp = create_mfa_temp_token(username)
+			timeout.remove_failed_attempts(ip)
+			return web.json_response(
+				{
+					"message": "MFA setup required for admin accounts",
+					"mfa_setup_required": True,
+					"mfa_temp_token": mfa_temp,
+				},
+				status=200,
+			)
+		if mfa_enabled:
+			# User has MFA; require second factor
+			mfa_temp = create_mfa_temp_token(username)
+			timeout.remove_failed_attempts(ip)
+			return web.json_response(
+				{
+					"message": "MFA verification required",
+					"mfa_required": True,
+					"mfa_temp_token": mfa_temp,
+				},
+				status=200,
+			)
+		if role_requires_mfa and not mfa_enabled:
+			# Role requires MFA but user has not set it up
+			mfa_temp = create_mfa_temp_token(username)
+			timeout.remove_failed_attempts(ip)
+			return web.json_response(
+				{
+					"message": "MFA setup required for your role",
+					"mfa_setup_required": True,
+					"mfa_temp_token": mfa_temp,
+				},
+				status=200,
+			)
+
+		no_exp = _user_can_have_non_expiring_jwt(username)
+		token = jwt_auth.create_access_token(
+			{"id": user_id, "username": username},
+			no_expiration=no_exp,
+		)
+		try:
+			payload = jwt_auth.decode_access_token(token)
+			jti = payload.get("jti")
+			exp = payload.get("exp")
+			from datetime import datetime, timezone
+
+			exp_at_iso = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat() if exp else None
+			if jti:
+				get_session_token_store(SESSION_TOKEN_STORE_PATH).register_session(
+					jti, user_id, username, exp_at_iso
+				)
+		except Exception:
+			pass
+		if DEBUG_MODE:
+			logger.log_jwt_if_debug(token, username)
+		else:
+			logger.log_jwt_created_console_only(username)
+		user_console_append(username, f"JWT token created for user: {username}")
+		try:
+			send_notification(
+				"user_login", "mss_login: User login", f"User {username} logged in from IP: {ip}"
+			)
+		except Exception:
+			pass
+		resp = web.json_response({"message": "Login successful", "jwt_token": token})
+		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
+		logger.login_success(ip, username)
+		timeout.remove_failed_attempts(ip)
+		return resp
+
+	timeout.add_failed_attempt(ip)
+	try:
+		send_notification(
+			"login_failure",
+			"mss_login: Login failure",
+			f"Failed login attempt for username '{username}' from IP: {ip}",
+		)
+	except Exception:
+		pass
+	return web.json_response({"error": "Invalid credentials"}, status=401)
+
 
 @routes.get("/logout")
 async def get_logout(request: web.Request) -> web.Response:
-    try:
-        token = jwt_auth.get_token_from_request(request)
-        if token and token.count(".") >= 2:
-            payload = jwt_auth.decode_access_token(token)
-            username = payload.get("username")
-            if username:
-                from ..utils.ip_filter import get_ip
-                send_notification("user_logout", "mss_login: User logout", f"User {username} logged out from IP: {get_ip(request)}")
-    except Exception:
-        pass
-    resp = web.HTTPFound("/login")
-    resp.del_cookie("jwt_token", path="/")
-    return resp
+	try:
+		token = jwt_auth.get_token_from_request(request)
+		if token and token.count(".") >= 2:
+			payload = jwt_auth.decode_access_token(token)
+			username = payload.get("username")
+			if username:
+				from ..utils.ip_filter import get_ip
+
+				send_notification(
+					"user_logout",
+					"mss_login: User logout",
+					f"User {username} logged out from IP: {get_ip(request)}",
+				)
+	except Exception:
+		pass
+	resp = web.HTTPFound("/login")
+	resp.del_cookie("jwt_token", path="/")
+	return resp
 
 
 def _role_requires_mfa(username: str) -> bool:
-    """Return True if the user's role has mfa_required (admins always treated as requiring MFA in login flow)."""
-    user_id, user_rec = users_db.get_user(username)
-    if not user_rec:
-        return False
-    groups = [g.lower() for g in user_rec.get("groups", [])]
-    role = groups[0] if groups else "user"
-    cfg = access_control._load_group_config()
-    perms = cfg.get(role, {})
-    return perms.get("mfa_required", False) is True
+	"""Return True if the user's role has mfa_required (admins always treated as requiring MFA in login flow)."""
+	user_id, user_rec = users_db.get_user(username)
+	if not user_rec:
+		return False
+	groups = [g.lower() for g in user_rec.get("groups", [])]
+	role = groups[0] if groups else "user"
+	cfg = access_control._load_group_config()
+	perms = cfg.get(role, {})
+	return perms.get("mfa_required", False) is True
 
 
 def _user_can_have_api_tokens(username: str) -> bool:
-    """Return True if the user's role has can_have_api_tokens (admin always allowed)."""
-    user_id, user_rec = users_db.get_user(username)
-    if not user_rec:
-        return False
-    groups = [g.lower() for g in user_rec.get("groups", [])]
-    role = groups[0] if groups else "user"
-    cfg = access_control._load_group_config()
-    perms = cfg.get(role, {})
-    if role == "admin":
-        return True
-    return perms.get("can_have_api_tokens", False) is True
+	"""Return True if the user's role has can_have_api_tokens (admin always allowed)."""
+	user_id, user_rec = users_db.get_user(username)
+	if not user_rec:
+		return False
+	groups = [g.lower() for g in user_rec.get("groups", [])]
+	role = groups[0] if groups else "user"
+	cfg = access_control._load_group_config()
+	perms = cfg.get(role, {})
+	if role == "admin":
+		return True
+	return perms.get("can_have_api_tokens", False) is True
 
 
 def _user_can_have_non_expiring_jwt(username: str) -> bool:
-    """Return True if the user's role has can_have_non_expiring_jwt (admin only by default)."""
-    user_id, user_rec = users_db.get_user(username)
-    if not user_rec:
-        return False
-    groups = [g.lower() for g in user_rec.get("groups", [])]
-    role = groups[0] if groups else "user"
-    cfg = access_control._load_group_config()
-    perms = cfg.get(role, {})
-    if role == "admin":
-        return True
-    return perms.get("can_have_non_expiring_jwt", False) is True
+	"""Return True if the user's role has can_have_non_expiring_jwt (admin only by default)."""
+	user_id, user_rec = users_db.get_user(username)
+	if not user_rec:
+		return False
+	groups = [g.lower() for g in user_rec.get("groups", [])]
+	role = groups[0] if groups else "user"
+	cfg = access_control._load_group_config()
+	perms = cfg.get(role, {})
+	if role == "admin":
+		return True
+	return perms.get("can_have_non_expiring_jwt", False) is True
 
 
 @routes.get("/mss-login/generate_token")
 async def get_generate_token(request: web.Request) -> web.Response:
-    """Serve the generate API token page (public)."""
-    path = os.path.join(HTML_DIR, "generate_token.html")
-    if not os.path.exists(path):
-        return web.Response(text="generate_token.html not found", status=404)
-    return web.FileResponse(path)
+	"""Serve the generate API token page (public)."""
+	path = os.path.join(HTML_DIR, "generate_token.html")
+	if not os.path.exists(path):
+		return web.Response(text="generate_token.html not found", status=404)
+	return web.FileResponse(path)
 
 
 @routes.post("/mss-login/generate_token")
 async def post_generate_token(request: web.Request) -> web.Response:
-    """Create a long-lived API token. Requires credentials (or JWT) and can_have_api_tokens."""
-    sanitized_data = dict(request.get("_sanitized_data") or {})  # type: ignore[assignment]
-    if request.can_read_body and "application/json" in (request.content_type or ""):
-        try:
-            body = await request.json()  # type: ignore[assignment]
-            if isinstance(body, dict):
-                sanitized_data.update(body)
-        except Exception:
-            pass
-    ip = get_ip(request)
-    username = (sanitized_data.get("username") or "").strip()
-    password = sanitized_data.get("password") or ""
-    expire_hours_raw = sanitized_data.get("expire_hours")
-    try:
-        expire_hours = float(expire_hours_raw) if expire_hours_raw not in (None, "") else 720.0
-    except (TypeError, ValueError):
-        expire_hours = 720.0
+	"""Create a long-lived API token. Requires credentials (or JWT) and can_have_api_tokens."""
+	sanitized_data = dict(request.get("_sanitized_data") or {})  # type: ignore[assignment]
+	if request.can_read_body and "application/json" in (request.content_type or ""):
+		try:
+			body = await request.json()  # type: ignore[assignment]
+			if isinstance(body, dict):
+				sanitized_data.update(body)
+		except Exception:
+			pass
+	ip = get_ip(request)
+	username = (sanitized_data.get("username") or "").strip()
+	password = sanitized_data.get("password") or ""
+	expire_hours_raw = sanitized_data.get("expire_hours")
+	try:
+		expire_hours = float(expire_hours_raw) if expire_hours_raw not in (None, "") else 720.0
+	except (TypeError, ValueError):
+		expire_hours = 720.0
 
-    max_hours = MAX_TOKEN_EXPIRE_MINUTES / 60.0
-    # 0 = never expire (only if user has can_have_non_expiring_jwt); otherwise clamp to 1..max
-    if expire_hours <= 0:
-        # Will be validated per-user below (must have non-expiring permission)
-        pass
-    elif expire_hours > max_hours:
-        expire_hours = max_hours
-    else:
-        expire_hours = max(1.0, expire_hours)
+	max_hours = MAX_TOKEN_EXPIRE_MINUTES / 60.0
+	# 0 = never expire (only if user has can_have_non_expiring_jwt); otherwise clamp to 1..max
+	if expire_hours <= 0:
+		# Will be validated per-user below (must have non-expiring permission)
+		pass
+	elif expire_hours > max_hours:
+		expire_hours = max_hours
+	else:
+		expire_hours = max(1.0, expire_hours)
 
-    # Optionally resolve user from JWT (no password needed)
-    token_from_request = jwt_auth.get_token_from_request(request)
-    if token_from_request:
-        try:
-            payload = jwt_auth.decode_access_token(token_from_request)
-            jwt_username = payload.get("username")
-            if jwt_username and users_db.get_user(jwt_username)[0]:
-                if not _user_can_have_api_tokens(jwt_username):
-                    return web.json_response({"error": "MSS-Login: You do not have permission to create API tokens."}, status=403)
-                if expire_hours <= 0 and not _user_can_have_non_expiring_jwt(jwt_username):
-                    return web.json_response({"error": "MSS-Login: Never-expiring tokens (0 hours) require the Non-expiring JWT permission. Ask an admin to enable it for your role."}, status=403)
-                user_id, _ = users_db.get_user(jwt_username)
-                store = get_api_token_store(API_TOKEN_STORE_CONFIG)
-                raw_token = store.create_token(user_id, jwt_username, expire_hours)
-                if DEBUG_MODE:
-                    logger.log_jwt_if_debug(raw_token, jwt_username)
-                else:
-                    logger.log_jwt_created_console_only(jwt_username)
-                user_console_append(jwt_username, f"API token created for user: {jwt_username}")
-                try:
-                    send_notification("api_token_created", "mss_login: API token created", f"User {jwt_username} created API token from IP: {ip}")
-                except Exception:
-                    pass
-                logger.generate_success(ip, jwt_username, int(expire_hours) if expire_hours > 0 else 0)
-                return web.json_response({
-                    "message": "API token created.",
-                    "jwt_token": raw_token,
-                    "expires_in_hours": expire_hours if expire_hours > 0 else None,
-                })
-        except Exception:
-            pass
+	# Optionally resolve user from JWT (no password needed)
+	token_from_request = jwt_auth.get_token_from_request(request)
+	if token_from_request:
+		try:
+			payload = jwt_auth.decode_access_token(token_from_request)
+			jwt_username = payload.get("username")
+			if jwt_username and users_db.get_user(jwt_username)[0]:
+				if not _user_can_have_api_tokens(jwt_username):
+					return web.json_response(
+						{"error": "MSS-Login: You do not have permission to create API tokens."},
+						status=403,
+					)
+				if expire_hours <= 0 and not _user_can_have_non_expiring_jwt(jwt_username):
+					return web.json_response(
+						{
+							"error": "MSS-Login: Never-expiring tokens (0 hours) require the Non-expiring JWT permission. Ask an admin to enable it for your role."
+						},
+						status=403,
+					)
+				user_id, _ = users_db.get_user(jwt_username)
+				store = get_api_token_store(API_TOKEN_STORE_CONFIG)
+				raw_token = store.create_token(user_id, jwt_username, expire_hours)
+				if DEBUG_MODE:
+					logger.log_jwt_if_debug(raw_token, jwt_username)
+				else:
+					logger.log_jwt_created_console_only(jwt_username)
+				user_console_append(jwt_username, f"API token created for user: {jwt_username}")
+				try:
+					send_notification(
+						"api_token_created",
+						"mss_login: API token created",
+						f"User {jwt_username} created API token from IP: {ip}",
+					)
+				except Exception:
+					pass
+				logger.generate_success(
+					ip, jwt_username, int(expire_hours) if expire_hours > 0 else 0
+				)
+				return web.json_response(
+					{
+						"message": "API token created.",
+						"jwt_token": raw_token,
+						"expires_in_hours": expire_hours if expire_hours > 0 else None,
+					}
+				)
+		except Exception:
+			pass
 
-    # MFA second step: mfa_temp_token + code (from first step when user has MFA)
-    mfa_temp = (sanitized_data.get("mfa_temp_token") or "").strip()
-    mfa_code = (sanitized_data.get("code") or "").strip().replace(" ", "")
-    mfa_backup = (sanitized_data.get("backup_code") or "").strip().replace(" ", "").replace("-", "").upper()
-    if mfa_temp and (mfa_code or mfa_backup):
-        from ..utils.mfa_temp_store import consume_mfa_temp_token
-        mfa_username = consume_mfa_temp_token(mfa_temp)
-        if not mfa_username:
-            return web.json_response({"error": "Invalid or expired MFA token. Please log in again."}, status=401)
-        if mfa_backup:
-            if not users_db.verify_backup_code_and_consume(mfa_username, mfa_backup):
-                return web.json_response({"error": "Invalid or already used backup code"}, status=400)
-        elif mfa_code:
-            if not users_db.verify_totp(mfa_username, mfa_code):
-                return web.json_response({"error": "Invalid code"}, status=400)
-        else:
-            return web.json_response({"error": "Provide code or backup_code"}, status=400)
-        username = mfa_username
-        user_id, _ = users_db.get_user(username)
-        if not user_id:
-            return web.json_response({"error": "User not found"}, status=500)
-        expire_hours = float(sanitized_data.get("expire_hours") or 720)
-        if expire_hours <= 0:
-            pass
-        elif expire_hours > MAX_TOKEN_EXPIRE_MINUTES / 60.0:
-            expire_hours = MAX_TOKEN_EXPIRE_MINUTES / 60.0
-        else:
-            expire_hours = max(1.0, expire_hours)
-        if not _user_can_have_api_tokens(username):
-            return web.json_response({"error": "mss_login: You do not have permission to create API tokens."}, status=403)
-        if expire_hours <= 0 and not _user_can_have_non_expiring_jwt(username):
-            return web.json_response({"error": "mss_login: Never-expiring tokens (0 hours) require the Non-expiring JWT permission."}, status=403)
-        store = get_api_token_store(API_TOKEN_STORE_CONFIG)
-        raw_token = store.create_token(user_id, username, expire_hours)
-        if DEBUG_MODE:
-            logger.log_jwt_if_debug(raw_token, username)
-        else:
-            logger.log_jwt_created_console_only(username)
-        user_console_append(username, f"API token created for user: {username} (after MFA)")
-        try:
-            send_notification("api_token_created", "mss_login: API token created", f"User {username} created API token (MFA) from IP: {ip}")
-        except Exception:
-            pass
-        logger.generate_success(ip, username, int(expire_hours) if expire_hours > 0 else 0)
-        return web.json_response({
-            "message": "API token created.",
-            "jwt_token": raw_token,
-            "expires_in_hours": expire_hours if expire_hours > 0 else None,
-        })
+	# MFA second step: mfa_temp_token + code (from first step when user has MFA)
+	mfa_temp = (sanitized_data.get("mfa_temp_token") or "").strip()
+	mfa_code = (sanitized_data.get("code") or "").strip().replace(" ", "")
+	mfa_backup = (
+		(sanitized_data.get("backup_code") or "").strip().replace(" ", "").replace("-", "").upper()
+	)
+	if mfa_temp and (mfa_code or mfa_backup):
+		from ..utils.mfa_temp_store import consume_mfa_temp_token
 
-    if not username or not password:
-        logger.generate_attempt(ip, username or "", password or "", int(expire_hours))
-        return web.json_response({"error": "Username and password required."}, status=401)
+		mfa_username = consume_mfa_temp_token(mfa_temp)
+		if not mfa_username:
+			return web.json_response(
+				{"error": "Invalid or expired MFA token. Please log in again."}, status=401
+			)
+		if mfa_backup:
+			if not users_db.verify_backup_code_and_consume(mfa_username, mfa_backup):
+				return web.json_response(
+					{"error": "Invalid or already used backup code"}, status=400
+				)
+		elif mfa_code:
+			if not users_db.verify_totp(mfa_username, mfa_code):
+				return web.json_response({"error": "Invalid code"}, status=400)
+		else:
+			return web.json_response({"error": "Provide code or backup_code"}, status=400)
+		username = mfa_username
+		user_id, _ = users_db.get_user(username)
+		if not user_id:
+			return web.json_response({"error": "User not found"}, status=500)
+		expire_hours = float(sanitized_data.get("expire_hours") or 720)
+		if expire_hours <= 0:
+			pass
+		elif expire_hours > MAX_TOKEN_EXPIRE_MINUTES / 60.0:
+			expire_hours = MAX_TOKEN_EXPIRE_MINUTES / 60.0
+		else:
+			expire_hours = max(1.0, expire_hours)
+		if not _user_can_have_api_tokens(username):
+			return web.json_response(
+				{"error": "mss_login: You do not have permission to create API tokens."}, status=403
+			)
+		if expire_hours <= 0 and not _user_can_have_non_expiring_jwt(username):
+			return web.json_response(
+				{
+					"error": "mss_login: Never-expiring tokens (0 hours) require the Non-expiring JWT permission."
+				},
+				status=403,
+			)
+		store = get_api_token_store(API_TOKEN_STORE_CONFIG)
+		raw_token = store.create_token(user_id, username, expire_hours)
+		if DEBUG_MODE:
+			logger.log_jwt_if_debug(raw_token, username)
+		else:
+			logger.log_jwt_created_console_only(username)
+		user_console_append(username, f"API token created for user: {username} (after MFA)")
+		try:
+			send_notification(
+				"api_token_created",
+				"mss_login: API token created",
+				f"User {username} created API token (MFA) from IP: {ip}",
+			)
+		except Exception:
+			pass
+		logger.generate_success(ip, username, int(expire_hours) if expire_hours > 0 else 0)
+		return web.json_response(
+			{
+				"message": "API token created.",
+				"jwt_token": raw_token,
+				"expires_in_hours": expire_hours if expire_hours > 0 else None,
+			}
+		)
 
-    if not users_db.check_username_password(username, password):
-        logger.generate_attempt(ip, username, password, int(expire_hours))
-        timeout.add_failed_attempt(ip)
-        return web.json_response({"error": "Invalid credentials."}, status=401)
+	if not username or not password:
+		logger.generate_attempt(ip, username or "", password or "", int(expire_hours))
+		return web.json_response({"error": "Username and password required."}, status=401)
 
-    if not _user_can_have_api_tokens(username):
-        return web.json_response({"error": "MSS-Login: You do not have permission to create API tokens."}, status=403)
-    if expire_hours <= 0 and not _user_can_have_non_expiring_jwt(username):
-        return web.json_response({"error": "MSS-Login: Never-expiring tokens (0 hours) require the Non-expiring JWT permission. Ask an admin to enable it for your role."}, status=403)
+	if not users_db.check_username_password(username, password):
+		logger.generate_attempt(ip, username, password, int(expire_hours))
+		timeout.add_failed_attempt(ip)
+		return web.json_response({"error": "Invalid credentials."}, status=401)
 
-    # User has MFA: require second factor before issuing API token
-    if users_db.get_mfa_enabled(username):
-        mfa_temp = create_mfa_temp_token(username)
-        return web.json_response({
-            "message": "MFA verification required",
-            "mfa_required": True,
-            "mfa_temp_token": mfa_temp,
-            "expire_hours": expire_hours,
-        }, status=200)
+	if not _user_can_have_api_tokens(username):
+		return web.json_response(
+			{"error": "MSS-Login: You do not have permission to create API tokens."}, status=403
+		)
+	if expire_hours <= 0 and not _user_can_have_non_expiring_jwt(username):
+		return web.json_response(
+			{
+				"error": "MSS-Login: Never-expiring tokens (0 hours) require the Non-expiring JWT permission. Ask an admin to enable it for your role."
+			},
+			status=403,
+		)
 
-    user_id, _ = users_db.get_user(username)
-    store = get_api_token_store(API_TOKEN_STORE_CONFIG)
-    raw_token = store.create_token(user_id, username, expire_hours)
-    if DEBUG_MODE:
-        logger.log_jwt_if_debug(raw_token, username)
-    else:
-        logger.log_jwt_created_console_only(username)
-    user_console_append(username, f"API token created for user: {username}")
-    try:
-        send_notification("api_token_created", "mss_login: API token created", f"User {username} created API token from IP: {ip}")
-    except Exception:
-        pass
-    logger.generate_success(ip, username, int(expire_hours) if expire_hours > 0 else 0)
-    timeout.remove_failed_attempts(ip)
-    return web.json_response({
-        "message": "API token created.",
-        "jwt_token": raw_token,
-        "expires_in_hours": expire_hours if expire_hours > 0 else None,
-    })
+	# User has MFA: require second factor before issuing API token
+	if users_db.get_mfa_enabled(username):
+		mfa_temp = create_mfa_temp_token(username)
+		return web.json_response(
+			{
+				"message": "MFA verification required",
+				"mfa_required": True,
+				"mfa_temp_token": mfa_temp,
+				"expire_hours": expire_hours,
+			},
+			status=200,
+		)
+
+	user_id, _ = users_db.get_user(username)
+	store = get_api_token_store(API_TOKEN_STORE_CONFIG)
+	raw_token = store.create_token(user_id, username, expire_hours)
+	if DEBUG_MODE:
+		logger.log_jwt_if_debug(raw_token, username)
+	else:
+		logger.log_jwt_created_console_only(username)
+	user_console_append(username, f"API token created for user: {username}")
+	try:
+		send_notification(
+			"api_token_created",
+			"mss_login: API token created",
+			f"User {username} created API token from IP: {ip}",
+		)
+	except Exception:
+		pass
+	logger.generate_success(ip, username, int(expire_hours) if expire_hours > 0 else 0)
+	timeout.remove_failed_attempts(ip)
+	return web.json_response(
+		{
+			"message": "API token created.",
+			"jwt_token": raw_token,
+			"expires_in_hours": expire_hours if expire_hours > 0 else None,
+		}
+	)
 
 
 @routes.post("/generate_token")
 async def post_generate_token_legacy(request: web.Request) -> web.Response:
-    """Legacy endpoint: delegate to POST /mss-login/generate_token."""
-    return await post_generate_token(request)
+	"""Legacy endpoint: delegate to POST /mss-login/generate_token."""
+	return await post_generate_token(request)

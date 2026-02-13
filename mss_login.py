@@ -1,8 +1,15 @@
 from aiohttp import web
 from server import PromptServer
 from .globals import (
-    app, routes, ip_filter, sanitizer, timeout, jwt_auth, access_control,
-    GROUPS_CONFIG_FILE, users_db
+	app,
+	routes,
+	ip_filter,
+	sanitizer,
+	timeout,
+	jwt_auth,
+	access_control,
+	GROUPS_CONFIG_FILE,
+	users_db,
 )
 from .utils.watcher import watcher
 from .utils.bootstrap import ensure_groups_config
@@ -18,15 +25,17 @@ ensure_groups_config()
 
 # --- Static Files ---
 # Define your directories here or in globals
-CSS_DIR = "..." 
+CSS_DIR = "..."
 JS_DIR = "..."
 ASSETS_DIR = "..."
 
-app.add_routes([
-    web.static("/mss_login/css", CSS_DIR),
-    web.static("/mss_login/js", JS_DIR),
-    web.static("/mss_login/assets", ASSETS_DIR),
-])
+app.add_routes(
+	[
+		web.static("/mss_login/css", CSS_DIR),
+		web.static("/mss_login/js", JS_DIR),
+		web.static("/mss_login/assets", ASSETS_DIR),
+	]
+)
 
 # --- Middleware Registration ---
 # Add your conditional checks (FORCE_HTTPS, etc) here
@@ -34,7 +43,11 @@ app.add_routes([
 app.middlewares.append(ip_filter.create_ip_filter_middleware())
 app.middlewares.append(sanitizer.create_sanitizer_middleware())
 app.middlewares.append(timeout.create_time_out_middleware(limited=("/login", "/register")))
-app.middlewares.append(jwt_auth.create_jwt_middleware(public=("/login", "/logout", "/register"), public_prefixes=("/mss_login", "/assets")))
+app.middlewares.append(
+	jwt_auth.create_jwt_middleware(
+		public=("/login", "/logout", "/register"), public_prefixes=("/mss_login", "/assets")
+	)
+)
 
 # Folder/Queue Access Control
 app.middlewares.append(access_control.create_folder_access_control_middleware())

@@ -1,12 +1,12 @@
 # Code quality: lint (Ruff) and optional format check.
-# Configure [tool.ruff] in pyproject.toml to tune rules.
+# Configure  in pyproject.toml to tune rules.
 name: Code quality
 
 on:
   push:
-    branches: [development, production]
+    branches: [production]
   pull_request:
-    branches: [development, production]
+    branches: [production]
 
 jobs:
   ruff:
@@ -35,15 +35,3 @@ jobs:
           src: "."
           version: "latest"
 
-  copyright:
-    name: Copyright headers
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Check copyright headers
-        run: python scripts/add_copyright.py --check

@@ -8,18 +8,19 @@ from pathlib import Path
 EXT_PATH = os.path.join(os.path.dirname(__file__), "..")
 CONFIG_FILE = os.path.join(EXT_PATH, "config.json")
 COMFY_ROOT = Path(__file__).resolve().parents[2]  # adjust if needed
-USER_DATA_ROOT = COMFY_ROOT / "user_data"         # for future use
+USER_DATA_ROOT = COMFY_ROOT / "user_data"  # for future use
 USER_OUTPUT_ROOT = COMFY_ROOT / "output" / "users"
 USER_TEMP_ROOT = COMFY_ROOT / "temp" / "users"
 
+
 def load_config(file_path: str) -> Dict[str, Any]:
-    if os.path.exists(file_path):
-        with open(file_path, "r") as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                return {}
-    return {}
+	if os.path.exists(file_path):
+		with open(file_path, "r") as f:
+			try:
+				return json.load(f)
+			except json.JSONDecodeError:
+				return {}
+	return {}
 
 
 config = load_config(CONFIG_FILE)
@@ -27,11 +28,11 @@ config = load_config(CONFIG_FILE)
 SECRET_KEY = os.getenv(config.get("secret_key_env", "SECRET_KEY"))
 
 if not SECRET_KEY:
-    warnings.warn(
-        "The SECRET_KEY environment variable is not set. A random key will be used for this session. "
-        "This will cause all users to log out on server restart."
-    )
-    SECRET_KEY = "".join([str(uuid.uuid4().hex) for _ in range(128)])
+	warnings.warn(
+		"The SECRET_KEY environment variable is not set. A random key will be used for this session. "
+		"This will cause all users to log out on server restart."
+	)
+	SECRET_KEY = "".join([str(uuid.uuid4().hex) for _ in range(128)])
 
 MATCH_HEADERS = {"X-Forwarded-Proto": "https"}
 
@@ -41,9 +42,9 @@ MAX_TOKEN_EXPIRE_MINUTES = 60 * config.get("max_access_token_expiration_hours", 
 
 _users_db_cfg = config.get("users_db", "users_db.json")
 if isinstance(_users_db_cfg, dict):
-    USERS_FILE = os.path.join(EXT_PATH, _users_db_cfg.get("sqlite_path", "users/users.db"))
+	USERS_FILE = os.path.join(EXT_PATH, _users_db_cfg.get("sqlite_path", "users/users.db"))
 else:
-    USERS_FILE = os.path.join(EXT_PATH, _users_db_cfg)
+	USERS_FILE = os.path.join(EXT_PATH, _users_db_cfg)
 LOG_FILE = os.path.join(EXT_PATH, config.get("log", "mss_login.log"))
 LOG_LEVELS = config.get("log_levels", ["INFO"])
 
