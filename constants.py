@@ -14,12 +14,19 @@ try:
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=_env_path, override=True)
 except ImportError:
+    print("[mss_login] dotenv not found, trying dotenvx")
     try:
         from dotenvx import load_dotenvx
         load_dotenvx(dotenv_path=_env_path, override=True)
     except ImportError:
-        print("[mss_login] No dotenv or dotenvx found, using os.environ")
+        print("[mss_login] dotenvx not found, using os.environ")
         pass
+    except Exception as e:
+        print(f"[mss_login] Failed to load .env with dotenvx: {e}")
+        pass
+except Exception as e:
+    print(f"[mss_login] Failed to load .env with dotenv: {e}")
+    pass
 
 WEB_DIR = os.path.join(CURRENT_DIR, "web")
 
