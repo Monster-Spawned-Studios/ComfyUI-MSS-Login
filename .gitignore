@@ -15,3 +15,5 @@ site/
 !.vscode/settings.json
 !.vscode/extensions.json
 !.vscode/cspell.json
+
+.ruff_cache/
