@@ -7,7 +7,7 @@
             "command": "rsync",
             "args": [
                 "-a",
-                "--delete",
+                "--del",
                 "--exclude=.git",
                 "--exclude=.env",
                 "--exclude=.env.*",
@@ -15,6 +15,11 @@
                 "--exclude=__pycache__",
                 "--exclude=*.log",
                 "--exclude=logs",
+                "--exclude=.vscode",
+                "--exclude=.agent",
+                "--exclude=docs",
+                "--exclude=readme",
+                "--exclude=.github",
                 "--exclude=users/.ephemeral_secret_key",
                 "${workspaceFolder}/",
                 "/Volumes/Mando Drive/ComfyUI/custom_nodes/ComfyUI-MSS-Login/"
