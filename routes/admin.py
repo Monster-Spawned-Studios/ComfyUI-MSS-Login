@@ -180,7 +180,7 @@ async def api_delete_user_route(request):
 
 @routes.get("/mss-login/api/users-db-config")
 async def api_get_users_db_config(request):
-    """Return current users DB backend and paths (admin only). Password never returned."""
+    """Return current users DB backend, paths, and encryption_level (admin only). Password never returned."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     out = {
@@ -190,6 +190,7 @@ async def api_get_users_db_config(request):
         "postgres_port": USERS_DB_CONFIG.get("postgres_port", 5432),
         "postgres_database": USERS_DB_CONFIG.get("postgres_database", "mss_login"),
         "postgres_user": USERS_DB_CONFIG.get("postgres_user", "mss_login"),
+        "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
     }
     return web.json_response(out)
 
@@ -216,6 +217,7 @@ async def api_put_users_db_config(request):
         udb["postgres_port"] = data.get("postgres_port", udb.get("postgres_port", 5432))
         udb["postgres_database"] = data.get("postgres_database", udb.get("postgres_database", "mss_login"))
         udb["postgres_user"] = data.get("postgres_user", udb.get("postgres_user", "mss_login"))
+        udb["encryption_level"] = (data.get("encryption_level") or udb.get("encryption_level") or "").strip()
         cfg["users_db"] = udb
         save_json_file(CONFIG_FILE_PATH, cfg)
         reload_users_db_config()
@@ -226,46 +228,38 @@ async def api_put_users_db_config(request):
 
 @routes.get("/mss-login/api/token-storage-config")
 async def api_get_token_storage_config(request):
-    """Return current API token store backend and non-secret options (admin only)."""
+    """Return token storage config (admin only). Uses same DB as users unless backend is json. Postgres password is env-only."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     cfg = load_json_file(CONFIG_FILE_PATH, {})
     store_cfg = cfg.get("api_token_store") or {}
+    use_same_db = (store_cfg.get("backend") or "").strip().lower() != "json"
     out = {
-        "backend": store_cfg.get("backend", "sqlite"),
+        "backend": USERS_DB_CONFIG.get("backend", "sqlite") if use_same_db else "json",
         "json_path": store_cfg.get("json_path", "users/api_tokens.json"),
-        "sqlite_path": store_cfg.get("sqlite_path", "users/api_tokens.db"),
-        "postgres_host": store_cfg.get("postgres_host", "localhost"),
-        "postgres_port": store_cfg.get("postgres_port", 5432),
-        "postgres_database": store_cfg.get("postgres_database", "mss_login"),
-        "postgres_user": store_cfg.get("postgres_user", "mss_login"),
+        "use_same_db_as_users": use_same_db,
     }
     return web.json_response(out)
 
 
 @routes.put("/mss-login/api/token-storage-config")
 async def api_put_token_storage_config(request):
-    """Update API token store config (admin only). Password from env API_TOKEN_DB_PASSWORD only."""
+    """Update token storage config (admin only). Backend: 'json' = legacy file; else use same DB as users. Postgres password is env-only."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     try:
         data = await request.json()
-        backend = (data.get("backend") or "sqlite").lower()
-        if backend not in ("json", "sqlite", "postgresql"):
-            return web.json_response({"error": "Invalid backend"}, status=400)
+        backend = (data.get("backend") or "database").strip().lower()
+        if backend not in ("json", "database", "sqlite", "postgresql"):
+            return web.json_response({"error": "Invalid backend; use json or database (same DB as users)"}, status=400)
+        if backend in ("sqlite", "postgresql"):
+            backend = "database"
         cfg = load_json_file(CONFIG_FILE_PATH, {})
         if not isinstance(cfg, dict):
             cfg = {}
         api_cfg = cfg.get("api_token_store") or {}
         api_cfg["backend"] = backend
         api_cfg["json_path"] = data.get("json_path", api_cfg.get("json_path", "users/api_tokens.json"))
-        api_cfg["sqlite_path"] = data.get("sqlite_path", api_cfg.get("sqlite_path", "users/api_tokens.db"))
-        api_cfg["postgres_host"] = data.get("postgres_host", api_cfg.get("postgres_host", "localhost"))
-        api_cfg["postgres_port"] = data.get("postgres_port", api_cfg.get("postgres_port", 5432))
-        api_cfg["postgres_database"] = data.get("postgres_database", api_cfg.get("postgres_database", "mss_login"))
-        api_cfg["postgres_user"] = data.get("postgres_user", api_cfg.get("postgres_user", "mss_login"))
-        if "postgres_password" in api_cfg:
-            del api_cfg["postgres_password"]
         cfg["api_token_store"] = api_cfg
         save_json_file(CONFIG_FILE_PATH, cfg)
         reload_api_token_store_config()

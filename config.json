@@ -6,7 +6,8 @@
         "postgres_host": "localhost",
         "postgres_port": 5432,
         "postgres_database": "mss_login",
-        "postgres_user": "mss_login"
+        "postgres_user": "mss_login",
+        "encryption_level": ""
     },
     "legacy_users_json_path": "users/users.json",
     "access_token_expiration_hours": 24,
@@ -21,13 +22,8 @@
     "seperate_users": true,
     "manager_admin_only": true,
     "api_token_store": {
-        "backend": "sqlite",
-        "json_path": "users/api_tokens.json",
-        "sqlite_path": "users/api_tokens.db",
-        "postgres_host": "localhost",
-        "postgres_port": 5432,
-        "postgres_database": "mss_login",
-        "postgres_user": "mss_login"
+        "backend": "database",
+        "json_path": "users/api_tokens.json"
     },
     "require_auth_for_remote_api": true,
     "local_network_cidrs": [],

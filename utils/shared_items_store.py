@@ -10,11 +10,16 @@ from typing import Optional
 TABLE = "shared_items"
 
 
-def _get_sqlite_store(db_path: str) -> "_SqliteSharedStore":
+def _get_sqlite_store(db_path: str, secret_key: str = "", encryption_level: str = "") -> "_SqliteSharedStore":
+    """Open unified SQLite DB (same path/key as users_db); supports SQLCipher when encryption_level set."""
+    from .sqlite_connection import open_sqlite
     path = Path(db_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    import sqlite3
-    conn = sqlite3.connect(str(path), check_same_thread=False)
+    conn = open_sqlite(
+        str(path),
+        secret_key=secret_key,
+        encryption_level=encryption_level or "",
+        check_same_thread=False,
+    )
     conn.execute(
         f"""
         CREATE TABLE IF NOT EXISTS {TABLE} (
@@ -141,7 +146,7 @@ _store: Optional[_SqliteSharedStore | _PostgresSharedStore] = None
 
 
 def get_shared_items_store(config: dict):
-    """Get singleton store using same config as users_db (backend, sqlite_path, postgres_*)."""
+    """Get singleton store using same config as users_db (backend, sqlite_path, postgres_*, encryption_level)."""
     global _store
     if _store is not None:
         return _store
@@ -155,7 +160,15 @@ def get_shared_items_store(config: dict):
             config.get("postgres_password", ""),
         )
     else:
-        _store = _get_sqlite_store(config.get("sqlite_path", "users/users.db"))
+        try:
+            from ..constants import SECRET_KEY
+        except ImportError:
+            SECRET_KEY = ""
+        _store = _get_sqlite_store(
+            config.get("sqlite_path", "users/users.db"),
+            secret_key=SECRET_KEY,
+            encryption_level=config.get("encryption_level", ""),
+        )
     return _store
 
 

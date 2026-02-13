@@ -47,4 +47,4 @@ app.middlewares.append(access_control.create_mss_login_middleware())
 # Watcher
 watcher.register(app)
 
-print("[mss_login] Initialized successfully.")
+print("[MSS-Login] Initialized successfully.")

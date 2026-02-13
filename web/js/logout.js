@@ -82,12 +82,12 @@ async function setupLogout() {
           ]
         );
       } catch (err) {
-        console.error("Error creating menu logout button:", err);
+        console.error("Error creating menu logout button: ", err);
       }
     }
 
   } catch (error) {
-    console.error("Error setting up Logout button:", error);
+    console.error("Error setting up Logout button: ", error);
   }
 }
 

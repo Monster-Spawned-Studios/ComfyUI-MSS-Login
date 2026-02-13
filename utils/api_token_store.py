@@ -12,18 +12,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional
 
-try:
-    from ..constants import _default_sqlite_path
-except ImportError:
-    def _default_sqlite_path() -> str:
-        import sys
-        if sys.platform == "win32":
-            base = os.environ.get("LOCALAPPDATA", "") or os.path.expanduser("~\\AppData\\Local")
-        elif sys.platform == "darwin":
-            base = os.path.expanduser("~/Library/Application Support")
-        else:
-            base = os.environ.get("XDG_DATA_HOME", "") or os.path.expanduser("~/.local/share")
-        return os.path.join(base, "mss_login", "api_tokens.db")
+# Token store uses same DB as users (constants.USERS_DB_CONFIG); no separate path.
 
 # Default local-network CIDRs (used by remote_api_guard; defined here for reference only)
 DEFAULT_LOCAL_NETWORK_CIDRS = [
@@ -133,16 +122,20 @@ class _JsonTokenStore:
 
 
 # ---------------------------------------------------------------------------
-# SQLite backend
+# SQLite backend (unified DB; same path and key as users_db)
 # ---------------------------------------------------------------------------
 
 
 class _SqliteTokenStore:
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, secret_key: str = "", encryption_level: str = ""):
         self._path = Path(db_path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        import sqlite3
-        self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
+        from .sqlite_connection import open_sqlite
+        self._conn = open_sqlite(
+            str(self._path),
+            secret_key=secret_key,
+            encryption_level=encryption_level or "",
+            check_same_thread=False,
+        )
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS api_tokens "
             "(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, username TEXT NOT NULL, expires_iso TEXT NOT NULL)"
@@ -289,7 +282,8 @@ _api_token_store_instance = None
 
 def get_api_token_store(config: Optional[dict] = None):
     """Build or return the singleton API token store from config.
-    config can be either { "api_token_store": { ... } } or the inner { "backend", "json_path", ... }.
+    Uses same DB as users (backend, sqlite_path, postgres_* from USERS_DB_CONFIG).
+    config can be { "api_token_store": { ... } } or the inner { "backend", "json_path", ... }.
     """
     global _api_token_store_instance
     if config is None:
@@ -307,18 +301,38 @@ def get_api_token_store(config: Optional[dict] = None):
         )
         _api_token_store_instance = _JsonTokenStore(path)
     elif backend == "sqlite":
-        path = store_cfg.get("sqlite_path") or _default_sqlite_path()
-        _api_token_store_instance = _SqliteTokenStore(path)
+        path = store_cfg.get("sqlite_path", "")
+        if not path:
+            path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "users", "users.db")
+        try:
+            from ..constants import SECRET_KEY
+        except ImportError:
+            SECRET_KEY = ""
+        _api_token_store_instance = _SqliteTokenStore(
+            path,
+            secret_key=SECRET_KEY,
+            encryption_level=store_cfg.get("encryption_level", ""),
+        )
     elif backend == "postgresql":
         host = store_cfg.get("postgres_host", "localhost")
         port = int(store_cfg.get("postgres_port", 5432))
         database = store_cfg.get("postgres_database", "mss_login")
         user = store_cfg.get("postgres_user", "mss_login")
-        password = (os.getenv("API_TOKEN_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "").strip()
+        password = (store_cfg.get("postgres_password") or os.getenv("POSTGRES_PASSWORD") or "").strip()
         _api_token_store_instance = _get_postgres_store(host, port, database, user, password)
     else:
-        path = store_cfg.get("sqlite_path") or _default_sqlite_path()
-        _api_token_store_instance = _SqliteTokenStore(path)
+        path = store_cfg.get("sqlite_path", "")
+        if not path:
+            path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "users", "users.db")
+        try:
+            from ..constants import SECRET_KEY
+        except ImportError:
+            SECRET_KEY = ""
+        _api_token_store_instance = _SqliteTokenStore(
+            path,
+            secret_key=SECRET_KEY,
+            encryption_level=store_cfg.get("encryption_level", ""),
+        )
     return _api_token_store_instance
 
 

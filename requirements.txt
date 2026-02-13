@@ -6,3 +6,4 @@ bcrypt
 cryptography
 python-dotenvx>=0.3.0
 pyotp
+argon2-cffi

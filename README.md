@@ -556,7 +556,11 @@ When using API tokens (e.g. Comfy Portal iOS) and seeing "Unable to connect to s
 - 401 responses include a `debug` hint when DEBUG_MODE is on. Do not leave DEBUG_MODE enabled in production.
 
 ### API token "not found or expired"
-If the client sends a Bearer token but the server returns "API token not found or expired", the token is not in this server's token store. **Generate the token on the same ComfyUI instance (and same container/host) that the client connects to.** In Docker, ensure the token store path (e.g. `users/api_tokens.json` or the path set in mss_login → Token Storage) is on a **persisted volume** so tokens survive restarts and are the same instance the client hits.
+If the client sends a Bearer token but the server returns "API token not found or expired", the token is not in this server's token store. **Generate the token on the same ComfyUI instance (and same container/host) that the client connects to.** In Docker, ensure the database (unified SQLite file or PostgreSQL) is on a **persisted volume** so tokens survive restarts and are the same instance the client hits.
+
+### Unified database and encrypted SQLite
+- **Single database:** Users, API tokens, and shared items use one SQLite file or one PostgreSQL database (config: `users_db` in `config.json`). Token storage no longer uses a separate DB; set token storage backend to "database" in Settings.
+- **Encrypted SQLite:** To encrypt the SQLite file with a key derived from `SECRET_KEY`, set `encryption_level` in `users_db` to `low`, `standard`, or `secure` (Settings → Users DB). Requires **argon2-cffi** (`pip install argon2-cffi`) and, for encryption at rest, **pysqlcipher3** with a system SQLCipher build (`pip install pysqlcipher3`; see [SQLCipher](https://www.zetetic.net/sqlcipher/) for your OS). If `encryption_level` is set but pysqlcipher3 is not installed, startup fails with a clear message.
 
 ### SECRET_KEY and recovery
 - **Unset SECRET_KEY:** If the `SECRET_KEY` environment variable is not set, a random key is used and persisted to `users/.ephemeral_secret_key` (do not commit this file). Sessions and MFA data use this key until restart.

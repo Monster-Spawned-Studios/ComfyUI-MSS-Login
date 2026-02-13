@@ -2,11 +2,13 @@
 """
 Users database: SQLite or PostgreSQL only. No plain-text JSON for credentials.
 Supports migration from legacy JSON on first run. MFA fields encrypted with SECRET_KEY.
+SQLite may use SQLCipher (encryption_level in config) with SECRET_KEY-derived key.
 """
 import bcrypt
 import json
 import os
 import secrets
+import sqlite3
 from pathlib import Path
 from typing import Any, Optional, Tuple
 
@@ -82,16 +84,20 @@ def _user_to_row(user: dict, secret_key: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# SQLite backend
+# SQLite backend (unified DB path; optional SQLCipher via open_sqlite)
 # ---------------------------------------------------------------------------
 
 
 class _SqliteUsersBackend:
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, secret_key: str = "", encryption_level: str = ""):
         self._path = Path(db_path)
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        import sqlite3
-        self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
+        from .sqlite_connection import open_sqlite
+        self._conn = open_sqlite(
+            str(self._path),
+            secret_key=secret_key,
+            encryption_level=encryption_level or "",
+            check_same_thread=False,
+        )
         self._conn.row_factory = sqlite3.Row
         self._ensure_schema()
 
@@ -383,7 +389,11 @@ def migrate_totp_to_new_key(config: dict, old_key: str, new_key: str) -> bool:
         return False
     backend_type = (config.get("backend") or "sqlite").lower()
     if backend_type == "sqlite":
-        backend = _SqliteUsersBackend(config.get("sqlite_path", "users/users.db"))
+        backend = _SqliteUsersBackend(
+            config.get("sqlite_path", "users/users.db"),
+            secret_key=old_key,
+            encryption_level=config.get("encryption_level", ""),
+        )
     elif backend_type == "postgresql":
         backend = _PostgresUsersBackend(
             config.get("postgres_host", "localhost"),
@@ -393,7 +403,11 @@ def migrate_totp_to_new_key(config: dict, old_key: str, new_key: str) -> bool:
             config.get("postgres_password", ""),
         )
     else:
-        backend = _SqliteUsersBackend(config.get("sqlite_path", "users/users.db"))
+        backend = _SqliteUsersBackend(
+            config.get("sqlite_path", "users/users.db"),
+            secret_key=old_key,
+            encryption_level=config.get("encryption_level", ""),
+        )
     try:
         users = backend.get_all(old_key)
         for uid, user in users.items():
@@ -415,7 +429,11 @@ class UsersDB:
         self._legacy_path = legacy_json_path
         backend = (config.get("backend") or "sqlite").lower()
         if backend == "sqlite":
-            self._backend = _SqliteUsersBackend(config.get("sqlite_path", "users/users.db"))
+            self._backend = _SqliteUsersBackend(
+                config.get("sqlite_path", "users/users.db"),
+                secret_key=secret_key,
+                encryption_level=config.get("encryption_level", ""),
+            )
         elif backend == "postgresql":
             self._backend = _PostgresUsersBackend(
                 config.get("postgres_host", "localhost"),
@@ -425,7 +443,11 @@ class UsersDB:
                 config.get("postgres_password", ""),
             )
         else:
-            self._backend = _SqliteUsersBackend(config.get("sqlite_path", "users/users.db"))
+            self._backend = _SqliteUsersBackend(
+                config.get("sqlite_path", "users/users.db"),
+                secret_key=secret_key,
+                encryption_level=config.get("encryption_level", ""),
+            )
         self.users: dict = {}
         self.admin_user: tuple[Optional[str], dict] = (None, {})
         if legacy_json_path:

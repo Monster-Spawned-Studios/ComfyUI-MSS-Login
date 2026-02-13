@@ -1,6 +1,5 @@
 # --- START OF FILE constants.py ---
 import os
-import sys
 import json
 import warnings
 import uuid
@@ -12,13 +11,14 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 # SECRET_KEY and other secrets can be in .env (optionally encrypted via dotenvx encrypt).
 _env_path = os.path.join(CURRENT_DIR, ".env")
 try:
-    from dotenvx import load_dotenvx
-    load_dotenvx(dotenv_path=_env_path, override=True)
+    from dotenv import load_dotenv
+    load_dotenv(dotenv_path=_env_path, override=True)
 except ImportError:
     try:
-        from dotenv import load_dotenv
-        load_dotenv(dotenv_path=_env_path, override=True)
+        from dotenvx import load_dotenvx
+        load_dotenvx(dotenv_path=_env_path, override=True)
     except ImportError:
+        print("[mss_login] No dotenv or dotenvx found, using os.environ")
         pass
 
 WEB_DIR = os.path.join(CURRENT_DIR, "web")
@@ -49,18 +49,21 @@ def _env_or_config(env_key: str, config_value: str):
     return (os.getenv(env_key) or "").strip() or config_value or ""
 
 
-def _default_sqlite_path() -> str:
-    """Cross-platform default SQLite path: user-writable on Windows, macOS, Linux. Not written to config."""
-    if sys.platform == "win32":
-        base = os.environ.get("LOCALAPPDATA", "") or os.path.expanduser("~\\AppData\\Local")
-    elif sys.platform == "darwin":
-        base = os.path.expanduser("~/Library/Application Support")
-    else:
-        base = os.environ.get("XDG_DATA_HOME", "") or os.path.expanduser("~/.local/share")
-    return os.path.join(base, "MSS-Login", "api_tokens.db")
-
-
 config_data = _load_config(CONFIG_FILE_PATH)
+
+
+def _normalize_encryption_level(level: str) -> str:
+    """Map medium->standard, high->secure; return low|standard|secure."""
+    if not level:
+        return ""
+    s = str(level).strip().lower()
+    if s in ("medium", "standard"):
+        return "standard"
+    if s in ("high", "secure"):
+        return "secure"
+    if s == "low":
+        return "low"
+    return s if s in ("low", "standard", "secure") else ""
 
 # --- Files & Paths ---
 # Legacy path for one-time migration from JSON to DB (do not use for credential storage)
@@ -124,28 +127,10 @@ SEPERATE_USERS = config_data.get("seperate_users", True)
 MANAGER_ADMIN_ONLY = config_data.get("manager_admin_only", True)
 MATCH_HEADERS = {"X-Forwarded-Proto": "https"}
 
-# API token store (long-lived Bearer tokens). Sensitive values: env (including .env) then config.
-_api_token_cfg = config_data.get("api_token_store") or {}
-_sqlite_from_env = _env_or_config("SQLITE_PATH", "") or _env_or_config("API_TOKEN_SQLITE_PATH", "")
-_sqlite_from_config = _api_token_cfg.get("sqlite_path") or ""
-_sqlite_path = _sqlite_from_env or _sqlite_from_config or _default_sqlite_path()
-API_TOKEN_STORE_CONFIG = {
-    "backend": (_api_token_cfg.get("backend") or "sqlite").lower(),
-    "json_path": _env_or_config("API_TOKEN_JSON_PATH", _api_token_cfg.get("json_path", "users/api_tokens.json")),
-    "sqlite_path": _sqlite_path,
-    "postgres_host": _env_or_config("POSTGRES_HOST", _api_token_cfg.get("postgres_host", "localhost")),
-    "postgres_port": _env_or_config("POSTGRES_PORT", str(_api_token_cfg.get("postgres_port", 5432))),
-    "postgres_database": _env_or_config("POSTGRES_DATABASE", _api_token_cfg.get("postgres_database", "mss_login")),
-    "postgres_user": _env_or_config("POSTGRES_USER", _api_token_cfg.get("postgres_user", "mss_login")),
-}
-if not os.path.isabs(API_TOKEN_STORE_CONFIG["json_path"]):
-    API_TOKEN_STORE_CONFIG["json_path"] = os.path.join(CURRENT_DIR, API_TOKEN_STORE_CONFIG["json_path"])
-if not os.path.isabs(API_TOKEN_STORE_CONFIG["sqlite_path"]):
-    API_TOKEN_STORE_CONFIG["sqlite_path"] = os.path.join(CURRENT_DIR, API_TOKEN_STORE_CONFIG["sqlite_path"])
-
-# Users DB (credentials): SQLite or PostgreSQL only; no plain-text JSON. Password from env only.
+# Users DB (credentials): single source of truth for backend, path, and Postgres. Password from env only.
 def _default_users_sqlite_path() -> str:
     return os.path.join(CURRENT_DIR, "users", "users.db")
+
 
 _users_db_cfg = config_data.get("users_db") or {}
 if isinstance(_users_db_cfg, str):
@@ -160,14 +145,37 @@ USERS_DB_CONFIG = {
     "postgres_port": _env_or_config("USERS_DB_POSTGRES_PORT", str(_users_db_cfg.get("postgres_port", 5432))),
     "postgres_database": _env_or_config("USERS_DB_POSTGRES_DATABASE", _users_db_cfg.get("postgres_database", "mss_login")),
     "postgres_user": _env_or_config("USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "mss_login")),
+    "encryption_level": _normalize_encryption_level(_users_db_cfg.get("encryption_level", "")),
 }
-# DB password never in config; env only
+# DB password never in config; env only (unified for users, api_tokens, shared_items)
 USERS_DB_CONFIG["postgres_password"] = (os.getenv("USERS_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "").strip()
+
+# API token store: "json" = legacy file; otherwise use same DB as users (backend, sqlite_path, postgres from USERS_DB_CONFIG).
+_api_token_cfg = config_data.get("api_token_store") or {}
+_token_backend = (_api_token_cfg.get("backend") or "").strip().lower()
+if _token_backend == "json":
+    _api_backend = "json"
+else:
+    _api_backend = USERS_DB_CONFIG["backend"]
+_json_path = _env_or_config("API_TOKEN_JSON_PATH", _api_token_cfg.get("json_path", "users/api_tokens.json"))
+if not os.path.isabs(_json_path):
+    _json_path = os.path.join(CURRENT_DIR, _json_path)
+API_TOKEN_STORE_CONFIG = {
+    "backend": _api_backend,
+    "json_path": _json_path,
+    "sqlite_path": USERS_DB_CONFIG["sqlite_path"],
+    "postgres_host": USERS_DB_CONFIG["postgres_host"],
+    "postgres_port": USERS_DB_CONFIG["postgres_port"],
+    "postgres_database": USERS_DB_CONFIG["postgres_database"],
+    "postgres_user": USERS_DB_CONFIG["postgres_user"],
+    "postgres_password": USERS_DB_CONFIG["postgres_password"],
+    "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
+}
 
 
 def reload_users_db_config() -> dict:
     """Re-read config.json and refresh USERS_DB_CONFIG (used after admin saves users DB config). Restart required to use new backend."""
-    global config_data, USERS_DB_CONFIG
+    global config_data, USERS_DB_CONFIG, API_TOKEN_STORE_CONFIG
     config_data = _load_config(CONFIG_FILE_PATH)
     _users_db_cfg = config_data.get("users_db") or {}
     if isinstance(_users_db_cfg, str):
@@ -182,8 +190,27 @@ def reload_users_db_config() -> dict:
         "postgres_port": _env_or_config("USERS_DB_POSTGRES_PORT", str(_users_db_cfg.get("postgres_port", 5432))),
         "postgres_database": _env_or_config("USERS_DB_POSTGRES_DATABASE", _users_db_cfg.get("postgres_database", "mss_login")),
         "postgres_user": _env_or_config("USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "mss_login")),
+        "encryption_level": _normalize_encryption_level(_users_db_cfg.get("encryption_level", "")),
     }
     USERS_DB_CONFIG["postgres_password"] = (os.getenv("USERS_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "").strip()
+    # Keep API token store in sync (same DB unless backend is "json")
+    _api_cfg = config_data.get("api_token_store") or {}
+    _tb = (_api_cfg.get("backend") or "").strip().lower()
+    _api_backend = "json" if _tb == "json" else USERS_DB_CONFIG["backend"]
+    _jp = _env_or_config("API_TOKEN_JSON_PATH", _api_cfg.get("json_path", "users/api_tokens.json"))
+    if not os.path.isabs(_jp):
+        _jp = os.path.join(CURRENT_DIR, _jp)
+    API_TOKEN_STORE_CONFIG = {
+        "backend": _api_backend,
+        "json_path": _jp,
+        "sqlite_path": USERS_DB_CONFIG["sqlite_path"],
+        "postgres_host": USERS_DB_CONFIG["postgres_host"],
+        "postgres_port": USERS_DB_CONFIG["postgres_port"],
+        "postgres_database": USERS_DB_CONFIG["postgres_database"],
+        "postgres_user": USERS_DB_CONFIG["postgres_user"],
+        "postgres_password": USERS_DB_CONFIG["postgres_password"],
+        "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
+    }
     return USERS_DB_CONFIG
 
 
@@ -244,24 +271,6 @@ def reload_allow_guest_jwt() -> bool:
 
 
 def reload_api_token_store_config() -> dict:
-    """Re-read config.json and refresh API_TOKEN_STORE_CONFIG (used after saving token storage config)."""
-    global API_TOKEN_STORE_CONFIG
-    cfg = _load_config(CONFIG_FILE_PATH)
-    _api_token_cfg = cfg.get("api_token_store") or {}
-    _sqlite_from_env = _env_or_config("SQLITE_PATH", "") or _env_or_config("API_TOKEN_SQLITE_PATH", "")
-    _sqlite_from_config = _api_token_cfg.get("sqlite_path") or ""
-    _sqlite_path = _sqlite_from_env or _sqlite_from_config or _default_sqlite_path()
-    API_TOKEN_STORE_CONFIG = {
-        "backend": (_api_token_cfg.get("backend") or "sqlite").lower(),
-        "json_path": _env_or_config("API_TOKEN_JSON_PATH", _api_token_cfg.get("json_path", "users/api_tokens.json")),
-        "sqlite_path": _sqlite_path,
-        "postgres_host": _env_or_config("POSTGRES_HOST", _api_token_cfg.get("postgres_host", "localhost")),
-        "postgres_port": _env_or_config("POSTGRES_PORT", str(_api_token_cfg.get("postgres_port", 5432))),
-        "postgres_database": _env_or_config("POSTGRES_DATABASE", _api_token_cfg.get("postgres_database", "mss_login")),
-        "postgres_user": _env_or_config("POSTGRES_USER", _api_token_cfg.get("postgres_user", "mss_login")),
-    }
-    if not os.path.isabs(API_TOKEN_STORE_CONFIG["json_path"]):
-        API_TOKEN_STORE_CONFIG["json_path"] = os.path.join(CURRENT_DIR, API_TOKEN_STORE_CONFIG["json_path"])
-    if not os.path.isabs(API_TOKEN_STORE_CONFIG["sqlite_path"]):
-        API_TOKEN_STORE_CONFIG["sqlite_path"] = os.path.join(CURRENT_DIR, API_TOKEN_STORE_CONFIG["sqlite_path"])
+    """Re-read config and refresh API_TOKEN_STORE_CONFIG. Token store uses same DB as users; only json_path is token-specific."""
+    reload_users_db_config()
     return API_TOKEN_STORE_CONFIG
