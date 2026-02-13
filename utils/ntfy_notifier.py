@@ -3,10 +3,9 @@
 NTFY.SH push notifications over HTTPS for user actions (login, NSFW block, etc.).
 Admin configures topic and enabled event types in settings.
 """
-import urllib.request
-import urllib.error
-import json
+import requests
 from typing import Optional, List
+from constants import DEBUG_MODE
 
 DEFAULT_BASE_URL = "https://ntfy.sh"
 EVENT_KEYS = [
@@ -36,7 +35,7 @@ def _load_ntfy_config():
         return {"topic": "", "enabled_events": [], "base_url": DEFAULT_BASE_URL}
 
 
-def send_notification(event_key: str, title: str, message: str) -> bool:
+def send_notification(event_key: str, title: str = "", message: str = "", click: str = "", attachment_url: str = "", message_encoding: str = "utf-8", message_timeout: int = 30) -> bool:
     """
     Send a push notification to ntfy if the event is enabled and topic is set.
     Returns True if sent (or skipped because disabled), False on send error.
@@ -51,19 +50,14 @@ def send_notification(event_key: str, title: str, message: str) -> bool:
     base_url = cfg.get("base_url", DEFAULT_BASE_URL)
     url = f"{base_url}/{topic}"
     try:
-        data = message.encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={
-                "Title": title[:250],
-                "Content-Type": "text/plain; charset=utf-8",
-            },
-            method="POST",
-        )
-        urllib.request.urlopen(req, timeout=10)
+        response = requests.post(url, data=message.encode(message_encoding or "utf-8"), headers={"Title": title, "Click": click, "Attach": attachment_url}, timeout=message_timeout or 30)
+        if response.status_code != 200:
+            print(f"[mss_login] Failed to send notification to ntfy: {response.status_code} {response.text}")
+            return False
+        print(f"[mss_login] Notification sent to ntfy: {title} - {message}")
         return True
-    except Exception:
+    except Exception as e:
+        print(f"[mss_login] Failed to send notification to ntfy: {e}")
         return False
 
 
