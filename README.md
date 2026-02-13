@@ -1,7 +1,7 @@
 # ComfyUI mss_login
 
 <p align="center">
-  <img src="./web/assets/Dark_mss_login.png" width="220" />
+  <img src="./web/assets/mss_logo.png" width="220" />
 </p>
 
 <p align="center">
@@ -15,21 +15,22 @@
 ---
 
 ## Table of Contents
-1. [Overview](#overview)  
-2. [Key Features](#key-features)  
-3. [Architecture](#architecture)  
-4. [Installation](#installation)  
-5. [Folder Structure](#folder-structure)  
-6. [RBAC Roles](#rbac-roles)  
-7. [UI Enforcement Layer](#ui-enforcement-layer)  
-8. [Workflow Protection](#workflow-protection)  
-9. [IP Rules System](#ip-rules-system)  
-10. [User Environment Tools](#user-environment-tools)  
-11. [Settings Panel](#settings-panel)  
-12. [API Endpoints](#api-endpoints)  
-13. [Backend Components](#backend-components)  
-14. [Troubleshooting](#troubleshooting)  
-15. [License](#license)
+1. [Overview](#overview)
+2. [Key Features](#key-features)
+3. [Architecture](#architecture)
+4. [Installation](#installation)
+5. [Documentation](#documentation)
+6. [Folder Structure](#folder-structure)
+7. [RBAC Roles](#rbac-roles)
+8. [UI Enforcement Layer](#ui-enforcement-layer)
+9. [Workflow Protection](#workflow-protection)
+10. [IP Rules System](#ip-rules-system)
+11. [User Environment Tools](#user-environment-tools)
+12. [Settings Panel](#settings-panel)
+13. [API Endpoints](#api-endpoints)
+14. [Backend Components](#backend-components)
+15. [Troubleshooting](#troubleshooting)
+16. [License](#license)
 
 ---
 
@@ -37,15 +38,15 @@
 
 **ComfyUI mss_login** is a comprehensive security layer that adds:
 
-- Role‑Based Access Control (RBAC)  
-- UI element gating  
-- Workflow save/delete blocking  
-- Transparent user folder isolation  
-- IP whitelist and blacklist enforcement  
-- User environment management utilities  
-- A modern administrative panel with multiple tabs  
-- Dynamic theme integration with the ComfyUI dark mode  
-- Live UI popups, toast notifications, and visual enforcement  
+- Role‑Based Access Control (RBAC)
+- UI element gating
+- Workflow save/delete blocking
+- Transparent user folder isolation
+- IP whitelist and blacklist enforcement
+- User environment management utilities
+- A modern administrative panel with multiple tabs
+- Dynamic theme integration with the ComfyUI dark mode
+- Live UI popups, toast notifications, and visual enforcement
 - **NSFW Guard API** - Public API for NSFW detection and enforcement
 - **Gallery integration** - Manual image flagging and metadata-based tagging
 - **Extension Tabs API** - Allow other extensions to add custom tabs to the admin panel
@@ -57,48 +58,48 @@ It replaces the older Sentinel system with a faster, cleaner, more modular archi
 ## Key Features
 
 ### 🔐 **RBAC Security**
-Four roles: **Admin, Power, User, Guest**  
+Four roles: **Admin, Power, User, Guest**
 Each with configurable permissions stored in `mss_login_groups.json`.
 
 <p align="center">
-  <img src="./readme/images/mss_loginLogin.png" />
+  <img src="./readme/images/mss_login-Login.png" />
 </p>
 
 ### 🚫 **Save & Delete Workflow Blocking**
 Non‑privileged roles cannot:
-- Save workflows  
-- Export workflows  
-- Overwrite existing workflows  
-- Delete workflow files  
+- Save workflows
+- Export workflows
+- Overwrite existing workflows
+- Delete workflow files
 
 <p align="center">
   <img src="./readme/images/AdminGroups.png" />
 </p>
 
 All blocked actions trigger:
-- A server‑side 403  
-- A UI toast popup explaining the denial  
+- A server‑side 403
+- A UI toast popup explaining the denial
 
 ### 👁️ **Dynamic UI Enforcement**
 mss_login hides or disables:
-- Top‑menu items  
-- Sidebar tabs  
-- Settings categories  
-- Extension panels  
-- File menu operations  
+- Top‑menu items
+- Sidebar tabs
+- Settings categories
+- Extension panels
+- File menu operations
 
 Enforcement occurs every 1 second to catch late‑loading UI elements.
 
 ### 🌐 **IP Filtering System**
 Complete backend implementation:
-- Whitelist mode  
-- Blacklist mode  
-- Live editing in mss_login settings tab  
-- Persistent storage via `ip_filter.py`  
+- Whitelist mode
+- Blacklist mode
+- Live editing in mss_login settings tab
+- Persistent storage via `ip_filter.py`
 
 ### 🗂️ **User Environment Tools**
 From `user_env.py`:
-- Purge a user’s folders  
+- Purge a user’s folders
 - List user-owned files
 - Promote user workflow to default (all user view)
 - Delete single user workflow
@@ -110,16 +111,16 @@ From `user_env.py`:
 
 ### 🖥️ **Transparent Themed Admin UI**
 The administrative modal features:
-- Transparent blurred glass background  
-- Neon accent tabs  
-- Integrated logo watermark  
-- Scrollable permission tables  
-- Responsive layout  
+- Transparent blurred glass background
+- Neon accent tabs
+- Integrated logo watermark
+- Scrollable permission tables
+- Responsive layout
 
 ### 🔧 **Watcher Middleware**
 A new middleware that detects:
-- Forbidden workflow saves  
-- Forbidden deletes  
+- Forbidden workflow saves
+- Forbidden deletes
 And triggers UI-side toast popups through a custom fetch wrapper.
 
 ### 🛡️ **NSFW Guard API**
@@ -192,7 +193,7 @@ ComfyUI
 │   └── web/
 │       ├── js/mss_login_setting.js → UI enforcement + settings panel
 │       ├── css/mss_login.css        → Themed UI
-│       └── assets/dark_logo_transparent.png
+│       └── assets/mss_logo.png
 │
 └── ComfyUI (upstream)
 ```
@@ -211,6 +212,33 @@ ComfyUI/custom_nodes/mss_login/
 3. On first launch, register the initial admin.
 
 4. Open settings → **mss_login** to configure.
+
+---
+
+## Documentation
+
+Full documentation (installation, configuration, **API reference**, and **Extension API** for integrating the node in your projects) is built with [MkDocs](https://www.mkdocs.org/) and the [Material](https://squidfunk.github.io/mkdocs-material/) theme. It is available in the **`docs/`** folder and can be published to GitHub Pages or any static host.
+
+### Building the docs locally
+
+From the project root:
+
+```bash
+pip install mkdocs "mkdocs-material"
+python scripts/build_docs.py
+mkdocs build
+mkdocs serve
+```
+
+Then open `http://127.0.0.1:8000`. The script `scripts/build_docs.py` regenerates the API reference (HTTP endpoints) and Extension API (NSFW Guard Python API) from the source code.
+
+### Extending the node
+
+- **HTTP API** — See the generated [API Reference](docs/api-reference/endpoints.md) for all custom endpoints (auth, admin, user, MFA, recovery). For workflow and intercepted paths, see [Workflow & intercepted](docs/api-reference/workflow-endpoints.md).
+- **Python Extension API** — Use the [NSFW Guard API](docs/extension-api/nsfw-guard-api.md) from other ComfyUI extensions to check or tag NSFW content.
+- **Overview** — [Extending the node](docs/guide/extending.md) summarizes how to use both the HTTP and Python APIs in your projects.
+
+When the repository has GitHub Pages enabled and the Docs workflow runs on `main` or `production`, the site is deployed automatically.
 
 ---
 
@@ -246,7 +274,7 @@ mss_login/
 ├── web/
 │   ├── js/mss_login_setting.js → UI enforcement + settings panel
 │   ├── css/mss_login.css        → Themed UI
-│   └── assets/dark_logo_transparent.png
+│   └── assets/mss_logo.png
 │
 └── users/
     ├── users.json
@@ -344,10 +372,10 @@ Access via:
 
 Tabs:
 
-1. **Users & Roles**  
-2. **Permissions & UI**  
-3. **IP Rules**  
-4. **User Environment**  
+1. **Users & Roles**
+2. **Permissions & UI**
+3. **IP Rules**
+4. **User Environment**
 5. **NSFW Management**
 
 ### Extension Tabs API
@@ -369,10 +397,10 @@ window.mss_loginAdminTabs.register({
 ```
 
 ### Additional UI Features
-- Integrated logout button in the settings entry  
-- Transparent blurred panel  
-- Neon-accented tab bar  
-- Logo watermark in top-right  
+- Integrated logout button in the settings entry
+- Transparent blurred panel
+- Neon-accented tab bar
+- Logo watermark in top-right
 
 ---
 
@@ -422,16 +450,16 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 
 ### Authentication Endpoints
 
-**POST `/mss_login/api/login`** - User login  
-**POST `/mss_login/api/register`** - User registration  
-**POST `/mss_login/api/guest-login`** - Guest login  
+**POST `/mss_login/api/login`** - User login
+**POST `/mss_login/api/register`** - User registration
+**POST `/mss_login/api/guest-login`** - Guest login
 **POST `/mss_login/api/refresh-token`** - Token refresh
 
 ### Admin Endpoints
 
-**GET/PUT `/mss_login/api/users`** - User management  
-**GET/PUT `/mss_login/api/groups`** - Group/permission management  
-**PUT `/mss_login/api/ip-lists`** - IP whitelist/blacklist  
+**GET/PUT `/mss_login/api/users`** - User management
+**GET/PUT `/mss_login/api/groups`** - Group/permission management
+**PUT `/mss_login/api/ip-lists`** - IP whitelist/blacklist
 **POST `/mss_login/api/nsfw-management`** - NSFW admin tools (scan, fix, clear)
 
 ### User Environment Endpoints
@@ -458,11 +486,11 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 - User context management for worker threads
 
 ### `access_control.py`
-- Folder isolation  
-- RBAC  
-- Middleware for blocking paths  
-- Workflow protection  
-- Extension gating  
+- Folder isolation
+- RBAC
+- Middleware for blocking paths
+- Workflow protection
+- Extension gating
 
 ### `routes/auth.py`
 - JWT authentication endpoints
@@ -519,7 +547,7 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 ### Missing Logo
 Ensure the file exists:
 ```
-mss_login/web/assets/dark_logo_transparent.png
+mss_login/web/assets/mss_logo.png
 ```
 
 ### UI Not Updating
@@ -570,14 +598,14 @@ If the client sends a Bearer token but the server returns "API token not found o
 ---
 
 ## License
-MIT License  
+MIT License
 You may modify and redistribute freely.
 
 ---
 
 # Changelog — ComfyUI mss_login
 
-All notable changes to **ComfyUI mss_login** are documented here.  
+All notable changes to **ComfyUI mss_login** are documented here.
 This project follows a semantic-style versioning flow adapted for active development.
 
 ---
@@ -591,41 +619,41 @@ This project follows a semantic-style versioning flow adapted for active develop
 
 ## **v1.7.7 — NSFW Guard API & Gallery Integration (2025-12-12)**
 ### 🛡️ NSFW Guard API Enhancements
-- **Metadata-based tagging system** 
+- **Metadata-based tagging system**
   - Images are now tagged with NSFW metadata stored alongside files (`.nsfw_metadata.json`)
-- **Gallery integration endpoint** 
+- **Gallery integration endpoint**
   - New `/mss_login-gallery/mark-nsfw` endpoint for manual image flagging from gallery UIs
-- **Recursive file search** 
+- **Recursive file search**
   - mark-nsfw endpoint now searches subdirectories to find images
-- **Enhanced API functions** 
+- **Enhanced API functions**
   - Added `set_image_nsfw_tag()` for programmatic tagging
-- **Background scanning** 
+- **Background scanning**
   - Automatic scanning of output directory with intelligent caching
-- **Per-user enforcement** 
+- **Per-user enforcement**
   - SFW restrictions apply per-user based on role permissions
 
 ### 🔗 Gallery Integration
-- **ComfyUI-mss_login-Gallery compatibility** 
+- **ComfyUI-mss_login-Gallery compatibility**
   - Full integration with gallery extension
-- **Manual flagging** 
+- **Manual flagging**
   - Users can manually mark images as NSFW/SFW through gallery UI
-- **Metadata persistence** 
+- **Metadata persistence**
   - NSFW tags persist across server restarts via metadata files
 
 ### 🛠️ Route Registration Improvements
-- **Explicit route registration** 
+- **Explicit route registration**
   - Routes are now explicitly registered to ensure availability
-- **Middleware whitelisting** 
+- **Middleware whitelisting**
   - Gallery routes are properly whitelisted in workflow middleware
-- **Route verification** 
+- **Route verification**
   - Startup verification ensures all routes are properly registered
 
 ### 📂 Architecture Updates
-- **Modular route structure** 
+- **Modular route structure**
   - Routes organized into dedicated modules (`routes/` directory)
-- **Separation of concerns** 
+- **Separation of concerns**
   - NSFW logic separated into `utils/sfw_intercept/` module
-- **Public API module** 
+- **Public API module**
   - `api.py` provides clean public interface for other extensions
 
 ---
@@ -675,11 +703,11 @@ This project follows a semantic-style versioning flow adapted for active develop
 
 ## **v1.4.0 — Major Security & UI Expansion**
 ### 🔥 New Features
-- Added **multi-tab mss_login Settings Panel**  
-  - Users & Roles  
-  - Permissions & UI  
-  - IP Rules  
-  - User Environment  
+- Added **multi-tab mss_login Settings Panel**
+  - Users & Roles
+  - Permissions & UI
+  - IP Rules
+  - User Environment
 - Introduced **logout button** inside mss_login settings.
 - Implemented **transparent glass UI theme** with background blur.
 - Added **mss_login logo watermark** support in upper-right corner.
@@ -693,10 +721,10 @@ This project follows a semantic-style versioning flow adapted for active develop
 
 ### 🧠 Backend Improvements
 - New IP filtering system (`ip_filter.py`) with whitelist + blacklist modes.
-- New User Environment tools (`user_env.py`) including:  
-  - Folder purge  
-  - File listing  
-  - Gallery-mode toggles  
+- New User Environment tools (`user_env.py`) including:
+  - Folder purge
+  - File listing
+  - Gallery-mode toggles
 - Added `create_mss_login_middleware()` unified security layer.
 - Path blocking now includes extension routes, workflow endpoints, manager access, and asset paths.
 
@@ -704,10 +732,10 @@ This project follows a semantic-style versioning flow adapted for active develop
 
 ## **v1.3.0 — UI Enforcement Engine Overhaul**
 ### ✨ Enhancements
-- Added dynamic scanning of:  
-  - PrimeVue menus  
-  - Sidebar buttons  
-  - Settings categories  
+- Added dynamic scanning of:
+  - PrimeVue menus
+  - Sidebar buttons
+  - Settings categories
 - Enforcement now applies every second to catch late UI loads.
 - Added hotkey interception (Ctrl+S / Ctrl+O) for restricted roles.
 - Rebuilt `patchSaveConfirmDialog` to override PrimeVue dialogs.
@@ -720,10 +748,10 @@ This project follows a semantic-style versioning flow adapted for active develop
 
 ## **v1.2.0 — Folder Isolation & User Paths**
 ### 🔧 New Features
-- Added per-user:  
-  - input directory  
-  - output directory  
-  - temp directory  
+- Added per-user:
+  - input directory
+  - output directory
+  - temp directory
 - Automatic directory creation with fallback to “public” user.
 - Added `filename_prefix` rewriting for isolated naming.
 
@@ -746,20 +774,20 @@ This project follows a semantic-style versioning flow adapted for active develop
 ---
 
 ## **v1.0.0 — Initial Release**
-- Base RBAC system  
-- Permission flags stored in `mss_login_groups.json`  
-- Middleware for execution, upload, manager access  
-- Basic UI blocking  
+- Base RBAC system
+- Permission flags stored in `mss_login_groups.json`
+- Middleware for execution, upload, manager access
+- Basic UI blocking
 - Initial mss_login settings entry (pre-tabs)
 
 ---
 
 ## Upcoming Features (Planned for v1.5+)
-- Live audit logging panel  
-- Real-time session viewer  
-- Admin ability to force logout users  
-- Per-user storage quotas  
-- Automated workflow sandboxing  
+- Live audit logging panel
+- Real-time session viewer
+- Admin ability to force logout users
+- Per-user storage quotas
+- Automated workflow sandboxing
 - Theme customization panel
 
 ---

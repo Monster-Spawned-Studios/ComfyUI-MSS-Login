@@ -1,0 +1,59 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Copy MSS-Login to ComfyUI",
+            "type": "shell",
+            "command": "rsync",
+            "args": [
+                "-a",
+                "--delete",
+                "--exclude=.git",
+                "--exclude=.env",
+                "--exclude=.env.*",
+                "--exclude=.venv",
+                "--exclude=__pycache__",
+                "--exclude=*.log",
+                "--exclude=logs",
+                "--exclude=users/.ephemeral_secret_key",
+                "${workspaceFolder}/",
+                "/Volumes/Mando Drive/ComfyUI/custom_nodes/ComfyUI-MSS-Login/"
+            ],
+            "options": {
+                "env": {}
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "silent",
+                "panel": "shared"
+            },
+            "group": "build"
+        },
+        {
+            "label": "Deploy and Launch ComfyUI",
+            "dependsOrder": "sequence",
+            "dependsOn": ["Copy MSS-Login to ComfyUI"],
+            "type": "shell",
+            "command": "comfy",
+            "args": [
+                "--workspace",
+                "/Volumes/Mando Drive/ComfyUI",
+                "launch"
+            ],
+            "options": {
+                "cwd": "/Volumes/Mando Drive/ComfyUI",
+                "env": {}
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "focus": true
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
+        }
+    ]
+}

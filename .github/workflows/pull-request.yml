@@ -1,0 +1,37 @@
+# Pull request manager: label by changed files and optional PR checks.
+name: Pull request manager
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  labeler:
+    name: Label PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Label PR based on changed files
+        uses: actions/labeler@v5
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          configuration-path: .github/labeler.yml
+          sync-labels: true
+
+  pr-check:
+    name: PR description check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR body
+        run: |
+          body="${{ github.event.pull_request.body }}"
+          if [ -z "${body// }" ]; then
+            echo "::warning::Pull request has no description. Consider adding a summary."
+            exit 0
+          fi
+          echo "PR has description."

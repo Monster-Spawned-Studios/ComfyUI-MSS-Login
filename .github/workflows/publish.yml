@@ -17,9 +17,11 @@ jobs:
     if: ${{ github.repository_owner == 'Monster-Spawned-Studios' }}
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: true
+      - name: Validate node (publish script)
+        run: bash .github/scripts/publish-comfy-node.sh .
       - name: Publish Custom Node
         uses: Comfy-Org/publish-node-action@v1
         with:

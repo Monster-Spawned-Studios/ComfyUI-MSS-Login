@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch ComfyUI (Mando Drive)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "comfy",
+            "args": [
+                "--workspace",
+                "/Volumes/Mando Drive/ComfyUI",
+                "launch"
+            ],
+            "cwd": "/Volumes/Mando Drive/ComfyUI",
+            "console": "integratedTerminal",
+            "preLaunchTask": "Copy MSS-Login to ComfyUI",
+            "justMyCode": false
+        }
+    ]
+}

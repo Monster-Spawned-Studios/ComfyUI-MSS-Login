@@ -1,0 +1,55 @@
+# Labels applied to PRs based on changed files.
+# Used by .github/workflows/pull-request.yml (actions/labeler).
+# https://github.com/actions/labeler
+
+documentation:
+  - changed-files:
+      - any: ['**/*.md', '**/README*', '**/docs/**', '**/readme/**']
+
+python:
+  - changed-files:
+      - any: ['**/*.py', 'pyproject.toml', '**/requirements*.txt']
+
+frontend:
+  - changed-files:
+      - any: ['web/**/*.js', 'web/**/*.css', 'web/**/*.html']
+
+config:
+  - changed-files:
+      - any: ['config.json', '.env.example', '**/defaults/**']
+
+ci:
+  - changed-files:
+      - any: ['.github/**', '.gitlab/**', '.gitea/**']
+
+agent:
+  - changed-files:
+      - any: ['.agent/**', '.gemini/**', '.cursor/**', '.claude/**']
+
+vscode:
+  - changed-files:
+      - any: ['.vscode/**']
+
+docker:
+  - changed-files:
+      - any: ['docker/**']
+
+docker-compose:
+  - changed-files:
+      - any: ['docker-compose.yml']
+
+web:
+  - changed-files:
+      - any: ['web/**']
+
+gitignore:
+  - changed-files:
+      - any: ['.gitignore']
+
+license:
+  - changed-files:
+      - any: ['**/LICENSE*', '**/license*']
+
+security:
+  - changed-files:
+      - any: ['**/security/**', '**/auth*.py', '**/jwt*.py', '**/access_control*.py']

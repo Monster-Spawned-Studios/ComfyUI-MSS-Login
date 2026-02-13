@@ -316,8 +316,8 @@ const ADMIN_STYLES = `
     pointer-events: none;
     opacity: 0.06;  /* tweak if too bright/dim */
     background-image:
-        url("/mss_login-web/assets/light_logo_transparent.png"),
-        url("/mss_login/assets/light_logo_transparent.png");
+        url("/mss_login-web/assets/mss_logo.png"),
+        url("/mss_login/assets/mss_logo.png");
     background-repeat: no-repeat;
     background-position: center 35%;
     background-size: 420px auto;
@@ -335,8 +335,8 @@ const ADMIN_STYLES = `
     height: 40px;
     pointer-events: none;
     background-image:
-        url("/mss_login-web/assets/light_logo_transparent.png"),
-        url("/mss_login/assets/light_logo_transparent.png");
+        url("/mss_login-web/assets/mss_logo.png"),
+        url("/mss_login/assets/mss_logo.png");
     background-repeat: no-repeat;
     background-position: right center;
     background-size: contain;

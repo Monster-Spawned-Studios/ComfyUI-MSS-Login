@@ -1,0 +1,80 @@
+# Build and deploy documentation (MkDocs) for GitHub Pages or other static hosting.
+# Enable GitHub Pages in repo Settings > Pages: Source = "GitHub Actions".
+
+name: Docs
+
+on:
+  push:
+    branches:
+      - main
+      - production
+      - development
+    paths:
+      - "docs/**"
+      - "scripts/build_docs.py"
+      - "docs/scripts/**"
+      - "mkdocs.yml"
+      - "routes/**"
+      - "api.py"
+  pull_request:
+    branches:
+      - main
+      - production
+      - development
+    paths:
+      - "docs/**"
+      - "scripts/build_docs.py"
+      - "docs/scripts/**"
+      - "mkdocs.yml"
+      - "routes/**"
+      - "api.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install MkDocs and Material theme
+        run: pip install mkdocs "mkdocs-material"
+
+      - name: Generate API docs
+        run: python scripts/build_docs.py
+
+      - name: Build site
+        run: mkdocs build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/production')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
