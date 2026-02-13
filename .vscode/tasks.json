@@ -42,7 +42,13 @@
             ],
             "options": {
                 "cwd": "/Volumes/Mando Drive/ComfyUI",
-                "env": {}
+                "env": {
+                    "DEBUG_MODE": "true",
+                    "SECRET_KEY": "CHANGE_ME_TO_A_REAL_SECRET_KEY",
+                    "RECOVERY_MODE": "false",
+                    "RECOVERY_MODE_HOST": "127.0.0.1,::1",
+                    "USERS_DB_SQLITE_PATH": "users/users.db"
+                }
             },
             "problemMatcher": [],
             "presentation": {
