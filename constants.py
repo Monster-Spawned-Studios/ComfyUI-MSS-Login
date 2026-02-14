@@ -4,6 +4,8 @@ import json
 import warnings
 import uuid
 
+from utils.install_deps import install_dependencies
+
 # --- Base Directories ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -267,9 +269,19 @@ LOCAL_NETWORK_CIDRS = config_data.get("local_network_cidrs") or []
 DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
 DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(config_data.get("debug_mode", False))
 DEBUG_LOG_PATH = os.path.join(CURRENT_DIR, "logs", "debug.log")
-# Session debug log for instrumentation (e.g. .cursor/debug.log)
-CURSOR_DEBUG_LOG = os.path.join(CURRENT_DIR, ".cursor", "debug.log")
 
+AUTO_INSTALL_DEPS = config_data.get("auto_install_deps", True)
+AUTO_INSTALL_DEPS_FROM_ENV = os.environ.get("AUTO_INSTALL_DEPS", "1").strip().lower() in ("1", "true", "yes")
+if AUTO_INSTALL_DEPS and AUTO_INSTALL_DEPS_FROM_ENV in ("1", "true", "yes"):
+	if (DEBUG_MODE):
+		print("[mss_login::DEBUG] Auto-installing dependencies...")
+		try:
+			if not install_dependencies():
+				print("[mss_login::DEBUG] Auto-installing dependencies failed.\n\nPlease install the dependencies manually using your package manager of choice and by following the instructions available in the README.md file.")
+			else:
+				print("[mss_login::DEBUG] Auto-installing dependencies succeeded. You can now start ComfyUI and use the extension.")
+		except Exception as e:
+			print(f"[mss_login::DEBUG] Auto-installing dependencies failed: '{e}'.\n\nPlease install the dependencies manually using your package manager of choice and by following the instructions available in the README.md file.")
 
 # Guest JWT: allow guest login to receive a session JWT (default False for security)
 def _get_allow_guest_jwt():

@@ -10,4 +10,7 @@ sqlcipher3
 argon2-cffi
 pillow
 numpy
+torch
+torchvision 
+torchaudio
 uv

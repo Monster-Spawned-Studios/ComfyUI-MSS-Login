@@ -134,7 +134,7 @@ class mss_loginFloatingButton {
         this.button = document.createElement("div");
         this.button.className = "mss_login-floating-button";
         const iconImg = document.createElement("img");
-        iconImg.src = "/mss_login/assets/Dark_mss_login.png";
+        iconImg.src = "/mss_login/assets/mss_logo.png";
         iconImg.alt = "mss_login";
         iconImg.className = "mss_login-floating-button-icon";
         iconImg.draggable = false; // Prevent image drag

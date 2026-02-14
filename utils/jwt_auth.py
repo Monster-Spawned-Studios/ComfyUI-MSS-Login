@@ -141,10 +141,10 @@ class JWTAuth:
 				try:
 					import json
 					import time
-					from ..constants import CURSOR_DEBUG_LOG
+					from ..constants import DEBUG_LOG_PATH
 
-					os.makedirs(os.path.dirname(CURSOR_DEBUG_LOG), exist_ok=True)
-					with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+					os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
+					with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
 						f.write(
 							json.dumps(
 								{
@@ -178,10 +178,10 @@ class JWTAuth:
 				try:
 					import json
 					import time
-					from ..constants import CURSOR_DEBUG_LOG
+					from ..constants import DEBUG_LOG_PATH
 
-					os.makedirs(os.path.dirname(CURSOR_DEBUG_LOG), exist_ok=True)
-					with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+					os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
+					with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
 						f.write(
 							json.dumps(
 								{
@@ -254,9 +254,9 @@ class JWTAuth:
 				try:
 					import json
 					import time
-					from ..constants import CURSOR_DEBUG_LOG
+					from ..constants import DEBUG_LOG_PATH
 
-					with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+					with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
 						f.write(
 							json.dumps(
 								{
@@ -291,9 +291,9 @@ class JWTAuth:
 				try:
 					import json
 					import time
-					from ..constants import CURSOR_DEBUG_LOG
+					from ..constants import DEBUG_LOG_PATH
 
-					with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+					with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
 						f.write(
 							json.dumps(
 								{
@@ -328,9 +328,9 @@ class JWTAuth:
 				try:
 					import json
 					import time
-					from ..constants import CURSOR_DEBUG_LOG
+					from ..constants import DEBUG_LOG_PATH
 
-					with open(CURSOR_DEBUG_LOG, "a", encoding="utf-8") as f:
+					with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
 						f.write(
 							json.dumps(
 								{

@@ -7,7 +7,7 @@
         "postgres_port": 5432,
         "postgres_database": "mss_login",
         "postgres_user": "mss_login",
-        "encryption_level": ""
+        "encryption_level": "standard"
     },
     "legacy_users_json_path": "users/users.json",
     "access_token_expiration_hours": 24,
@@ -28,5 +28,6 @@
     "require_auth_for_remote_api": true,
     "local_network_cidrs": [],
     "debug_mode": false,
-    "allow_guest_jwt": false
+    "allow_guest_jwt": false,
+    "auto_install_deps": true
 }
