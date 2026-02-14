@@ -19,6 +19,6 @@ jobs:
         uses: codespell-project/actions-codespell@v2
         with:
           check_filenames: true
-          skip: "*.png,*.jpg,*.jpeg,*.gif,*.ico,*.woff2,*.pyc,.git/*"
+          skip: "*.png,*.jpg,*.jpeg,*.gif,*.ico,*.woff2,*.pyc,.git/*,.venv/*,.ruff_cache/*,.vscode/*"
           ignore_words_file: .codespellignore
 

@@ -17,3 +17,40 @@ site/
 !.vscode/cspell.json
 
 .ruff_cache/
+
+# macOS files:
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.com.apple.timemachine.supported
+.com.apple.timemachine.supported.noindex
+
+# Windows files:
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+$SystemVolumeInformation/
+
+# Linux files:
+.directory
+.DS_Store
+.Trash
+
+# Backup files:
+*~
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+*.orig
+*.rej
+*.orig
+*.rej
