@@ -7,7 +7,7 @@
         "postgres_port": 5432,
         "postgres_database": "mss_login",
         "postgres_user": "mss_login",
-        "encryption_level": "standard"
+        "encryption_level": "secure"
     },
     "legacy_users_json_path": "users/users.json",
     "access_token_expiration_hours": 24,

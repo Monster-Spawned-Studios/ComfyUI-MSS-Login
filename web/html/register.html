@@ -35,7 +35,8 @@
                 alt="MSS-Login Logo">
         </picture>
         <h1 class="title register">Register</h1>
-        <form id="register-form" onsubmit="register(event)">
+        <!-- method="post" and action prevent credentials from ever being sent in the URL (e.g. if JS is disabled). -->
+        <form id="register-form" method="post" action="/register" onsubmit="register(event)">
             <div class="form-fields">
                 <div class="fields-group" id="admin-fields">
                     <h3 class="subtitle">Admin Authentication</h3>

@@ -38,7 +38,8 @@
                 alt="MSS-Login Logo">
         </picture>
         <h1 class="title login">Login</h1>
-        <form id="login-form" onsubmit="login(event)">
+        <!-- method="post" and action prevent credentials from ever being sent in the URL (e.g. if JS is disabled). -->
+        <form id="login-form" method="post" action="/login" onsubmit="login(event)">
             <div class="form-field">
                 <label for="username">Username:</label>
                 <input type="text" id="username" name="username" required>
