@@ -184,7 +184,7 @@ async def api_update_groups(request):
 
 
 routes.put("/mss_login/api/groups")(api_update_groups)
-routes.put("/api/mss_login/api/groups")(api_update_groups))
+routes.put("/api/mss_login/api/groups")(api_update_groups)
 
 
 @routes.get("/mss-login/api/users")
