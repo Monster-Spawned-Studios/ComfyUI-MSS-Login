@@ -141,6 +141,10 @@ async def api_groups(request):
 	return web.json_response({"groups": current})
 
 
+routes.get("/mss_login/api/groups")(api_groups)
+routes.get("/api/mss_login/api/groups")(api_groups)
+
+
 @routes.put("/mss-login/api/groups")
 async def api_update_groups(request):
 	if not is_admin(request):
@@ -167,6 +171,10 @@ async def api_users(request):
 		return web.json_response({"error": "Admin only"}, status=403)
 	users_list = users_db.list_users_for_admin()
 	return web.json_response({"users": users_list})
+
+
+routes.get("/mss_login/api/users")(api_users)
+routes.get("/api/mss_login/api/users")(api_users)
 
 
 @routes.put("/mss-login/api/users/{target_user}")
