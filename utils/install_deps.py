@@ -4,9 +4,22 @@ Uses the same Python as ComfyUI (sys.executable). Failures are logged but do not
 """
 
 import os
+from os import getcwd
+from os.path import join
 import subprocess
 import sys
-from ..constants import DEBUG_MODE
+
+from utils.config import load_config
+
+# DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
+DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(
+    load_config(join(getcwd(), "config.json")).get("debug_mode", False)
+)
 
 
 # Return True if successful, False otherwise
