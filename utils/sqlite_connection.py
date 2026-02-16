@@ -55,6 +55,8 @@ def open_sqlite(
     import sqlcipher3
 
     conn = sqlcipher3.connect(path, check_same_thread=check_same_thread)
-    # Pass raw key as hex so SQLCipher uses it directly (no PBKDF2)
-    conn.execute(f"PRAGMA key = x'{key_hex}'")
+    # Pass raw key as hex so SQLCipher uses it directly (no PBKDF2).
+    # SQLCipher expects the blob literal wrapped in double quotes to avoid syntax errors
+    # in some builds (see Zetetic: "PRAGMA key = \"x'...'\"")
+    conn.execute(f'PRAGMA key = "x\'{key_hex}\'"')
     return conn
