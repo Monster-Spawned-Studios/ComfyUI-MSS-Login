@@ -145,49 +145,51 @@ async def post_login(request: web.Request) -> web.Response:
 		user_id, user_rec = users_db.get_user(username)
 		user_env.get_user_workflow_dir(username)
 
-		# Admin must set up MFA on next login if not already enabled
-		is_admin = user_rec.get("admin") or "admin" in [
-			g.lower() for g in user_rec.get("groups", [])
-		]
-		mfa_enabled = users_db.get_mfa_enabled(username)
-		role_requires_mfa = _role_requires_mfa(username)
+		# When MFA is disabled, skip all MFA branches and issue JWT directly
+		if not constants_module.MFA_DISABLED:
+			# Admin must set up MFA on next login if not already enabled
+			is_admin = user_rec.get("admin") or "admin" in [
+				g.lower() for g in user_rec.get("groups", [])
+			]
+			mfa_enabled = users_db.get_mfa_enabled(username)
+			role_requires_mfa = _role_requires_mfa(username)
 
-		if is_admin and not mfa_enabled:
-			# Force admin to set up MFA before issuing JWT
-			mfa_temp = create_mfa_temp_token(username)
-			timeout.remove_failed_attempts(ip)
-			return web.json_response(
-				{
-					"message": "MFA setup required for admin accounts",
-					"mfa_setup_required": True,
-					"mfa_temp_token": mfa_temp,
-				},
-				status=200,
-			)
-		if mfa_enabled:
-			# User has MFA; require second factor
-			mfa_temp = create_mfa_temp_token(username)
-			timeout.remove_failed_attempts(ip)
-			return web.json_response(
-				{
-					"message": "MFA verification required",
-					"mfa_required": True,
-					"mfa_temp_token": mfa_temp,
-				},
-				status=200,
-			)
-		if role_requires_mfa and not mfa_enabled:
-			# Role requires MFA but user has not set it up
-			mfa_temp = create_mfa_temp_token(username)
-			timeout.remove_failed_attempts(ip)
-			return web.json_response(
-				{
-					"message": "MFA setup required for your role",
-					"mfa_setup_required": True,
-					"mfa_temp_token": mfa_temp,
-				},
-				status=200,
-			)
+			if is_admin and not mfa_enabled:
+				# Force admin to set up MFA before issuing JWT
+				mfa_temp = create_mfa_temp_token(username)
+				timeout.remove_failed_attempts(ip)
+				return web.json_response(
+					{
+						"message": "MFA setup required for admin accounts",
+						"mfa_setup_required": True,
+						"mfa_temp_token": mfa_temp,
+					},
+					status=200,
+				)
+			if mfa_enabled:
+				# User has MFA; require second factor
+				mfa_temp = create_mfa_temp_token(username)
+				timeout.remove_failed_attempts(ip)
+				return web.json_response(
+					{
+						"message": "MFA verification required",
+						"mfa_required": True,
+						"mfa_temp_token": mfa_temp,
+					},
+					status=200,
+				)
+			if role_requires_mfa and not mfa_enabled:
+				# Role requires MFA but user has not set it up
+				mfa_temp = create_mfa_temp_token(username)
+				timeout.remove_failed_attempts(ip)
+				return web.json_response(
+					{
+						"message": "MFA setup required for your role",
+						"mfa_setup_required": True,
+						"mfa_temp_token": mfa_temp,
+					},
+					status=200,
+				)
 
 		no_exp = _user_can_have_non_expiring_jwt(username)
 		token = jwt_auth.create_access_token(
@@ -476,8 +478,8 @@ async def post_generate_token(request: web.Request) -> web.Response:
 			status=403,
 		)
 
-	# User has MFA: require second factor before issuing API token
-	if users_db.get_mfa_enabled(username):
+	# User has MFA: require second factor before issuing API token (unless MFA is disabled)
+	if not constants_module.MFA_DISABLED and users_db.get_mfa_enabled(username):
 		mfa_temp = create_mfa_temp_token(username)
 		return web.json_response(
 			{

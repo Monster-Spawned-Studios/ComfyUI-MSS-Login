@@ -29,5 +29,6 @@
     "local_network_cidrs": [],
     "debug_mode": false,
     "allow_guest_jwt": false,
+    "mfa_disabled": true,
     "auto_install_deps": true
 }

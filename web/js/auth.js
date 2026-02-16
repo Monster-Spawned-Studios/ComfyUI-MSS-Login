@@ -22,6 +22,30 @@ if (window.location.pathname === "/register") {
   });
 }
 
+// Clear token display on load so refresh/navigation removes it entirely (generate token page only)
+document.addEventListener("DOMContentLoaded", () => {
+  const container = document.getElementById("token-display-container");
+  if (container) {
+    container.style.display = "none";
+    const val = document.getElementById("token-display-value");
+    if (val) val.textContent = "";
+  }
+});
+
+function showTokenOnPage(token) {
+  const container = document.getElementById("token-display-container");
+  const val = document.getElementById("token-display-value");
+  const copyBtn = document.getElementById("token-copy-btn");
+  if (!container || !val) return;
+  val.textContent = token;
+  container.style.display = "block";
+  if (copyBtn) {
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(token).then(() => addToast("Copied to clipboard", "success")).catch(() => addToast("Copy failed", "error"));
+    };
+  }
+}
+
 function addToast(message, type) {
   const toasts = document.getElementById("toasts");
   const toast = document.createElement("div");
@@ -465,7 +489,7 @@ async function generate(event) {
           addToast(result.message, "success");
           updateFailedAttempts(response.status, result, "generate");
           form.reset();
-          alert("API Token:\n" + result.jwt_token + "\n\nPlease copy this token and store it in a safe place. You will not be able to retrieve it again.");
+          showTokenOnPage(result.jwt_token);
         } else {
           addToast(result.message || "Token created", "success");
         }
@@ -517,9 +541,9 @@ async function generateMfaVerify(event) {
     const result = await response.json();
     if (response.ok && result.jwt_token) {
       addToast(result.message, "success");
-      alert("API Token:\n" + result.jwt_token + "\n\nPlease copy this token and store it in a safe place. You will not be able to retrieve it again.");
       backToGenerateForm();
       document.getElementById("generate-form").reset();
+      showTokenOnPage(result.jwt_token);
     } else {
       addToast(result.error || "Invalid code", "error");
     }

@@ -3,7 +3,7 @@
 
 from aiohttp import web
 from ..globals import routes, users_db, jwt_auth, access_control
-from ..constants import SESSION_TOKEN_STORE_PATH
+from ..constants import SESSION_TOKEN_STORE_PATH, MFA_DISABLED
 from ..utils.session_token_store import get_session_token_store
 from ..utils.user_console_log import append as user_console_append
 from ..utils.mfa_temp_store import consume_mfa_temp_token, get_username_for_mfa_temp_token
@@ -51,6 +51,8 @@ def _resolve_username_from_token_and_data(
 async def api_mfa_setup(request: web.Request) -> web.Response:
 	"""Start MFA setup. Requires JWT (logged-in user) or mfa_temp_token (from login when mfa_setup_required).
 	Returns provisioning_uri (for QR) and backup_code (show once)."""
+	if MFA_DISABLED:
+		return web.json_response({"error": "MFA is disabled."}, status=403)
 	data = await _get_request_data(request)
 	username, err = _resolve_username_from_token_and_data(request, data)
 	if err or not username:
@@ -71,6 +73,8 @@ async def api_mfa_setup(request: web.Request) -> web.Response:
 @routes.post("/mss_login/api/mfa/verify-setup")
 async def api_mfa_verify_setup(request: web.Request) -> web.Response:
 	"""Verify first TOTP code and enable MFA. Body: { code: "123456" } or { mfa_temp_token, code }."""
+	if MFA_DISABLED:
+		return web.json_response({"error": "MFA is disabled."}, status=403)
 	data = await _get_request_data(request)
 	username, err = _resolve_username_from_token_and_data(request, data)
 	if err or not username:
@@ -94,6 +98,8 @@ async def api_mfa_verify_setup(request: web.Request) -> web.Response:
 @routes.post("/mss_login/api/mfa/verify")
 async def api_mfa_verify(request: web.Request) -> web.Response:
 	"""Complete login after password: verify TOTP or backup code, issue JWT. Body: mfa_temp_token, code OR backup_code."""
+	if MFA_DISABLED:
+		return web.json_response({"error": "MFA is disabled."}, status=403)
 	from ..globals import logger
 	from ..constants import DEBUG_MODE
 	from datetime import datetime, timezone

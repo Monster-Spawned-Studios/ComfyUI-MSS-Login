@@ -324,6 +324,27 @@ def _get_allow_guest_jwt():
 ALLOW_GUEST_JWT = _get_allow_guest_jwt()
 
 
+# MFA disabled: when True, skip all MFA (setup, verify, role requirements)
+def _get_mfa_disabled():
+    env_val = str(os.environ.get("MFA_DISABLED", "")).strip().lower()
+    if env_val in ("1", "true", "yes"):
+        return True
+    if env_val in ("0", "false", "no"):
+        return False
+    cfg = _load_config(CONFIG_FILE_PATH)
+    return bool(cfg.get("mfa_disabled", False))
+
+
+MFA_DISABLED = _get_mfa_disabled()
+
+
+def reload_mfa_disabled() -> bool:
+    """Re-read config and refresh MFA_DISABLED."""
+    global MFA_DISABLED
+    MFA_DISABLED = _get_mfa_disabled()
+    return MFA_DISABLED
+
+
 # Recovery mode: locally-only endpoint to reset MFA when SECRET_KEY changed without migration
 def _get_recovery_mode() -> bool:
     env_val = (

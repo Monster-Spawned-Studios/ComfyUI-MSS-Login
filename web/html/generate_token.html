@@ -55,6 +55,13 @@
                 </div>
             </form>
         </div>
+
+        <!-- API token display (hidden until token is created; cleared on refresh/navigation) -->
+        <div id="token-display-container" style="display:none;" aria-live="polite">
+            <p>Your API token (copy it now; it will not be shown again):</p>
+            <pre id="token-display-value"></pre>
+            <button type="button" class="btn" id="token-copy-btn">Copy</button>
+        </div>
     </div>
     <div class="toast-container" id="toasts"></div>
     </body>
