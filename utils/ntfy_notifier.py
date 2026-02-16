@@ -6,7 +6,7 @@ Admin configures topic and enabled event types in settings.
 
 import requests
 from typing import Optional, List
-from constants import DEBUG_MODE
+from ..constants import DEBUG_MODE
 
 DEFAULT_BASE_URL = "https://ntfy.sh"
 EVENT_KEYS = [

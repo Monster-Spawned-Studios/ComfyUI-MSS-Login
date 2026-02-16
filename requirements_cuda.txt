@@ -14,3 +14,4 @@ torch
 torchvision 
 torchaudio
 uv
+transformers

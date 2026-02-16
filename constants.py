@@ -4,7 +4,7 @@ import json
 import warnings
 import uuid
 
-from utils.install_deps import install_dependencies
+from .utils.install_deps import install_dependencies
 
 # --- Base Directories ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))

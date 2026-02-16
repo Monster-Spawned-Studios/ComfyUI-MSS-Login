@@ -3,13 +3,28 @@
 Uses the same Python as ComfyUI (sys.executable). Failures are logged but do not crash ComfyUI.
 """
 
+import json
 import os
 from os import getcwd
 from os.path import join
 import subprocess
 import sys
 
-from config import load_config
+# Extension root: parent of the directory containing this file (utils/)
+_install_deps_this_dir = os.path.dirname(os.path.abspath(__file__))
+_install_deps_root = os.path.dirname(_install_deps_this_dir)
+
+
+def _read_config_json(path: str) -> dict:
+    """Read config.json at path; return {} if missing or invalid. Avoids importing utils.config (import path issues when loaded via importlib)."""
+    if os.path.isfile(path):
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
 
 # DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
 DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in (
@@ -18,16 +33,14 @@ DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in (
     "yes",
 )
 DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(
-    load_config(join(getcwd(), "config.json")).get("debug_mode", False)
+    _read_config_json(join(_install_deps_root, "config.json")).get("debug_mode", False)
 )
 
 
 # Return True if successful, False otherwise
 def install_dependencies() -> bool:
     """Install dependencies from requirements.txt then pyproject.toml. Safe to call at module load. Returns True if successful, False otherwise."""
-    # Extension root: parent of the directory containing this file (utils/)
-    this_dir = os.path.dirname(os.path.abspath(__file__))
-    root = os.path.dirname(this_dir)
+    root = _install_deps_root
 
     # Run a command inside the user's shell and return True if successful, False otherwise
     def run_command(command: str) -> bool:
