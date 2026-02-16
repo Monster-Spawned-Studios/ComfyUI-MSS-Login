@@ -1,24 +1,22 @@
 from aiohttp import web
-from server import PromptServer
+from server import PromptServer  # pyright: ignore[reportMissingImports]
 from .globals import (
-	app,
-	routes,
-	ip_filter,
-	sanitizer,
-	timeout,
-	jwt_auth,
-	access_control,
-	GROUPS_CONFIG_FILE,
-	users_db,
+    app,
+    routes,
+    ip_filter,
+    sanitizer,
+    timeout,
+    jwt_auth,
+    access_control,
+    GROUPS_CONFIG_FILE,
+    users_db,
 )
 from .utils.watcher import watcher
 from .utils.bootstrap import ensure_groups_config
 
 # --- Import Routes to register them ---
 # Just importing them is enough because they use the @routes decorator from globals
-import mss_login.routes.auth
-import mss_login.routes.admin
-import mss_login.routes.user
+from .routes import auth, admin, user
 
 # --- Bootstrap ---
 ensure_groups_config()
@@ -30,11 +28,11 @@ JS_DIR = "..."
 ASSETS_DIR = "..."
 
 app.add_routes(
-	[
-		web.static("/mss_login/css", CSS_DIR),
-		web.static("/mss_login/js", JS_DIR),
-		web.static("/mss_login/assets", ASSETS_DIR),
-	]
+    [
+        web.static("/mss_login/css", CSS_DIR),
+        web.static("/mss_login/js", JS_DIR),
+        web.static("/mss_login/assets", ASSETS_DIR),
+    ]
 )
 
 # --- Middleware Registration ---
@@ -42,11 +40,14 @@ app.add_routes(
 
 app.middlewares.append(ip_filter.create_ip_filter_middleware())
 app.middlewares.append(sanitizer.create_sanitizer_middleware())
-app.middlewares.append(timeout.create_time_out_middleware(limited=("/login", "/register", "/mfa")))
 app.middlewares.append(
-	jwt_auth.create_jwt_middleware(
-		public=("/login", "/logout", "/register", "/mfa"), public_prefixes=("/mss_login", "/mss_login/api/mfa", "/assets")
-	)
+    timeout.create_time_out_middleware(limited=("/login", "/register", "/mfa"))
+)
+app.middlewares.append(
+    jwt_auth.create_jwt_middleware(
+        public=("/login", "/logout", "/register", "/mfa"),
+        public_prefixes=("/mss_login", "/mss_login/api/mfa", "/assets"),
+    )
 )
 
 # Folder/Queue Access Control

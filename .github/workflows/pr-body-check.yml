@@ -4,36 +4,36 @@
 name: PR body check
 
 on:
-  pull_request:
-    types: [opened, edited, synchronize]
+    pull_request:
+        types: [opened, edited, synchronize]
 
 permissions:
-  pull-requests: read
-  contents: read
+    pull-requests: read
+    contents: read
 
 jobs:
-  pr-body:
-    name: PR description required
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check PR body
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const body = context.payload.pull_request.body || '';
-            const stripped = body.replace(/\s/g, '').replace(/<!--[\s\S]*?-->/g, '');
-            const minLength = 80;
-            const hasTemplateSection = /##\s*(Description|Type of change|Bug|Scope|Behavior|Checklist)/i.test(body);
-            if (stripped.length < minLength) {
-              core.setFailed(
-                'PR description is required and must be at least ' + minLength + ' non-whitespace characters. ' +
-                'Please use one of the templates (General, Bug fix, Feature, Documentation, Config/tooling) and fill it in.'
-              );
-            }
-            if (!hasTemplateSection) {
-              core.setFailed(
-                'PR description must use one of the repository templates (General, Bug fix, Feature, Documentation, Config/tooling). ' +
-                'Use the template links in the default description or add a "## Description" (or similar) section.'
-              );
-            }
-            console.log('PR body length (after stripping):', stripped.length);
+    pr-body:
+        name: PR description required
+        runs-on: ubuntu-latest
+        steps:
+            - name: Check PR body
+              uses: actions/github-script@v7
+              with:
+                  script: |
+                      const body = context.payload.pull_request.body || '';
+                      const stripped = body.replace(/\s/g, '').replace(/<!--[\s\S]*?-->/g, '');
+                      const minLength = 80;
+                      const hasTemplateSection = /##\s*(Description|Type of change|Bug|Scope|Behavior|Checklist)/i.test(body);
+                      if (stripped.length < minLength) {
+                        core.setFailed(
+                          'PR description is required and must be at least ' + minLength + ' non-whitespace characters. ' +
+                          'Please use one of the templates (General, Bug fix, Feature, Documentation, Config/tooling) and fill it in.'
+                        );
+                      }
+                      if (!hasTemplateSection) {
+                        core.setFailed(
+                          'PR description must use one of the repository templates (General, Bug fix, Feature, Documentation, Config/tooling). ' +
+                          'Use the template links in the default description or add a "## Description" (or similar) section.'
+                        );
+                      }
+                      console.log('PR body length (after stripping):', stripped.length);

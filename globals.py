@@ -1,6 +1,6 @@
 # --- START OF FILE globals.py ---
 import os
-from server import PromptServer
+from server import PromptServer  # pyright: ignore[reportMissingImports]
 from .constants import (
 	SECRET_KEY,
 	USERS_DB_CONFIG,

@@ -83,6 +83,7 @@ exclude = [
     "__pycache__",
     "build",
     "site",
+    "ComfyUI"
 ]
 # Lint: use defaults (E, F, W, I, UP, B, C4, etc.); ignore a few noisy rules.
 [tool.ruff.lint]
