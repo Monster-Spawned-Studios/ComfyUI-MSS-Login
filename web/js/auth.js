@@ -273,50 +273,22 @@ async function login(event) {
       const result = await response.json();
 
       if (response.ok) {
-        // MFA required: show MFA verify UI
+        // MFA required: redirect to dedicated MFA page
         if (result.mfa_required && result.mfa_temp_token) {
-          mfaTempToken = result.mfa_temp_token;
-          document.getElementById("login-form").style.display = "none";
-          document.getElementById("mfa-verify-section").style.display = "block";
-          document.getElementById("mfa-setup-section").style.display = "none";
-          addToast(result.message || "Enter your verification code", "success");
-          document.getElementById("mfa-code").focus();
+          sessionStorage.setItem("mfa_temp_token", result.mfa_temp_token);
+          sessionStorage.setItem("mfa_mode", "verify");
           button.disabled = false;
           button.textContent = "Login";
+          window.location.href = "/mfa";
           return;
         }
-        // MFA setup required: fetch setup data and show QR
+        // MFA setup required: redirect to dedicated MFA page
         if (result.mfa_setup_required && result.mfa_temp_token) {
-          mfaTempToken = result.mfa_temp_token;
-          const setupResp = await fetch("/mss_login/api/mfa/setup", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mfa_temp_token: mfaTempToken }),
-          });
-          const setupData = await setupResp.json();
-          if (!setupResp.ok) {
-            addToast(setupData.error || "MFA setup failed", "error");
-            button.disabled = false;
-            button.textContent = "Login";
-            return;
-          }
-          document.getElementById("login-form").style.display = "none";
-          document.getElementById("mfa-setup-section").style.display = "block";
-          document.getElementById("mfa-verify-section").style.display = "none";
-          const qrContainer = document.getElementById("mfa-qr-container");
-          qrContainer.innerHTML = "";
-          if (typeof QRCode !== "undefined") {
-            new QRCode(qrContainer, { text: setupData.provisioning_uri, width: 200, height: 200 });
-          } else {
-            qrContainer.innerHTML = '<p><a href="' + setupData.provisioning_uri + '" target="_blank">Open in authenticator</a></p>';
-          }
-          const backupEl = document.getElementById("mfa-backup-display");
-          document.getElementById("mfa-backup-code").textContent = setupData.backup_code || "";
-          backupEl.style.display = setupData.backup_code ? "block" : "none";
-          addToast(result.message || "Scan QR and enter code", "success");
-          document.getElementById("mfa-setup-code").focus();
+          sessionStorage.setItem("mfa_temp_token", result.mfa_temp_token);
+          sessionStorage.setItem("mfa_mode", "setup");
           button.disabled = false;
           button.textContent = "Login";
+          window.location.href = "/mfa";
           return;
         }
         // Normal login: backend returned { message, token } (and optionally jwt_token)
@@ -473,7 +445,7 @@ async function generate(event) {
       button.disabled = true;
       button.textContent = "Sending...";
 
-      const response = await fetch("/mss_login/generate_token", {
+      const response = await fetch("/mss-login/generate_token", {
         method: "POST",
         body: formData,
       });
@@ -538,7 +510,7 @@ async function generateMfaVerify(event) {
   button.disabled = true;
   button.textContent = "Verifying...";
   try {
-    const response = await fetch("/mss_login/generate_token", {
+    const response = await fetch("/mss-login/generate_token", {
       method: "POST",
       body: formData,
     });

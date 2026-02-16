@@ -4,35 +4,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ComfyUI mss_login - Register</title>
+    <title>MSS-Login - Register</title>
 
-    <link rel="icon" href="/mss_login/assets/mss_logo.ico" type="image/x-icon">
+    <link rel="icon" href="/mss-login/assets/mss_logo.png" type="image/png">
 
     <!-- Light mode favicon -->
-    <link rel="icon" type="image/x-icon"
-        href="/mss_login/assets/mss_logo.ico"
+    <link rel="icon" type="image/png"
+        href="/mss-login/assets/mss_logo.png"
         media="(prefers-color-scheme: light)">
 
     <!-- Dark mode favicon -->
-    <link rel="icon" type="image/x-icon"
-        href="/mss_login/assets/dark_icon.ico"
+    <link rel="icon" type="image/png"
+        href="/mss-login/assets/mss_logo.png"
         media="(prefers-color-scheme: dark)">
 
-    <link rel="stylesheet" type="text/css" href="/mss_login/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="/mss-login/css/styles.css">
 </head>
 
 <body data-admin-user="{{ X-Admin-User }}">
     <div class="container">
         <picture>
-            <!-- Dark mode neon logo -->
-            <source srcset="/mss_login/assets/mss_logo.png"
+            <!-- Dark mode logo -->
+            <source srcset="/mss-login/assets/mss_logo.png"
                     media="(prefers-color-scheme: dark)">
-            <!-- Light mode metallic logo -->
-            <source srcset="/mss_login/assets/mss_logo.png"
+            <!-- Light mode logo -->
+            <source srcset="/mss-login/assets/mss_logo.png"
                     media="(prefers-color-scheme: light)">
             <img class="logo"
-                src="/mss_login/assets/logo_transparent.png"
-                alt="USG Logo">
+                src="/mss-login/assets/mss_logo.png"
+                alt="MSS-Login Logo">
         </picture>
         <h1 class="title register">Register</h1>
         <form id="register-form" onsubmit="register(event)">
@@ -71,6 +71,6 @@
     </div>
     <div class="toast-container" id="toasts"></div>
 </body>
-<script src="/mss_login/js/auth.js"></script>
+<script src="/mss-login/js/auth.js"></script>
 
 </html>

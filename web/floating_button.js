@@ -134,8 +134,8 @@ class mss_loginFloatingButton {
         this.button = document.createElement("div");
         this.button.className = "mss_login-floating-button";
         const iconImg = document.createElement("img");
-        iconImg.src = "/mss_login/assets/mss_logo.png";
-        iconImg.alt = "mss_login";
+        iconImg.src = "/mss-login/assets/mss_logo.png";
+        iconImg.alt = "MSS-Login";
         iconImg.className = "mss_login-floating-button-icon";
         iconImg.draggable = false; // Prevent image drag
         iconImg.setAttribute("draggable", "false"); // Ensure it's not draggable
@@ -143,7 +143,7 @@ class mss_loginFloatingButton {
         iconImg.onerror = () => {
             console.error("[mss_login] Failed to load icon, using fallback");
             iconImg.style.display = "none";
-            this.button.innerHTML = '<div style="color: white; font-size: 16px; font-weight: bold;">U</div>';
+            this.button.innerHTML = '<div style="color: white; font-size: 16px; font-weight: bold;">MSS</div>';
         };
         iconImg.onload = () => {
             console.log("[mss_login] Icon loaded successfully");

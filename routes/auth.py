@@ -86,6 +86,15 @@ async def get_login(request: web.Request) -> web.Response:
 	)
 
 
+@routes.get("/mfa")
+async def get_mfa(request: web.Request) -> web.Response:
+	"""Serve the MFA page (verify or setup). Token and mode are in sessionStorage set by login."""
+	path = os.path.join(HTML_DIR, "mfa.html")
+	if not os.path.exists(path):
+		return web.Response(text="mfa.html not found", status=404)
+	return web.FileResponse(path)
+
+
 @routes.post("/login")
 async def post_login(request: web.Request) -> web.Response:
 	sanitized_data = request.get("_sanitized_data", {})

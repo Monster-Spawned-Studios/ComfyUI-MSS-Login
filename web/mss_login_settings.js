@@ -315,9 +315,7 @@ const ADMIN_STYLES = `
     inset: 0;
     pointer-events: none;
     opacity: 0.06;  /* tweak if too bright/dim */
-    background-image:
-        url("/mss_login-web/assets/mss_logo.png"),
-        url("/mss_login/assets/mss_logo.png");
+    background-image: url("/mss-login/assets/mss_logo.png");
     background-repeat: no-repeat;
     background-position: center 35%;
     background-size: 420px auto;
@@ -334,9 +332,7 @@ const ADMIN_STYLES = `
     width: 120px;
     height: 40px;
     pointer-events: none;
-    background-image:
-        url("/mss_login-web/assets/mss_logo.png"),
-        url("/mss_login/assets/mss_logo.png");
+    background-image: url("/mss-login/assets/mss_logo.png");
     background-repeat: no-repeat;
     background-position: right center;
     background-size: contain;
@@ -1562,7 +1558,8 @@ async renderSharedModels(container, usersList) {
                 if (!itemsEl || itemsEl.dataset.loaded === "1") return;
                 itemsEl.textContent = "Loading...";
                 try {
-                    const res = await api.fetchApi("/mss_login/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
+                    let res = await api.fetchApi("/mss_login/api/model-cache/folders/" + encodeURIComponent(folder) + "/items", { method: "GET" });
+                    if (!res.ok) res = await api.fetchApi("/mss_login/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
                     const data = await res.json();
                     const items = data.items || [];
                     loadedItems[folder] = items;
@@ -1608,9 +1605,14 @@ async renderSharedModels(container, usersList) {
         });
     }
     try {
-        const fr = await api.fetchApi("/mss_login/api/available-model-folders", { method: "GET" });
-        const fd = await fr.json();
+        let fr = await api.fetchApi("/mss_login/api/model-cache/folders", { method: "GET" });
+        let fd = await fr.json();
         folders = fd.folders || [];
+        if (folders.length === 0) {
+            fr = await api.fetchApi("/mss_login/api/available-model-folders", { method: "GET" });
+            fd = await fr.json();
+            folders = fd.folders || [];
+        }
     } catch (e) {
         console.error("[mss_login] Failed to load folders:", e);
         folders = ["checkpoints", "loras", "vae", "embeddings"];
@@ -1624,7 +1626,8 @@ async renderSharedModels(container, usersList) {
             return;
         }
         try {
-            const res = await api.fetchApi("/mss_login/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
+            let res = await api.fetchApi("/mss_login/api/model-cache/folders/" + encodeURIComponent(folder) + "/items", { method: "GET" });
+            if (!res.ok) res = await api.fetchApi("/mss_login/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
             const data = await res.json();
             const items = data.items || [];
             itemSelect.innerHTML = "<option value=\"\">-- Select item --</option>" + items.map(i => `<option value="${escapeHtml(i)}">${escapeHtml(i)}</option>`).join("");
@@ -1718,9 +1721,16 @@ async renderSharedModels(container, usersList) {
     toggleRefreshBtn.onclick = async () => {
         toggleRefreshBtn.disabled = true;
         try {
-            const fr = await api.fetchApi("/mss_login/api/available-model-folders", { method: "GET" });
-            const fd = await fr.json();
-            folders = fd.folders || [];
+            const refreshRes = await api.fetchApi("/mss_login/api/model-cache/refresh", { method: "POST" });
+            if (refreshRes.ok) {
+                const refreshData = await refreshRes.json();
+                folders = refreshData.folders || [];
+            }
+            if (folders.length === 0) {
+                const fr = await api.fetchApi("/mss_login/api/available-model-folders", { method: "GET" });
+                const fd = await fr.json();
+                folders = fd.folders || [];
+            }
             Object.keys(loadedItems).forEach(k => delete loadedItems[k]);
             folderSelect.innerHTML = "<option value=\"\">-- Folder --</option>" + folders.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
             await loadItemsForFolder(folderSelect.value || (folders[0] || ""));
@@ -3036,6 +3046,12 @@ app.ui.settings.addSetting({
         mfaHeading.style.margin = "0 0 8px 0";
         mfaHeading.textContent = "Two-Factor Authentication (MFA)";
         mfaSection.appendChild(mfaHeading);
+        const mfaSubtext = document.createElement("p");
+        mfaSubtext.style.margin = "0 0 8px 0";
+        mfaSubtext.style.fontSize = "0.9em";
+        mfaSubtext.style.color = "#888";
+        mfaSubtext.textContent = "You can enable MFA here for extra security, whether or not your role requires it.";
+        mfaSection.appendChild(mfaSubtext);
         const mfaStatus = document.createElement("p");
         mfaStatus.id = "mss_login-mfa-status";
         mfaStatus.style.margin = "0 0 8px 0";
@@ -3145,7 +3161,7 @@ app.ui.settings.addSetting({
                         mfaStatus.textContent = "MFA is enabled.";
                         mfaSetupBtn.style.display = "none";
                     } else {
-                        mfaStatus.textContent = "Add an extra layer of security with Google Authenticator.";
+                        mfaStatus.textContent = "Add an extra layer of security with MFA (optional). Enable even if your role does not require it.";
                         mfaSetupBtn.style.display = "block";
                     }
                 }

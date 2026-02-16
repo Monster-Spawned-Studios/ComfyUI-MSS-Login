@@ -42,10 +42,10 @@ app.add_routes(
 
 app.middlewares.append(ip_filter.create_ip_filter_middleware())
 app.middlewares.append(sanitizer.create_sanitizer_middleware())
-app.middlewares.append(timeout.create_time_out_middleware(limited=("/login", "/register")))
+app.middlewares.append(timeout.create_time_out_middleware(limited=("/login", "/register", "/mfa")))
 app.middlewares.append(
 	jwt_auth.create_jwt_middleware(
-		public=("/login", "/logout", "/register"), public_prefixes=("/mss_login", "/assets")
+		public=("/login", "/logout", "/register", "/mfa"), public_prefixes=("/mss_login", "/mss_login/api/mfa", "/assets")
 	)
 )
 

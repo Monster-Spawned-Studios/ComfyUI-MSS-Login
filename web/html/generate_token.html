@@ -4,16 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ComfyUI mss_login - Generate API Token</title>
+    <title>MSS-Login - Generate API Token</title>
 
-    <link rel="icon" href="/mss_login/assets/icon.ico" type="image/x-icon">
+    <link rel="icon" href="/mss-login/assets/mss_logo.png" type="image/png">
 
-    <link rel="stylesheet" type="text/css" href="/mss_login/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="/mss-login/css/styles.css">
 </head>
 
 <body>
     <div class="container">
-        <img class="logo" src="/mss_login/assets/mss_logo.png" alt="Transparent Logo">
+        <img class="logo" src="/mss-login/assets/mss_logo.png" alt="MSS-Login Logo">
         <h1 class="title generate">Generate Token</h1>
         <form id="generate-form" onsubmit="generate(event)">
             <div class="form-field">
@@ -27,7 +27,7 @@
             <div class="form-field">
                 <label for="expire_hours">Expiration (in hours):</label>
                 <input type="number" id="expire_hours" name="expire_hours" value="720" min="0" step="1" required>
-                <small style="display:block; margin-top:4px; color:#888;">Use 0 for never expire (requires &quot;Non-expiring JWT&quot; permission for your role; set in Settings → mss_login → Manage mss_login Permissions → Permissions &amp; UI).</small>
+                <small style="display:block; margin-top:4px; color:#888;">Use 0 for never expire (requires &quot;Non-expiring JWT&quot; permission for your role; set in Settings → MSS-Login → Manage MSS-Login Permissions → Permissions &amp; UI).</small>
             </div>
             <div class="form-field" id="login-link">
                 <a href="/login">Back to Login</a>
@@ -58,6 +58,6 @@
     </div>
     <div class="toast-container" id="toasts"></div>
     </body>
-    <script src="/mss_login/js/auth.js"></script>
+    <script src="/mss-login/js/auth.js"></script>
 
 </html>

@@ -23,6 +23,7 @@ from ..utils.user_console_log import (
 )
 from ..utils.ntfy_notifier import get_ntfy_config, save_ntfy_config, send_notification, EVENT_KEYS
 from ..utils.shared_items_store import get_shared_items_store
+from ..utils.model_cache import get_model_cache
 from ..constants import USERS_DB_CONFIG
 
 
@@ -405,6 +406,51 @@ async def api_available_models_in_folder(request):
 	except Exception:
 		names = []
 	return web.json_response({"folder": folder, "items": names})
+
+
+@routes.get("/mss-login/api/model-cache/folders")
+async def api_model_cache_folders(request):
+	"""List model folder names from cache (admin only). For admin Shared Models UI."""
+	if not is_admin(request):
+		return web.json_response({"error": "Admin only"}, status=403)
+	try:
+		cache = get_model_cache(USERS_DB_CONFIG)
+		folders = cache.list_folders()
+		return web.json_response({"folders": folders})
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+@routes.get("/mss-login/api/model-cache/folders/{folder}/items")
+async def api_model_cache_folder_items(request):
+	"""List model/item names in a folder from cache (admin only)."""
+	if not is_admin(request):
+		return web.json_response({"error": "Admin only"}, status=403)
+	folder = request.match_info.get("folder", "")
+	try:
+		cache = get_model_cache(USERS_DB_CONFIG)
+		items = cache.list_items(folder)
+		return web.json_response({"folder": folder, "items": items})
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+@routes.post("/mss-login/api/model-cache/refresh")
+async def api_model_cache_refresh(request):
+	"""Refresh model cache from ComfyUI folder_paths (admin only)."""
+	if not is_admin(request):
+		return web.json_response({"error": "Admin only"}, status=403)
+	try:
+		cache = get_model_cache(USERS_DB_CONFIG)
+		folders, total = cache.refresh_from_folder_paths()
+		return web.json_response({
+			"status": "ok",
+			"folders_count": len(folders),
+			"items_count": total,
+			"folders": folders,
+		})
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
 
 
 @routes.get("/mss-login/api/users/{username}/shared-items")

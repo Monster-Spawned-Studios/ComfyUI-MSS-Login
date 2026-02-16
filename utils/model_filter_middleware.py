@@ -2,6 +2,7 @@
 """
 Middleware: intercept GET /models, GET /models/{folder}, GET /embeddings.
 Return full list if user has can_view_all_comfyui_items; else filter by shared items per user.
+When model cache is populated, folder/item lists are read from cache; otherwise from folder_paths.
 """
 
 from aiohttp import web
@@ -46,6 +47,33 @@ def create_model_filter_middleware(
 	get_user_role_and_permissions, get_shared_items_store, users_db, users_db_config
 ):
 	"""Build middleware that filters /models and /embeddings by permission and shared items."""
+	from .model_cache import get_model_cache
+
+	def _get_folder_list():
+		"""Folder names: from cache if populated, else folder_paths."""
+		try:
+			cache = get_model_cache(users_db_config)
+			if not cache.is_empty():
+				return cache.list_folders()
+		except Exception:
+			pass
+		try:
+			return list(folder_paths.folder_names_and_paths.keys())
+		except AttributeError:
+			return list(ASSET_FOLDERS)
+
+	def _get_item_list(folder: str):
+		"""Item names in folder: from cache if populated, else folder_paths."""
+		try:
+			cache = get_model_cache(users_db_config)
+			if not cache.is_empty():
+				return cache.list_items(folder)
+		except Exception:
+			pass
+		try:
+			return folder_paths.get_filename_list(folder)
+		except Exception:
+			return []
 
 	@web.middleware
 	async def model_filter_middleware(request: web.Request, handler):
@@ -55,10 +83,7 @@ def create_model_filter_middleware(
 		if path == "/models":
 			role, perms, username = get_user_role_and_permissions(request)
 			can_view_all = perms.get("can_view_all_comfyui_items", False) is True or role == "admin"
-			try:
-				folder_names = list(folder_paths.folder_names_and_paths.keys())
-			except AttributeError:
-				folder_names = list(ASSET_FOLDERS)
+			folder_names = _get_folder_list()
 			if can_view_all:
 				return web.json_response(folder_names)
 			store = get_shared_items_store(users_db_config)
@@ -75,10 +100,7 @@ def create_model_filter_middleware(
 			folder = _map_legacy(folder)
 			role, perms, username = get_user_role_and_permissions(request)
 			can_view_all = perms.get("can_view_all_comfyui_items", False) is True or role == "admin"
-			try:
-				full_list = folder_paths.get_filename_list(folder)
-			except Exception:
-				full_list = []
+			full_list = _get_item_list(folder)
 			if can_view_all:
 				return web.json_response(full_list)
 			store = get_shared_items_store(users_db_config)
@@ -93,10 +115,7 @@ def create_model_filter_middleware(
 		if path == "/embeddings":
 			role, perms, username = get_user_role_and_permissions(request)
 			can_view_all = perms.get("can_view_all_comfyui_items", False) is True or role == "admin"
-			try:
-				full_list = folder_paths.get_filename_list("embeddings")
-			except Exception:
-				full_list = []
+			full_list = _get_item_list("embeddings")
 			if can_view_all:
 				return web.json_response(full_list)
 			store = get_shared_items_store(users_db_config)
