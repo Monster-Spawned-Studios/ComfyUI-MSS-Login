@@ -9,7 +9,7 @@ from os.path import join
 import subprocess
 import sys
 
-from utils.config import load_config
+from config import load_config
 
 # DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
 DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in (
