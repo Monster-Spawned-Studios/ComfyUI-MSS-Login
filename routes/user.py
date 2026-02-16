@@ -308,6 +308,10 @@ async def api_user_env(request: web.Request) -> web.Response:
 	return web.json_response({"error": f"Unknown action '{action}'"}, status=400)
 
 
+routes.post("/mss_login/api/user-env")(api_user_env)
+routes.post("/api/mss_login/api/user-env")(api_user_env)
+
+
 @routes.post("/mss-login-gallery/mark-nsfw")
 async def mark_nsfw(request: web.Request) -> web.Response:
 	"""

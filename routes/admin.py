@@ -72,6 +72,12 @@ async def api_put_guest_jwt(request):
 		return web.json_response({"error": str(e)}, status=500)
 
 
+routes.get("/mss_login/api/settings/guest-jwt")(api_get_guest_jwt)
+routes.get("/api/mss_login/api/settings/guest-jwt")(api_get_guest_jwt)
+routes.put("/mss_login/api/settings/guest-jwt")(api_put_guest_jwt)
+routes.put("/api/mss_login/api/settings/guest-jwt")(api_put_guest_jwt)
+
+
 @routes.get("/mss-login/api/settings/ntfy")
 async def api_get_ntfy_settings(request):
 	"""Return ntfy config (topic, enabled_events). Authenticated; read available to all."""
@@ -105,6 +111,12 @@ async def api_put_ntfy_settings(request):
 		return web.json_response({"error": str(e)}, status=500)
 
 
+routes.get("/mss_login/api/settings/ntfy")(api_get_ntfy_settings)
+routes.get("/api/mss_login/api/settings/ntfy")(api_get_ntfy_settings)
+routes.put("/mss_login/api/settings/ntfy")(api_put_ntfy_settings)
+routes.put("/api/mss_login/api/settings/ntfy")(api_put_ntfy_settings)
+
+
 @routes.get("/mss-login/api/admin/consoles")
 async def api_admin_consoles_list(request):
 	"""Return list of usernames that have console log entries (Admin only)."""
@@ -122,6 +134,12 @@ async def api_admin_consoles_user(request):
 	username = request.match_info.get("username", "")
 	lines = get_user_console_lines(username)
 	return web.json_response({"username": username, "lines": lines})
+
+
+routes.get("/mss_login/api/admin/consoles")(api_admin_consoles_list)
+routes.get("/api/mss_login/api/admin/consoles")(api_admin_consoles_list)
+routes.get("/mss_login/api/admin/consoles/{username}")(api_admin_consoles_user)
+routes.get("/api/mss_login/api/admin/consoles/{username}")(api_admin_consoles_user)
 
 
 @routes.get("/mss-login/api/groups")
@@ -165,6 +183,10 @@ async def api_update_groups(request):
 		return web.json_response({"error": str(e)}, status=500)
 
 
+routes.put("/mss_login/api/groups")(api_update_groups)
+routes.put("/api/mss_login/api/groups")(api_update_groups))
+
+
 @routes.get("/mss-login/api/users")
 async def api_users(request):
 	if not is_admin(request):
@@ -197,6 +219,10 @@ async def api_update_user_route(request):
 	return web.Response(status=404)
 
 
+routes.put("/mss_login/api/users/{target_user}")(api_update_user_route)
+routes.put("/api/mss_login/api/users/{target_user}")(api_update_user_route)
+
+
 @routes.delete("/mss-login/api/users/{target_user}")
 async def api_delete_user_route(request):
 	if not is_admin(request):
@@ -211,6 +237,10 @@ async def api_delete_user_route(request):
 	if result is False:
 		return web.Response(status=404)
 	return web.json_response({"status": "ok"})
+
+
+routes.delete("/mss_login/api/users/{target_user}")(api_delete_user_route)
+routes.delete("/api/mss_login/api/users/{target_user}")(api_delete_user_route)
 
 
 @routes.get("/mss-login/api/users-db-config")
@@ -228,6 +258,10 @@ async def api_get_users_db_config(request):
 		"encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
 	}
 	return web.json_response(out)
+
+
+routes.get("/mss_login/api/users-db-config")(api_get_users_db_config)
+routes.get("/api/mss_login/api/users-db-config")(api_get_users_db_config)
 
 
 @routes.put("/mss-login/api/users-db-config")
@@ -269,6 +303,10 @@ async def api_put_users_db_config(request):
 		return web.json_response({"error": str(e)}, status=500)
 
 
+routes.put("/mss_login/api/users-db-config")(api_put_users_db_config)
+routes.put("/api/mss_login/api/users-db-config")(api_put_users_db_config)
+
+
 @routes.get("/mss-login/api/token-storage-config")
 async def api_get_token_storage_config(request):
 	"""Return token storage config (admin only). Uses same DB as users unless backend is json. Postgres password is env-only."""
@@ -283,6 +321,10 @@ async def api_get_token_storage_config(request):
 		"use_same_db_as_users": use_same_db,
 	}
 	return web.json_response(out)
+
+
+routes.get("/mss_login/api/token-storage-config")(api_get_token_storage_config)
+routes.get("/api/mss_login/api/token-storage-config")(api_get_token_storage_config)
 
 
 @routes.put("/mss-login/api/token-storage-config")
@@ -314,6 +356,10 @@ async def api_put_token_storage_config(request):
 		return web.json_response({"status": "ok"})
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.put("/mss_login/api/token-storage-config")(api_put_token_storage_config)
+routes.put("/api/mss_login/api/token-storage-config")(api_put_token_storage_config)
 
 
 @routes.get("/mss-login/api/ip-lists")
@@ -379,6 +425,12 @@ async def api_update_ip_lists(request):
 		return web.json_response({"error": str(e)}, status=500)
 
 
+routes.get("/mss_login/api/ip-lists")(api_ip_lists)
+routes.get("/api/mss_login/api/ip-lists")(api_ip_lists)
+routes.put("/mss_login/api/ip-lists")(api_update_ip_lists)
+routes.put("/api/mss_login/api/ip-lists")(api_update_ip_lists)
+
+
 @routes.get("/mss-login/api/available-model-folders")
 async def api_available_model_folders(request):
 	"""List ComfyUI model folder names (for admin shared-items UI). Admin only."""
@@ -401,6 +453,10 @@ async def api_available_model_folders(request):
 	return web.json_response({"folders": folders})
 
 
+routes.get("/mss_login/api/available-model-folders")(api_available_model_folders)
+routes.get("/api/mss_login/api/available-model-folders")(api_available_model_folders)
+
+
 @routes.get("/mss-login/api/available-models/{folder}")
 async def api_available_models_in_folder(request):
 	"""List model/item names in a folder (for admin shared-items UI). Admin only."""
@@ -416,6 +472,10 @@ async def api_available_models_in_folder(request):
 	return web.json_response({"folder": folder, "items": names})
 
 
+routes.get("/mss_login/api/available-models/{folder}")(api_available_models_in_folder)
+routes.get("/api/mss_login/api/available-models/{folder}")(api_available_models_in_folder)
+
+
 @routes.get("/mss-login/api/model-cache/folders")
 async def api_model_cache_folders(request):
 	"""List model folder names from cache (admin only). For admin Shared Models UI."""
@@ -427,6 +487,10 @@ async def api_model_cache_folders(request):
 		return web.json_response({"folders": folders})
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/mss_login/api/model-cache/folders")(api_model_cache_folders)
+routes.get("/api/mss_login/api/model-cache/folders")(api_model_cache_folders)
 
 
 @routes.get("/mss-login/api/model-cache/folders/{folder}/items")
@@ -441,6 +505,10 @@ async def api_model_cache_folder_items(request):
 		return web.json_response({"folder": folder, "items": items})
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/mss_login/api/model-cache/folders/{folder}/items")(api_model_cache_folder_items)
+routes.get("/api/mss_login/api/model-cache/folders/{folder}/items")(api_model_cache_folder_items)
 
 
 @routes.post("/mss-login/api/model-cache/refresh")
@@ -461,6 +529,10 @@ async def api_model_cache_refresh(request):
 		return web.json_response({"error": str(e)}, status=500)
 
 
+routes.post("/mss_login/api/model-cache/refresh")(api_model_cache_refresh)
+routes.post("/api/mss_login/api/model-cache/refresh")(api_model_cache_refresh)
+
+
 @routes.get("/mss-login/api/users/{username}/shared-items")
 async def api_get_shared_items(request):
 	"""List shared ComfyUI items (models, LoRAs, VAEs, embeddings) for a user (admin only)."""
@@ -473,6 +545,10 @@ async def api_get_shared_items(request):
 	store = get_shared_items_store(USERS_DB_CONFIG)
 	items = store.list_for_user(user_id)
 	return web.json_response({"username": username, "items": items})
+
+
+routes.get("/mss_login/api/users/{username}/shared-items")(api_get_shared_items)
+routes.get("/api/mss_login/api/users/{username}/shared-items")(api_get_shared_items)
 
 
 @routes.post("/mss-login/api/users/{username}/shared-items")
@@ -498,6 +574,10 @@ async def api_add_shared_item(request):
 		return web.json_response({"error": str(e)}, status=500)
 
 
+routes.post("/mss_login/api/users/{username}/shared-items")(api_add_shared_item)
+routes.post("/api/mss_login/api/users/{username}/shared-items")(api_add_shared_item)
+
+
 @routes.delete("/mss-login/api/users/{username}/shared-items")
 async def api_remove_shared_item(request):
 	"""Remove one shared item for a user. Body: { "folder": "...", "item_name": "..." } (admin only)."""
@@ -519,6 +599,10 @@ async def api_remove_shared_item(request):
 		return web.json_response({"error": "Item not found"}, status=404)
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.delete("/mss_login/api/users/{username}/shared-items")(api_remove_shared_item)
+routes.delete("/api/mss_login/api/users/{username}/shared-items")(api_remove_shared_item)
 
 
 @routes.post("/mss-login/api/nsfw-management")
@@ -592,3 +676,7 @@ async def api_nsfw_management(request):
 		print(f"[mss_login] NSFW management error: {e}")
 		traceback.print_exc()
 		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.post("/mss_login/api/nsfw-management")(api_nsfw_management)
+routes.post("/api/mss_login/api/nsfw-management")(api_nsfw_management)
