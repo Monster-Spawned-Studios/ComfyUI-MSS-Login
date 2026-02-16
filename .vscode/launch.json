@@ -2,19 +2,103 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Launch ComfyUI (Mando Drive)",
+            "name": "Launch ComfyUI (Local)",
             "type": "debugpy",
             "request": "launch",
-            "module": "comfy",
+            "module": "uv",
             "args": [
+                "run",
+                "--group",
+                "comfyui",
+                "comfy",
                 "--workspace",
-                "/Volumes/Mando Drive/ComfyUI",
-                "launch"
+                "${workspaceFolder}/ComfyUI",
+                "--launch",
+                "--",
+                "--port",
+                "8188",
+                "--host",
+                "0.0.0.0"
             ],
-            "cwd": "/Volumes/Mando Drive/ComfyUI",
-            "console": "integratedTerminal",
-            "preLaunchTask": "Copy MSS-Login to ComfyUI",
-            "justMyCode": false
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Install ComfyUI (Mac M-Series)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uv",
+            "args": [
+                "run",
+                "--group",
+                "comfyui",
+                "comfy",
+                "--url=file://${workspaceFolder}/ComfyUI",
+                "install",
+                "--m-series",
+                "--fast-deps"
+            ],
+            "env": {
+                "UV_PROJECT": "${workspaceFolder}/",
+                "UV_PYTHON": "${workspaceFolder}/.venv/bin/python3",
+            },
+            "preLaunchTask": "Install ComfyUI Dependencies`",
+            "cwd": "${workspaceFolder}/ComfyUI",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Install ComfyUI (Linux CUDA/NVIDIA)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uv",
+            "args": [
+                "run",
+                "--group",
+                "comfyui",
+                "comfy",
+                "--workspace=${workspaceFolder}/ComfyUI",
+                "install",
+                "--nvidia",
+                "--fast-deps"
+            ],
+            "cwd": "${workspaceFolder}/ComfyUI",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Install ComfyUI (Linux AMD/NVIDIA)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uv",
+            "args": [
+                "run",
+                "--group",
+                "comfyui",
+                "comfy",
+                "--workspace=${workspaceFolder}/ComfyUI",
+                "install",
+                "--amd",
+                "--fast-deps"
+            ],
+            "cwd": "${workspaceFolder}/ComfyUI",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Install ComfyUI (CPU Only)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uv",
+            "args": [
+                "run",
+                "--group",
+                "comfyui",
+                "comfy",
+                "--workspace=${workspaceFolder}/ComfyUI",
+                "install",
+                "--cpu",
+                "--fast-deps"
+            ],
+            "cwd": "${workspaceFolder}/ComfyUI",
+            "console": "integratedTerminal"
         }
     ]
 }

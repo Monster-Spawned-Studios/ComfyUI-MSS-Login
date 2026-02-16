@@ -10,7 +10,7 @@
                 "--del",
                 "--exclude=.git",
                 "--exclude=.env",
-                "--exclude=.env.*",
+                "--exclude=.env.keys",
                 "--exclude=.venv",
                 "--exclude=__pycache__",
                 "--exclude=*.log",
@@ -65,6 +65,29 @@
                 "kind": "test",
                 "isDefault": true
             }
+        },
+        {
+            "label": "Install ComfyUI Dependencies",
+            "type": "shell",
+            "command": "uv",
+            "args": [
+                "sync",
+                "--group",
+                "comfyui"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/ComfyUI",
+                "env": {
+                    "AUTO_INSTALL_DEPS": "1",
+                    "DEBUG_MODE": "true"
+                }
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "silent",
+                "panel": "shared"
+            },
+            "group": "build"
         }
     ]
 }

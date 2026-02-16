@@ -1,3 +1,5 @@
+## Custom additions:
+ComfyUI/
 .venv/
 .env
 .env.*
@@ -15,6 +17,8 @@ site/
 !.vscode/settings.json
 !.vscode/extensions.json
 !.vscode/cspell.json
+!.vscode/tasks.json
+!.vscode/launch.json
 
 .ruff_cache/
 
@@ -40,7 +44,6 @@ $SystemVolumeInformation/
 
 # Linux files:
 .directory
-.DS_Store
 .Trash
 
 # Backup files:
