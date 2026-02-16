@@ -6,7 +6,7 @@ import uuid
 
 from aiohttp import web
 
-from globals import routes
+from .globals import routes
 
 from .utils.install_deps import install_dependencies
 
