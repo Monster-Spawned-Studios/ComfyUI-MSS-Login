@@ -1,4 +1,4 @@
-# ComfyUI mss_login
+# ComfyUI MSS-Login
 
 <p align="center">
   <img src="./web/assets/mss_logo.png" width="220" />
@@ -15,6 +15,7 @@
 ---
 
 ## Table of Contents
+
 1. [Overview](#overview)
 2. [Key Features](#key-features)
 3. [Architecture](#architecture)
@@ -58,6 +59,7 @@ It replaces the older Sentinel system with a faster, cleaner, more modular archi
 ## Key Features
 
 ### 🔐 **RBAC Security**
+
 Four roles: **Admin, Power, User, Guest**
 Each with configurable permissions stored in `mss_login_groups.json`.
 
@@ -66,7 +68,9 @@ Each with configurable permissions stored in `mss_login_groups.json`.
 </p>
 
 ### 🚫 **Save & Delete Workflow Blocking**
+
 Non‑privileged roles cannot:
+
 - Save workflows
 - Export workflows
 - Overwrite existing workflows
@@ -77,11 +81,14 @@ Non‑privileged roles cannot:
 </p>
 
 All blocked actions trigger:
+
 - A server‑side 403
 - A UI toast popup explaining the denial
 
 ### 👁️ **Dynamic UI Enforcement**
+
 mss_login hides or disables:
+
 - Top‑menu items
 - Sidebar tabs
 - Settings categories
@@ -91,14 +98,18 @@ mss_login hides or disables:
 Enforcement occurs every 1 second to catch late‑loading UI elements.
 
 ### 🌐 **IP Filtering System**
+
 Complete backend implementation:
+
 - Whitelist mode
 - Blacklist mode
 - Live editing in mss_login settings tab
 - Persistent storage via `ip_filter.py`
 
 ### 🗂️ **User Environment Tools**
+
 From `user_env.py`:
+
 - Purge a user’s folders
 - List user-owned files
 - Promote user workflow to default (all user view)
@@ -110,7 +121,9 @@ From `user_env.py`:
 </p>
 
 ### 🖥️ **Transparent Themed Admin UI**
+
 The administrative modal features:
+
 - Transparent blurred glass background
 - Neon accent tabs
 - Integrated logo watermark
@@ -118,13 +131,17 @@ The administrative modal features:
 - Responsive layout
 
 ### 🔧 **Watcher Middleware**
+
 A new middleware that detects:
+
 - Forbidden workflow saves
 - Forbidden deletes
 And triggers UI-side toast popups through a custom fetch wrapper.
 
 ### 🛡️ **NSFW Guard API**
+
 A comprehensive public API that allows other ComfyUI extensions to:
+
 - Check user NSFW viewing permissions
 - Validate image tensors, PIL Images, or file paths for NSFW content
 - Integrate NSFW protection into custom nodes and extensions
@@ -136,6 +153,7 @@ A comprehensive public API that allows other ComfyUI extensions to:
 See [API_USAGE.md](./readme/API_USAGE.md) for complete documentation and examples.
 
 **Quick Example:**
+
 ```python
 from api import check_tensor_nsfw, is_sfw_enforced_for_user
 
@@ -147,6 +165,7 @@ if is_sfw_enforced_for_user():
 ```
 
 **Gallery Integration:**
+
 ```javascript
 // Mark an image as NSFW from gallery UI
 fetch('/mss_login-gallery/mark-nsfw', {
@@ -203,15 +222,16 @@ ComfyUI
 ## Installation
 
 1. Extract mss_login into:
+
 ```
 ComfyUI/custom_nodes/mss_login/
 ```
 
-2. Restart ComfyUI.
+1. Restart ComfyUI.
 
-3. On first launch, register the initial admin.
+2. On first launch, register the initial admin.
 
-4. Open settings → **mss_login** to configure.
+3. Open settings → **mss_login** to configure.
 
 ---
 
@@ -305,6 +325,7 @@ and editable through the settings panel.
 ## UI Enforcement Layer
 
 mss_login dynamically modifies the UI by:
+
 - Injecting CSS rules to hide elements
 - Removing menu entries (Save, Load, Manage Extensions)
 - Blocking iTools, Crystools, rgthree, ImpactPack for restricted roles
@@ -341,6 +362,7 @@ utils/ip_filter.py
 ```
 
 ### Features
+
 - Whitelist mode: Only listed IPs allowed
 - Blacklist mode: Block specific IPs
 - Configurable through new “IP Rules” tab in settings
@@ -357,6 +379,7 @@ utils/user_env.py
 ```
 
 Features:
+
 - Purge a user’s input/output/temp folders
 - List all user-bound files
 - Toggle whether their folder functions as a gallery
@@ -383,6 +406,7 @@ Tabs:
 Other ComfyUI extensions can register custom tabs in the mss_login admin panel to manage their own permissions and settings. See [EXTENSION_TABS_API.md](./EXTENSION_TABS_API.md) for complete documentation.
 
 **Quick Example:**
+
 ```javascript
 window.mss_loginAdminTabs.register({
     id: "myextension",
@@ -397,6 +421,7 @@ window.mss_loginAdminTabs.register({
 ```
 
 ### Additional UI Features
+
 - Integrated logout button in the settings entry
 - Transparent blurred panel
 - Neon-accented tab bar
@@ -407,9 +432,11 @@ window.mss_loginAdminTabs.register({
 ## API Endpoints
 
 ### NSFW Guard API (Public)
+
 The NSFW Guard API provides programmatic access to NSFW detection and enforcement. See [API_USAGE.md](./readme/API_USAGE.md) for complete documentation.
 
 **Key Functions:**
+
 - `check_tensor_nsfw(images_tensor, threshold=0.5)` - Check image tensors
 - `check_image_path_nsfw(image_path, username=None)` - Check image files
 - `check_pil_image_nsfw(pil_image, threshold=0.5)` - Check PIL Images
@@ -423,6 +450,7 @@ The NSFW Guard API provides programmatic access to NSFW detection and enforcemen
 Manually mark an image as NSFW or SFW. Designed for integration with gallery extensions.
 
 **Request Body:**
+
 ```json
 {
     "filename": "image.png",
@@ -433,6 +461,7 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 ```
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -443,6 +472,7 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 ```
 
 **Features:**
+
 - Recursively searches output directory subdirectories
 - Security checks prevent path traversal
 - Integrates with metadata tagging system
@@ -475,17 +505,20 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 ## Backend Components
 
 ### `__init__.py`
+
 - Main entry point for ComfyUI extension
 - Route registration and middleware setup
 - Server instance initialization
 
 ### `api.py`
+
 - **NSFW Guard API** - Public interface for other extensions
 - Functions: `check_tensor_nsfw()`, `check_image_path_nsfw()`, `is_sfw_enforced_for_user()`
 - Metadata tagging: `set_image_nsfw_tag()`, `get_image_nsfw_tag()`
 - User context management for worker threads
 
 ### `access_control.py`
+
 - Folder isolation
 - RBAC
 - Middleware for blocking paths
@@ -493,49 +526,59 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 - Extension gating
 
 ### `routes/auth.py`
+
 - JWT authentication endpoints
 - Login, registration, token refresh
 - Guest login support
 
 ### `routes/admin.py`
+
 - User & group management
 - Permission editing
 - NSFW management tools (scan, fix, clear)
 - IP rules management
 
 ### `routes/user.py`
+
 - User environment operations
 - **Gallery integration**: `/mss_login-gallery/mark-nsfw` endpoint
 - File management (purge, list, promote workflows)
 
 ### `routes/workflow_routes.py`
+
 - Workflow save/delete protection
 - Global NSFW enforcement on `/view` endpoint
 - Workflow listing and loading
 
 ### `routes/static.py`
+
 - Asset serving (CSS, JS, images)
 - Logo and UI resources
 
 ### `utils/sfw_intercept/nsfw_guard.py`
+
 - NSFW detection using AI models
 - Metadata-based tagging system
 - Background scanning and caching
 - Per-user enforcement logic
 
 ### `utils/sfw_intercept/node_interceptor.py`
+
 - Node-level image interception
 - Real-time NSFW blocking in custom nodes
 
 ### `utils/reactor_sfw_intercept.py`
+
 - ReActor extension SFW patch
 - Per-user SFW enforcement for face swap operations
 
 ### `utils/ip_filter.py`
+
 - Whitelist & blacklist logic
 - Persistent storage
 
 ### `utils/user_env.py`
+
 - Folder operations
 - Metadata tools
 - User file management
@@ -545,37 +588,47 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 ## Troubleshooting
 
 ### Missing Logo
+
 Ensure the file exists:
+
 ```
 mss_login/web/assets/mss_logo.png
 ```
 
 ### UI Not Updating
+
 Clear browser cache or disable caching dev tools.
 
 ### Guest cannot run workflows
+
 Check:
+
 ```
 can_run = true
 ```
+
 in `mss_login_groups.json`.
 
 ### mark-nsfw endpoint returns 404
+
 - Ensure the image file exists in the output directory or subdirectories
 - Check that the filename doesn't contain path traversal characters (`..`, `/`, `\`)
 - Verify the file is within the output directory (security check)
 
 ### NSFW Guard API not working
+
 - Ensure `ComfyUI-mss_login` is loaded before your extension
 - Check that the API is available: `from api import is_available; print(is_available())`
 - Verify user context is set in worker threads using `set_user_context()`
 
 ### NSFW tags not persisting
+
 - Check that metadata files (`.nsfw_metadata.json`) are being created alongside images
 - Verify write permissions in the output directory
 - Ensure metadata files aren't being deleted by cleanup scripts
 
 ### DEBUG_MODE for token / "Unable to connect to server" issues
+
 When using API tokens (e.g. Comfy Portal iOS) and seeing "Unable to connect to server", enable debug logging to see where the request is blocked (remote API guard, JWT/token validation, or access control).
 
 - **Environment (Docker/Compose):** set `DEBUG_MODE=1` or `DEBUG_MODE=true` in your env or Compose file.
@@ -584,13 +637,16 @@ When using API tokens (e.g. Comfy Portal iOS) and seeing "Unable to connect to s
 - 401 responses include a `debug` hint when DEBUG_MODE is on. Do not leave DEBUG_MODE enabled in production.
 
 ### API token "not found or expired"
+
 If the client sends a Bearer token but the server returns "API token not found or expired", the token is not in this server's token store. **Generate the token on the same ComfyUI instance (and same container/host) that the client connects to.** In Docker, ensure the database (unified SQLite file or PostgreSQL) is on a **persisted volume** so tokens survive restarts and are the same instance the client hits.
 
 ### Unified database and encrypted SQLite
+
 - **Single database:** Users, API tokens, and shared items use one SQLite file or one PostgreSQL database (config: `users_db` in `config.json`). Token storage no longer uses a separate DB; set token storage backend to "database" in Settings.
 - **Encrypted SQLite:** To encrypt the SQLite file with a key derived from `SECRET_KEY`, set `encryption_level` in `users_db` to `low`, `standard`, or `secure` (Settings → Users DB). Requires **argon2-cffi** (`pip install argon2-cffi`) and, for encryption at rest, **pysqlcipher3** with a system SQLCipher build (`pip install sqlcipher3`; see [SQLCipher](https://www.zetetic.net/sqlcipher/) for your OS). If `encryption_level` is set but pysqlcipher3 is not installed, startup fails with a clear message.
 
 ### SECRET_KEY and recovery
+
 - **Unset SECRET_KEY:** If the `SECRET_KEY` environment variable is not set, a random key is used and persisted to `users/.ephemeral_secret_key` (do not commit this file). Sessions and MFA data use this key until restart.
 - **Setting a permanent SECRET_KEY:** When you later set `SECRET_KEY` in the environment and restart, the extension will automatically migrate TOTP secrets from the ephemeral key to the new key and then remove the ephemeral file. No manual action needed if the file is still present.
 - **Recovery mode:** If the ephemeral file was deleted or migration failed, users with MFA may be unable to log in. Enable recovery mode: set `RECOVERY_MODE=1`, then from an allowed host (default: localhost only), send `POST /api/mss_login/recovery/reset-mfa`. This clears MFA for all users so they can log in with password and re-enroll MFA. Override allowed hosts with `RECOVERY_MODE_HOST` or `RECOVRY_MODE_HOST` (comma-separated IPs). Recovery is only accessible when `RECOVERY_MODE` is enabled and the client IP is in the allowed list.
@@ -598,6 +654,7 @@ If the client sends a Bearer token but the server returns "API token not found o
 ---
 
 ## License
+
 MIT License
 You may modify and redistribute freely.
 
@@ -611,14 +668,18 @@ This project follows a semantic-style versioning flow adapted for active develop
 ---
 
 ## **v 1.7.9 - Critical issue resol ed
+
 ## 🛡️ NSFW API
-  - **Metadata tag wipe
-    - Resolved an issue which caused the metadata to be removed from images after being tagged as NSFW.
+
+- **Metadata tag wipe
+  - Resolved an issue which caused the metadata to be removed from images after being tagged as NSFW.
 
 =======
 
 ## **v1.7.7 — NSFW Guard API & Gallery Integration (2025-12-12)**
+
 ### 🛡️ NSFW Guard API Enhancements
+
 - **Metadata-based tagging system**
   - Images are now tagged with NSFW metadata stored alongside files (`.nsfw_metadata.json`)
 - **Gallery integration endpoint**
@@ -633,6 +694,7 @@ This project follows a semantic-style versioning flow adapted for active develop
   - SFW restrictions apply per-user based on role permissions
 
 ### 🔗 Gallery Integration
+
 - **ComfyUI-mss_login-Gallery compatibility**
   - Full integration with gallery extension
 - **Manual flagging**
@@ -641,6 +703,7 @@ This project follows a semantic-style versioning flow adapted for active develop
   - NSFW tags persist across server restarts via metadata files
 
 ### 🛠️ Route Registration Improvements
+
 - **Explicit route registration**
   - Routes are now explicitly registered to ensure availability
 - **Middleware whitelisting**
@@ -649,6 +712,7 @@ This project follows a semantic-style versioning flow adapted for active develop
   - Startup verification ensures all routes are properly registered
 
 ### 📂 Architecture Updates
+
 - **Modular route structure**
   - Routes organized into dedicated modules (`routes/` directory)
 - **Separation of concerns**
@@ -659,26 +723,36 @@ This project follows a semantic-style versioning flow adapted for active develop
 ---
 
 ## **v1.7.5 - Critical issue resolution**
+
 ### 🛠️ Admin workflow
-  - resolved an issue which barred admins from deleting default workflows
-  - resolved and issue with extension name causing UI block to fail
+
+- resolved an issue which barred admins from deleting default workflows
+- resolved and issue with extension name causing UI block to fail
 
 ## **v1.7.0 - Updated extension logic & added sfw toggle
+
 ### 🛠️ Admin User group Extension list
-  - Resolved an issue which caused duplicate extensions to be listed
-  - List now accounts for explicitly listed extensions
+
+- Resolved an issue which caused duplicate extensions to be listed
+- List now accounts for explicitly listed extensions
+
 ### 🛠️ Per user SFW reactor intercept (Highly experimental)
-  - Admin can now toggle SFW on/off per user
-  - `utils/reactor_sfw_intercept.py` (added new file)
+
+- Admin can now toggle SFW on/off per user
+- `utils/reactor_sfw_intercept.py` (added new file)
 
 ## **v1.6.0 - Refactor & update User Workflow Administration
+
 ### 📂 User Files Additions
+
 - **Monolith Addition:** Added options to select and delete individual files & Promote Workflows
   - `routes/user.py` (Updated information passage)
   - `web/mss_login_setting.js` (updated the middleware and UI architecture)
 
 ## **v1.5.0 — Modular Refactor & Architecture Overhaul (2025-12-6)**
+
 ### 🏗️ Architectural Refactor
+
 - **Monolith Split:** Deconstructed the massive `mss_login.py` into modular route handlers:
   - `routes/auth.py` (Login/Register/Token)
   - `routes/admin.py` (User & Group management)
@@ -688,12 +762,14 @@ This project follows a semantic-style versioning flow adapted for active develop
 - **Logic Decoupling:** Moved business logic out of HTTP handlers into dedicated utilities (`utils/admin_logic.py`, `utils/json_utils.py`, `utils/bootstrap.py`).
 
 ### 🛠️ Stability & Fixes
+
 - **Startup Resilience:** Added auto-creation logic for missing static folders (`web/css`, `web/js`, `web/html`) to prevent `aiohttp` crash on first run.
 - **Windows Pathing:** Fixed `FileNotFoundError` and path resolution issues on Windows environments.
 - **Middleware Fixes:** Restored missing `create_folder_access_control_middleware` and fixed import errors in `watcher.py`.
 - **Config Correction:** Resolved missing `MAX_TOKEN_EXPIRE_MINUTES` constant that prevented server startup.
 
 ### 📂 Frontend Reorganization
+
 - Restructured `web/` directory for cleaner separation of concerns.
 - Consolidated ComfyUI extension scripts (`mss_login_setting.js`, `logout.js`, `injectCSS.js`) to ensure reliable auto-loading.
 - Moved HTML templates to `web/html/` and updated static route mappings.
@@ -702,7 +778,9 @@ This project follows a semantic-style versioning flow adapted for active develop
 ---
 
 ## **v1.4.0 — Major Security & UI Expansion**
+
 ### 🔥 New Features
+
 - Added **multi-tab mss_login Settings Panel**
   - Users & Roles
   - Permissions & UI
@@ -713,6 +791,7 @@ This project follows a semantic-style versioning flow adapted for active develop
 - Added **mss_login logo watermark** support in upper-right corner.
 
 ### 🔐 Security Enhancements
+
 - Full **save/delete workflow blocking** for restricted roles.
 - New `watcher.py` middleware to detect backend 403s and send structured UI warnings.
 - Unified blocking under `WORKFLOW_SAVE_DENIED` and `WORKFLOW_DELETE_DENIED` codes.
@@ -720,6 +799,7 @@ This project follows a semantic-style versioning flow adapted for active develop
 - Added **extension UI gating** via CSS + runtime menu removal.
 
 ### 🧠 Backend Improvements
+
 - New IP filtering system (`ip_filter.py`) with whitelist + blacklist modes.
 - New User Environment tools (`user_env.py`) including:
   - Folder purge
@@ -731,7 +811,9 @@ This project follows a semantic-style versioning flow adapted for active develop
 ---
 
 ## **v1.3.0 — UI Enforcement Engine Overhaul**
+
 ### ✨ Enhancements
+
 - Added dynamic scanning of:
   - PrimeVue menus
   - Sidebar buttons
@@ -741,13 +823,16 @@ This project follows a semantic-style versioning flow adapted for active develop
 - Rebuilt `patchSaveConfirmDialog` to override PrimeVue dialogs.
 
 ### 🛠 Stability Updates
+
 - Resolved issues where guests could open extension settings.
 - Added safe defaults for undefined permissions per role.
 
 ---
 
 ## **v1.2.0 — Folder Isolation & User Paths**
+
 ### 🔧 New Features
+
 - Added per-user:
   - input directory
   - output directory
@@ -756,24 +841,29 @@ This project follows a semantic-style versioning flow adapted for active develop
 - Added `filename_prefix` rewriting for isolated naming.
 
 ### 🐞 Fixes
+
 - Corrected queue ownership tracking.
 - Fixed history objects containing mixed-user entries.
 
 ---
 
 ## **v1.1.0 — JWT Authentication Integration**
+
 ### 🚀 Additions
+
 - Added JWT login, registration, expiration, and cookie storage.
 - Implemented guest login with auto-created “guest” user.
 - Created protections to ensure guest cannot escalate privileges.
 
 ### ⚙ Backend
+
 - Refactored user database operations.
 - Added detection for first-time admin setup.
 
 ---
 
 ## **v1.0.0 — Initial Release**
+
 - Base RBAC system
 - Permission flags stored in `mss_login_groups.json`
 - Middleware for execution, upload, manager access
@@ -783,6 +873,7 @@ This project follows a semantic-style versioning flow adapted for active develop
 ---
 
 ## Upcoming Features (Planned for v1.5+)
+
 - Live audit logging panel
 - Real-time session viewer
 - Admin ability to force logout users
@@ -791,4 +882,3 @@ This project follows a semantic-style versioning flow adapted for active develop
 - Theme customization panel
 
 ---
-
