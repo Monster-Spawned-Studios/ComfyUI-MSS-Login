@@ -4,10 +4,6 @@ import json
 import warnings
 import uuid
 
-from aiohttp import web
-
-from .globals import routes
-
 from .utils.install_deps import install_dependencies
 
 # --- Base Directories ---
@@ -368,11 +364,3 @@ def reload_api_token_store_config() -> dict:
     """Re-read config and refresh API_TOKEN_STORE_CONFIG. Token store uses same DB as users; only json_path is token-specific."""
     reload_users_db_config()
     return API_TOKEN_STORE_CONFIG
-
-
-@routes.get("/mss-login/api/debug-mode")
-async def get_debug_mode(request):
-    """
-    Return the debug mode from the environment variable.
-    """
-    return web.json_response({"debugMode": DEBUG_MODE})
