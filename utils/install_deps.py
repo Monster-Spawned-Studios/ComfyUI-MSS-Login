@@ -169,17 +169,17 @@ def install_dependencies() -> bool:
             return False
         # Install the dependencies from the pyproject.toml file
         pyproject = os.path.join(root, "pyproject.toml")
-        if os.path.isfile(pyproject) and platform.system() in ["Windows", "Linux"]:
+        if os.path.isfile(pyproject) and platform.system() in [
+            "Windows",
+            "Linux",
+            "Darwin",
+        ]:
             if not run_uv(
-                ["install", "-r", f"{root}/pyproject.toml"], timeout=1200, cwd=root
+                ["pip", "install", "-r", f"{root}/pyproject.toml"],
+                timeout=1200,
+                cwd=root,
             ):
                 return False
-        elif os.path.isfile(pyproject) and platform.system() in ["Darwin"]:
-            if DEBUG_MODE:
-                print(
-                    "[mss_login] Skipping pyproject.toml dependency install on macOS, as it is not supported.",
-                    file=sys.stderr,
-                )
         else:
             print(
                 "[mss_login] No pyproject.toml file found or operating system is not supported, skipping pyproject.toml dependency install.",
