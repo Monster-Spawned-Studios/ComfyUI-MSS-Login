@@ -9,7 +9,6 @@ import bcrypt
 import json
 import os
 import secrets
-import sqlite3
 from pathlib import Path
 from typing import Any, Optional, Tuple
 
@@ -34,6 +33,13 @@ def _json_to_groups(s: Optional[str]) -> list:
 		return [str(g) for g in out] if isinstance(out, list) else ["user"]
 	except Exception:
 		return ["user"]
+
+
+def _dict_row_factory(cursor: Any, row: tuple) -> dict:
+	"""Row factory that returns a dict. Works with both sqlite3 and sqlcipher3 cursors."""
+	if cursor.description:
+		return dict(zip([col[0] for col in cursor.description], row))
+	return {}
 
 
 def _row_to_user(row: dict, secret_key: str) -> dict:
@@ -100,7 +106,9 @@ class _SqliteUsersBackend:
 			encryption_level=encryption_level or "",
 			check_same_thread=False,
 		)
-		self._conn.row_factory = sqlite3.Row
+		# Use dict row factory so rows work with both sqlite3 and sqlcipher3 (sqlite3.Row
+		# requires sqlite3.Cursor; sqlcipher3 returns sqlcipher3.dbapi2.Cursor).
+		self._conn.row_factory = _dict_row_factory
 		self._ensure_schema()
 
 	def _ensure_schema(self) -> None:
