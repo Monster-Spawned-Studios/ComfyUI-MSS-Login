@@ -9,6 +9,9 @@ from .utils.install_deps import install_dependencies
 # --- Base Directories ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# NTFY API Key
+NTFY_API_KEY = (os.getenv("NTFY_API_KEY") or "").strip()
+
 # --- Load .env from node root (sensitive vars; OS env fallback for Docker/Compose) ---
 # SECRET_KEY and other secrets can be in .env (optionally encrypted via dotenvx encrypt).
 _env_path = os.path.join(CURRENT_DIR, ".env")
