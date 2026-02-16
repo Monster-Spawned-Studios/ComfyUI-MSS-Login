@@ -1,12 +1,20 @@
 # --- START OF FILE utils/model_filter_middleware.py ---
 """
 Middleware: intercept GET /models, GET /models/{folder}, GET /embeddings.
-Return full list if user has can_view_all_comfyui_items; else filter by shared items per user.
-When model cache is populated, folder/item lists are read from cache; otherwise from folder_paths.
+Granular model visibility: only show models the user has explicit permission to access.
+
+Permission logic:
+- can_view_all_comfyui_items (group-based): If the user's group has this permission, show all.
+- Otherwise: Show only items explicitly shared with the user (shared_items store).
+- Admins always see all models.
+- Guests and users without shared items see nothing (empty list).
+
+The Models menu in the ComfyUI sidebar fetches from these endpoints; filtered responses
+ensure users never see models they are not permitted to use.
 """
 
 from aiohttp import web
-import folder_paths
+import folder_paths  # pyright: ignore[reportMissingImports]
 
 
 # Folder names we treat as "asset" lists (models, loras, vae, embeddings, etc.)
@@ -49,6 +57,10 @@ def create_model_filter_middleware(
 	"""Build middleware that filters /models and /embeddings by permission and shared items."""
 	from .model_cache import get_model_cache
 
+	def _user_can_view_all(role: str, perms: dict) -> bool:
+		"""True if user has group-based override to see all models (or is admin)."""
+		return perms.get("can_view_all_comfyui_items", False) is True or role == "admin"
+
 	def _get_folder_list():
 		"""Folder names: from cache if populated, else folder_paths."""
 		try:
@@ -82,15 +94,13 @@ def create_model_filter_middleware(
 		path = request.path.rstrip("/")
 		if path == "/models":
 			role, perms, username = get_user_role_and_permissions(request)
-			can_view_all = perms.get("can_view_all_comfyui_items", False) is True or role == "admin"
 			folder_names = _get_folder_list()
-			if can_view_all:
+			if _user_can_view_all(role, perms):
 				return web.json_response(folder_names)
-			store = get_shared_items_store(users_db_config)
 			user_id, _ = users_db.get_user(username=username) if username else (None, {})
 			if not user_id:
 				return web.json_response([])
-			allowed = store.get_all_for_user(user_id)
+			allowed = get_shared_items_store(users_db_config).get_all_for_user(user_id)
 			allowed_folders = {f for f, _ in allowed}
 			filtered = [f for f in folder_names if f in allowed_folders]
 			return web.json_response(filtered)
@@ -99,30 +109,26 @@ def create_model_filter_middleware(
 			folder = path[len("/models/") :].strip("/")
 			folder = _map_legacy(folder)
 			role, perms, username = get_user_role_and_permissions(request)
-			can_view_all = perms.get("can_view_all_comfyui_items", False) is True or role == "admin"
 			full_list = _get_item_list(folder)
-			if can_view_all:
+			if _user_can_view_all(role, perms):
 				return web.json_response(full_list)
-			store = get_shared_items_store(users_db_config)
 			user_id, _ = users_db.get_user(username=username) if username else (None, {})
 			if not user_id:
 				return web.json_response([])
-			allowed = store.get_all_for_user(user_id)
+			allowed = get_shared_items_store(users_db_config).get_all_for_user(user_id)
 			allowed_in_folder = {name for f, name in allowed if f == folder}
 			filtered = [x for x in full_list if x in allowed_in_folder]
 			return web.json_response(filtered)
 
 		if path == "/embeddings":
 			role, perms, username = get_user_role_and_permissions(request)
-			can_view_all = perms.get("can_view_all_comfyui_items", False) is True or role == "admin"
 			full_list = _get_item_list("embeddings")
-			if can_view_all:
+			if _user_can_view_all(role, perms):
 				return web.json_response(full_list)
-			store = get_shared_items_store(users_db_config)
 			user_id, _ = users_db.get_user(username=username) if username else (None, {})
 			if not user_id:
 				return web.json_response([])
-			allowed = store.get_all_for_user(user_id)
+			allowed = get_shared_items_store(users_db_config).get_all_for_user(user_id)
 			allowed_emb = {name for f, name in allowed if f == "embeddings"}
 			filtered = [x for x in full_list if x in allowed_emb]
 			return web.json_response(filtered)

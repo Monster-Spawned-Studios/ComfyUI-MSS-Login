@@ -272,11 +272,17 @@ def reload_users_db_config() -> dict:
 
 # Session JWT store (jti tracking and blocklist for list/revoke)
 _session_store_path = config_data.get(
-    "session_token_store_path", "users/session_tokens.json"
+	"session_token_store_path", "users/session_tokens.json"
 )
 if not os.path.isabs(_session_store_path):
-    _session_store_path = os.path.join(CURRENT_DIR, _session_store_path)
+	_session_store_path = os.path.join(CURRENT_DIR, _session_store_path)
 SESSION_TOKEN_STORE_PATH = _session_store_path
+
+# Idle session revocation: revoke session JWTs unused for this many minutes (security)
+try:
+	SESSION_IDLE_REVOKE_MINUTES = int(config_data.get("session_idle_revoke_minutes", 5))
+except (TypeError, ValueError):
+	SESSION_IDLE_REVOKE_MINUTES = 5
 
 # Remote API guard: require auth for non-local clients
 REQUIRE_AUTH_FOR_REMOTE_API = config_data.get("require_auth_for_remote_api", True)

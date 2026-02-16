@@ -98,9 +98,12 @@ class JWTAuth:
 			jti = user.get("jti")
 			if jti:
 				try:
-					from ..constants import SESSION_TOKEN_STORE_PATH
+					from ..constants import SESSION_TOKEN_STORE_PATH, SESSION_IDLE_REVOKE_MINUTES
 
-					store = get_session_token_store(SESSION_TOKEN_STORE_PATH)
+					store = get_session_token_store(
+						SESSION_TOKEN_STORE_PATH,
+						idle_revoke_minutes=SESSION_IDLE_REVOKE_MINUTES,
+					)
 					if store.is_revoked(jti):
 						return False
 				except Exception:
@@ -223,16 +226,25 @@ class JWTAuth:
 				jti = user.get("jti")
 				if not user_id == self.users_db.get_user(username)[0]:
 					raise ValueError(f"User with username: {username} is not in the database")
-				# Session JWT blocklist check (revoked tokens)
+				# Session JWT blocklist check (revoked tokens) and idle revocation
 				if jti:
 					try:
-						from ..constants import SESSION_TOKEN_STORE_PATH
+						from ..constants import (
+							SESSION_TOKEN_STORE_PATH,
+							SESSION_IDLE_REVOKE_MINUTES,
+						)
 
-						store = get_session_token_store(SESSION_TOKEN_STORE_PATH)
+						store = get_session_token_store(
+							SESSION_TOKEN_STORE_PATH,
+							idle_revoke_minutes=SESSION_IDLE_REVOKE_MINUTES,
+						)
 						if store.is_revoked(jti):
 							return await handle_unauthorized_access(
 								request, "/login", message="Token has been revoked"
 							)
+						store.update_last_used(jti)
+						if store.revoke_idle_sessions() > 0:
+							store.prune_old_sessions()
 					except Exception:
 						pass
 
