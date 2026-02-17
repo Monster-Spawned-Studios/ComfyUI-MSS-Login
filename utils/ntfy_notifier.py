@@ -41,11 +41,13 @@ def send_notification(
     event_key: str,
     title: str = "",
     message: str = "",
+    message_type: str = "text",
     click: str = "",
     attachment_url: str = "",
     message_encoding: str = "utf-8",
     message_timeout: int = 30,
     api_key: str = "",
+    priority_level: str = "default",
 ) -> bool:
     """
     Send a push notification to ntfy if the event is enabled and topic is set.
@@ -60,15 +62,24 @@ def send_notification(
         return True
     base_url = cfg.get("base_url", DEFAULT_BASE_URL)
     url = f"{base_url}/{topic}"
+    if message_type not in ["text", "file"]:
+        if DEBUG_MODE:
+            print(f"[mss_login] Invalid message type: {message_type}")
+        return False
+    if message_type == "file" and not attachment_url:
+        if DEBUG_MODE:
+            print(f"[mss_login] Attachment URL is required for file messages")
+        return False
     try:
         response = requests.post(
             url,
-            data=message.encode(message_encoding or "utf-8"),
+            data=message,
             headers={
                 "Authorization": f"Bearer {NTFY_API_KEY}",
                 "Title": title,
                 "Click": click,
                 "Attach": attachment_url,
+                "Priority": priority_level or "default",
             },
             timeout=message_timeout or 30,
         )
@@ -77,7 +88,8 @@ def send_notification(
                 f"[mss_login] Failed to send notification to ntfy: {response.status_code} {response.text}"
             )
             return False
-        print(f"[mss_login] Notification sent to ntfy: {title} - {message}")
+        if DEBUG_MODE:
+            print(f"[mss_login] Notification sent to ntfy: {title} - {message}")
         return True
     except Exception as e:
         print(f"[mss_login] Failed to send notification to ntfy: {e}")
