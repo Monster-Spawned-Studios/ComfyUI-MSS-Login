@@ -13,6 +13,7 @@ The mss-login floating button appears as a draggable button on the screen. When 
 Registers a new button in the radial menu.
 
 **Parameters:**
+
 - `config` (Object) - Button configuration object
   - `id` (string, required) - Unique button identifier. Must be lowercase alphanumeric with underscores/hyphens only (e.g., `"gallery"`, `"my-extension"`)
   - `label` (string, required) - Display name for the button (e.g., `"Gallery"`)
@@ -27,6 +28,7 @@ Registers a new button in the radial menu.
 **Returns:** `boolean` - `true` if registration was successful, `false` if ID already exists or validation failed
 
 **Example:**
+
 ```javascript
 window.mss_loginRadialMenu.register({
     id: "gallery",
@@ -45,11 +47,13 @@ window.mss_loginRadialMenu.register({
 Unregisters a button by ID.
 
 **Parameters:**
+
 - `id` (string) - Button identifier to remove
 
 **Returns:** `boolean` - `true` if button was found and removed
 
 **Example:**
+
 ```javascript
 window.mss_loginRadialMenu.unregister("gallery");
 ```
@@ -221,6 +225,7 @@ Extension buttons appear after these built-in buttons, sorted by their `order` v
 5. **Handle Errors**: Wrap your onClick function in try-catch if it performs async operations to prevent breaking the menu.
 
 6. **Check Availability**: Before using the API, check if it's available:
+
    ```javascript
    if (window.mss_loginRadialMenu) {
        window.mss_loginRadialMenu.register({...});
@@ -230,6 +235,7 @@ Extension buttons appear after these built-in buttons, sorted by their `order` v
 ## Integration with Floating Button
 
 The floating button:
+
 - Can be dragged anywhere on the screen (click and hold to move)
 - Opens the radial menu on double-click
 - Saves its position in localStorage
@@ -242,5 +248,3 @@ The floating button:
 - Button IDs must be unique; duplicate registrations are ignored with a warning
 - The onClick function is called when the button is clicked, and the menu automatically closes
 - The radial menu animates buttons in and out for a smooth user experience
-
-

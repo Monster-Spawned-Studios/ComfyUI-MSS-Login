@@ -5,6 +5,7 @@ This guide explains how other ComfyUI extensions can use the NSFW Guard function
 ## Overview
 
 The NSFW Guard API allows other extensions to:
+
 - Check if a user has SFW (Safe For Work) restrictions enabled
 - Validate image tensors, PIL Images, or image file paths for NSFW content
 - Set user context for worker threads
@@ -302,4 +303,3 @@ if not is_available():
 - Check internet connection
 - Verify you have enough disk space in `models/nsfw_detector/`
 - Check console for specific error messages
-
