@@ -36,11 +36,12 @@
 		"legacy_json_path": "data/session_tokens.json"
 	},
 	"auto_update": {
-		"enabled": true,
+		"enabled": false,
 		"mode": "notify",
 		"check_url": "",
 		"check_interval_hours": 24,
 		"branch": "production",
 		"changelog_url": ""
-	}
+	},
+	"token_algorithm": "HS256"
 }

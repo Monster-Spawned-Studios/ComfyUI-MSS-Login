@@ -56,6 +56,7 @@ from .utils.updater import run_update_check, get_cached_status
 
 import asyncio
 import server  # pyright: ignore[reportMissingImports]
+from server import PromptServer  # pyright: ignore[reportMissingImports]
 
 WEB_DIRECTORY = "./web"
 

@@ -155,7 +155,12 @@ TOKEN_EXPIRE_MINUTES = 60 * config_data.get("access_token_expiration_hours", 12)
 MAX_TOKEN_EXPIRE_MINUTES = 60 * config_data.get(
     "max_access_token_expiration_hours", 8760
 )
-TOKEN_ALGORITHM = "HS256"
+TOKEN_ALGORITHM = config_data.get("token_algorithm", "HS256")
+if TOKEN_ALGORITHM not in ("HS256", "RS256", "ES256", "PS256"):
+    warnings.warn(
+        f"[MSS-Login] Invalid token algorithm: {TOKEN_ALGORITHM}. Using HS256."
+    )
+    TOKEN_ALGORITHM = "HS256"
 
 BLACKLIST_AFTER_ATTEMPTS = config_data.get("blacklist_after_attempts", 5)
 FREE_MEMORY_ON_LOGOUT = config_data.get("free_memory_on_logout", True)
@@ -285,7 +290,7 @@ def reload_users_db_config() -> dict:
     SESSION_TOKEN_STORE_CONFIG = {
         "backend": USERS_DB_CONFIG["backend"],
         "sqlite_path": USERS_DB_CONFIG["sqlite_path"],
-        "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
+        "encryption_level": USERS_DB_CONFIG.get("encryption_level", "standard"),
         "secret_key": SECRET_KEY,
         "postgres_host": USERS_DB_CONFIG["postgres_host"],
         "postgres_port": USERS_DB_CONFIG["postgres_port"],
@@ -306,14 +311,16 @@ _session_legacy_json = _resolve_data_path(
 SESSION_TOKEN_STORE_CONFIG = {
     "backend": USERS_DB_CONFIG["backend"],
     "sqlite_path": USERS_DB_CONFIG["sqlite_path"],
-    "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
+    "encryption_level": USERS_DB_CONFIG.get("encryption_level", "standard"),
     "secret_key": SECRET_KEY,
     "postgres_host": USERS_DB_CONFIG["postgres_host"],
     "postgres_port": USERS_DB_CONFIG["postgres_port"],
     "postgres_database": USERS_DB_CONFIG["postgres_database"],
     "postgres_user": USERS_DB_CONFIG["postgres_user"],
     "postgres_password": USERS_DB_CONFIG["postgres_password"],
-    "legacy_json_path": _session_legacy_json if os.path.isfile(_session_legacy_json) else "",
+    "legacy_json_path": (
+        _session_legacy_json if os.path.isfile(_session_legacy_json) else ""
+    ),
 }
 
 # Idle session revocation: revoke session JWTs unused for this many minutes (security)
