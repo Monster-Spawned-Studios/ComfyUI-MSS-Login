@@ -65,10 +65,16 @@ def install_dependencies() -> bool:
             return False
 
     # Run a uv command and return True if successful, False otherwise
-    def run_uv(args: list[str], timeout: int = 600, cwd: str = root) -> bool:
+    def run_uv(
+        environment_variables: dict[str, str],
+        args: list[str],
+        timeout: int = 600,
+        cwd: str = root,
+    ) -> bool:
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "uv"] + args,
+                env=environment_variables,
                 cwd=cwd,
                 capture_output=True,
                 text=True,
@@ -176,6 +182,7 @@ def install_dependencies() -> bool:
             "Darwin",
         ]:
             if not run_uv(
+                {"UV_TORCH_BACKEND": "auto"},
                 ["pip", "install", "-r", f"{root}/pyproject.toml"],
                 timeout=1200,
                 cwd=root,
