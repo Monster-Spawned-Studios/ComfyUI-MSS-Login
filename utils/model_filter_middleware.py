@@ -18,6 +18,7 @@ import folder_paths  # pyright: ignore[reportMissingImports]
 
 
 # Folder names we treat as "asset" lists (models, loras, vae, embeddings, etc.)
+# Includes ComfyUI Model Library folders: ultralytics, mmdets, sams, classifiers, configs.
 ASSET_FOLDERS = frozenset(
     {
         "checkpoints",
@@ -40,6 +41,15 @@ ASSET_FOLDERS = frozenset(
         "photomaker",
         "model_patches",
         "audio_encoders",
+        "classifiers",
+        "configs",
+        "ultralytics_bbox",
+        "ultralytics_segm",
+        "ultralytics",
+        "mmdets_bbox",
+        "mmdets_segm",
+        "mmdets",
+        "sams",
     }
 )
 

@@ -11,6 +11,7 @@ from typing import Optional
 TABLE = "cached_models"
 
 # Fallback folder set when folder_paths is unavailable or has no folder_names_and_paths
+# Includes ComfyUI Model Library folders: ultralytics, mmdets, sams, classifiers, configs.
 ASSET_FOLDERS_FALLBACK = frozenset(
     {
         "checkpoints",
@@ -33,6 +34,15 @@ ASSET_FOLDERS_FALLBACK = frozenset(
         "photomaker",
         "model_patches",
         "audio_encoders",
+        "classifiers",
+        "configs",
+        "ultralytics_bbox",
+        "ultralytics_segm",
+        "ultralytics",
+        "mmdets_bbox",
+        "mmdets_segm",
+        "mmdets",
+        "sams",
     }
 )
 

@@ -1485,18 +1485,6 @@ async renderSharedModels(container, usersList) {
                 <p style="opacity:0.8;">Select a user to view and manage their shared items.</p>
             </div>
             <div class="mss-login-section" style="margin-top:16px;">
-                <h4 style="margin:0 0 8px 0;">Add item for selected user</h4>
-                <div class="mss-login-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                    <select id="mss-login-shared-folder" style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; min-width:160px;">
-                        <option value="">-- Folder --</option>
-                    </select>
-                    <select id="mss-login-shared-item" style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; min-width:200px;">
-                        <option value="">-- Item (select folder first) --</option>
-                    </select>
-                    <button class="mss-login-btn btn-save" id="mss-login-shared-add">Add</button>
-                </div>
-            </div>
-            <div class="mss-login-section" style="margin-top:16px;">
                 <h4 style="margin:0 0 8px 0;">Toggle model access</h4>
                 <p style="opacity:0.9; font-size:13px; margin-bottom:8px;">Expand a folder and check or uncheck items to grant or revoke access. Users without "View all ComfyUI items" see only checked items.</p>
                 <div class="mss-login-row" style="gap:8px; margin-bottom:8px;">
@@ -1508,9 +1496,6 @@ async renderSharedModels(container, usersList) {
     `;
     const userSelect = container.querySelector("#mss-login-shared-user");
     const listEl = container.querySelector("#mss-login-shared-items-list");
-    const folderSelect = container.querySelector("#mss-login-shared-folder");
-    const itemSelect = container.querySelector("#mss-login-shared-item");
-    const addBtn = container.querySelector("#mss-login-shared-add");
     const toggleFoldersEl = container.querySelector("#mss-login-toggle-folders");
     const toggleRefreshBtn = container.querySelector("#mss-login-toggle-refresh");
 
@@ -1617,24 +1602,6 @@ async renderSharedModels(container, usersList) {
         console.error("[mss-login] Failed to load folders:", e);
         folders = ["checkpoints", "loras", "vae", "embeddings"];
     }
-    folderSelect.innerHTML = "<option value=\"\">-- Folder --</option>" + folders.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
-
-    async function loadItemsForFolder(folder) {
-        itemSelect.innerHTML = "<option value=\"\">Loading...</option>";
-        if (!folder) {
-            itemSelect.innerHTML = "<option value=\"\">-- Item (select folder first) --</option>";
-            return;
-        }
-        try {
-            let res = await api.fetchApi("/mss-login/api/model-cache/folders/" + encodeURIComponent(folder) + "/items", { method: "GET" });
-            if (!res.ok) res = await api.fetchApi("/mss-login/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
-            const data = await res.json();
-            const items = data.items || [];
-            itemSelect.innerHTML = "<option value=\"\">-- Select item --</option>" + items.map(i => `<option value="${escapeHtml(i)}">${escapeHtml(i)}</option>`).join("");
-        } catch (e) {
-            itemSelect.innerHTML = "<option value=\"\">Error loading items</option>";
-        }
-    }
 
     async function refreshSharedList() {
         const username = userSelect.value;
@@ -1648,7 +1615,7 @@ async renderSharedModels(container, usersList) {
             const data = await res.json();
             const items = data.items || [];
             if (items.length === 0) {
-                listEl.innerHTML = "<p style=\"opacity:0.8;\">No shared items for this user. Add one below.</p>";
+                listEl.innerHTML = "<p style=\"opacity:0.8;\">No shared items for this user. Use the toggle tree below to grant access.</p>";
                 return;
             }
             listEl.innerHTML = `
@@ -1688,34 +1655,10 @@ async renderSharedModels(container, usersList) {
         }
     }
 
-    folderSelect.onchange = () => loadItemsForFolder(folderSelect.value);
     userSelect.onchange = async () => {
         await fetchSharedSet(userSelect.value);
         await refreshSharedList();
         renderToggleFolders();
-    };
-
-    addBtn.onclick = async () => {
-        const username = userSelect.value;
-        const folder = folderSelect.value;
-        const item = itemSelect.value;
-        if (!username || !folder || !item) {
-            return;
-        }
-        addBtn.disabled = true;
-        try {
-            await api.fetchApi("/mss-login/api/users/" + encodeURIComponent(username) + "/shared-items", {
-                method: "POST",
-                body: JSON.stringify({ folder, item_name: item }),
-            });
-            sharedSet.add(folder + "|" + item);
-            await refreshSharedList();
-            const addChk = toggleFoldersEl ? Array.from(toggleFoldersEl.querySelectorAll(".mss-login-toggle-chk")).find(c => c.dataset.folder === folder && c.dataset.item === item) : null;
-            if (addChk) addChk.checked = true;
-        } catch (e) {
-            console.error("[mss-login] Add shared item failed:", e);
-        }
-        addBtn.disabled = false;
     };
 
     toggleRefreshBtn.onclick = async () => {
@@ -1732,8 +1675,6 @@ async renderSharedModels(container, usersList) {
                 folders = fd.folders || [];
             }
             Object.keys(loadedItems).forEach(k => delete loadedItems[k]);
-            folderSelect.innerHTML = "<option value=\"\">-- Folder --</option>" + folders.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
-            await loadItemsForFolder(folderSelect.value || (folders[0] || ""));
             renderToggleFolders();
         } catch (e) {
             console.error("[mss-login] Failed to refresh folders:", e);
@@ -1741,7 +1682,6 @@ async renderSharedModels(container, usersList) {
         toggleRefreshBtn.disabled = false;
     };
 
-    await loadItemsForFolder(folderSelect.value || (folders[0] || ""));
     await fetchSharedSet(userSelect.value);
     renderToggleFolders();
 }

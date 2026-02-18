@@ -50,6 +50,7 @@ from .utils.remote_api_guard import create_remote_api_guard_middleware
 from .utils.model_filter_middleware import create_model_filter_middleware
 from .utils.shared_items_store import get_shared_items_store
 from .utils.prompt_model_validator import validate_prompt_models
+from .utils.model_cache import get_model_cache
 from .utils.json_utils import load_json_file
 from .utils.updater import run_update_check, get_cached_status
 
@@ -140,8 +141,19 @@ async def workflow_interceptor_middleware(request, handler):
                 if user_id:
                     store = get_shared_items_store(USERS_DB_CONFIG)
                     allowed_set = store.get_all_for_user(user_id)
+                known_models = set()
+                try:
+                    cache = get_model_cache(USERS_DB_CONFIG)
+                    for folder in cache.list_folders():
+                        for item in cache.list_items(folder):
+                            known_models.add((folder, item))
+                except Exception:
+                    pass
                 valid, err_msg = validate_prompt_models(
-                    allowed_set, allow_all=False, prompt=prompt_to_validate
+                    allowed_set,
+                    allow_all=False,
+                    prompt=prompt_to_validate,
+                    known_models=known_models if known_models else None,
                 )
                 if not valid:
                     return web.json_response(
