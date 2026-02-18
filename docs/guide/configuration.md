@@ -41,6 +41,6 @@ Permissions control workflow save/delete, extension access, and whether a user c
 ## Users database
 
 - **Unified database**: One SQLite file or one PostgreSQL database holds users, API tokens, and shared items.
-- **Encrypted SQLite**: Set `encryption_level` in `config.json` under `users_db` to `low`, `standard`, or `secure`. Requires `argon2-cffi` and, for encryption at rest, `pysqlcipher3` with a system SQLCipher build.
+- **Encrypted SQLite**: Set `encryption_level` in `config.json` under `users_db` to `low`, `standard`, or `secure`. Requires `argon2-cffi` and, for encryption at rest, `sqlcipher3` with a system SQLCipher build.
 
 See the README in the project root for detailed troubleshooting (SECRET_KEY, recovery mode, API tokens).

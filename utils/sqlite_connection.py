@@ -1,7 +1,7 @@
 # --- START OF FILE utils/sqlite_connection.py ---
 """
 Open SQLite connections with optional SQLCipher encryption.
-When encryption_level is set, uses SECRET_KEY-derived key via Argon2id; requires pysqlcipher3.
+When encryption_level is set, uses SECRET_KEY-derived key via Argon2id; requires sqlcipher3.
 Do not log secret_key or the derived key.
 """
 
@@ -34,7 +34,7 @@ def open_sqlite(
     """
     Open a SQLite connection. If encryption_level is non-empty, use SQLCipher with
     key derived from secret_key (Argon2id). Otherwise use standard sqlite3.
-    Raises RuntimeError if encryption is requested but pysqlcipher3 is not installed.
+    Raises RuntimeError if encryption is requested but sqlcipher3 is not installed.
     """
     path = str(Path(path).resolve())
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
@@ -58,5 +58,5 @@ def open_sqlite(
     # Pass raw key as hex so SQLCipher uses it directly (no PBKDF2).
     # SQLCipher expects the blob literal wrapped in double quotes to avoid syntax errors
     # in some builds (see Zetetic: "PRAGMA key = \"x'...'\"")
-    conn.execute(f'PRAGMA key = "x\'{key_hex}\'"')
+    conn.execute(f"PRAGMA key = \"x'{key_hex}'\"")
     return conn

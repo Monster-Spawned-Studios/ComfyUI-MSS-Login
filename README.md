@@ -643,7 +643,7 @@ If the client sends a Bearer token but the server returns "API token not found o
 ### Unified database and encrypted SQLite
 
 - **Single database:** Users, API tokens, and shared items use one SQLite file or one PostgreSQL database (config: `users_db` in `config.json`). Token storage no longer uses a separate DB; set token storage backend to "database" in Settings.
-- **Encrypted SQLite:** To encrypt the SQLite file with a key derived from `SECRET_KEY`, set `encryption_level` in `users_db` to `low`, `standard`, or `secure` (Settings → Users DB). Requires **argon2-cffi** (`pip install argon2-cffi`) and, for encryption at rest, **pysqlcipher3** with a system SQLCipher build (`pip install sqlcipher3`; see [SQLCipher](https://www.zetetic.net/sqlcipher/) for your OS). If `encryption_level` is set but pysqlcipher3 is not installed, startup fails with a clear message.
+- **Encrypted SQLite:** To encrypt the SQLite file with a key derived from `SECRET_KEY`, set `encryption_level` in `users_db` to `low`, `standard`, or `secure` (Settings → Users DB). Requires **argon2-cffi** (`pip install argon2-cffi`) and, for encryption at rest, **sqlcipher3** with a system SQLCipher build (`pip install sqlcipher3`; see [SQLCipher](https://www.zetetic.net/sqlcipher/) for your OS). If `encryption_level` is set but sqlcipher3 is not installed, startup fails with a clear message.
 
 ### SECRET_KEY and recovery
 

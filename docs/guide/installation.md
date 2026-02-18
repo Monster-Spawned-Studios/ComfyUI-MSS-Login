@@ -31,5 +31,5 @@
 
 ## Optional: Encrypted SQLite and recovery
 
-- For encrypted SQLite (optional), install `argon2-cffi` and `pysqlcipher3` (see [Configuration](configuration.md)).
+- For encrypted SQLite (optional), install `argon2-cffi` and `sqlcipher3` (see [Configuration](configuration.md)).
 - For MFA recovery (e.g. after changing `SECRET_KEY`), see the recovery endpoint in the [API Reference](../api-reference/endpoints.md#recovery).
