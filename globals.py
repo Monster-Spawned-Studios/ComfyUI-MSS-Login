@@ -40,6 +40,14 @@ routes = instance.routes
 # 1. Logger & DB (credentials in SQLite/PostgreSQL only; no plain-text JSON)
 logger = Logger(LOG_FILE, LOG_LEVELS)
 
+# Log if one-time migration from repo to external data dir was performed (done during constants load)
+from .utils.data_dir import MIGRATION_PERFORMED
+if MIGRATION_PERFORMED:
+	logger.info(
+		"[mss_login] Migrated repo-local config and data to external data directory. "
+		"Future updates (git pull / ComfyUI Manager) will not overwrite your data."
+	)
+
 # If SECRET_KEY is now set from env and ephemeral file exists, migrate TOTP to new key then remove file
 _old_key = _load_ephemeral_key()
 if _old_key and _old_key != SECRET_KEY:

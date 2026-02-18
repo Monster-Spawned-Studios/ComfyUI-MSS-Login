@@ -32,9 +32,10 @@ DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in (
     "true",
     "yes",
 )
-DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(
-    _read_config_json(join(_install_deps_root, "config.json")).get("debug_mode", False)
-)
+_config_for_deps = _read_config_json(
+    join(_install_deps_root, "config.json")
+) or _read_config_json(join(_install_deps_root, "config.defaults.json"))
+DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(_config_for_deps.get("debug_mode", False))
 
 
 # Return True if successful, False otherwise
@@ -55,12 +56,12 @@ def install_dependencies() -> bool:
             )
             if result.returncode != 0 and result.stderr:
                 print(
-                    f"[mss_login] {command} warning: {result.stderr.strip()}",
+                    f"[mss-login] {command} warning: {result.stderr.strip()}",
                     file=sys.stderr,
                 )
             return result.returncode == 0
         except Exception as e:
-            print(f"[mss_login] {command} failed: {e}", file=sys.stderr)
+            print(f"[mss-login] {command} failed: {e}", file=sys.stderr)
             return False
 
     # Run a uv command and return True if successful, False otherwise
@@ -76,24 +77,24 @@ def install_dependencies() -> bool:
             )
             if result.returncode != 0 and result.stderr:
                 print(
-                    f"[mss_login] uv {args} warning: {result.stderr.strip()}",
+                    f"[mss-login] uv {args} warning: {result.stderr.strip()}",
                     file=sys.stderr,
                 )
             return result.returncode == 0
         except FileNotFoundError:
             print(
-                "[mss_login] uv not available; skipping dependency install.",
+                "[mss-login] uv not available; skipping dependency install.",
                 file=sys.stderr,
             )
             return False
         except subprocess.TimeoutExpired:
             print(
-                "[mss_login] uv install timed out; dependencies may be incomplete.",
+                "[mss-login] uv install timed out; dependencies may be incomplete.",
                 file=sys.stderr,
             )
             return False
         except Exception as e:
-            print(f"[mss_login] uv install failed: {e}", file=sys.stderr)
+            print(f"[mss-login] uv install failed: {e}", file=sys.stderr)
             return False
 
     # Run a pip command and return True if successful, False otherwise
@@ -109,24 +110,24 @@ def install_dependencies() -> bool:
             )
             if result.returncode != 0 and result.stderr:
                 print(
-                    f"[mss_login] pip install warning: {result.stderr.strip()}",
+                    f"[mss-login] pip install warning: {result.stderr.strip()}",
                     file=sys.stderr,
                 )
             return result.returncode == 0
         except FileNotFoundError:
             print(
-                "[mss_login] pip not available; skipping dependency install.",
+                "[mss-login] pip not available; skipping dependency install.",
                 file=sys.stderr,
             )
             return False
         except subprocess.TimeoutExpired:
             print(
-                "[mss_login] pip install timed out; dependencies may be incomplete.",
+                "[mss-login] pip install timed out; dependencies may be incomplete.",
                 file=sys.stderr,
             )
             return False
         except Exception as e:
-            print(f"[mss_login] Dependency install failed: {e}", file=sys.stderr)
+            print(f"[mss-login] Dependency install failed: {e}", file=sys.stderr)
             return False
 
     try:
@@ -143,7 +144,7 @@ def install_dependencies() -> bool:
         ):
             if DEBUG_MODE:
                 print(
-                    "[mss_login] Installing CUDA dependencies from requirements_cuda.txt..."
+                    "[mss-login] Installing CUDA dependencies from requirements_cuda.txt..."
                 )
             if not run_pip(
                 [
@@ -157,13 +158,13 @@ def install_dependencies() -> bool:
         elif os.path.isfile(req_txt_metal) and platform.system() in ["Darwin"]:
             if DEBUG_MODE:
                 print(
-                    "[mss_login] Installing non-CUDA dependencies from requirements_metal.txt..."
+                    "[mss-login] Installing non-CUDA dependencies from requirements_metal.txt..."
                 )
             if not run_pip(["-r", "requirements_metal.txt"]):
                 return False
         else:
             print(
-                "[mss_login] No requirements_metal.txt or requirements_cuda.txt file found and/or operating system is not supported, skipping requirements_metal.txt or requirements_cuda.txt dependency install.",
+                "[mss-login] No requirements_metal.txt or requirements_cuda.txt file found and/or operating system is not supported, skipping requirements_metal.txt or requirements_cuda.txt dependency install.",
                 file=sys.stderr,
             )
             return False
@@ -182,13 +183,13 @@ def install_dependencies() -> bool:
                 return False
         else:
             print(
-                "[mss_login] No pyproject.toml file found or operating system is not supported, skipping pyproject.toml dependency install.",
+                "[mss-login] No pyproject.toml file found or operating system is not supported, skipping pyproject.toml dependency install.",
                 file=sys.stderr,
             )
             return False
     except Exception as e:
         print(
-            f"[mss_login] Python dependencies installation failed: {e}", file=sys.stderr
+            f"[mss-login] Python dependencies installation failed: {e}", file=sys.stderr
         )
         return False
 
@@ -196,23 +197,23 @@ def install_dependencies() -> bool:
         # Check to see if the dotenvx binary is installed
         if not run_command(["dotenvx", "--version"]):
             print(
-                "[mss_login] Dotenvx binary not found. Please install it manually using `pip install python-dotenvx`.",
+                "[mss-login] Dotenvx binary not found. Please install it manually using `pip install python-dotenvx`.",
                 file=sys.stderr,
             )
             print(
-                "[mss_login] Running `dotenvx-postinstall` to install the dotenvx binary...",
+                "[mss-login] Running `dotenvx-postinstall` to install the dotenvx binary...",
                 file=sys.stderr,
             )
             if not run_command(["dotenvx-postinstall"]):
                 print(
-                    "[mss_login] Failed to install dotenvx binary. Please install it manually using `dotenvx-postinstall`.",
+                    "[mss-login] Failed to install dotenvx binary. Please install it manually using `dotenvx-postinstall`.",
                     file=sys.stderr,
                 )
                 return False
             else:
-                print("[mss_login] Dotenvx binary installed successfully.")
+                print("[MSS-Login] Dotenvx binary installed successfully.")
     except Exception as e:
-        print(f"[mss_login] Dotenvx binary installation failed: {e}", file=sys.stderr)
+        print(f"[mss-login] Dotenvx binary installation failed: {e}", file=sys.stderr)
         return False
 
     return True

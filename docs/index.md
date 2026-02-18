@@ -22,7 +22,7 @@ ComfyUI-MSS-Login adds role-based access control (RBAC), UI enforcement, workflo
 | **Workflow protection** | Per-user workflow storage; save/delete blocked for non-privileged users |
 | **IP filtering** | Whitelist/blacklist with live editing in the settings panel |
 | **NSFW Guard API** | Public Python API and HTTP endpoints for NSFW detection and manual tagging |
-| **Extension Tabs API** | JavaScript API for other extensions to add tabs to the mss_login admin panel |
+| **Extension Tabs API** | JavaScript API for other extensions to add tabs to the mss-login admin panel |
 
 ## Building this documentation locally
 

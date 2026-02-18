@@ -36,7 +36,7 @@ async function setupLogout() {
           "button",
           {
             className:
-              "p-button p-component p-button-icon-only p-button-text comfy-settings-btn side-bar-button p-button-secondary mss_login-logout",
+              "p-button p-component p-button-icon-only p-button-text comfy-settings-btn side-bar-button p-button-secondary mss-login-logout",
             type: "button",
             id: "logout-button",
             ariaLabel: "Logout",
@@ -128,7 +128,7 @@ async function checkAndSetupLogout() {
 // Register as ComfyUI extension to ensure it loads
 if (typeof app !== 'undefined' && app.registerExtension) {
   app.registerExtension({
-    name: "mss_login.Logout",
+    name: "mss-login.Logout",
     async setup() {
       // Start the interval to check for logout button
       // Only run if interval isn't already running (prevent duplicates)

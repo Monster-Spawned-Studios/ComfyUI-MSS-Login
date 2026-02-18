@@ -36,7 +36,7 @@ Roles are defined in `users/mss_login_groups.json` (or the path set in config). 
 | **user** | Standard; run and upload, no manager, no API tokens |
 | **guest** | Restricted; can_access_api only (e.g. prompt), no run/upload/save |
 
-Permissions control workflow save/delete, extension access, and whether a user can have API tokens. Edit via **Settings → mss_login** or by modifying the groups JSON (with ComfyUI stopped or after a reload).
+Permissions control workflow save/delete, extension access, and whether a user can have API tokens. Edit via **Settings → mss-login** or by modifying the groups JSON (with ComfyUI stopped or after a reload).
 
 ## Users database
 

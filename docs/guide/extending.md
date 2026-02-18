@@ -4,7 +4,7 @@ You can integrate ComfyUI-MSS-Login into your own ComfyUI extensions or external
 
 ## HTTP API
 
-The node registers custom routes under prefixes such as `/mss-login`, `/mss_login`, and `/mss-login-gallery`. Use them from:
+The node registers custom routes under prefixes such as `/mss-login`, `/mss-login`, and `/mss-login-gallery`. Use them from:
 
 - **Browser or frontend** (e.g. gallery extensions calling `/mss-login-gallery/mark-nsfw`)
 - **Scripts or external apps** (e.g. login, token generation, admin user/group management)
@@ -25,7 +25,7 @@ Other ComfyUI custom nodes can use the **NSFW Guard** API to:
 - Set or clear NSFW tags (e.g. for manual review)
 - Set user context in worker threads
 
-Import the public API (when the node is installed as `ComfyUI-MSS-Login` or `mss_login`):
+Import the public API (when the node is installed as `ComfyUI-MSS-Login` or `mss-login`):
 
 ```python
 try:
@@ -52,7 +52,7 @@ Full function list, signatures, and docstrings:
 
 ## Extension Tabs API (JavaScript)
 
-Other extensions can add custom tabs to the mss_login admin panel. See the project README or `readme/EXTENSION_TABS_API.md` for the JavaScript `window.mss_loginAdminTabs.register(...)` API.
+Other extensions can add custom tabs to the mss-login admin panel. See the project README or `readme/EXTENSION_TABS_API.md` for the JavaScript `window.mss_loginAdminTabs.register(...)` API.
 
 ## Summary
 
@@ -61,4 +61,4 @@ Other extensions can add custom tabs to the mss_login admin panel. See the proje
 | Call login, token, admin, user, MFA, recovery endpoints | [API Reference: Endpoints](../api-reference/endpoints.md) |
 | Workflow list/save/load/delete, /view NSFW, /prompt user tagging | [Workflow & intercepted](../api-reference/workflow-endpoints.md) |
 | Use NSFW checks or tagging from Python (custom nodes) | [NSFW Guard API](../extension-api/nsfw-guard-api.md) |
-| Add a tab to the mss_login settings modal | README / EXTENSION_TABS_API.md |
+| Add a tab to the mss-login settings modal | README / EXTENSION_TABS_API.md |

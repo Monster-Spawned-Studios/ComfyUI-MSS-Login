@@ -9,24 +9,39 @@ from .utils.install_deps import install_dependencies
 # --- Base Directories ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# NTFY API Key
-NTFY_API_KEY = (os.getenv("NTFY_API_KEY") or "").strip()
+# External data directory (~/.comfyui-mss-login or MSS_LOGIN_DATA_DIR); untouched by git pull.
+from .utils.data_dir import ensure_data_dir, get_data_dir
 
-# --- Load .env from node root (sensitive vars; OS env fallback for Docker/Compose) ---
-# SECRET_KEY and other secrets can be in .env (optionally encrypted via dotenvx encrypt).
-_env_path = os.path.join(CURRENT_DIR, ".env")
+ensure_data_dir(CURRENT_DIR)
+DATA_DIR = get_data_dir()
+
+
+def _resolve_data_path(rel_or_abs: str) -> str:
+    """If path is absolute return as-is; otherwise resolve relative to external data directory."""
+    if not rel_or_abs:
+        return rel_or_abs
+    if os.path.isabs(rel_or_abs):
+        return rel_or_abs
+    return os.path.join(DATA_DIR, rel_or_abs)
+
+
+# --- Load .env: data dir first, then repo (so data dir secrets take precedence) ---
+_env_data = os.path.join(DATA_DIR, ".env")
+_env_repo = os.path.join(CURRENT_DIR, ".env")
 try:
     from dotenv import load_dotenv
 
-    load_dotenv(dotenv_path=_env_path, override=True)
+    load_dotenv(dotenv_path=_env_repo, override=False)
+    load_dotenv(dotenv_path=_env_data, override=True)
 except ImportError:
-    print("[mss_login] dotenv not found, trying dotenvx")
+    print("[MSS-Login] dotenv not found, trying dotenvx")
     try:
         from dotenvx import load_dotenvx
 
-        load_dotenvx(dotenv_path=_env_path, override=True)
+        load_dotenvx(dotenv_path=_env_repo, override=False)
+        load_dotenvx(dotenv_path=_env_data, override=True)
     except ImportError:
-        print("[mss_login] dotenvx not found, using os.environ")
+        print("[MSS-Login] dotenvx not found, using os.environ")
         pass
     except Exception as e:
         print(f"[mss_login] Failed to load .env with dotenvx: {e}")
@@ -34,6 +49,9 @@ except ImportError:
 except Exception as e:
     print(f"[mss_login] Failed to load .env with dotenv: {e}")
     pass
+
+# NTFY API Key
+NTFY_API_KEY = (os.getenv("NTFY_API_KEY") or "").strip()
 
 WEB_DIR = os.path.join(CURRENT_DIR, "web")
 
@@ -44,8 +62,9 @@ CSS_DIR = os.path.join(WEB_DIR, "css")
 JS_DIR = os.path.join(WEB_DIR, "js")
 ASSETS_DIR = os.path.join(WEB_DIR, "assets")
 
-# --- Load config.json ---
-CONFIG_FILE_PATH = os.path.join(CURRENT_DIR, "config.json")
+# --- Load config (runtime config in data dir; defaults from repo config.defaults.json) ---
+CONFIG_FILE_PATH = os.path.join(DATA_DIR, "config.json")
+DEFAULTS_CONFIG_PATH = os.path.join(CURRENT_DIR, "config.defaults.json")
 
 
 def _load_config(path):
@@ -80,24 +99,21 @@ def _normalize_encryption_level(level: str) -> str:
     return s if s in ("low", "standard", "secure") else ""
 
 
-# --- Files & Paths ---
+# --- Files & Paths (resolved under external data directory when relative) ---
 # Legacy path for one-time migration from JSON to DB (do not use for credential storage)
-_legacy_users_path = config_data.get("legacy_users_json_path", "users/users.json")
-if not os.path.isabs(_legacy_users_path):
-    _legacy_users_path = os.path.join(CURRENT_DIR, _legacy_users_path)
-LEGACY_USERS_JSON_PATH = _legacy_users_path
-
-GROUPS_CONFIG_FILE = os.path.join(CURRENT_DIR, "users", "mss_login_groups.json")
+LEGACY_USERS_JSON_PATH = _resolve_data_path(
+    config_data.get("legacy_users_json_path", "data/users.json")
+)
+GROUPS_CONFIG_FILE = _resolve_data_path("data/mss_login_groups.json")
 DEFAULT_GROUP_CONFIG_PATH = os.path.join(
     CURRENT_DIR, "users", "defaults", "default_group_config.json"
 )
-WHITELIST_FILE = os.path.join(CURRENT_DIR, "users", "whitelist.txt")
-BLACKLIST_FILE = os.path.join(CURRENT_DIR, "users", "blacklist.txt")
-LOG_FILE = os.path.join(CURRENT_DIR, config_data.get("log", "mss_login.log"))
+WHITELIST_FILE = _resolve_data_path(config_data.get("whitelist", "data/whitelist.txt"))
+BLACKLIST_FILE = _resolve_data_path(config_data.get("blacklist", "data/blacklist.txt"))
+LOG_FILE = _resolve_data_path(config_data.get("log", "mss_login.log"))
 
 # --- Ephemeral SECRET_KEY (for migration when switching to permanent SECRET_KEY) ---
-_users_dir = os.path.join(CURRENT_DIR, "users")
-EPHEMERAL_SECRET_KEY_PATH = os.path.join(_users_dir, ".ephemeral_secret_key")
+EPHEMERAL_SECRET_KEY_PATH = os.path.join(DATA_DIR, "data", ".ephemeral_secret_key")
 
 
 def _load_ephemeral_key() -> str:
@@ -150,18 +166,13 @@ MATCH_HEADERS = {"X-Forwarded-Proto": "https"}
 
 
 # Users DB (credentials): single source of truth for backend, path, and Postgres. Password from env only.
-def _default_users_sqlite_path() -> str:
-    return os.path.join(CURRENT_DIR, "users", "users.db")
-
-
 _users_db_cfg = config_data.get("users_db") or {}
 if isinstance(_users_db_cfg, str):
     _users_db_cfg = {"backend": "sqlite", "sqlite_path": _users_db_cfg}
 _users_sqlite_path = _env_or_config(
-    "USERS_DB_SQLITE_PATH", _users_db_cfg.get("sqlite_path", "users/users.db")
+    "USERS_DB_SQLITE_PATH", _users_db_cfg.get("sqlite_path", "data/users.db")
 )
-if not os.path.isabs(_users_sqlite_path):
-    _users_sqlite_path = os.path.join(CURRENT_DIR, _users_sqlite_path)
+_users_sqlite_path = _resolve_data_path(_users_sqlite_path)
 USERS_DB_CONFIG = {
     "backend": (_users_db_cfg.get("backend") or "sqlite").lower(),
     "sqlite_path": _users_sqlite_path,
@@ -194,11 +205,12 @@ if _token_backend == "json":
     _api_backend = "json"
 else:
     _api_backend = USERS_DB_CONFIG["backend"]
-_json_path = _env_or_config(
-    "API_TOKEN_JSON_PATH", _api_token_cfg.get("json_path", "users/api_tokens.json")
+_json_path = _resolve_data_path(
+    _env_or_config(
+        "API_TOKEN_JSON_PATH",
+        _api_token_cfg.get("json_path", "data/api_tokens.json"),
+    )
 )
-if not os.path.isabs(_json_path):
-    _json_path = os.path.join(CURRENT_DIR, _json_path)
 API_TOKEN_STORE_CONFIG = {
     "backend": _api_backend,
     "json_path": _json_path,
@@ -213,17 +225,18 @@ API_TOKEN_STORE_CONFIG = {
 
 
 def reload_users_db_config() -> dict:
-    """Re-read config.json and refresh USERS_DB_CONFIG (used after admin saves users DB config). Restart required to use new backend."""
-    global config_data, USERS_DB_CONFIG, API_TOKEN_STORE_CONFIG
+    """Re-read config and refresh USERS_DB_CONFIG (used after admin saves users DB config). Restart required to use new backend."""
+    global config_data, USERS_DB_CONFIG, API_TOKEN_STORE_CONFIG, SESSION_TOKEN_STORE_CONFIG
     config_data = _load_config(CONFIG_FILE_PATH)
     _users_db_cfg = config_data.get("users_db") or {}
     if isinstance(_users_db_cfg, str):
         _users_db_cfg = {"backend": "sqlite", "sqlite_path": _users_db_cfg}
-    _users_sqlite_path = _env_or_config(
-        "USERS_DB_SQLITE_PATH", _users_db_cfg.get("sqlite_path", "users/users.db")
+    _users_sqlite_path = _resolve_data_path(
+        _env_or_config(
+            "USERS_DB_SQLITE_PATH",
+            _users_db_cfg.get("sqlite_path", "data/users.db"),
+        )
     )
-    if not os.path.isabs(_users_sqlite_path):
-        _users_sqlite_path = os.path.join(CURRENT_DIR, _users_sqlite_path)
     USERS_DB_CONFIG = {
         "backend": (_users_db_cfg.get("backend") or "sqlite").lower(),
         "sqlite_path": _users_sqlite_path,
@@ -251,11 +264,12 @@ def reload_users_db_config() -> dict:
     _api_cfg = config_data.get("api_token_store") or {}
     _tb = (_api_cfg.get("backend") or "").strip().lower()
     _api_backend = "json" if _tb == "json" else USERS_DB_CONFIG["backend"]
-    _jp = _env_or_config(
-        "API_TOKEN_JSON_PATH", _api_cfg.get("json_path", "users/api_tokens.json")
+    _jp = _resolve_data_path(
+        _env_or_config(
+            "API_TOKEN_JSON_PATH",
+            _api_cfg.get("json_path", "data/api_tokens.json"),
+        )
     )
-    if not os.path.isabs(_jp):
-        _jp = os.path.join(CURRENT_DIR, _jp)
     API_TOKEN_STORE_CONFIG = {
         "backend": _api_backend,
         "json_path": _jp,
@@ -267,22 +281,46 @@ def reload_users_db_config() -> dict:
         "postgres_password": USERS_DB_CONFIG["postgres_password"],
         "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
     }
+    # Keep session token store in sync with users_db backend
+    SESSION_TOKEN_STORE_CONFIG = {
+        "backend": USERS_DB_CONFIG["backend"],
+        "sqlite_path": USERS_DB_CONFIG["sqlite_path"],
+        "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
+        "secret_key": SECRET_KEY,
+        "postgres_host": USERS_DB_CONFIG["postgres_host"],
+        "postgres_port": USERS_DB_CONFIG["postgres_port"],
+        "postgres_database": USERS_DB_CONFIG["postgres_database"],
+        "postgres_user": USERS_DB_CONFIG["postgres_user"],
+        "postgres_password": USERS_DB_CONFIG["postgres_password"],
+        "legacy_json_path": "",
+    }
     return USERS_DB_CONFIG
 
 
-# Session JWT store (jti tracking and blocklist for list/revoke)
-_session_store_path = config_data.get(
-	"session_token_store_path", "users/session_tokens.json"
+# Session JWT store: encrypted DB (same backend as users_db); legacy JSON path for one-time migration.
+_session_cfg = config_data.get("session_token_store") or {}
+_session_legacy_json = _resolve_data_path(
+    config_data.get("session_token_store_path", "")
+    or _session_cfg.get("legacy_json_path", "data/session_tokens.json")
 )
-if not os.path.isabs(_session_store_path):
-	_session_store_path = os.path.join(CURRENT_DIR, _session_store_path)
-SESSION_TOKEN_STORE_PATH = _session_store_path
+SESSION_TOKEN_STORE_CONFIG = {
+    "backend": USERS_DB_CONFIG["backend"],
+    "sqlite_path": USERS_DB_CONFIG["sqlite_path"],
+    "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
+    "secret_key": SECRET_KEY,
+    "postgres_host": USERS_DB_CONFIG["postgres_host"],
+    "postgres_port": USERS_DB_CONFIG["postgres_port"],
+    "postgres_database": USERS_DB_CONFIG["postgres_database"],
+    "postgres_user": USERS_DB_CONFIG["postgres_user"],
+    "postgres_password": USERS_DB_CONFIG["postgres_password"],
+    "legacy_json_path": _session_legacy_json if os.path.isfile(_session_legacy_json) else "",
+}
 
 # Idle session revocation: revoke session JWTs unused for this many minutes (security)
 try:
-	SESSION_IDLE_REVOKE_MINUTES = int(config_data.get("session_idle_revoke_minutes", 5))
+    SESSION_IDLE_REVOKE_MINUTES = int(config_data.get("session_idle_revoke_minutes", 5))
 except (TypeError, ValueError):
-	SESSION_IDLE_REVOKE_MINUTES = 5
+    SESSION_IDLE_REVOKE_MINUTES = 5
 
 # Remote API guard: require auth for non-local clients
 REQUIRE_AUTH_FOR_REMOTE_API = config_data.get("require_auth_for_remote_api", True)

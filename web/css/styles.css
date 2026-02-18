@@ -457,9 +457,9 @@ a:active {
     }
 }
 
-/* === mss_login FLOATING BUTTON ========================================== */
+/* === mss-login FLOATING BUTTON ========================================== */
 
-.mss_login-floating-button {
+.mss-login-floating-button {
     position: fixed !important;
     width: 48px !important;
     height: 48px !important;
@@ -490,20 +490,20 @@ a:active {
     isolation: isolate;
 }
 
-.mss_login-floating-button:hover {
+.mss-login-floating-button:hover {
     transform: scale(1.1);
     box-shadow: 0 6px 16px rgba(82, 25, 214, 0.363),
                 0 0 0 3px rgba(255, 255, 255, 0.15);
 }
 
-.mss_login-floating-button.dragging {
+.mss-login-floating-button.dragging {
     cursor: grabbing;
     transform: scale(1.05);
     box-shadow: 0 8px 20px rgba(100, 59, 246, 0.63),
                 0 0 0 4px rgba(255, 255, 255, 0.2);
 }
 
-.mss_login-floating-button-icon {
+.mss-login-floating-button-icon {
     width: 32px !important;
     height: 32px !important;
     max-width: 32px !important;
@@ -529,7 +529,7 @@ a:active {
 
 /* === RADIAL MENU ========================================================= */
 
-.mss_login-radial-menu {
+.mss-login-radial-menu {
     position: fixed;
     width: 0;
     height: 0;
@@ -538,11 +538,11 @@ a:active {
     transform-origin: center;
 }
 
-.mss_login-radial-menu.active {
+.mss-login-radial-menu.active {
     pointer-events: auto;
 }
 
-.mss_login-radial-menu-button {
+.mss-login-radial-menu-button {
     position: absolute;
     left: 0;
     top: 0;
@@ -604,18 +604,18 @@ a:active {
                 filter 0.2s ease;
 }
 
-.mss_login-radial-menu.active .mss_login-radial-menu-button {
+.mss-login-radial-menu.active .mss-login-radial-menu-button {
     pointer-events: auto;
 }
 
 /* Only show buttons when menu is active AND button has animate-in class */
-.mss_login-radial-menu.active .mss_login-radial-menu-button.animate-in {
+.mss-login-radial-menu.active .mss-login-radial-menu-button.animate-in {
     visibility: visible;
     pointer-events: auto !important;
     transition-delay: 0s;
 }
 
-.mss_login-radial-menu-button.animate-in {
+.mss-login-radial-menu-button.animate-in {
     /* Ensure transition is active with delay from CSS variable */
     transition: transform 0.32s cubic-bezier(.2,.9,.2,1), 
                 opacity 0.32s cubic-bezier(.2,.9,.2,1),
@@ -626,7 +626,7 @@ a:active {
     transition-delay: var(--delay, 0s);
 }
 
-.mss_login-radial-menu-button.animate-out {
+.mss-login-radial-menu-button.animate-out {
     transition: transform 0.22s cubic-bezier(.2,.9,.2,1), 
                 opacity 0.22s cubic-bezier(.2,.9,.2,1);
     transition-delay: var(--delay, 0s);
@@ -634,9 +634,9 @@ a:active {
 
 /* Hover animation: enhanced scale up with color change and glow */
 /* Must override animate-in transition */
-.mss_login-radial-menu-button:hover,
-.mss_login-radial-menu-button.animate-in:hover,
-.mss_login-radial-menu-button.hover-active {
+.mss-login-radial-menu-button:hover,
+.mss-login-radial-menu-button.animate-in:hover,
+.mss-login-radial-menu-button.hover-active {
     background: rgba(59, 130, 246, 0.98) !important;
     border-color: rgba(255, 255, 255, 0.7) !important;
     box-shadow: 0 8px 24px rgba(59, 130, 246, 0.9),
@@ -654,8 +654,8 @@ a:active {
 }
 
 /* Click animation: enhanced scale down with feedback */
-.mss_login-radial-menu-button:active,
-.mss_login-radial-menu-button.animate-in:active {
+.mss-login-radial-menu-button:active,
+.mss-login-radial-menu-button.animate-in:active {
     filter: brightness(0.85) saturate(0.9) !important;
     transform: translate(-50%, -50%) translate(var(--dx, 0px), var(--dy, 0px)) scale(0.8) !important;
     box-shadow: 0 3px 8px rgba(59, 130, 246, 0.6),
@@ -668,7 +668,7 @@ a:active {
                 box-shadow 0.12s ease !important;
 }
 
-.mss_login-radial-menu-button-icon {
+.mss-login-radial-menu-button-icon {
     font-size: 16px !important;
     line-height: 1 !important;
     margin: 0 !important;
@@ -685,11 +685,11 @@ a:active {
     height: 100% !important;
 }
 
-.mss_login-radial-menu-button-label {
+.mss-login-radial-menu-button-label {
     display: none !important; /* Hidden by default, shown as tooltip */
 }
 
-.mss_login-radial-menu-button-tooltip {
+.mss-login-radial-menu-button-tooltip {
     position: fixed !important;
     background: rgba(0, 0, 0, 0.95) !important;
     color: #ffffff !important;
@@ -715,7 +715,7 @@ a:active {
     left: 0 !important;
 }
 
-.mss_login-radial-menu-button-tooltip.show {
+.mss-login-radial-menu-button-tooltip.show {
     display: block !important;
     visibility: visible !important;
     opacity: 1 !important;
@@ -758,24 +758,24 @@ a:active {
 
 /* Light mode support for floating button */
 @media (prefers-color-scheme: light) {
-    .mss_login-floating-button {
+    .mss-login-floating-button {
         background: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
         box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5),
                     0 0 0 2px rgba(0, 0, 0, 0.1);
     }
 
-    .mss_login-radial-menu-button {
+    .mss-login-radial-menu-button {
         background: rgba(255, 255, 255, 0.95);
         border-color: rgba(0, 0, 0, 0.2);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3),
                     0 0 0 1px rgba(0, 0, 0, 0.1);
     }
 
-    .mss_login-radial-menu-button-label {
+    .mss-login-radial-menu-button-label {
         color: #1f2937;
     }
 
-    .mss_login-radial-menu-button:hover {
+    .mss-login-radial-menu-button:hover {
         background: rgba(59, 130, 246, 0.95);
         border-color: rgba(255, 255, 255, 0.4);
     }

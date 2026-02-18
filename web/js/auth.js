@@ -596,7 +596,7 @@ async function submitMfaVerify(event) {
   button.disabled = true;
   button.textContent = "Verifying...";
   try {
-    const response = await fetch("/mss_login/api/mfa/verify", {
+    const response = await fetch("/mss-login/api/mfa/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -636,7 +636,7 @@ async function submitMfaSetup(event) {
   button.disabled = true;
   button.textContent = "Verifying...";
   try {
-    const verifySetupResp = await fetch("/mss_login/api/mfa/verify-setup", {
+    const verifySetupResp = await fetch("/mss-login/api/mfa/verify-setup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mfa_temp_token: mfaTempToken, code }),
@@ -648,7 +648,7 @@ async function submitMfaSetup(event) {
       button.textContent = "Complete Setup";
       return;
     }
-    const verifyResp = await fetch("/mss_login/api/mfa/verify", {
+    const verifyResp = await fetch("/mss-login/api/mfa/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mfa_temp_token: mfaTempToken, code }),

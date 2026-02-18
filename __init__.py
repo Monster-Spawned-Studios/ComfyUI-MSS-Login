@@ -24,6 +24,7 @@ from .constants import (
     REQUIRE_AUTH_FOR_REMOTE_API,
     LOCAL_NETWORK_CIDRS,
     USERS_DB_CONFIG,
+    CONFIG_FILE_PATH,
 )
 from .globals import (
     app,
@@ -34,6 +35,7 @@ from .globals import (
     access_control,
     instance,
     current_username_var,
+    logger,
 )
 from .utils import watcher
 from .utils.bootstrap import ensure_groups_config
@@ -48,7 +50,10 @@ from .utils.remote_api_guard import create_remote_api_guard_middleware
 from .utils.model_filter_middleware import create_model_filter_middleware
 from .utils.shared_items_store import get_shared_items_store
 from .utils.prompt_model_validator import validate_prompt_models
+from .utils.json_utils import load_json_file
+from .utils.updater import run_update_check, get_cached_status
 
+import asyncio
 import server  # pyright: ignore[reportMissingImports]
 
 WEB_DIRECTORY = "./web"
@@ -62,6 +67,10 @@ except ImportError:
     __all__ = ["NODE_CLASS_MAPPINGS", "WEB_DIRECTORY"]
 
 ensure_groups_config()
+
+# Schedule background update check (notify or auto according to config)
+_config_for_updater = load_json_file(CONFIG_FILE_PATH, {})
+asyncio.ensure_future(run_update_check(app, logger, _config_for_updater))
 
 
 # --- WORKFLOW + GLOBAL SFW INTERCEPTION MIDDLEWARE ---
@@ -217,7 +226,7 @@ app.middlewares.append(
         public_prefixes=(
             "/mss-login",
             "/mss-login-gallery",
-            "/mss_login/api/mfa",
+            "/mss-login/api/mfa",
             "/assets",
             "/static",
         ),

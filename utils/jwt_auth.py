@@ -99,12 +99,12 @@ class JWTAuth:
             if jti:
                 try:
                     from ..constants import (
-                        SESSION_TOKEN_STORE_PATH,
+                        SESSION_TOKEN_STORE_CONFIG,
                         SESSION_IDLE_REVOKE_MINUTES,
                     )
 
                     store = get_session_token_store(
-                        SESSION_TOKEN_STORE_PATH,
+                        SESSION_TOKEN_STORE_CONFIG,
                         idle_revoke_minutes=SESSION_IDLE_REVOKE_MINUTES,
                     )
                     if store.is_revoked(jti):
@@ -229,7 +229,7 @@ class JWTAuth:
                     return await handle_unauthorized_access(
                         request,
                         "/login",
-                        message="API token not found or expired. Generate a new token on this server (Settings → mss_login → Generate Token).",
+                        message="API token not found or expired. Generate a new token on this server (Settings → mss-login → Generate Token).",
                     )
 
                 user = self.decode_access_token(token)
@@ -244,12 +244,12 @@ class JWTAuth:
                 if jti:
                     try:
                         from ..constants import (
-                            SESSION_TOKEN_STORE_PATH,
+                            SESSION_TOKEN_STORE_CONFIG,
                             SESSION_IDLE_REVOKE_MINUTES,
                         )
 
                         store = get_session_token_store(
-                            SESSION_TOKEN_STORE_PATH,
+                            SESSION_TOKEN_STORE_CONFIG,
                             idle_revoke_minutes=SESSION_IDLE_REVOKE_MINUTES,
                         )
                         if store.is_revoked(jti):
@@ -346,7 +346,7 @@ class JWTAuth:
                 return await handle_unauthorized_access(
                     request,
                     "/login",
-                    message="API token not found or expired. Generate a new token on this server (Settings → mss_login → Generate Token).",
+                    message="API token not found or expired. Generate a new token on this server (Settings → mss-login → Generate Token).",
                 )
             except Exception as e:
                 debug_write(

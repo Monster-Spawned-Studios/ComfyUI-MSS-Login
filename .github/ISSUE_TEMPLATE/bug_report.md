@@ -1,6 +1,6 @@
 ---
 name: Bug report
-description: Report a bug or unexpected behavior in mss_login
+description: Report a bug or unexpected behavior in mss-login
 title: "[Bug] "
 labels: ["bug"]
 assignees: []
@@ -41,14 +41,14 @@ What actually happened (error message, screenshot, or console output if relevant
 ## Environment
 
 - **ComfyUI version:** (e.g. from ComfyUI UI or `git describe`)
-- **mss_login version:** (from pyproject.toml or Settings → mss_login if shown)
+- **mss-login version:** (from pyproject.toml or Settings → mss-login if shown)
 - **OS:** (e.g. Windows 11, macOS 14, Ubuntu 22.04)
 - **Install type:** (portable, venv, Docker, comfy-cli, etc.)
 - **Database:** SQLite / PostgreSQL (if known)
 
 ## Logs or errors
 
-Paste relevant server logs, browser console errors, or `mss_login.log` excerpts (redact secrets/tokens).
+Paste relevant server logs, browser console errors, or `mss-login.log` excerpts (redact secrets/tokens).
 
 ```
 (paste here)

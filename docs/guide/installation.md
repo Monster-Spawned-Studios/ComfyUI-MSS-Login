@@ -7,7 +7,7 @@
 
 ## Steps
 
-1. **Install the node**  
+1. **Install the node**
    Place the extension in ComfyUI's custom nodes directory:
 
    ```
@@ -23,11 +23,11 @@
 
 2. **Restart ComfyUI** so the node loads.
 
-3. **First launch**  
+3. **First launch**
    On first run, register the initial admin user when prompted.
 
-4. **Configure**  
-   Open **Settings → mss_login** to configure groups, IP rules, user environment, and NSFW settings.
+4. **Configure**
+   Open **Settings → mss-login** to configure groups, IP rules, user environment, and NSFW settings.
 
 ## Optional: Encrypted SQLite and recovery
 

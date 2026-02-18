@@ -3,7 +3,7 @@ import { api } from "../../scripts/api.js";
 
 // --- Radial Menu Extension Registry API ---
 /**
- * Registry for extension buttons in the mss_login radial menu.
+ * Registry for extension buttons in the mss-login radial menu.
  * Extensions can register custom buttons that appear in the radial menu.
  */
 if (!window.mss_loginRadialMenu) {
@@ -22,15 +22,15 @@ if (!window.mss_loginRadialMenu) {
          */
         register(config) {
             if (!config || !config.id || !config.label || !config.onClick) {
-                console.error("[mss_login] Radial menu button registration failed: missing required fields");
+                console.error("[mss-login] Radial menu button registration failed: missing required fields");
                 return false;
             }
             if (!/^[a-z0-9_-]+$/.test(config.id)) {
-                console.error("[mss_login] Radial menu button registration failed: invalid ID format");
+                console.error("[mss-login] Radial menu button registration failed: invalid ID format");
                 return false;
             }
             if (this._buttons.some(b => b.id === config.id)) {
-                console.warn(`[mss_login] Radial menu button "${config.id}" already registered`);
+                console.warn(`[mss-login] Radial menu button "${config.id}" already registered`);
                 return false;
             }
             const button = {
@@ -42,7 +42,7 @@ if (!window.mss_loginRadialMenu) {
             };
             this._buttons.push(button);
             this._buttons.sort((a, b) => a.order - b.order);
-            console.log(`[mss_login] Registered radial menu button: "${config.id}"`);
+            console.log(`[mss-login] Registered radial menu button: "${config.id}"`);
             if (window._mss_loginRadialMenu) {
                 window._mss_loginRadialMenu.refreshButtons();
             }
@@ -84,7 +84,7 @@ if (!window.mss_loginRadialMenu) {
 }
 
 // --- Floating Button Component ---
-console.log("[mss_login] floating_button.js loaded");
+console.log("[mss-login] floating_button.js loaded");
 
 class mss_loginFloatingButton {
     constructor() {
@@ -112,7 +112,7 @@ class mss_loginFloatingButton {
                 }
             }
         } catch (e) {
-            console.warn("[mss_login] Failed to load button position:", e);
+            console.warn("[mss-login] Failed to load button position:", e);
         }
         // Default: bottom-left to avoid Gallery button conflict
         return { x: 20, y: window.innerHeight - 80 };
@@ -122,31 +122,31 @@ class mss_loginFloatingButton {
         try {
             localStorage.setItem("mss_login_floating_button_position", JSON.stringify(this.position));
         } catch (e) {
-            console.warn("[mss_login] Failed to save button position:", e);
+            console.warn("[mss-login] Failed to save button position:", e);
         }
     }
     
     init() {
-        console.log("[mss_login] Initializing floating button...");
-        console.log("[mss_login] Document body:", !!document.body);
-        console.log("[mss_login] Window inner dimensions:", window.innerWidth, window.innerHeight);
+        console.log("[mss-login] Initializing floating button...");
+        console.log("[mss-login] Document body:", !!document.body);
+        console.log("[mss-login] Window inner dimensions:", window.innerWidth, window.innerHeight);
         
         this.button = document.createElement("div");
-        this.button.className = "mss_login-floating-button";
+        this.button.className = "mss-login-floating-button";
         const iconImg = document.createElement("img");
         iconImg.src = "/mss-login/assets/mss_logo.png";
         iconImg.alt = "MSS-Login";
-        iconImg.className = "mss_login-floating-button-icon";
+        iconImg.className = "mss-login-floating-button-icon";
         iconImg.draggable = false; // Prevent image drag
         iconImg.setAttribute("draggable", "false"); // Ensure it's not draggable
         
         iconImg.onerror = () => {
-            console.error("[mss_login] Failed to load icon, using fallback");
+            console.error("[mss-login] Failed to load icon, using fallback");
             iconImg.style.display = "none";
             this.button.innerHTML = '<div style="color: white; font-size: 16px; font-weight: bold;">MSS</div>';
         };
         iconImg.onload = () => {
-            console.log("[mss_login] Icon loaded successfully");
+            console.log("[mss-login] Icon loaded successfully");
         };
         this.button.appendChild(iconImg);
         
@@ -184,7 +184,7 @@ class mss_loginFloatingButton {
         this.button.style.setProperty("width", "48px", "important");
         this.button.style.setProperty("height", "48px", "important");
         
-        const iconImgEl = this.button.querySelector('.mss_login-floating-button-icon');
+        const iconImgEl = this.button.querySelector('.mss-login-floating-button-icon');
         if (iconImgEl) {
             // Force icon size with inline styles as backup
             iconImgEl.style.setProperty("width", "32px", "important");
@@ -231,7 +231,7 @@ class mss_loginFloatingButton {
         
         // Ensure body exists before appending
         if (!document.body) {
-            console.error("[mss_login] document.body not available!");
+            console.error("[mss-login] document.body not available!");
             return;
         }
         
@@ -243,12 +243,12 @@ class mss_loginFloatingButton {
         // Try to append to body, or fallback to document.documentElement
         try {
             document.body.appendChild(this.button);
-            console.log("[mss_login] Button appended to document.body");
+            console.log("[mss-login] Button appended to document.body");
         } catch (e) {
-            console.error("[mss_login] Failed to append to body, trying documentElement:", e);
+            console.error("[mss-login] Failed to append to body, trying documentElement:", e);
             document.documentElement.appendChild(this.button);
         }
-        console.log("[mss_login] Button added to DOM at:", this.position);
+        console.log("[mss-login] Button added to DOM at:", this.position);
         
         this.createRadialMenu();
         
@@ -262,7 +262,7 @@ class mss_loginFloatingButton {
             if (this.button) {
                 const rect = this.button.getBoundingClientRect();
                 const computed = window.getComputedStyle(this.button);
-                console.log("[mss_login] Button visibility check:", {
+                console.log("[mss-login] Button visibility check:", {
                     visible: rect.width > 0 && rect.height > 0,
                     width: rect.width,
                     height: rect.height,
@@ -275,13 +275,13 @@ class mss_loginFloatingButton {
                 });
                 
                 if (rect.width === 0 || rect.height === 0) {
-                    console.warn("[mss_login] Button has zero size! CSS may not be loaded.");
+                    console.warn("[mss-login] Button has zero size! CSS may not be loaded.");
                 }
             }
             
             // Verify radial menu
             if (this.radialMenu) {
-                console.log("[mss_login] Radial menu check:", {
+                console.log("[mss-login] Radial menu check:", {
                     exists: !!this.radialMenu,
                     inDOM: document.body.contains(this.radialMenu),
                     className: this.radialMenu.className,
@@ -289,7 +289,7 @@ class mss_loginFloatingButton {
                     innerHTML: this.radialMenu.innerHTML.length
                 });
             } else {
-                console.error("[mss_login] Radial menu is null!");
+                console.error("[mss-login] Radial menu is null!");
             }
         }, 200);
     }
@@ -303,9 +303,9 @@ class mss_loginFloatingButton {
             e.stopPropagation();
         }
         
-        console.log("[mss_login] Pointer down", e);
-        console.log("[mss_login] Button position:", this.position);
-        console.log("[mss_login] Button computed style:", window.getComputedStyle(this.button).position);
+        console.log("[mss-login] Pointer down", e);
+        console.log("[mss-login] Button position:", this.position);
+        console.log("[mss-login] Button computed style:", window.getComputedStyle(this.button).position);
         
         // Don't prevent default immediately - let double-click work
         this.isDragging = false;
@@ -322,9 +322,9 @@ class mss_loginFloatingButton {
         // Use pointer capture like Gallery button
         try {
             this.button.setPointerCapture(e.pointerId);
-            console.log("[mss_login] Pointer captured:", e.pointerId);
+            console.log("[mss-login] Pointer captured:", e.pointerId);
         } catch (err) {
-            console.warn("[mss_login] setPointerCapture failed:", err);
+            console.warn("[mss-login] setPointerCapture failed:", err);
         }
         
         this.handlePointerMove = (e) => {
@@ -361,7 +361,7 @@ class mss_loginFloatingButton {
                 this.hasMoved = true;
                 this.button.classList.add("dragging");
                 this.button.style.cursor = "grabbing";
-                console.log("[mss_login] Started dragging");
+                console.log("[mss-login] Started dragging");
             }
         }
         
@@ -383,14 +383,14 @@ class mss_loginFloatingButton {
         
         this.position = { x: newX, y: newY };
         this.updatePosition();
-        console.log("[mss_login] Moving to:", this.position);
+        console.log("[mss-login] Moving to:", this.position);
     }
     
     onPointerUp(e) {
         const wasDragging = this.isDragging;
         const didMove = this.hasMoved;
         
-        console.log("[mss_login] Pointer up", {
+        console.log("[mss-login] Pointer up", {
             wasDragging,
             didMove
         });
@@ -423,9 +423,9 @@ class mss_loginFloatingButton {
         // If user didn't drag, the browser will fire a click event naturally
         // We don't need to manually dispatch - that was causing single clicks to be treated as double-clicks
         if (!didMove) {
-            console.log("[mss_login] No drag detected, browser will fire click event naturally");
+            console.log("[mss-login] No drag detected, browser will fire click event naturally");
         } else {
-            console.log("[mss_login] Drag detected, blocking click");
+            console.log("[mss-login] Drag detected, blocking click");
             // User dragged, reset hasMoved after delay
             setTimeout(() => {
                 this.hasMoved = false;
@@ -454,7 +454,7 @@ class mss_loginFloatingButton {
             this.button.style.setProperty("padding", "0", "important");
             this.button.style.setProperty("transform", "none", "important");
             
-            const iconImgEl2 = this.button.querySelector('.mss_login-floating-button-icon');
+            const iconImgEl2 = this.button.querySelector('.mss-login-floating-button-icon');
             if (iconImgEl2) {
                 iconImgEl2.style.setProperty("width", "32px", "important");
                 iconImgEl2.style.setProperty("height", "32px", "important");
@@ -480,14 +480,14 @@ class mss_loginFloatingButton {
         const timeSinceLastClick = now - this.lastClickTime;
         const isDoubleClick = timeSinceLastClick < this.doubleClickDelay && timeSinceLastClick > 0;
         
-        console.log("[mss_login] Click event fired!", {
+        console.log("[mss-login] Click event fired!", {
             hasMoved: this.hasMoved,
             timeSinceLastClick: Date.now() - this.lastClickTime
         });
         
         // Only prevent click if we actually dragged significantly
         if (this.hasMoved) {
-            console.log("[mss_login] Click blocked because button was dragged");
+            console.log("[mss-login] Click blocked because button was dragged");
             e.preventDefault();
             e.stopPropagation();
             this.hasMoved = false; // Reset after handling
@@ -495,7 +495,7 @@ class mss_loginFloatingButton {
         }
         
         // Manual double-click detection
-        console.log("[mss_login] Click timing:", {
+        console.log("[mss-login] Click timing:", {
             now,
             lastClickTime: this.lastClickTime,
             timeSinceLastClick,
@@ -505,7 +505,7 @@ class mss_loginFloatingButton {
         
         if (isDoubleClick) {
             // This is a double-click!
-            console.log("[mss_login] Double-click detected via click timing!");
+            console.log("[mss-login] Double-click detected via click timing!");
             e.preventDefault();
             e.stopPropagation();
             this.lastClickTime = 0; // Reset to prevent triple-click
@@ -515,7 +515,7 @@ class mss_loginFloatingButton {
         
         // Single click - just update timestamp
         this.lastClickTime = now;
-        console.log("[mss_login] Single click registered, waiting for potential double-click...");
+        console.log("[mss-login] Single click registered, waiting for potential double-click...");
         
         // Don't do anything on single click (button is just for dragging and double-click)
     }
@@ -524,8 +524,8 @@ class mss_loginFloatingButton {
         const menuExists = !!this.radialMenu;
         const menuActive = this.radialMenu && this.radialMenu.classList.contains("active");
         
-        console.log("[mss_login] Double-click handler called!");
-        console.log("[mss_login] radialMenu exists:", menuExists);
+        console.log("[mss-login] Double-click handler called!");
+        console.log("[mss-login] radialMenu exists:", menuExists);
         
         if (e) {
             e.preventDefault();
@@ -534,29 +534,29 @@ class mss_loginFloatingButton {
         
         // Toggle menu
         if (menuActive) {
-            console.log("[mss_login] Hiding radial menu");
+            console.log("[mss-login] Hiding radial menu");
             this.hideRadialMenu();
         } else {
-            console.log("[mss_login] Showing radial menu");
+            console.log("[mss-login] Showing radial menu");
             if (!this.radialMenu) {
-                console.warn("[mss_login] Radial menu not created! Creating now...");
+                console.warn("[mss-login] Radial menu not created! Creating now...");
                 this.createRadialMenu();
             }
             if (this.radialMenu) {
                 this.showRadialMenu();
             } else {
-                console.error("[mss_login] Failed to create radial menu!");
+                console.error("[mss-login] Failed to create radial menu!");
             }
         }
     }
     
     createRadialMenu() {
         try {
-            console.log("[mss_login] Creating radial menu...");
-            console.log("[mss_login] Document body:", !!document.body);
+            console.log("[mss-login] Creating radial menu...");
+            console.log("[mss-login] Document body:", !!document.body);
             
             this.radialMenu = document.createElement("div");
-            this.radialMenu.className = "mss_login-radial-menu";
+            this.radialMenu.className = "mss-login-radial-menu";
             
             // Set initial styles to ensure it's positioned correctly
             // Menu container acts as a positioning anchor - buttons are positioned relative to its (0,0) point
@@ -570,14 +570,14 @@ class mss_loginFloatingButton {
             });
             
             if (!document.body) {
-                console.error("[mss_login] Cannot create radial menu: document.body is null!");
+                console.error("[mss-login] Cannot create radial menu: document.body is null!");
                 return;
             }
             
             document.body.appendChild(this.radialMenu);
-            console.log("[mss_login] Radial menu element created and added to DOM");
-            console.log("[mss_login] Radial menu element:", this.radialMenu);
-            console.log("[mss_login] Radial menu parent:", this.radialMenu.parentElement);
+            console.log("[mss-login] Radial menu element created and added to DOM");
+            console.log("[mss-login] Radial menu element:", this.radialMenu);
+            console.log("[mss-login] Radial menu parent:", this.radialMenu.parentElement);
             
             // Close menu when clicking outside
             this.outsideClickHandler = (e) => {
@@ -590,23 +590,23 @@ class mss_loginFloatingButton {
             document.addEventListener("click", this.outsideClickHandler);
             
             // Initialize buttons
-            console.log("[mss_login] Calling refreshButtons()...");
+            console.log("[mss-login] Calling refreshButtons()...");
             this.refreshButtons();
-            console.log("[mss_login] Radial menu initialized successfully");
+            console.log("[mss-login] Radial menu initialized successfully");
         } catch (error) {
-            console.error("[mss_login] Error creating radial menu:", error);
-            console.error("[mss_login] Error stack:", error.stack);
+            console.error("[mss-login] Error creating radial menu:", error);
+            console.error("[mss-login] Error stack:", error.stack);
         }
     }
     
     refreshButtons() {
         if (!this.radialMenu) {
-            console.warn("[mss_login] Cannot refresh buttons: radial menu not created");
+            console.warn("[mss-login] Cannot refresh buttons: radial menu not created");
             return;
         }
     
         try {
-            console.log("[mss_login] Refreshing radial menu buttons...");
+            console.log("[mss-login] Refreshing radial menu buttons...");
             const extensionButtons = (window.mss_loginRadialMenu && typeof window.mss_loginRadialMenu.getAll === 'function')
                 ? window.mss_loginRadialMenu.getAll()
                 : [];
@@ -614,11 +614,11 @@ class mss_loginFloatingButton {
             const buttons = [
                 {
                     id: "settings",
-                    label: "mss_login Settings",
+                    label: "mss-login Settings",
                     icon: "⚙️",
                     order: 0,
                     onClick: async () => {
-                        console.log("[mss_login] Settings button clicked");
+                        console.log("[mss-login] Settings button clicked");
                         
                         // Function to try opening the dialog
                         const tryOpenDialog = () => {
@@ -626,28 +626,28 @@ class mss_loginFloatingButton {
                             if (window._mss_loginDialogInstance && 
                                 window._mss_loginDialogInstance.overlay && 
                                 document.body.contains(window._mss_loginDialogInstance.overlay)) {
-                                console.log("[mss_login] Dialog is already open, focusing existing dialog");
+                                console.log("[mss-login] Dialog is already open, focusing existing dialog");
                                 // Focus the existing dialog by bringing it to front
                                 window._mss_loginDialogInstance.overlay.style.zIndex = "999999";
                                 return true;
                             }
                             
                             if (window.mss_loginDialog && typeof window.mss_loginDialog === 'function') {
-                                console.log("[mss_login] Opening mss_login dialog");
+                                console.log("[mss-login] Opening mss-login dialog");
                                 try {
                                     // Match the exact pattern: new mss_loginDialog().show()
                                     const dialog = new window.mss_loginDialog();
                                     dialog.show().catch(err => {
-                                        console.error("[mss_login] Error in dialog.show():", err);
+                                        console.error("[mss-login] Error in dialog.show():", err);
                                         if (app && app.ui && app.ui.dialog) {
-                                            app.ui.dialog.show("Error opening mss_login settings: " + (err.message || String(err)));
+                                            app.ui.dialog.show("Error opening mss-login settings: " + (err.message || String(err)));
                                         }
                                     });
                                     return true;
                                 } catch (err) {
-                                    console.error("[mss_login] Error creating dialog:", err);
+                                    console.error("[mss-login] Error creating dialog:", err);
                                     if (app && app.ui && app.ui.dialog) {
-                                        app.ui.dialog.show("Error creating mss_login settings dialog: " + (err.message || String(err)));
+                                        app.ui.dialog.show("Error creating mss-login settings dialog: " + (err.message || String(err)));
                                     }
                                     return false;
                                 }
@@ -661,7 +661,7 @@ class mss_loginFloatingButton {
                         }
                         
                         // If not available, wait a bit and try again (in case extension hasn't loaded yet)
-                        console.warn("[mss_login] window.mss_loginDialog not available, waiting and retrying...");
+                        console.warn("[mss-login] window.mss_loginDialog not available, waiting and retrying...");
                         let retries = 0;
                         const maxRetries = 20;
                         
@@ -669,7 +669,7 @@ class mss_loginFloatingButton {
                         return new Promise((resolve) => {
                             const retryInterval = setInterval(() => {
                                 retries++;
-                                console.log(`[mss_login] Retry ${retries}/${maxRetries} to open dialog...`);
+                                console.log(`[mss-login] Retry ${retries}/${maxRetries} to open dialog...`);
                                 
                                 if (tryOpenDialog()) {
                                     clearInterval(retryInterval);
@@ -679,9 +679,9 @@ class mss_loginFloatingButton {
                                 
                                 if (retries >= maxRetries) {
                                     clearInterval(retryInterval);
-                                    console.error("[mss_login] Could not open mss_login settings - dialog not available after retries");
+                                    console.error("[mss-login] Could not open mss-login settings - dialog not available after retries");
                                     if (app && app.ui && app.ui.dialog) {
-                                        app.ui.dialog.show("mss_login settings dialog is not available. Please ensure the mss_login extension is loaded.");
+                                        app.ui.dialog.show("mss-login settings dialog is not available. Please ensure the mss-login extension is loaded.");
                                     }
                                     resolve(false);
                                 }
@@ -695,7 +695,7 @@ class mss_loginFloatingButton {
                     icon: "🔒",
                     order: 1,
                     onClick: () => {
-                        console.log("[mss_login] Logout button clicked");
+                        console.log("[mss-login] Logout button clicked");
                         window.location.href = "/logout";
                     }
                 },
@@ -796,10 +796,10 @@ class mss_loginFloatingButton {
                 return Array.from({ length: count }, (_, i) => arcStart + i * step);
             })();
     
-            console.log("[mss_login] Layout mode:", { inMiddle, isTop, isLeft, adjustedRadius, count });
+            console.log("[mss-login] Layout mode:", { inMiddle, isTop, isLeft, adjustedRadius, count });
             
             // Clear existing buttons and their tooltips
-            const existingButtons = this.radialMenu.querySelectorAll(".mss_login-radial-menu-button");
+            const existingButtons = this.radialMenu.querySelectorAll(".mss-login-radial-menu-button");
             existingButtons.forEach((btn) => {
                 if (btn._tooltip && btn._tooltip.parentNode) {
                     btn._tooltip.remove();
@@ -833,7 +833,7 @@ class mss_loginFloatingButton {
                 }
     
                 const buttonEl = document.createElement("div");
-                buttonEl.className = "mss_login-radial-menu-button";
+                buttonEl.className = "mss-login-radial-menu-button";
     
                 // Anchor at menu origin (menu is positioned at centerX/centerY)
                 Object.assign(buttonEl.style, {
@@ -867,18 +867,18 @@ class mss_loginFloatingButton {
                 buttonEl.style.setProperty("--delay", `${index * 0.05}s`);
                 
                 // Debug: log CSS variables
-                console.log(`[mss_login] Button "${btn.label}" created with --dx=${dx.toFixed(1)}px, --dy=${dy.toFixed(1)}px, --delay=${(index * 0.05).toFixed(2)}s`);
+                console.log(`[mss-login] Button "${btn.label}" created with --dx=${dx.toFixed(1)}px, --dy=${dy.toFixed(1)}px, --delay=${(index * 0.05).toFixed(2)}s`);
     
                 buttonEl.innerHTML = `
-                    <div class="mss_login-radial-menu-button-icon" style="font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">${btn.icon}</div>
-                    <div class="mss_login-radial-menu-button-label" style="display: none;">${btn.label}</div>
+                    <div class="mss-login-radial-menu-button-icon" style="font-size: 16px; line-height: 1; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">${btn.icon}</div>
+                    <div class="mss-login-radial-menu-button-label" style="display: none;">${btn.label}</div>
                 `;
                 
                 // Tooltip functionality - show label after 2 seconds of hover
                 let hoverTimeout = null;
                 let isTooltipVisible = false;
                 const tooltip = document.createElement("div");
-                tooltip.className = "mss_login-radial-menu-button-tooltip";
+                tooltip.className = "mss-login-radial-menu-button-tooltip";
                 tooltip.textContent = btn.label;
                 tooltip.setAttribute("data-button-label", btn.label);
                 // Initially hidden
@@ -889,11 +889,11 @@ class mss_loginFloatingButton {
                 
                 const showTooltip = () => {
                     if (isTooltipVisible) {
-                        console.log(`[mss_login] Tooltip already visible for "${btn.label}"`);
+                        console.log(`[mss-login] Tooltip already visible for "${btn.label}"`);
                         return;
                     }
                     
-                    console.log(`[mss_login] Attempting to show tooltip for "${btn.label}"`);
+                    console.log(`[mss-login] Attempting to show tooltip for "${btn.label}"`);
                     
                     // Get button position
                     const rect = buttonEl.getBoundingClientRect();
@@ -901,8 +901,8 @@ class mss_loginFloatingButton {
                     const buttonCenterY = rect.top + rect.height / 2;
                     const tooltipSpacing = 12; // Space between button and tooltip
                     
-                    console.log(`[mss_login] Button rect:`, rect);
-                    console.log(`[mss_login] Tooltip element:`, tooltip);
+                    console.log(`[mss-login] Button rect:`, rect);
+                    console.log(`[mss-login] Tooltip element:`, tooltip);
                     
                     // Position tooltip to the right of the button, vertically centered
                     tooltip.style.setProperty("left", `${buttonRight + tooltipSpacing}px`, "important");
@@ -915,7 +915,7 @@ class mss_loginFloatingButton {
                     // Ensure tooltip is in the DOM
                     if (!tooltip.parentNode) {
                         document.body.appendChild(tooltip);
-                        console.log(`[mss_login] Appended tooltip to body`);
+                        console.log(`[mss-login] Appended tooltip to body`);
                     }
                     
                     // Force reflow
@@ -927,8 +927,8 @@ class mss_loginFloatingButton {
                         tooltip.classList.add("show");
                         tooltip.style.setProperty("opacity", "1", "important");
                         isTooltipVisible = true;
-                        console.log(`[mss_login] Tooltip shown for "${btn.label}" at (${buttonRight + tooltipSpacing}, ${buttonCenterY})`);
-                        console.log(`[mss_login] Tooltip computed style:`, window.getComputedStyle(tooltip));
+                        console.log(`[mss-login] Tooltip shown for "${btn.label}" at (${buttonRight + tooltipSpacing}, ${buttonCenterY})`);
+                        console.log(`[mss-login] Tooltip computed style:`, window.getComputedStyle(tooltip));
                     }, 10);
                 };
                 
@@ -947,20 +947,20 @@ class mss_loginFloatingButton {
                 };
                 
                 buttonEl.addEventListener("mouseenter", (e) => {
-                    console.log(`[mss_login] Mouse entered button "${btn.label}"`, e);
+                    console.log(`[mss-login] Mouse entered button "${btn.label}"`, e);
                     // Ensure button can receive hover events
                     buttonEl.style.setProperty("pointer-events", "auto", "important");
                     // Add hover class for visual feedback
                     buttonEl.classList.add("hover-active");
                     // Start timer to show tooltip after 2 seconds
                     hoverTimeout = setTimeout(() => {
-                        console.log(`[mss_login] Showing tooltip for "${btn.label}" after 2 seconds`);
+                        console.log(`[mss-login] Showing tooltip for "${btn.label}" after 2 seconds`);
                         showTooltip();
                     }, 2000);
                 });
                 
                 buttonEl.addEventListener("mouseleave", () => {
-                    console.log(`[mss_login] Mouse left button "${btn.label}"`);
+                    console.log(`[mss-login] Mouse left button "${btn.label}"`);
                     // Remove hover class
                     buttonEl.classList.remove("hover-active");
                     // Clear timer if mouse leaves before 2 seconds
@@ -992,7 +992,7 @@ class mss_loginFloatingButton {
                     e.preventDefault();
                     e.stopPropagation();
                     e.stopImmediatePropagation();
-                    console.log(`[mss_login] Radial menu button "${btn.label}" clicked`);
+                    console.log(`[mss-login] Radial menu button "${btn.label}" clicked`);
                     
                     // Call onClick handler (may be async)
                     try {
@@ -1001,14 +1001,14 @@ class mss_loginFloatingButton {
                             // If onClick returns a promise, await it
                             if (result && typeof result.then === 'function') {
                                 await result.catch(err => {
-                                    console.error(`[mss_login] Error in async onClick handler for "${btn.label}":`, err);
+                                    console.error(`[mss-login] Error in async onClick handler for "${btn.label}":`, err);
                                 });
                             }
                         } else {
-                            console.warn(`[mss_login] Button "${btn.label}" has no onClick handler`);
+                            console.warn(`[mss-login] Button "${btn.label}" has no onClick handler`);
                         }
                     } catch (error) {
-                        console.error(`[mss_login] Error in onClick handler for "${btn.label}":`, error);
+                        console.error(`[mss-login] Error in onClick handler for "${btn.label}":`, error);
                     }
                     
                     // Hide menu after a short delay to allow the click to process
@@ -1028,21 +1028,21 @@ class mss_loginFloatingButton {
             this.radialMenu.style.setProperty("position", "fixed", "important");
             this.radialMenu.style.setProperty("transform-origin", "center center", "important");
     
-            console.log(`[mss_login] Created ${buttons.length} radial menu buttons`);
+            console.log(`[mss-login] Created ${buttons.length} radial menu buttons`);
         } catch (error) {
-            console.error("[mss_login] Error refreshing buttons:", error);
-            console.error("[mss_login] Error stack:", error.stack);
+            console.error("[mss-login] Error refreshing buttons:", error);
+            console.error("[mss-login] Error stack:", error.stack);
         }
     }
             
     showRadialMenu() {
         if (!this.radialMenu) {
-            console.warn("[mss_login] Radial menu not created yet!");
+            console.warn("[mss-login] Radial menu not created yet!");
             return;
         }
     
-        console.log("[mss_login] Showing radial menu...");
-        console.log("[mss_login] Button position:", this.position);
+        console.log("[mss-login] Showing radial menu...");
+        console.log("[mss-login] Button position:", this.position);
     
         this.menuOpen = true;
         if (this.button) this.button.style.opacity = "1";
@@ -1067,17 +1067,17 @@ class mss_loginFloatingButton {
         this.radialMenu.classList.add("active");
     
         // Query buttons AFTER refreshButtons() populated the DOM
-        let buttons = this.radialMenu.querySelectorAll(".mss_login-radial-menu-button");
-        console.log(`[mss_login] Found ${buttons.length} radial menu buttons`);
+        let buttons = this.radialMenu.querySelectorAll(".mss-login-radial-menu-button");
+        console.log(`[mss-login] Found ${buttons.length} radial menu buttons`);
     
         if (buttons.length === 0) {
-            console.warn("[mss_login] No buttons found in radial menu! Recreating...");
+            console.warn("[mss-login] No buttons found in radial menu! Recreating...");
             this.refreshButtons();
     
-            const buttonsAfterRefresh = this.radialMenu.querySelectorAll(".mss_login-radial-menu-button");
-            console.log(`[mss_login] After refresh: ${buttonsAfterRefresh.length} buttons`);
+            const buttonsAfterRefresh = this.radialMenu.querySelectorAll(".mss-login-radial-menu-button");
+            console.log(`[mss-login] After refresh: ${buttonsAfterRefresh.length} buttons`);
             if (buttonsAfterRefresh.length === 0) {
-                console.error("[mss_login] Failed to create buttons!");
+                console.error("[mss-login] Failed to create buttons!");
                 return;
             }
             // Update buttons reference to the newly created ones
@@ -1105,8 +1105,8 @@ class mss_loginFloatingButton {
             void this.radialMenu.offsetHeight; // flush
     
             requestAnimationFrame(() => {
-                const btns = this.radialMenu.querySelectorAll(".mss_login-radial-menu-button");
-                console.log(`[mss_login] Found ${btns.length} buttons to animate`);
+                const btns = this.radialMenu.querySelectorAll(".mss-login-radial-menu-button");
+                console.log(`[mss-login] Found ${btns.length} buttons to animate`);
                 
                 btns.forEach((btn, index) => {
                     // Remove any existing animation classes
@@ -1121,7 +1121,7 @@ class mss_loginFloatingButton {
                     const dy = btn.style.getPropertyValue("--dy") || "0px";
                     const delayMs = parseFloat(btn.style.getPropertyValue("--delay") || "0") * 1000;
                     
-                    console.log(`[mss_login] Button ${index}: dx=${dx}, dy=${dy}, delay=${delayMs}ms`);
+                    console.log(`[mss-login] Button ${index}: dx=${dx}, dy=${dy}, delay=${delayMs}ms`);
                     
                     // Ensure display is set (needed for visibility)
                     btn.style.display = "flex";
@@ -1157,7 +1157,7 @@ class mss_loginFloatingButton {
                             btn.style.setProperty("background", "rgba(30, 30, 30, 0.98)", "important");
                             btn.style.setProperty("border", "3px solid rgba(255, 255, 255, 0.3)", "important");
                             btn.style.setProperty("display", "flex", "important");
-                            console.log(`[mss_login] Button ${index} ("${btn.querySelector('.mss_login-radial-menu-button-label')?.textContent || 'unknown'}") animated to: ${dx}, ${dy}`);
+                            console.log(`[mss-login] Button ${index} ("${btn.querySelector('.mss-login-radial-menu-button-label')?.textContent || 'unknown'}") animated to: ${dx}, ${dy}`);
                         }, 10);
                     });
                 });
@@ -1165,14 +1165,14 @@ class mss_loginFloatingButton {
                 // Start tracking mouse distance AFTER the menu is animating
                 this.startMouseDistanceTracking();
 
-                console.log("[mss_login] Radial menu shown with", btns.length, "buttons");
+                console.log("[mss-login] Radial menu shown with", btns.length, "buttons");
                 
                 // Fallback: ensure buttons are visible after transition should complete
                 setTimeout(() => {
                     btns.forEach((btn, idx) => {
                         const computed = window.getComputedStyle(btn);
                         if (computed.opacity === "0" || computed.opacity === "0px") {
-                            console.warn(`[mss_login] Button ${idx} still invisible after transition, forcing visibility`);
+                            console.warn(`[mss-login] Button ${idx} still invisible after transition, forcing visibility`);
                             const dx = btn.style.getPropertyValue("--dx") || "0px";
                             const dy = btn.style.getPropertyValue("--dy") || "0px";
                             btn.style.setProperty("opacity", "1", "important");
@@ -1188,13 +1188,13 @@ class mss_loginFloatingButton {
     
         // Optional: debug visibility after animation starts
         setTimeout(() => {
-            const btns = this.radialMenu.querySelectorAll(".mss_login-radial-menu-button");
+            const btns = this.radialMenu.querySelectorAll(".mss-login-radial-menu-button");
             const visibleButtons = Array.from(btns).filter(btn => {
                 const rect = btn.getBoundingClientRect();
                 return rect.width > 0 && rect.height > 0;
             });
     
-            console.log("[mss_login] Menu visibility check:", {
+            console.log("[mss-login] Menu visibility check:", {
                 totalButtons: btns.length,
                 visibleButtons: visibleButtons.length,
                 menuActive: this.radialMenu.classList.contains("active")
@@ -1210,7 +1210,7 @@ class mss_loginFloatingButton {
     
         this.stopMouseDistanceTracking();
     
-        const buttons = Array.from(this.radialMenu.querySelectorAll(".mss_login-radial-menu-button"));
+        const buttons = Array.from(this.radialMenu.querySelectorAll(".mss-login-radial-menu-button"));
         
         // Clean up tooltips
         buttons.forEach((btn) => {
@@ -1305,7 +1305,7 @@ class mss_loginFloatingButton {
             );
             
             // Check distance from any menu button
-            const buttons = this.radialMenu.querySelectorAll(".mss_login-radial-menu-button");
+            const buttons = this.radialMenu.querySelectorAll(".mss-login-radial-menu-button");
             let minDistanceToButton = Infinity;
             
             buttons.forEach(btn => {
@@ -1320,7 +1320,7 @@ class mss_loginFloatingButton {
             
             // If mouse is 100px away from button AND 100px away from all menu buttons, close menu
             if (distanceFromButton > 100 && minDistanceToButton > 100) {
-                console.log("[mss_login] Mouse moved away, closing menu");
+                console.log("[mss-login] Mouse moved away, closing menu");
                 this.hideRadialMenu();
             }
         };
@@ -1362,8 +1362,8 @@ function detectExtensionsForRadialMenu() {
                 onClick: () => {
                     if (window.mss_loginGallery && typeof window.mss_loginGallery.open === "function") {
                         window.mss_loginGallery.open();
-                    } else if (window.location.pathname !== "/mss_login-gallery") {
-                        window.location.href = "/mss_login-gallery";
+                    } else if (window.location.pathname !== "/mss-login-gallery") {
+                        window.location.href = "/mss-login-gallery";
                     }
                 }
             });
@@ -1374,16 +1374,16 @@ function detectExtensionsForRadialMenu() {
 }
 
 // --- Initialize Floating Button ---
-console.log("[mss_login] Registering FloatingButton extension...");
+console.log("[mss-login] Registering FloatingButton extension...");
 
 if (typeof app !== 'undefined' && app.registerExtension) {
     app.registerExtension({
-        name: "mss_login.FloatingButton",
+        name: "mss-login.FloatingButton",
         async setup() {
-            console.log("[mss_login] FloatingButton extension setup() called");
+            console.log("[mss-login] FloatingButton extension setup() called");
             // Wait a bit for other extensions to load
             setTimeout(() => {
-                console.log("[mss_login] Creating floating button...");
+                console.log("[mss-login] Creating floating button...");
                 // Detect extensions
                 detectExtensionsForRadialMenu();
                 
@@ -1392,12 +1392,12 @@ if (typeof app !== 'undefined' && app.registerExtension) {
                     try {
                         window._mss_loginFloatingButton = new mss_loginFloatingButton();
                         window._mss_loginRadialMenu = window._mss_loginFloatingButton;
-                        console.log("[mss_login] Floating button created successfully");
+                        console.log("[mss-login] Floating button created successfully");
                     } catch (error) {
-                        console.error("[mss_login] Error creating floating button:", error);
+                        console.error("[mss-login] Error creating floating button:", error);
                     }
                 } else {
-                    console.log("[mss_login] Floating button already exists");
+                    console.log("[mss-login] Floating button already exists");
                 }
                 
                 // Set up observer to hide/show button when dialog opens/closes
@@ -1425,8 +1425,8 @@ if (typeof app !== 'undefined' && app.registerExtension) {
             }, 1000);
         }
     });
-    console.log("[mss_login] FloatingButton extension registered");
+    console.log("[mss-login] FloatingButton extension registered");
 } else {
-    console.error("[mss_login] app.registerExtension not available! app:", typeof app);
+    console.error("[mss-login] app.registerExtension not available! app:", typeof app);
 }
 

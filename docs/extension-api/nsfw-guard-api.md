@@ -8,7 +8,7 @@ Public Python API for other ComfyUI extensions to use NSFW detection and enforce
 try:
     from ComfyUI_mss_login.api import is_available, check_tensor_nsfw, ...
 except ImportError:
-    from mss_login.api import is_available, check_tensor_nsfw, ...
+    from mss-login.api import is_available, check_tensor_nsfw, ...
 ```
 
 Always check `is_available()` before using other functions if the extension might be optional.
@@ -42,7 +42,7 @@ Args:
     username: Optional username to check. If None, checks the current session user.
 
 Returns:
-    bool: True if SFW is enforced (user should be blocked from NSFW), 
+    bool: True if SFW is enforced (user should be blocked from NSFW),
           False if user is allowed to view NSFW content.
 
 Note:
@@ -240,7 +240,7 @@ Returns:
 Example:
     # Flag an image as NSFW
     set_image_nsfw_tag("/output/image.png", is_nsfw=True)
-    
+
     # Mark an image as safe
     set_image_nsfw_tag("/output/image.png", is_nsfw=False)
 

@@ -14,12 +14,12 @@ Brief description of your goal (e.g. “Use API tokens with Comfy Portal,” “
 
 - Steps you’ve already taken (install path, config changes, env vars).
 - Relevant config (redact secrets): `config.json` snippets, `.env.example`-style values, or `mss_login_groups.json` excerpts.
-- Any error messages or log lines (from server, browser console, or `mss_login.log`).
+- Any error messages or log lines (from server, browser console, or `mss-login.log`).
 
 ## Environment
 
 - **ComfyUI version:** (if known)
-- **mss_login version:** (from pyproject.toml or UI)
+- **mss-login version:** (from pyproject.toml or UI)
 - **OS and install type:** (e.g. Windows portable, Docker, comfy-cli)
 - **Database:** SQLite / PostgreSQL
 

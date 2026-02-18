@@ -1,7 +1,7 @@
 /**
  * MFA page: verify or setup two-factor authentication.
  * Token and mode are read from sessionStorage (set by login page before redirect).
- * APIs: /mss_login/api/mfa/setup, verify-setup, verify.
+ * APIs: /mss-login/api/mfa/setup, verify-setup, verify.
  */
 (function () {
 	"use strict";
@@ -95,7 +95,7 @@
 			const backupDisplay = document.getElementById("mfa-backup-display");
 			const backupCodeEl = document.getElementById("mfa-backup-code");
 
-			fetch("/mss_login/api/mfa/setup", {
+			fetch("/mss-login/api/mfa/setup", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ mfa_temp_token: this.token }),
@@ -155,7 +155,7 @@
 				btn.disabled = true;
 				btn.textContent = "Verifying...";
 			}
-			fetch("/mss_login/api/mfa/verify", {
+			fetch("/mss-login/api/mfa/verify", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(body),
@@ -199,7 +199,7 @@
 				btn.disabled = true;
 				btn.textContent = "Verifying...";
 			}
-			fetch("/mss_login/api/mfa/verify-setup", {
+			fetch("/mss-login/api/mfa/verify-setup", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({ mfa_temp_token: this.token, code: code }),
@@ -216,7 +216,7 @@
 						}
 						return;
 					}
-					return fetch("/mss_login/api/mfa/verify", {
+					return fetch("/mss-login/api/mfa/verify", {
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
 						body: JSON.stringify({ mfa_temp_token: self.token, code: code }),

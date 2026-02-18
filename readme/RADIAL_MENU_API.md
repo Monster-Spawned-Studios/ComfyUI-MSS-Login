@@ -1,10 +1,10 @@
-# mss_login Radial Menu API
+# mss-login Radial Menu API
 
-This API allows ComfyUI extensions to add custom buttons to the mss_login floating button's radial menu, enabling quick access to extension features.
+This API allows ComfyUI extensions to add custom buttons to the mss-login floating button's radial menu, enabling quick access to extension features.
 
 ## Overview
 
-The mss_login floating button appears as a draggable button on the screen. When double-clicked, it opens a radial menu with buttons for Settings, Logout, and any registered extension buttons.
+The mss-login floating button appears as a draggable button on the screen. When double-clicked, it opens a radial menu with buttons for Settings, Logout, and any registered extension buttons.
 
 ## API Reference
 
@@ -35,7 +35,7 @@ window.mss_loginRadialMenu.register({
     order: 10,
     onClick: () => {
         // Open gallery
-        window.location.href = "/mss_login-gallery";
+        window.location.href = "/mss-login-gallery";
     }
 });
 ```
@@ -157,12 +157,12 @@ window.mss_loginRadialMenu.register({
     order: 10,
     onClick: () => {
         // Check if gallery is already open
-        if (window.location.pathname === "/mss_login-gallery") {
+        if (window.location.pathname === "/mss-login-gallery") {
             // Refresh gallery
             window.location.reload();
         } else {
             // Navigate to gallery
-            window.location.href = "/mss_login-gallery";
+            window.location.href = "/mss-login-gallery";
         }
     }
 });
@@ -192,7 +192,7 @@ window.mss_loginRadialMenu.register({
 
 The radial menu includes two built-in buttons that cannot be unregistered:
 
-1. **Settings** (order: 0) - Opens the mss_login admin panel
+1. **Settings** (order: 0) - Opens the mss-login admin panel
 2. **Logout** (order: 1) - Logs out the current user
 
 Extension buttons appear after these built-in buttons, sorted by their `order` value.
@@ -233,7 +233,7 @@ The floating button:
 - Can be dragged anywhere on the screen (click and hold to move)
 - Opens the radial menu on double-click
 - Saves its position in localStorage
-- Automatically detects some extensions (like mss_login-Gallery)
+- Automatically detects some extensions (like mss-login-Gallery)
 
 ## Notes
 

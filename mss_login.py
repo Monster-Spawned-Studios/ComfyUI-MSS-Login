@@ -29,9 +29,9 @@ ASSETS_DIR = "..."
 
 app.add_routes(
     [
-        web.static("/mss_login/css", CSS_DIR),
-        web.static("/mss_login/js", JS_DIR),
-        web.static("/mss_login/assets", ASSETS_DIR),
+        web.static("/mss-login/css", CSS_DIR),
+        web.static("/mss-login/js", JS_DIR),
+        web.static("/mss-login/assets", ASSETS_DIR),
     ]
 )
 
@@ -46,7 +46,7 @@ app.middlewares.append(
 app.middlewares.append(
     jwt_auth.create_jwt_middleware(
         public=("/login", "/logout", "/register", "/mfa"),
-        public_prefixes=("/mss_login", "/mss_login/api/mfa", "/assets"),
+        public_prefixes=("/mss-login", "/mss-login/api/mfa", "/assets"),
     )
 )
 

@@ -64,7 +64,7 @@ Four roles: **Admin, Power, User, Guest**
 Each with configurable permissions stored in `mss_login_groups.json`.
 
 <p align="center">
-  <img src="./readme/images/mss_login-Login.png" />
+  <img src="./readme/images/mss-login-Login.png" />
 </p>
 
 ### 🚫 **Save & Delete Workflow Blocking**
@@ -146,7 +146,7 @@ A comprehensive public API that allows other ComfyUI extensions to:
 - Validate image tensors, PIL Images, or file paths for NSFW content
 - Integrate NSFW protection into custom nodes and extensions
 - **Metadata-based tagging system** - Images are tagged with NSFW metadata stored alongside files
-- **Gallery integration endpoint** - `/mss_login-gallery/mark-nsfw` for manual image flagging
+- **Gallery integration endpoint** - `/mss-login-gallery/mark-nsfw` for manual image flagging
 - **Automatic scanning** - Background scanning of output directory with caching
 - **Per-user enforcement** - SFW restrictions apply per-user based on role permissions
 
@@ -168,7 +168,7 @@ if is_sfw_enforced_for_user():
 
 ```javascript
 // Mark an image as NSFW from gallery UI
-fetch('/mss_login-gallery/mark-nsfw', {
+fetch('/mss-login-gallery/mark-nsfw', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -211,7 +211,7 @@ ComfyUI
 │   │   └── reactor_sfw_intercept.py → ReActor SFW patch
 │   └── web/
 │       ├── js/mss_login_setting.js → UI enforcement + settings panel
-│       ├── css/mss_login.css        → Themed UI
+│       ├── css/mss-login.css        → Themed UI
 │       └── assets/mss_logo.png
 │
 └── ComfyUI (upstream)
@@ -224,7 +224,7 @@ ComfyUI
 1. Extract mss_login into:
 
 ```
-ComfyUI/custom_nodes/mss_login/
+ComfyUI/custom_nodes/mss-login/
 ```
 
 1. Restart ComfyUI.
@@ -293,7 +293,7 @@ mss_login/
 │
 ├── web/
 │   ├── js/mss_login_setting.js → UI enforcement + settings panel
-│   ├── css/mss_login.css        → Themed UI
+│   ├── css/mss-login.css        → Themed UI
 │   └── assets/mss_logo.png
 │
 └── users/
@@ -446,7 +446,7 @@ The NSFW Guard API provides programmatic access to NSFW detection and enforcemen
 
 ### Gallery Integration Endpoint
 
-**POST `/mss_login-gallery/mark-nsfw`**
+**POST `/mss-login-gallery/mark-nsfw`**
 Manually mark an image as NSFW or SFW. Designed for integration with gallery extensions.
 
 **Request Body:**
@@ -480,21 +480,21 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 
 ### Authentication Endpoints
 
-**POST `/mss_login/api/login`** - User login
-**POST `/mss_login/api/register`** - User registration
-**POST `/mss_login/api/guest-login`** - Guest login
-**POST `/mss_login/api/refresh-token`** - Token refresh
+**POST `/mss-login/api/login`** - User login
+**POST `/mss-login/api/register`** - User registration
+**POST `/mss-login/api/guest-login`** - Guest login
+**POST `/mss-login/api/refresh-token`** - Token refresh
 
 ### Admin Endpoints
 
-**GET/PUT `/mss_login/api/users`** - User management
-**GET/PUT `/mss_login/api/groups`** - Group/permission management
-**PUT `/mss_login/api/ip-lists`** - IP whitelist/blacklist
-**POST `/mss_login/api/nsfw-management`** - NSFW admin tools (scan, fix, clear)
+**GET/PUT `/mss-login/api/users`** - User management
+**GET/PUT `/mss-login/api/groups`** - Group/permission management
+**PUT `/mss-login/api/ip-lists`** - IP whitelist/blacklist
+**POST `/mss-login/api/nsfw-management`** - NSFW admin tools (scan, fix, clear)
 
 ### User Environment Endpoints
 
-**POST `/mss_login/api/user-env`** - User folder operations (purge, list, promote)
+**POST `/mss-login/api/user-env`** - User folder operations (purge, list, promote)
 
 ### Extension Integration
 
@@ -541,7 +541,7 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 ### `routes/user.py`
 
 - User environment operations
-- **Gallery integration**: `/mss_login-gallery/mark-nsfw` endpoint
+- **Gallery integration**: `/mss-login-gallery/mark-nsfw` endpoint
 - File management (purge, list, promote workflows)
 
 ### `routes/workflow_routes.py`
@@ -592,7 +592,7 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 Ensure the file exists:
 
 ```
-mss_login/web/assets/mss_logo.png
+mss-login/web/assets/mss_logo.png
 ```
 
 ### UI Not Updating
@@ -649,7 +649,7 @@ If the client sends a Bearer token but the server returns "API token not found o
 
 - **Unset SECRET_KEY:** If the `SECRET_KEY` environment variable is not set, a random key is used and persisted to `users/.ephemeral_secret_key` (do not commit this file). Sessions and MFA data use this key until restart.
 - **Setting a permanent SECRET_KEY:** When you later set `SECRET_KEY` in the environment and restart, the extension will automatically migrate TOTP secrets from the ephemeral key to the new key and then remove the ephemeral file. No manual action needed if the file is still present.
-- **Recovery mode:** If the ephemeral file was deleted or migration failed, users with MFA may be unable to log in. Enable recovery mode: set `RECOVERY_MODE=1`, then from an allowed host (default: localhost only), send `POST /api/mss_login/recovery/reset-mfa`. This clears MFA for all users so they can log in with password and re-enroll MFA. Override allowed hosts with `RECOVERY_MODE_HOST` or `RECOVRY_MODE_HOST` (comma-separated IPs). Recovery is only accessible when `RECOVERY_MODE` is enabled and the client IP is in the allowed list.
+- **Recovery mode:** If the ephemeral file was deleted or migration failed, users with MFA may be unable to log in. Enable recovery mode: set `RECOVERY_MODE=1`, then from an allowed host (default: localhost only), send `POST /api/mss-login/recovery/reset-mfa`. This clears MFA for all users so they can log in with password and re-enroll MFA. Override allowed hosts with `RECOVERY_MODE_HOST` or `RECOVRY_MODE_HOST` (comma-separated IPs). Recovery is only accessible when `RECOVERY_MODE` is enabled and the client IP is in the allowed list.
 
 ---
 
@@ -683,7 +683,7 @@ This project follows a semantic-style versioning flow adapted for active develop
 - **Metadata-based tagging system**
   - Images are now tagged with NSFW metadata stored alongside files (`.nsfw_metadata.json`)
 - **Gallery integration endpoint**
-  - New `/mss_login-gallery/mark-nsfw` endpoint for manual image flagging from gallery UIs
+  - New `/mss-login-gallery/mark-nsfw` endpoint for manual image flagging from gallery UIs
 - **Recursive file search**
   - mark-nsfw endpoint now searches subdirectories to find images
 - **Enhanced API functions**

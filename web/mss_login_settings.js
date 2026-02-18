@@ -8,7 +8,7 @@ let groupsConfig = {};
 
 // --- Extension Tab Registry API ---
 /**
- * Registry for extension tabs in the mss_login admin panel.
+ * Registry for extension tabs in the mss-login admin panel.
  * Extensions can register custom tabs to manage their own permissions or settings.
  */
 window.mss_loginAdminTabs = {
@@ -43,25 +43,25 @@ window.mss_loginAdminTabs = {
      */
     register(config) {
         if (!config || !config.id || !config.label || !config.render) {
-            console.error("[mss_login] Tab registration failed: missing required fields (id, label, render)");
+            console.error("[mss-login] Tab registration failed: missing required fields (id, label, render)");
             return false;
         }
         
         // Validate ID format
         if (!/^[a-z0-9_-]+$/.test(config.id)) {
-            console.error("[mss_login] Tab registration failed: id must be lowercase alphanumeric with underscores/hyphens only");
+            console.error("[mss-login] Tab registration failed: id must be lowercase alphanumeric with underscores/hyphens only");
             return false;
         }
         
         // Check for duplicate IDs
         if (this._tabs.some(t => t.id === config.id)) {
-            console.warn(`[mss_login] Tab with id "${config.id}" already registered, skipping`);
+            console.warn(`[mss-login] Tab with id "${config.id}" already registered, skipping`);
             return false;
         }
         
         // Check for conflicts with built-in tabs
         if (this._defaultOrder.includes(config.id)) {
-            console.error(`[mss_login] Tab registration failed: id "${config.id}" conflicts with built-in tab`);
+            console.error(`[mss-login] Tab registration failed: id "${config.id}" conflicts with built-in tab`);
             return false;
         }
         
@@ -77,7 +77,7 @@ window.mss_loginAdminTabs = {
         // Sort by order
         this._tabs.sort((a, b) => a.order - b.order);
         
-        console.log(`[mss_login] Registered extension tab: "${config.id}" (${config.label})`);
+        console.log(`[mss-login] Registered extension tab: "${config.id}" (${config.label})`);
         return true;
     },
     
@@ -90,7 +90,7 @@ window.mss_loginAdminTabs = {
         const index = this._tabs.findIndex(t => t.id === id);
         if (index !== -1) {
             this._tabs.splice(index, 1);
-            console.log(`[mss_login] Unregistered extension tab: "${id}"`);
+            console.log(`[mss-login] Unregistered extension tab: "${id}"`);
             return true;
         }
         return false;
@@ -109,13 +109,13 @@ window.mss_loginAdminTabs = {
      */
     clear() {
         this._tabs = [];
-        console.log("[mss_login] Cleared all extension tabs");
+        console.log("[mss-login] Cleared all extension tabs");
     }
 };
 
 // Backend API endpoints (adjust if your backend uses different paths)
-const IP_API_ENDPOINT = "/mss_login/api/ip-lists";
-const USER_ENV_API_ENDPOINT = "/mss_login/api/user-env";
+const IP_API_ENDPOINT = "/mss-login/api/ip-lists";
+const USER_ENV_API_ENDPOINT = "/mss-login/api/user-env";
 
 // --- 1. BLOCKING MAP (The Enforcer) ---
 // If a user lacks permission for the Key, these CSS selectors are hidden via !important
@@ -237,8 +237,8 @@ const CSS_BLOCK_MAP = {
         "li.p-listbox-option[aria-label='Mask Editor']"
     ],
     "settings_mss_loginsettings": [
-        "li[aria-label='mss_login']",
-        "li.p-listbox-option[aria-label='mss_login']"
+        "li[aria-label='mss-login']",
+        "li.p-listbox-option[aria-label='mss-login']"
     ],
 
     // iTools
@@ -274,7 +274,7 @@ const CSS_BLOCK_MAP = {
 // --- 2. MODAL CSS (The Look & Feel) ---
 const ADMIN_STYLES = `
 /* Overlay Backdrop */
-.mss_login-modal-overlay {
+.mss-login-modal-overlay {
     position: fixed;
     inset: 0;
     width: 100vw;
@@ -289,7 +289,7 @@ const ADMIN_STYLES = `
 }
 
 /* Main Window */
-.mss_login-modal {
+.mss-login-modal {
     position: relative;
     width: 960px;
     max-width: 96vw;
@@ -309,7 +309,7 @@ const ADMIN_STYLES = `
 }
 
 /* Large transparent logo in the background */
-.mss_login-modal::before {
+.mss-login-modal::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -324,7 +324,7 @@ const ADMIN_STYLES = `
 }
 
 /* Small logo badge in the top-right corner */
-.mss_login-modal::after {
+.mss-login-modal::after {
     content: "";
     position: absolute;
     top: 10px;
@@ -341,7 +341,7 @@ const ADMIN_STYLES = `
 }
 
 /* Header */
-.mss_login-modal-header {
+.mss-login-modal-header {
     padding: 14px 20px;
     background: linear-gradient(
         to right,
@@ -355,19 +355,19 @@ const ADMIN_STYLES = `
     z-index: 2;
     position: relative;
 }
-.mss_login-modal-title {
+.mss-login-modal-title {
     font-size: 17px;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: #ffffff;
 }
-.mss_login-modal-subtitle {
+.mss-login-modal-subtitle {
     font-size: 12px;
     opacity: 0.9;
     color: #d0d0d0;
 }
-.mss_login-modal-close {
+.mss-login-modal-close {
     cursor: pointer;
     font-size: 20px;
     color: #e0e0e0;
@@ -377,14 +377,14 @@ const ADMIN_STYLES = `
     padding: 2px 6px;
     border-radius: 999px;
 }
-.mss_login-modal-close:hover {
+.mss-login-modal-close:hover {
     color: #ffffff;
     background: rgba(255,255,255,0.12);
     transform: translateY(-1px);
 }
 
 /* Body & Tabs */
-.mss_login-modal-body {
+.mss-login-modal-body {
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -397,14 +397,14 @@ const ADMIN_STYLES = `
     z-index: 2;
     position: relative;
 }
-.mss_login-tabs {
+.mss-login-tabs {
     display: flex;
     background: #181b22;
     padding: 0 16px;
     border-bottom: 1px solid rgba(255,255,255,0.14);
     gap: 2px;
 }
-.mss_login-tab {
+.mss-login-tab {
     padding: 10px 20px;
     cursor: pointer;
     font-size: 12px;
@@ -415,34 +415,34 @@ const ADMIN_STYLES = `
     text-transform: uppercase;
     letter-spacing: 0.08em;
 }
-.mss_login-tab:hover {
+.mss-login-tab:hover {
     color: #ffffff;
     background: rgba(255,255,255,0.06);
 }
-.mss_login-tab.active {
+.mss-login-tab.active {
     color: #ffffff;
     border-bottom-color: var(--p-button-primary-bg, #3b82f6);
     background: rgba(59,130,246,0.18);
 }
 
 /* Content Area */
-.mss_login-content {
+.mss-login-content {
     flex: 1;
     padding: 10px 0 0;
     overflow-y: auto;
     display: none;
 }
-.mss_login-content.active {
+.mss-login-content.active {
     display: block;
 }
 
 /* Tables */
-.mss_login-table {
+.mss-login-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
 }
-.mss_login-table th {
+.mss-login-table th {
     text-align: left;
     padding: 12px 18px;
     border-bottom: 1px solid rgba(255,255,255,0.22);
@@ -455,22 +455,22 @@ const ADMIN_STYLES = `
     letter-spacing: 0.10em;
     color: #f9fafb;  /* bright */
 }
-.mss_login-table td {
+.mss-login-table td {
     padding: 10px 18px;
     border-bottom: 1px solid rgba(255,255,255,0.10);
     vertical-align: middle;
     color: #e5e7f3;  /* brighter row text */
     font-size: 13px;
 }
-.mss_login-table tr:nth-child(even) td {
+.mss-login-table tr:nth-child(even) td {
     background: rgba(255,255,255,0.02);
 }
-.mss_login-table tr:hover td {
+.mss-login-table tr:hover td {
     background: rgba(59,130,246,0.20);
 }
 
 /* Table Sections */
-.mss_login-section-row td {
+.mss-login-section-row td {
     background: #151821;
     font-weight: 800;
     text-transform: uppercase;
@@ -482,14 +482,14 @@ const ADMIN_STYLES = `
 }
 
 /* Checkbox cell */
-.mss_login-check-cell {
+.mss-login-check-cell {
     text-align: center;
     width: 80px;
     border-left: 1px solid rgba(255,255,255,0.15);
 }
 
 /* Buttons */
-.mss_login-btn {
+.mss-login-btn {
     background: var(--p-button-primary-bg, #3b82f6);
     color: var(--p-button-primary-text, #ffffff);
     border: 1px solid rgba(255,255,255,0.24);
@@ -501,31 +501,31 @@ const ADMIN_STYLES = `
     transition: 0.16s ease;
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
-.mss_login-btn:hover {
+.mss-login-btn:hover {
     opacity: 0.97;
     transform: translateY(-1px);
     box-shadow: 0 6px 18px rgba(0,0,0,0.7);
 }
-.mss_login-btn.secondary {
+.mss-login-btn.secondary {
     background: rgba(255,255,255,0.04);
     color: #e5e7f3;
 }
-.mss_login-btn.danger {
+.mss-login-btn.danger {
     background: #7a2525;
     border-color: #aa3a3a;
 }
-.mss_login-btn.mss_login-btn-danger {
+.mss-login-btn.mss-login-btn-danger {
     background: #8b1f2f;
     border: 1px solid #b03a4a;
 }
 
-.mss_login-btn.mss_login-btn-danger:hover {
+.mss-login-btn.mss-login-btn-danger:hover {
     background: #b03a4a;
     border-color: #d14f5d;
 }
 
 /* Launcher button in the Comfy Settings panel */
-.mss_login-launch-btn {
+.mss-login-launch-btn {
     width: 100%;
     padding: 10px;
     font-weight: 600;
@@ -541,7 +541,7 @@ const ADMIN_STYLES = `
     text-align: center;
 }
 
-.mss_login-launch-btn:hover {
+.mss-login-launch-btn:hover {
     background: #1d4ed8;                 /* blue on hover */
     border-color: #1e40af;
     color: #ffffff;
@@ -549,33 +549,33 @@ const ADMIN_STYLES = `
 }
 
 /* Small info text */
-.mss_login-note {
+.mss-login-note {
     font-size: 12px;
     opacity: 0.95;
     color: #d3d3dd;
 }
 
 /* Flex layouts */
-.mss_login-row {
+.mss-login-row {
     display: flex;
     gap: 12px;
     align-items: flex-start;
 }
-.mss_login-row-space {
+.mss-login-row-space {
     display: flex;
     gap: 12px;
     justify-content: space-between;
     align-items: center;
 }
-.mss_login-col {
+.mss-login-col {
     display: flex;
     flex-direction: column;
     gap: 6px;
 }
 
 /* Inputs / textareas */
-.mss_login-textarea,
-.mss_login-input {
+.mss-login-textarea,
+.mss-login-input {
     background: #181a23;
     color: #f5f5f7;
     border-radius: 6px;
@@ -584,12 +584,12 @@ const ADMIN_STYLES = `
     font-size: 12px;
     resize: vertical;
 }
-.mss_login-textarea {
+.mss-login-textarea {
     min-height: 140px;
     width: 100%;
     font-family: monospace;
 }
-.mss_login-select {
+.mss-login-select {
     background: #181a23;
     color: #f5f5f7;
     border-radius: 6px;
@@ -599,20 +599,20 @@ const ADMIN_STYLES = `
 }
 
 /* Env file list / cards */
-.mss_login-card {
+.mss-login-card {
     border-radius: 10px;
     border: 1px solid rgba(255,255,255,0.18);
     background: #13141c;
     padding: 12px 14px;
     margin: 4px 0 10px;
 }
-.mss_login-card-header {
+.mss-login-card-header {
     font-size: 13px;
     font-weight: 600;
     margin-bottom: 4px;
     color: #ffffff;
 }
-.mss_login-chip {
+.mss-login-chip {
     display: inline-flex;
     padding: 2px 7px;
     border-radius: 999px;
@@ -621,7 +621,7 @@ const ADMIN_STYLES = `
     letter-spacing: 0.08em;
     border: 1px solid rgba(255,255,255,0.35);
 }
-.mss_login-file-list {
+.mss-login-file-list {
     max-height: 240px;
     overflow-y: auto;
     font-family: monospace;
@@ -634,7 +634,7 @@ const ADMIN_STYLES = `
 }
 
 /* Toast */
-.mss_login-toast {
+.mss-login-toast {
     position: fixed;
     top: 18px;
     left: 50%;
@@ -650,7 +650,7 @@ const ADMIN_STYLES = `
 }
 
 /* Enforcement */
-.mss_login-blocked-item {
+.mss-login-blocked-item {
     display: none !important;
     opacity: 0 !important;
     pointer-events: none !important;
@@ -685,15 +685,15 @@ window._mss_loginDialogInstance = null;
 class mss_loginDialog extends ComfyDialog {
     constructor() {
         super();
-        this.overlay = $el("div.mss_login-modal-overlay");
-        this.element = $el("div.mss_login-modal");
+        this.overlay = $el("div.mss-login-modal-overlay");
+        this.element = $el("div.mss-login-modal");
     }
 
     async show() {
         // Prevent multiple dialogs from being open at the same time
         if (window._mss_loginDialogInstance && window._mss_loginDialogInstance.overlay && 
             document.body.contains(window._mss_loginDialogInstance.overlay)) {
-            console.log("[mss_login] Dialog is already open, focusing existing dialog");
+            console.log("[mss-login] Dialog is already open, focusing existing dialog");
             // Focus the existing dialog by bringing it to front
             window._mss_loginDialogInstance.overlay.style.zIndex = "999999";
             return;
@@ -713,9 +713,9 @@ class mss_loginDialog extends ComfyDialog {
         
         // Fetch fresh data
         const [me, groups, users] = await Promise.all([
-            getData("/mss_login/api/me"),
-            getData("/mss_login/api/groups"),
-            getData("/mss_login/api/users")
+            getData("/mss-login/api/me"),
+            getData("/mss-login/api/groups"),
+            getData("/mss-login/api/users")
         ]);
 
         currentUser = me;
@@ -728,7 +728,7 @@ class mss_loginDialog extends ComfyDialog {
                 <div style="padding:40px; text-align:center; color:#ff6b6b;">
                     <h2>Access Denied</h2>
                     <p>Administrative privileges are required to modify system policies.</p>
-                    <br><button id='s-close-btn' class='mss_login-btn'>Close</button>
+                    <br><button id='s-close-btn' class='mss-login-btn'>Close</button>
                 </div>`;
             this.element.querySelector("#s-close-btn").onclick = () => this.close();
             return;
@@ -760,24 +760,24 @@ class mss_loginDialog extends ComfyDialog {
             // ID is validated during registration (lowercase alphanumeric + underscore/hyphen), safe for HTML attributes
             // Label needs escaping as it's user-provided text
             const escapedLabel = escapeHtml(tab.label);
-            return `<div class="mss_login-tab${isActive ? ' active' : ''}" data-tab="${tab.id}">${escapedLabel}</div>`;
+            return `<div class="mss-login-tab${isActive ? ' active' : ''}" data-tab="${tab.id}">${escapedLabel}</div>`;
         }).join("");
         
         // Build content containers HTML - mark "users" content as active
         // tab.id is already validated during registration (lowercase alphanumeric + underscore/hyphen)
         const contentHTML = allTabs.map((tab, index) => {
             const isActive = tab.id === "users" || (index === 0 && !builtInTabs.some(bt => bt.id === tab.id));
-            return `<div class="mss_login-content${isActive ? ' active' : ''}" id="mss_login-tab-${tab.id}"></div>`;
+            return `<div class="mss-login-content${isActive ? ' active' : ''}" id="mss-login-tab-${tab.id}"></div>`;
         }).join("");
         
         // Render Layout
         this.element.innerHTML = `
-            <div class="mss_login-modal-header">
-                <span class="mss_login-modal-title">mss_login Security Policy</span>
-                <button class="mss_login-modal-close">✕</button>
+            <div class="mss-login-modal-header">
+                <span class="mss-login-modal-title">MSS-Login Security Policy</span>
+                <button class="mss-login-modal-close">✕</button>
             </div>
-            <div class="mss_login-modal-body">
-                <div class="mss_login-tabs">
+            <div class="mss-login-modal-body">
+                <div class="mss-login-tabs">
                     ${tabsHTML}
                 </div>
                 ${contentHTML}
@@ -785,19 +785,19 @@ class mss_loginDialog extends ComfyDialog {
         `;
 
         // Bindings
-        this.element.querySelector(".mss_login-modal-close").onclick = () => this.close();
+        this.element.querySelector(".mss-login-modal-close").onclick = () => this.close();
         this.overlay.onclick = (e) => { if (e.target === this.overlay) this.close(); };
 
-        const tabs = this.element.querySelectorAll(".mss_login-tab");
+        const tabs = this.element.querySelectorAll(".mss-login-tab");
         tabs.forEach(t => t.onclick = () => {
             tabs.forEach(x => x.classList.remove("active"));
-            this.element.querySelectorAll(".mss_login-content").forEach(c => c.classList.remove("active"));
+            this.element.querySelectorAll(".mss-login-content").forEach(c => c.classList.remove("active"));
             t.classList.add("active");
             
             // Validate tab ID before using in querySelector to prevent injection
             const tabId = t.dataset.tab;
             if (tabId && /^[a-z0-9_-]+$/.test(tabId)) {
-                const contentEl = this.element.querySelector(`#mss_login-tab-${tabId}`);
+                const contentEl = this.element.querySelector(`#mss-login-tab-${tabId}`);
                 if (contentEl) {
                     contentEl.classList.add("active");
                 }
@@ -805,14 +805,14 @@ class mss_loginDialog extends ComfyDialog {
         });
 
         // Fill Data - Built-in tabs
-        this.renderUsers(usersList, this.element.querySelector("#mss_login-tab-users"));
-        this.renderPerms(this.element.querySelector("#mss_login-tab-perms"));
-        await this.renderIpRules(this.element.querySelector("#mss_login-tab-ip"));
-        this.renderUserEnv(this.element.querySelector("#mss_login-tab-env"), usersList);
-        this.renderNsfwManagement(this.element.querySelector("#mss_login-tab-nsfw"));
-        await this.renderSharedModels(this.element.querySelector("#mss_login-tab-shared-models"), usersList);
-        await this.renderTokenStorage(this.element.querySelector("#mss_login-tab-token-storage"));
-        await this.renderUsersDbConfig(this.element.querySelector("#mss_login-tab-users-db"));
+        this.renderUsers(usersList, this.element.querySelector("#mss-login-tab-users"));
+        this.renderPerms(this.element.querySelector("#mss-login-tab-perms"));
+        await this.renderIpRules(this.element.querySelector("#mss-login-tab-ip"));
+        this.renderUserEnv(this.element.querySelector("#mss-login-tab-env"), usersList);
+        this.renderNsfwManagement(this.element.querySelector("#mss-login-tab-nsfw"));
+        await this.renderSharedModels(this.element.querySelector("#mss-login-tab-shared-models"), usersList);
+        await this.renderTokenStorage(this.element.querySelector("#mss-login-tab-token-storage"));
+        await this.renderUsersDbConfig(this.element.querySelector("#mss-login-tab-users-db"));
         
         // Fill Data - Extension tabs
         const context = {
@@ -824,11 +824,11 @@ class mss_loginDialog extends ComfyDialog {
         for (const extTab of extensionTabs) {
             // Validate tab ID before using in querySelector (double-check, already validated during registration)
             if (!/^[a-z0-9_-]+$/.test(extTab.id)) {
-                console.error(`[mss_login] Invalid tab ID format: "${extTab.id}", skipping render`);
+                console.error(`[mss-login] Invalid tab ID format: "${extTab.id}", skipping render`);
                 continue;
             }
             
-            const container = this.element.querySelector(`#mss_login-tab-${extTab.id}`);
+            const container = this.element.querySelector(`#mss-login-tab-${extTab.id}`);
             if (container) {
                 try {
                     // Show loading state
@@ -836,7 +836,7 @@ class mss_loginDialog extends ComfyDialog {
                     // Render extension tab content
                     await extTab.render(container, context);
                 } catch (error) {
-                    console.error(`[mss_login] Error rendering extension tab "${extTab.id}":`, error);
+                    console.error(`[mss-login] Error rendering extension tab "${extTab.id}":`, error);
                     // Escape error message to prevent XSS
                     const errorMsg = String(error.message || "Unknown error").replace(/[<>]/g, "");
                     const escapedLabel = escapeHtml(extTab.label);
@@ -849,7 +849,7 @@ class mss_loginDialog extends ComfyDialog {
                     `;
                 }
             } else {
-                console.warn(`[mss_login] Container not found for extension tab: "${extTab.id}"`);
+                console.warn(`[mss-login] Container not found for extension tab: "${extTab.id}"`);
             }
         }
     }
@@ -871,7 +871,7 @@ class mss_loginDialog extends ComfyDialog {
     // Expose dialog class globally for floating button and other extensions
     static expose() {
         window.mss_loginDialog = mss_loginDialog;
-        console.log("[mss_login] mss_loginDialog exposed to window.mss_loginDialog");
+        console.log("[mss-login] mss_loginDialog exposed to window.mss_loginDialog");
     }
 
 renderUsers(list, container) {
@@ -879,7 +879,7 @@ renderUsers(list, container) {
     const self = this;
 
     let html = `
-        <table class="mss_login-table">
+        <table class="mss-login-table">
             <thead>
                 <tr>
                     <th>User Account</th>
@@ -901,7 +901,7 @@ renderUsers(list, container) {
         const sfwEnabled = (u.sfw_check !== false);
 
         let actionsHtml = `
-            <button class="mss_login-btn btn-save" data-user="${uname}">
+            <button class="mss-login-btn btn-save" data-user="${uname}">
                 Save Changes
             </button>
         `;
@@ -909,7 +909,7 @@ renderUsers(list, container) {
         // Don't allow deleting yourself or the guest account
         if (!isSelf && !isGuest) {
             actionsHtml += `
-                <button class="mss_login-btn mss_login-btn-danger btn-delete" data-user="${uname}">
+                <button class="mss-login-btn mss-login-btn-danger btn-delete" data-user="${uname}">
                     Delete
                 </button>
             `;
@@ -920,7 +920,7 @@ renderUsers(list, container) {
                 <td><strong>${uname}</strong></td>
                 <td>
                     <select
-                        class="mss_login-role-select"
+                        class="mss-login-role-select"
                         data-user="${uname}"
                         style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; width: 150px;"
                     >
@@ -934,7 +934,7 @@ renderUsers(list, container) {
                 <td style="text-align:center">
                     <input
                         type="checkbox"
-                        class="mss_login-sfw-toggle"
+                        class="mss-login-sfw-toggle"
                         data-user="${uname}"
                         ${sfwEnabled ? "checked" : ""}
                     />
@@ -955,12 +955,12 @@ renderUsers(list, container) {
             const u = btn.dataset.user;
             const g = container.querySelector(`select[data-user="${u}"]`).value;
 
-            const sfwCheckbox = container.querySelector(`.mss_login-sfw-toggle[data-user="${u}"]`);
+            const sfwCheckbox = container.querySelector(`.mss-login-sfw-toggle[data-user="${u}"]`);
             const sfw = sfwCheckbox ? sfwCheckbox.checked : true;
 
             btn.innerText = "Saving...";
             try {
-                await api.fetchApi(`/mss_login/api/users/${u}`, {
+                await api.fetchApi(`/mss-login/api/users/${u}`, {
                     method: "PUT",
                     body: JSON.stringify({
                         groups: [g],
@@ -969,7 +969,7 @@ renderUsers(list, container) {
                 });
                 btn.innerText = "Saved";
             } catch (e) {
-                console.error("[mss_login] Failed to update user:", e);
+                console.error("[mss-login] Failed to update user:", e);
                 btn.innerText = "Error";
             }
             setTimeout(() => (btn.innerText = "Save Changes"), 1000);
@@ -990,12 +990,12 @@ renderUsers(list, container) {
             btn.innerText = "Deleting...";
 
             try {
-                const res = await api.fetchApi(`/mss_login/api/users/${u}`, {
+                const res = await api.fetchApi(`/mss-login/api/users/${u}`, {
                     method: "DELETE",
                 });
 
                 if (res.status === 200) {
-                    const usersData = await getData("/mss_login/api/users");
+                    const usersData = await getData("/mss-login/api/users");
                     const usersList = usersData?.users || [];
                     self.renderUsers(usersList, container);
                 } else {
@@ -1009,7 +1009,7 @@ renderUsers(list, container) {
                     btn.innerText = originalText;
                 }
             } catch (e) {
-                console.error("[mss_login] Failed to delete user:", e);
+                console.error("[mss-login] Failed to delete user:", e);
                 window.alert("Unexpected error while deleting user.");
                 btn.disabled = false;
                 btn.innerText = originalText;
@@ -1020,37 +1020,37 @@ renderUsers(list, container) {
 
         async renderIpRules(container) {
         container.innerHTML = `
-            <div class="mss_login-section">
+            <div class="mss-login-section">
                 <h3>IP Whitelist & Blacklist</h3>
                 <p>
                     Configure IP-based access rules. Whitelisted IPs are always allowed,
                     blacklisted IPs are always denied (before other checks).
                 </p>
-                <div class="mss_login-row">
+                <div class="mss-login-row">
                     <div>
-                        <label class="mss_login-field-label">
+                        <label class="mss-login-field-label">
                             Whitelist (one IP or CIDR per line)
                         </label>
-                        <textarea class="mss_login-textarea" id="mss_login-ip-whitelist"></textarea>
+                        <textarea class="mss-login-textarea" id="mss-login-ip-whitelist"></textarea>
                     </div>
                     <div>
-                        <label class="mss_login-field-label">
+                        <label class="mss-login-field-label">
                             Blacklist (one IP or CIDR per line)
                         </label>
-                        <textarea class="mss_login-textarea" id="mss_login-ip-blacklist"></textarea>
+                        <textarea class="mss-login-textarea" id="mss-login-ip-blacklist"></textarea>
                     </div>
                 </div>
                 <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
-                    <button class="mss_login-btn secondary" id="mss_login-ip-refresh">Reload</button>
-                    <button class="mss_login-btn" id="mss_login-ip-save">Save Rules</button>
+                    <button class="mss-login-btn secondary" id="mss-login-ip-refresh">Reload</button>
+                    <button class="mss-login-btn" id="mss-login-ip-save">Save Rules</button>
                 </div>
             </div>
         `;
 
-        const wlEl = container.querySelector("#mss_login-ip-whitelist");
-        const blEl = container.querySelector("#mss_login-ip-blacklist");
-        const refreshBtn = container.querySelector("#mss_login-ip-refresh");
-        const saveBtn = container.querySelector("#mss_login-ip-save");
+        const wlEl = container.querySelector("#mss-login-ip-whitelist");
+        const blEl = container.querySelector("#mss-login-ip-blacklist");
+        const refreshBtn = container.querySelector("#mss-login-ip-refresh");
+        const saveBtn = container.querySelector("#mss-login-ip-save");
 
         async function loadIpConfig() {
             const data = await getData(IP_API_ENDPOINT);
@@ -1084,7 +1084,7 @@ renderUsers(list, container) {
                 saveBtn.textContent = "Saved";
                 setTimeout(() => (saveBtn.textContent = "Save Rules"), 1200);
             } catch (e) {
-                console.error("[mss_login] Failed to save IP rules:", e);
+                console.error("[mss-login] Failed to save IP rules:", e);
                 saveBtn.textContent = "Error";
                 setTimeout(() => (saveBtn.textContent = "Save Rules"), 1500);
             } finally {
@@ -1104,7 +1104,7 @@ renderUserEnv(container, usersList) {
         .join("");
 
     container.innerHTML = `
-        <div class="mss_login-section">
+        <div class="mss-login-section">
             <h3>User Environment & Folders</h3>
             <p>
                 Manage per-user environment folders created by <code>user_env.py</code>.
@@ -1112,95 +1112,95 @@ renderUserEnv(container, usersList) {
                 and mark a user's folder as the active Gallery root.
             </p>
 
-            <div class="mss_login-row">
+            <div class="mss-login-row">
                 <div>
-                    <label class="mss_login-field-label">User</label>
-                    <select id="mss_login-env-user" class="mss_login-select">
+                    <label class="mss-login-field-label">User</label>
+                    <select id="mss-login-env-user" class="mss-login-select">
                         ${userOptions}
                     </select>
                 </div>
                 <div style="display:flex; align-items:flex-end; gap:8px; justify-content:flex-end;">
-                    <button class="mss_login-btn secondary" id="mss_login-env-list">List Files</button>
-                    <button class="mss_login-btn danger" id="mss_login-env-purge">Purge Folders</button>
+                    <button class="mss-login-btn secondary" id="mss-login-env-list">List Files</button>
+                    <button class="mss-login-btn danger" id="mss-login-env-purge">Purge Folders</button>
                 </div>
             </div>
 
-            <div class="mss_login-row" style="align-items:center; margin-top:4px;">
+            <div class="mss-login-row" style="align-items:center; margin-top:4px;">
                 <div style="display:flex; align-items:center; gap:8px;">
-                    <input type="checkbox" id="mss_login-env-gallery-toggle" />
-                    <label for="mss_login-env-gallery-toggle">
+                    <input type="checkbox" id="mss-login-env-gallery-toggle" />
+                    <label for="mss-login-env-gallery-toggle">
                         Use this user's folder as Gallery root
                     </label>
                 </div>
             </div>
 
             <div style="margin-top:12px;">
-                <label class="mss_login-field-label">Folder Contents / Status</label>
-                <textarea id="mss_login-env-output" class="mss_login-textarea" readonly></textarea>
+                <label class="mss-login-field-label">Folder Contents / Status</label>
+                <textarea id="mss-login-env-output" class="mss-login-textarea" readonly></textarea>
             </div>
 
-            <div class="mss_login-row" style="margin-top:8px; align-items:flex-end; gap:8px;">
+            <div class="mss-login-row" style="margin-top:8px; align-items:flex-end; gap:8px;">
                 <div style="flex:1;">
-                    <label class="mss_login-field-label">Delete Single File</label>
-                    <select id="mss_login-env-file" class="mss_login-select">
+                    <label class="mss-login-field-label">Delete Single File</label>
+                    <select id="mss-login-env-file" class="mss-login-select">
                         <option value="">(no files loaded yet)</option>
                     </select>
                 </div>
-                <button class="mss_login-btn danger" id="mss_login-env-delete">Delete File</button>
+                <button class="mss-login-btn danger" id="mss-login-env-delete">Delete File</button>
             </div>
         </div>
 
-        <div class="mss_login-section" style="margin-top:16px;">
+        <div class="mss-login-section" style="margin-top:16px;">
             <h3>Workflow Management</h3>
             <p>
                 Promote a user's workflow into the global/default workflow list
                 so it becomes visible to all users.
             </p>
 
-            <div class="mss_login-row">
+            <div class="mss-login-row">
                 <div>
-                    <label class="mss_login-field-label">User</label>
-                    <select id="mss_login-wf-user" class="mss_login-select">
+                    <label class="mss-login-field-label">User</label>
+                    <select id="mss-login-wf-user" class="mss-login-select">
                         ${userOptions}
                     </select>
                 </div>
                 <div style="flex:1;">
-                    <label class="mss_login-field-label">Workflow</label>
-                    <select id="mss_login-wf-select" class="mss_login-select">
+                    <label class="mss-login-field-label">Workflow</label>
+                    <select id="mss-login-wf-select" class="mss-login-select">
                         <option value="">(load workflows...)</option>
                     </select>
                 </div>
                 <div style="display:flex; align-items:flex-end; gap:8px;">
-                    <button class="mss_login-btn secondary" id="mss_login-wf-load">Load Workflows</button>
-                    <button class="mss_login-btn primary" id="mss_login-wf-promote">Promote to Default</button>
+                    <button class="mss-login-btn secondary" id="mss-login-wf-load">Load Workflows</button>
+                    <button class="mss-login-btn primary" id="mss-login-wf-promote">Promote to Default</button>
                 </div>
             </div>
             <div style="margin-top:6px; display:flex; align-items:center; gap:8px;">
-                <input type="checkbox" id="mss_login-wf-delete-source" />
-                <label for="mss_login-wf-delete-source">
+                <input type="checkbox" id="mss-login-wf-delete-source" />
+                <label for="mss-login-wf-delete-source">
                     Remove from this user's workflow folder after promotion
                 </label>
             </div>
             <div style="margin-top:6px;">
-                <small id="mss_login-wf-status" class="mss_login-muted"></small>
+                <small id="mss-login-wf-status" class="mss-login-muted"></small>
             </div>
         </div>
     `;
 
-    const userSelect = container.querySelector("#mss_login-env-user");
-    const listBtn = container.querySelector("#mss_login-env-list");
-    const purgeBtn = container.querySelector("#mss_login-env-purge");
-    const galleryToggle = container.querySelector("#mss_login-env-gallery-toggle");
-    const output = container.querySelector("#mss_login-env-output");
-    const fileSelect = container.querySelector("#mss_login-env-file");
-    const deleteBtn = container.querySelector("#mss_login-env-delete");
+    const userSelect = container.querySelector("#mss-login-env-user");
+    const listBtn = container.querySelector("#mss-login-env-list");
+    const purgeBtn = container.querySelector("#mss-login-env-purge");
+    const galleryToggle = container.querySelector("#mss-login-env-gallery-toggle");
+    const output = container.querySelector("#mss-login-env-output");
+    const fileSelect = container.querySelector("#mss-login-env-file");
+    const deleteBtn = container.querySelector("#mss-login-env-delete");
 
-    const wfUserSelect = container.querySelector("#mss_login-wf-user");
-    const wfSelect = container.querySelector("#mss_login-wf-select");
-    const wfLoadBtn = container.querySelector("#mss_login-wf-load");
-    const wfPromoteBtn = container.querySelector("#mss_login-wf-promote");
-    const wfDeleteSource = container.querySelector("#mss_login-wf-delete-source");
-    const wfStatus = container.querySelector("#mss_login-wf-status");
+    const wfUserSelect = container.querySelector("#mss-login-wf-user");
+    const wfSelect = container.querySelector("#mss-login-wf-select");
+    const wfLoadBtn = container.querySelector("#mss-login-wf-load");
+    const wfPromoteBtn = container.querySelector("#mss-login-wf-promote");
+    const wfDeleteSource = container.querySelector("#mss-login-wf-delete-source");
+    const wfStatus = container.querySelector("#mss-login-wf-status");
 
     let envFiles = [];
 
@@ -1261,7 +1261,7 @@ renderUserEnv(container, usersList) {
                 output.value = "Error loading status: " + res.status;
             }
         } catch (e) {
-            console.error("[mss_login] env status error:", e);
+            console.error("[mss-login] env status error:", e);
             output.value = "Error loading status. See console.";
         }
     }
@@ -1291,7 +1291,7 @@ renderUserEnv(container, usersList) {
                 output.value = "Error listing files: " + res.status;
             }
         } catch (e) {
-            console.error("[mss_login] env list error:", e);
+            console.error("[mss-login] env list error:", e);
             output.value = "Error listing files. See console.";
         }
     };
@@ -1313,7 +1313,7 @@ renderUserEnv(container, usersList) {
                 output.value = data.error || `Error deleting file: ${res.status}`;
             }
         } catch (e) {
-            console.error("[mss_login] env delete_file error:", e);
+            console.error("[mss-login] env delete_file error:", e);
             output.value = "Error deleting file. See console.";
         } finally {
             refreshStatus();
@@ -1337,7 +1337,7 @@ renderUserEnv(container, usersList) {
                 output.value = "Error purging folders: " + res.status;
             }
         } catch (e) {
-            console.error("[mss_login] env purge error:", e);
+            console.error("[mss-login] env purge error:", e);
             output.value = "Error purging folders. See console.";
         } finally {
             purgeBtn.disabled = false;
@@ -1366,7 +1366,7 @@ renderUserEnv(container, usersList) {
                 output.value = "Error updating gallery root: " + res.status;
             }
         } catch (e) {
-            console.error("[mss_login] env gallery toggle error:", e);
+            console.error("[mss-login] env gallery toggle error:", e);
             output.value = "Error updating gallery root. See console.";
         }
     };
@@ -1415,7 +1415,7 @@ renderUserEnv(container, usersList) {
                     "Error loading workflows: " + res.status;
             }
         } catch (e) {
-            console.error("[mss_login] list_workflows error:", e);
+            console.error("[mss-login] list_workflows error:", e);
             wfStatus.textContent =
                 "Error loading workflows. See console.";
         }
@@ -1452,7 +1452,7 @@ renderUserEnv(container, usersList) {
                     "Error promoting workflow: " + res.status;
             }
         } catch (e) {
-            console.error("[mss_login] promote_workflow error:", e);
+            console.error("[mss-login] promote_workflow error:", e);
             wfStatus.textContent =
                 "Error promoting workflow. See console.";
         }
@@ -1471,48 +1471,48 @@ async renderSharedModels(container, usersList) {
     const users = (usersList || []).filter(u => (u.username || "").toLowerCase() !== "guest");
     const userOptions = users.map(u => `<option value="${escapeHtml(u.username || "")}">${escapeHtml(u.username || "")}</option>`).join("");
     container.innerHTML = `
-        <div class="mss_login-section">
+        <div class="mss-login-section">
             <h3>Shared Models / LoRAs / VAEs / Embeddings</h3>
             <p>Grant specific users access to specific ComfyUI items. Users without "View all ComfyUI items" see only items shared here.</p>
-            <div class="mss_login-row" style="margin-top:12px; align-items:center; gap:8px; flex-wrap:wrap;">
-                <label class="mss_login-field-label" style="margin:0;">User:</label>
-                <select id="mss_login-shared-user" style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; min-width:140px;">
+            <div class="mss-login-row" style="margin-top:12px; align-items:center; gap:8px; flex-wrap:wrap;">
+                <label class="mss-login-field-label" style="margin:0;">User:</label>
+                <select id="mss-login-shared-user" style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; min-width:140px;">
                     <option value="">-- Select user --</option>
                     ${userOptions}
                 </select>
             </div>
-            <div id="mss_login-shared-items-list" style="margin-top:12px; min-height:60px;">
+            <div id="mss-login-shared-items-list" style="margin-top:12px; min-height:60px;">
                 <p style="opacity:0.8;">Select a user to view and manage their shared items.</p>
             </div>
-            <div class="mss_login-section" style="margin-top:16px;">
+            <div class="mss-login-section" style="margin-top:16px;">
                 <h4 style="margin:0 0 8px 0;">Add item for selected user</h4>
-                <div class="mss_login-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
-                    <select id="mss_login-shared-folder" style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; min-width:160px;">
+                <div class="mss-login-row" style="gap:8px; flex-wrap:wrap; align-items:center;">
+                    <select id="mss-login-shared-folder" style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; min-width:160px;">
                         <option value="">-- Folder --</option>
                     </select>
-                    <select id="mss_login-shared-item" style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; min-width:200px;">
+                    <select id="mss-login-shared-item" style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; min-width:200px;">
                         <option value="">-- Item (select folder first) --</option>
                     </select>
-                    <button class="mss_login-btn btn-save" id="mss_login-shared-add">Add</button>
+                    <button class="mss-login-btn btn-save" id="mss-login-shared-add">Add</button>
                 </div>
             </div>
-            <div class="mss_login-section" style="margin-top:16px;">
+            <div class="mss-login-section" style="margin-top:16px;">
                 <h4 style="margin:0 0 8px 0;">Toggle model access</h4>
                 <p style="opacity:0.9; font-size:13px; margin-bottom:8px;">Expand a folder and check or uncheck items to grant or revoke access. Users without "View all ComfyUI items" see only checked items.</p>
-                <div class="mss_login-row" style="gap:8px; margin-bottom:8px;">
-                    <button class="mss_login-btn" id="mss_login-toggle-refresh">Refresh folders</button>
+                <div class="mss-login-row" style="gap:8px; margin-bottom:8px;">
+                    <button class="mss-login-btn" id="mss-login-toggle-refresh">Refresh folders</button>
                 </div>
-                <div id="mss_login-toggle-folders" style="max-height:400px; overflow-y:auto;"></div>
+                <div id="mss-login-toggle-folders" style="max-height:400px; overflow-y:auto;"></div>
             </div>
         </div>
     `;
-    const userSelect = container.querySelector("#mss_login-shared-user");
-    const listEl = container.querySelector("#mss_login-shared-items-list");
-    const folderSelect = container.querySelector("#mss_login-shared-folder");
-    const itemSelect = container.querySelector("#mss_login-shared-item");
-    const addBtn = container.querySelector("#mss_login-shared-add");
-    const toggleFoldersEl = container.querySelector("#mss_login-toggle-folders");
-    const toggleRefreshBtn = container.querySelector("#mss_login-toggle-refresh");
+    const userSelect = container.querySelector("#mss-login-shared-user");
+    const listEl = container.querySelector("#mss-login-shared-items-list");
+    const folderSelect = container.querySelector("#mss-login-shared-folder");
+    const itemSelect = container.querySelector("#mss-login-shared-item");
+    const addBtn = container.querySelector("#mss-login-shared-add");
+    const toggleFoldersEl = container.querySelector("#mss-login-toggle-folders");
+    const toggleRefreshBtn = container.querySelector("#mss-login-toggle-refresh");
 
     let folders = [];
     const sharedSet = new Set();
@@ -1522,12 +1522,12 @@ async renderSharedModels(container, usersList) {
         sharedSet.clear();
         if (!username) return;
         try {
-            const res = await api.fetchApi("/mss_login/api/users/" + encodeURIComponent(username) + "/shared-items", { method: "GET" });
+            const res = await api.fetchApi("/mss-login/api/users/" + encodeURIComponent(username) + "/shared-items", { method: "GET" });
             const data = await res.json();
             const items = data.items || [];
             items.forEach(it => sharedSet.add((it.folder || "") + "|" + (it.item_name || "")));
         } catch (e) {
-            console.error("[mss_login] Failed to load shared set:", e);
+            console.error("[mss-login] Failed to load shared set:", e);
         }
     }
 
@@ -1544,22 +1544,22 @@ async renderSharedModels(container, usersList) {
         }
         toggleFoldersEl.innerHTML = folders.map(folder => {
             const safeFolder = escapeHtml(folder);
-            return `<details class="mss_login-toggle-folder" data-folder="${safeFolder}">
+            return `<details class="mss-login-toggle-folder" data-folder="${safeFolder}">
                 <summary>${safeFolder}</summary>
-                <div class="mss_login-toggle-items" data-folder="${safeFolder}" style="padding:8px 0 8px 12px; max-height:200px; overflow-y:auto;">Loading...</div>
+                <div class="mss-login-toggle-items" data-folder="${safeFolder}" style="padding:8px 0 8px 12px; max-height:200px; overflow-y:auto;">Loading...</div>
             </details>`;
         }).join("");
 
-        toggleFoldersEl.querySelectorAll("details.mss_login-toggle-folder").forEach(detailsEl => {
+        toggleFoldersEl.querySelectorAll("details.mss-login-toggle-folder").forEach(detailsEl => {
             detailsEl.addEventListener("toggle", async () => {
                 if (!detailsEl.open) return;
                 const folder = detailsEl.dataset.folder;
-                const itemsEl = detailsEl.querySelector(".mss_login-toggle-items");
+                const itemsEl = detailsEl.querySelector(".mss-login-toggle-items");
                 if (!itemsEl || itemsEl.dataset.loaded === "1") return;
                 itemsEl.textContent = "Loading...";
                 try {
-                    let res = await api.fetchApi("/mss_login/api/model-cache/folders/" + encodeURIComponent(folder) + "/items", { method: "GET" });
-                    if (!res.ok) res = await api.fetchApi("/mss_login/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
+                    let res = await api.fetchApi("/mss-login/api/model-cache/folders/" + encodeURIComponent(folder) + "/items", { method: "GET" });
+                    if (!res.ok) res = await api.fetchApi("/mss-login/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
                     const data = await res.json();
                     const items = data.items || [];
                     loadedItems[folder] = items;
@@ -1568,9 +1568,9 @@ async renderSharedModels(container, usersList) {
                         const key = folder + "|" + itemName;
                         const checked = sharedSet.has(key);
                         const safeItem = escapeHtml(itemName);
-                        return `<label class="mss_login-toggle-item" style="display:block; margin:4px 0;"><input type="checkbox" class="mss_login-toggle-chk" data-folder="${escapeHtml(folder)}" data-item="${safeItem}" ${checked ? "checked" : ""}> ${safeItem}</label>`;
+                        return `<label class="mss-login-toggle-item" style="display:block; margin:4px 0;"><input type="checkbox" class="mss-login-toggle-chk" data-folder="${escapeHtml(folder)}" data-item="${safeItem}" ${checked ? "checked" : ""}> ${safeItem}</label>`;
                     }).join("");
-                    itemsEl.querySelectorAll(".mss_login-toggle-chk").forEach(chk => {
+                    itemsEl.querySelectorAll(".mss-login-toggle-chk").forEach(chk => {
                         chk.onchange = async () => {
                             const f = chk.dataset.folder;
                             const item = chk.dataset.item;
@@ -1578,13 +1578,13 @@ async renderSharedModels(container, usersList) {
                             const add = chk.checked;
                             try {
                                 if (add) {
-                                    await api.fetchApi("/mss_login/api/users/" + encodeURIComponent(username) + "/shared-items", {
+                                    await api.fetchApi("/mss-login/api/users/" + encodeURIComponent(username) + "/shared-items", {
                                         method: "POST",
                                         body: JSON.stringify({ folder: f, item_name: item }),
                                     });
                                     sharedSet.add(key);
                                 } else {
-                                    await api.fetchApi("/mss_login/api/users/" + encodeURIComponent(username) + "/shared-items", {
+                                    await api.fetchApi("/mss-login/api/users/" + encodeURIComponent(username) + "/shared-items", {
                                         method: "DELETE",
                                         body: JSON.stringify({ folder: f, item_name: item }),
                                     });
@@ -1592,29 +1592,29 @@ async renderSharedModels(container, usersList) {
                                 }
                                 await refreshSharedList();
                             } catch (e) {
-                                console.error("[mss_login] Toggle shared item failed:", e);
+                                console.error("[mss-login] Toggle shared item failed:", e);
                                 chk.checked = !add;
                             }
                         };
                     });
                 } catch (e) {
                     itemsEl.textContent = "Error loading items.";
-                    console.error("[mss_login] Failed to load items for folder:", e);
+                    console.error("[mss-login] Failed to load items for folder:", e);
                 }
             });
         });
     }
     try {
-        let fr = await api.fetchApi("/mss_login/api/model-cache/folders", { method: "GET" });
+        let fr = await api.fetchApi("/mss-login/api/model-cache/folders", { method: "GET" });
         let fd = await fr.json();
         folders = fd.folders || [];
         if (folders.length === 0) {
-            fr = await api.fetchApi("/mss_login/api/available-model-folders", { method: "GET" });
+            fr = await api.fetchApi("/mss-login/api/available-model-folders", { method: "GET" });
             fd = await fr.json();
             folders = fd.folders || [];
         }
     } catch (e) {
-        console.error("[mss_login] Failed to load folders:", e);
+        console.error("[mss-login] Failed to load folders:", e);
         folders = ["checkpoints", "loras", "vae", "embeddings"];
     }
     folderSelect.innerHTML = "<option value=\"\">-- Folder --</option>" + folders.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
@@ -1626,8 +1626,8 @@ async renderSharedModels(container, usersList) {
             return;
         }
         try {
-            let res = await api.fetchApi("/mss_login/api/model-cache/folders/" + encodeURIComponent(folder) + "/items", { method: "GET" });
-            if (!res.ok) res = await api.fetchApi("/mss_login/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
+            let res = await api.fetchApi("/mss-login/api/model-cache/folders/" + encodeURIComponent(folder) + "/items", { method: "GET" });
+            if (!res.ok) res = await api.fetchApi("/mss-login/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
             const data = await res.json();
             const items = data.items || [];
             itemSelect.innerHTML = "<option value=\"\">-- Select item --</option>" + items.map(i => `<option value="${escapeHtml(i)}">${escapeHtml(i)}</option>`).join("");
@@ -1644,7 +1644,7 @@ async renderSharedModels(container, usersList) {
         }
         listEl.innerHTML = "<p>Loading...</p>";
         try {
-            const res = await api.fetchApi("/mss_login/api/users/" + encodeURIComponent(username) + "/shared-items", { method: "GET" });
+            const res = await api.fetchApi("/mss-login/api/users/" + encodeURIComponent(username) + "/shared-items", { method: "GET" });
             const data = await res.json();
             const items = data.items || [];
             if (items.length === 0) {
@@ -1652,34 +1652,34 @@ async renderSharedModels(container, usersList) {
                 return;
             }
             listEl.innerHTML = `
-                <table class="mss_login-table">
+                <table class="mss-login-table">
                     <thead><tr><th>Folder</th><th>Item</th><th style="width:80px;\"></th></tr></thead>
                     <tbody>
                     ${items.map(it => `
                         <tr>
                             <td>${escapeHtml(it.folder)}</td>
                             <td>${escapeHtml(it.item_name)}</td>
-                            <td><button class="mss_login-btn mss_login-btn-danger mss_login-shared-remove" data-folder="${escapeHtml(it.folder)}" data-item="${escapeHtml(it.item_name)}">Remove</button></td>
+                            <td><button class="mss-login-btn mss-login-btn-danger mss-login-shared-remove" data-folder="${escapeHtml(it.folder)}" data-item="${escapeHtml(it.item_name)}">Remove</button></td>
                         </tr>
                     `).join("")}
                     </tbody>
                 </table>
             `;
-            listEl.querySelectorAll(".mss_login-shared-remove").forEach(btn => {
+            listEl.querySelectorAll(".mss-login-shared-remove").forEach(btn => {
                 btn.onclick = async () => {
                     const folder = btn.dataset.folder;
                     const item = btn.dataset.item;
                     try {
-                        await api.fetchApi("/mss_login/api/users/" + encodeURIComponent(username) + "/shared-items", {
+                        await api.fetchApi("/mss-login/api/users/" + encodeURIComponent(username) + "/shared-items", {
                             method: "DELETE",
                             body: JSON.stringify({ folder, item_name: item }),
                         });
                         sharedSet.delete(folder + "|" + item);
                         await refreshSharedList();
-                        const remChk = toggleFoldersEl ? Array.from(toggleFoldersEl.querySelectorAll(".mss_login-toggle-chk")).find(c => c.dataset.folder === folder && c.dataset.item === item) : null;
+                        const remChk = toggleFoldersEl ? Array.from(toggleFoldersEl.querySelectorAll(".mss-login-toggle-chk")).find(c => c.dataset.folder === folder && c.dataset.item === item) : null;
                         if (remChk) remChk.checked = false;
                     } catch (e) {
-                        console.error("[mss_login] Remove shared item failed:", e);
+                        console.error("[mss-login] Remove shared item failed:", e);
                     }
                 };
             });
@@ -1704,16 +1704,16 @@ async renderSharedModels(container, usersList) {
         }
         addBtn.disabled = true;
         try {
-            await api.fetchApi("/mss_login/api/users/" + encodeURIComponent(username) + "/shared-items", {
+            await api.fetchApi("/mss-login/api/users/" + encodeURIComponent(username) + "/shared-items", {
                 method: "POST",
                 body: JSON.stringify({ folder, item_name: item }),
             });
             sharedSet.add(folder + "|" + item);
             await refreshSharedList();
-            const addChk = toggleFoldersEl ? Array.from(toggleFoldersEl.querySelectorAll(".mss_login-toggle-chk")).find(c => c.dataset.folder === folder && c.dataset.item === item) : null;
+            const addChk = toggleFoldersEl ? Array.from(toggleFoldersEl.querySelectorAll(".mss-login-toggle-chk")).find(c => c.dataset.folder === folder && c.dataset.item === item) : null;
             if (addChk) addChk.checked = true;
         } catch (e) {
-            console.error("[mss_login] Add shared item failed:", e);
+            console.error("[mss-login] Add shared item failed:", e);
         }
         addBtn.disabled = false;
     };
@@ -1721,13 +1721,13 @@ async renderSharedModels(container, usersList) {
     toggleRefreshBtn.onclick = async () => {
         toggleRefreshBtn.disabled = true;
         try {
-            const refreshRes = await api.fetchApi("/mss_login/api/model-cache/refresh", { method: "POST" });
+            const refreshRes = await api.fetchApi("/mss-login/api/model-cache/refresh", { method: "POST" });
             if (refreshRes.ok) {
                 const refreshData = await refreshRes.json();
                 folders = refreshData.folders || [];
             }
             if (folders.length === 0) {
-                const fr = await api.fetchApi("/mss_login/api/available-model-folders", { method: "GET" });
+                const fr = await api.fetchApi("/mss-login/api/available-model-folders", { method: "GET" });
                 const fd = await fr.json();
                 folders = fd.folders || [];
             }
@@ -1736,7 +1736,7 @@ async renderSharedModels(container, usersList) {
             await loadItemsForFolder(folderSelect.value || (folders[0] || ""));
             renderToggleFolders();
         } catch (e) {
-            console.error("[mss_login] Failed to refresh folders:", e);
+            console.error("[mss-login] Failed to refresh folders:", e);
         }
         toggleRefreshBtn.disabled = false;
     };
@@ -1748,31 +1748,31 @@ async renderSharedModels(container, usersList) {
 
 renderNsfwManagement(container) {
     container.innerHTML = `
-        <div class="mss_login-section">
+        <div class="mss-login-section">
             <h3>NSFW Content Management</h3>
             <p>
                 Manage NSFW detection and scanning for images in the output directory.
                 Use these tools to scan, fix, or clear NSFW tags from images.
             </p>
 
-            <div class="mss_login-row" style="margin-top:16px; gap:8px; flex-wrap:wrap;">
-                <button class="mss_login-btn" id="mss_login-nsfw-scan-new">
+            <div class="mss-login-row" style="margin-top:16px; gap:8px; flex-wrap:wrap;">
+                <button class="mss-login-btn" id="mss-login-nsfw-scan-new">
                     Scan New Images
                 </button>
-                <button class="mss_login-btn" id="mss_login-nsfw-scan-all">
+                <button class="mss-login-btn" id="mss-login-nsfw-scan-all">
                     Force Rescan All Images
                 </button>
-                <button class="mss_login-btn secondary" id="mss_login-nsfw-fix">
+                <button class="mss-login-btn secondary" id="mss-login-nsfw-fix">
                     Fix Incorrect Tags
                 </button>
-                <button class="mss_login-btn danger" id="mss_login-nsfw-clear">
+                <button class="mss-login-btn danger" id="mss-login-nsfw-clear">
                     Clear All Tags
                 </button>
             </div>
 
             <div style="margin-top:12px;">
-                <label class="mss_login-field-label">Operation Status / Results</label>
-                <textarea id="mss_login-nsfw-output" class="mss_login-textarea" readonly style="min-height:120px;"></textarea>
+                <label class="mss-login-field-label">Operation Status / Results</label>
+                <textarea id="mss-login-nsfw-output" class="mss-login-textarea" readonly style="min-height:120px;"></textarea>
             </div>
 
             <div style="margin-top:12px; padding:12px; background:rgba(255,255,255,0.05); border-radius:6px;">
@@ -1787,11 +1787,11 @@ renderNsfwManagement(container) {
         </div>
     `;
 
-    const scanNewBtn = container.querySelector("#mss_login-nsfw-scan-new");
-    const scanAllBtn = container.querySelector("#mss_login-nsfw-scan-all");
-    const fixBtn = container.querySelector("#mss_login-nsfw-fix");
-    const clearBtn = container.querySelector("#mss_login-nsfw-clear");
-    const output = container.querySelector("#mss_login-nsfw-output");
+    const scanNewBtn = container.querySelector("#mss-login-nsfw-scan-new");
+    const scanAllBtn = container.querySelector("#mss-login-nsfw-scan-all");
+    const fixBtn = container.querySelector("#mss-login-nsfw-fix");
+    const clearBtn = container.querySelector("#mss-login-nsfw-clear");
+    const output = container.querySelector("#mss-login-nsfw-output");
 
     async function executeAction(action, params = {}) {
         const btnMap = {
@@ -1812,7 +1812,7 @@ renderNsfwManagement(container) {
                 body.force_rescan = false;
             }
             
-            const res = await api.fetchApi("/mss_login/api/nsfw-management", {
+            const res = await api.fetchApi("/mss-login/api/nsfw-management", {
                 method: "POST",
                 body: JSON.stringify(body),
             });
@@ -1835,7 +1835,7 @@ renderNsfwManagement(container) {
                 output.value = `Error: ${error.error || `HTTP ${res.status}`}`;
             }
         } catch (e) {
-            console.error("[mss_login] NSFW management error:", e);
+            console.error("[mss-login] NSFW management error:", e);
             output.value = `Error: ${e.message || "See console for details."}`;
         } finally {
             btn.disabled = false;
@@ -1854,62 +1854,62 @@ renderNsfwManagement(container) {
 }
 
 async renderTokenStorage(container) {
-    let cfg = { backend: "sqlite", json_path: "users/api_tokens.json", sqlite_path: "users/api_tokens.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss_login", postgres_user: "mss_login" };
+    let cfg = { backend: "sqlite", json_path: "users/api_tokens.json", sqlite_path: "users/api_tokens.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss-login", postgres_user: "mss-login" };
     try {
-        const res = await api.fetchApi("/mss_login/api/token-storage-config", { method: "GET" });
+        const res = await api.fetchApi("/mss-login/api/token-storage-config", { method: "GET" });
         if (res.ok) {
             cfg = await res.json();
         }
     } catch (e) {
-        console.warn("[mss_login] Token storage config load failed:", e);
+        console.warn("[mss-login] Token storage config load failed:", e);
     }
     const backend = (cfg.backend || "sqlite").toLowerCase();
     container.innerHTML = `
-        <div class="mss_login-section">
+        <div class="mss-login-section">
             <h3>API Token Storage</h3>
             <p>Configure where long-lived API tokens are stored (JSON file, SQLite, or PostgreSQL). Changes take effect immediately. PostgreSQL password is read from environment variable <code>API_TOKEN_DB_PASSWORD</code> only.</p>
-            <div class="mss_login-row" style="margin-top:12px; gap:8px; flex-wrap:wrap; align-items:center;">
-                <label class="mss_login-field-label">Backend</label>
-                <select id="mss_login-token-backend" class="mss_login-select">
+            <div class="mss-login-row" style="margin-top:12px; gap:8px; flex-wrap:wrap; align-items:center;">
+                <label class="mss-login-field-label">Backend</label>
+                <select id="mss-login-token-backend" class="mss-login-select">
                     <option value="json" ${backend === "json" ? "selected" : ""}>JSON file</option>
                     <option value="sqlite" ${backend === "sqlite" ? "selected" : ""}>SQLite</option>
                     <option value="postgresql" ${backend === "postgresql" ? "selected" : ""}>PostgreSQL</option>
                 </select>
             </div>
-            <div id="mss_login-token-json-fields" class="mss_login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "json" ? "display:none;" : ""}">
-                <label class="mss_login-field-label">JSON path</label>
-                <input type="text" id="mss_login-token-json-path" class="mss_login-input" value="${(cfg.json_path || "users/api_tokens.json").replace(/"/g, "&quot;")}" style="min-width:240px;">
+            <div id="mss-login-token-json-fields" class="mss-login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "json" ? "display:none;" : ""}">
+                <label class="mss-login-field-label">JSON path</label>
+                <input type="text" id="mss-login-token-json-path" class="mss-login-input" value="${(cfg.json_path || "users/api_tokens.json").replace(/"/g, "&quot;")}" style="min-width:240px;">
             </div>
-            <div id="mss_login-token-sqlite-fields" class="mss_login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "sqlite" ? "display:none;" : ""}">
-                <label class="mss_login-field-label">SQLite path</label>
-                <input type="text" id="mss_login-token-sqlite-path" class="mss_login-input" value="${(cfg.sqlite_path || "users/api_tokens.db").replace(/"/g, "&quot;")}" style="min-width:240px;">
+            <div id="mss-login-token-sqlite-fields" class="mss-login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "sqlite" ? "display:none;" : ""}">
+                <label class="mss-login-field-label">SQLite path</label>
+                <input type="text" id="mss-login-token-sqlite-path" class="mss-login-input" value="${(cfg.sqlite_path || "users/api_tokens.db").replace(/"/g, "&quot;")}" style="min-width:240px;">
             </div>
-            <div id="mss_login-token-postgres-fields" style="margin-top:8px; ${backend !== "postgresql" ? "display:none;" : ""}">
-                <div class="mss_login-row" style="gap:8px; align-items:center; margin-bottom:6px;">
-                    <label class="mss_login-field-label">Host</label>
-                    <input type="text" id="mss_login-token-pg-host" class="mss_login-input" value="${(cfg.postgres_host || "localhost").replace(/"/g, "&quot;")}" placeholder="localhost">
-                    <label class="mss_login-field-label">Port</label>
-                    <input type="number" id="mss_login-token-pg-port" class="mss_login-input" value="${cfg.postgres_port || 5432}" placeholder="5432" style="width:80px;">
+            <div id="mss-login-token-postgres-fields" style="margin-top:8px; ${backend !== "postgresql" ? "display:none;" : ""}">
+                <div class="mss-login-row" style="gap:8px; align-items:center; margin-bottom:6px;">
+                    <label class="mss-login-field-label">Host</label>
+                    <input type="text" id="mss-login-token-pg-host" class="mss-login-input" value="${(cfg.postgres_host || "localhost").replace(/"/g, "&quot;")}" placeholder="localhost">
+                    <label class="mss-login-field-label">Port</label>
+                    <input type="number" id="mss-login-token-pg-port" class="mss-login-input" value="${cfg.postgres_port || 5432}" placeholder="5432" style="width:80px;">
                 </div>
-                <div class="mss_login-row" style="gap:8px; align-items:center;">
-                    <label class="mss_login-field-label">Database</label>
-                    <input type="text" id="mss_login-token-pg-database" class="mss_login-input" value="${(cfg.postgres_database || "mss_login").replace(/"/g, "&quot;")}" placeholder="mss_login">
-                    <label class="mss_login-field-label">User</label>
-                    <input type="text" id="mss_login-token-pg-user" class="mss_login-input" value="${(cfg.postgres_user || "mss_login").replace(/"/g, "&quot;")}" placeholder="mss_login">
+                <div class="mss-login-row" style="gap:8px; align-items:center;">
+                    <label class="mss-login-field-label">Database</label>
+                    <input type="text" id="mss-login-token-pg-database" class="mss-login-input" value="${(cfg.postgres_database || "mss-login").replace(/"/g, "&quot;")}" placeholder="mss-login">
+                    <label class="mss-login-field-label">User</label>
+                    <input type="text" id="mss-login-token-pg-user" class="mss-login-input" value="${(cfg.postgres_user || "mss-login").replace(/"/g, "&quot;")}" placeholder="mss-login">
                 </div>
-                <p class="mss_login-note" style="margin-top:6px;">Password: set environment variable <code>API_TOKEN_DB_PASSWORD</code> (not stored in config).</p>
+                <p class="mss-login-note" style="margin-top:6px;">Password: set environment variable <code>API_TOKEN_DB_PASSWORD</code> (not stored in config).</p>
             </div>
-            <div class="mss_login-row" style="margin-top:16px; gap:8px;">
-                <button class="mss_login-btn" id="mss_login-token-save">Save</button>
+            <div class="mss-login-row" style="margin-top:16px; gap:8px;">
+                <button class="mss-login-btn" id="mss-login-token-save">Save</button>
             </div>
-            <p id="mss_login-token-status" class="mss_login-note" style="margin-top:8px;"></p>
+            <p id="mss-login-token-status" class="mss-login-note" style="margin-top:8px;"></p>
         </div>
     `;
-    const backendSelect = container.querySelector("#mss_login-token-backend");
-    const jsonFields = container.querySelector("#mss_login-token-json-fields");
-    const sqliteFields = container.querySelector("#mss_login-token-sqlite-fields");
-    const postgresFields = container.querySelector("#mss_login-token-postgres-fields");
-    const statusEl = container.querySelector("#mss_login-token-status");
+    const backendSelect = container.querySelector("#mss-login-token-backend");
+    const jsonFields = container.querySelector("#mss-login-token-json-fields");
+    const sqliteFields = container.querySelector("#mss-login-token-sqlite-fields");
+    const postgresFields = container.querySelector("#mss-login-token-postgres-fields");
+    const statusEl = container.querySelector("#mss-login-token-status");
     function showFields() {
         const b = (backendSelect.value || "sqlite").toLowerCase();
         jsonFields.style.display = b === "json" ? "" : "none";
@@ -1917,20 +1917,20 @@ async renderTokenStorage(container) {
         postgresFields.style.display = b === "postgresql" ? "" : "none";
     }
     backendSelect.onchange = showFields;
-    container.querySelector("#mss_login-token-save").onclick = async () => {
+    container.querySelector("#mss-login-token-save").onclick = async () => {
         const b = (backendSelect.value || "sqlite").toLowerCase();
         const body = {
             backend: b,
-            json_path: container.querySelector("#mss_login-token-json-path").value.trim() || "users/api_tokens.json",
-            sqlite_path: container.querySelector("#mss_login-token-sqlite-path").value.trim() || "users/api_tokens.db",
-            postgres_host: container.querySelector("#mss_login-token-pg-host").value.trim() || "localhost",
-            postgres_port: parseInt(container.querySelector("#mss_login-token-pg-port").value, 10) || 5432,
-            postgres_database: container.querySelector("#mss_login-token-pg-database").value.trim() || "mss_login",
-            postgres_user: container.querySelector("#mss_login-token-pg-user").value.trim() || "mss_login",
+            json_path: container.querySelector("#mss-login-token-json-path").value.trim() || "users/api_tokens.json",
+            sqlite_path: container.querySelector("#mss-login-token-sqlite-path").value.trim() || "users/api_tokens.db",
+            postgres_host: container.querySelector("#mss-login-token-pg-host").value.trim() || "localhost",
+            postgres_port: parseInt(container.querySelector("#mss-login-token-pg-port").value, 10) || 5432,
+            postgres_database: container.querySelector("#mss-login-token-pg-database").value.trim() || "mss-login",
+            postgres_user: container.querySelector("#mss-login-token-pg-user").value.trim() || "mss-login",
         };
         statusEl.textContent = "Saving...";
         try {
-            const res = await api.fetchApi("/mss_login/api/token-storage-config", { method: "PUT", body: JSON.stringify(body) });
+            const res = await api.fetchApi("/mss-login/api/token-storage-config", { method: "PUT", body: JSON.stringify(body) });
             if (res.ok) {
                 statusEl.textContent = "Saved. Token store will use the new config on next request.";
             } else {
@@ -1944,73 +1944,73 @@ async renderTokenStorage(container) {
 }
 
 async renderUsersDbConfig(container) {
-    let cfg = { backend: "sqlite", sqlite_path: "users/users.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss_login", postgres_user: "mss_login" };
+    let cfg = { backend: "sqlite", sqlite_path: "users/users.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss-login", postgres_user: "mss-login" };
     try {
-        const res = await api.fetchApi("/mss_login/api/users-db-config", { method: "GET" });
+        const res = await api.fetchApi("/mss-login/api/users-db-config", { method: "GET" });
         if (res.ok) cfg = await res.json();
     } catch (e) {
-        console.warn("[mss_login] Users DB config load failed:", e);
+        console.warn("[mss-login] Users DB config load failed:", e);
     }
     const backend = (cfg.backend || "sqlite").toLowerCase();
     container.innerHTML = `
-        <div class="mss_login-section">
+        <div class="mss-login-section">
             <h3>Users Database (Credentials)</h3>
             <p>Configure where user accounts are stored (SQLite or PostgreSQL). No plain-text JSON. Restart required for new backend to take effect. PostgreSQL password: environment variable <code>USERS_DB_PASSWORD</code> or <code>POSTGRES_PASSWORD</code> only.</p>
-            <div class="mss_login-row" style="margin-top:12px; gap:8px; align-items:center;">
-                <label class="mss_login-field-label">Backend</label>
-                <select id="mss_login-usersdb-backend" class="mss_login-select">
+            <div class="mss-login-row" style="margin-top:12px; gap:8px; align-items:center;">
+                <label class="mss-login-field-label">Backend</label>
+                <select id="mss-login-usersdb-backend" class="mss-login-select">
                     <option value="sqlite" ${backend === "sqlite" ? "selected" : ""}>SQLite</option>
                     <option value="postgresql" ${backend === "postgresql" ? "selected" : ""}>PostgreSQL</option>
                 </select>
             </div>
-            <div id="mss_login-usersdb-sqlite-fields" class="mss_login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "sqlite" ? "display:none;" : ""}">
-                <label class="mss_login-field-label">SQLite path</label>
-                <input type="text" id="mss_login-usersdb-sqlite-path" class="mss_login-input" value="${escapeHtml(cfg.sqlite_path || "users/users.db")}" style="min-width:240px;">
+            <div id="mss-login-usersdb-sqlite-fields" class="mss-login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "sqlite" ? "display:none;" : ""}">
+                <label class="mss-login-field-label">SQLite path</label>
+                <input type="text" id="mss-login-usersdb-sqlite-path" class="mss-login-input" value="${escapeHtml(cfg.sqlite_path || "users/users.db")}" style="min-width:240px;">
             </div>
-            <div id="mss_login-usersdb-postgres-fields" style="margin-top:8px; ${backend !== "postgresql" ? "display:none;" : ""}">
-                <div class="mss_login-row" style="gap:8px; align-items:center; margin-bottom:6px;">
-                    <label class="mss_login-field-label">Host</label>
-                    <input type="text" id="mss_login-usersdb-pg-host" class="mss_login-input" value="${escapeHtml(cfg.postgres_host || "localhost")}" placeholder="localhost">
-                    <label class="mss_login-field-label">Port</label>
-                    <input type="number" id="mss_login-usersdb-pg-port" class="mss_login-input" value="${cfg.postgres_port || 5432}" placeholder="5432" style="width:80px;">
+            <div id="mss-login-usersdb-postgres-fields" style="margin-top:8px; ${backend !== "postgresql" ? "display:none;" : ""}">
+                <div class="mss-login-row" style="gap:8px; align-items:center; margin-bottom:6px;">
+                    <label class="mss-login-field-label">Host</label>
+                    <input type="text" id="mss-login-usersdb-pg-host" class="mss-login-input" value="${escapeHtml(cfg.postgres_host || "localhost")}" placeholder="localhost">
+                    <label class="mss-login-field-label">Port</label>
+                    <input type="number" id="mss-login-usersdb-pg-port" class="mss-login-input" value="${cfg.postgres_port || 5432}" placeholder="5432" style="width:80px;">
                 </div>
-                <div class="mss_login-row" style="gap:8px; align-items:center;">
-                    <label class="mss_login-field-label">Database</label>
-                    <input type="text" id="mss_login-usersdb-pg-database" class="mss_login-input" value="${escapeHtml(cfg.postgres_database || "mss_login")}" placeholder="mss_login">
-                    <label class="mss_login-field-label">User</label>
-                    <input type="text" id="mss_login-usersdb-pg-user" class="mss_login-input" value="${escapeHtml(cfg.postgres_user || "mss_login")}" placeholder="mss_login">
+                <div class="mss-login-row" style="gap:8px; align-items:center;">
+                    <label class="mss-login-field-label">Database</label>
+                    <input type="text" id="mss-login-usersdb-pg-database" class="mss-login-input" value="${escapeHtml(cfg.postgres_database || "mss-login")}" placeholder="mss-login">
+                    <label class="mss-login-field-label">User</label>
+                    <input type="text" id="mss-login-usersdb-pg-user" class="mss-login-input" value="${escapeHtml(cfg.postgres_user || "mss-login")}" placeholder="mss-login">
                 </div>
-                <p class="mss_login-note" style="margin-top:6px;">Password: set <code>USERS_DB_PASSWORD</code> or <code>POSTGRES_PASSWORD</code> in environment (never stored in config).</p>
+                <p class="mss-login-note" style="margin-top:6px;">Password: set <code>USERS_DB_PASSWORD</code> or <code>POSTGRES_PASSWORD</code> in environment (never stored in config).</p>
             </div>
-            <div class="mss_login-row" style="margin-top:16px; gap:8px;">
-                <button class="mss_login-btn" id="mss_login-usersdb-save">Save</button>
+            <div class="mss-login-row" style="margin-top:16px; gap:8px;">
+                <button class="mss-login-btn" id="mss-login-usersdb-save">Save</button>
             </div>
-            <p id="mss_login-usersdb-status" class="mss_login-note" style="margin-top:8px;"></p>
+            <p id="mss-login-usersdb-status" class="mss-login-note" style="margin-top:8px;"></p>
         </div>
     `;
-    const backendSelect = container.querySelector("#mss_login-usersdb-backend");
-    const sqliteFields = container.querySelector("#mss_login-usersdb-sqlite-fields");
-    const postgresFields = container.querySelector("#mss_login-usersdb-postgres-fields");
-    const statusEl = container.querySelector("#mss_login-usersdb-status");
+    const backendSelect = container.querySelector("#mss-login-usersdb-backend");
+    const sqliteFields = container.querySelector("#mss-login-usersdb-sqlite-fields");
+    const postgresFields = container.querySelector("#mss-login-usersdb-postgres-fields");
+    const statusEl = container.querySelector("#mss-login-usersdb-status");
     function showFields() {
         const b = (backendSelect.value || "sqlite").toLowerCase();
         sqliteFields.style.display = b === "sqlite" ? "" : "none";
         postgresFields.style.display = b === "postgresql" ? "" : "none";
     }
     backendSelect.onchange = showFields;
-    container.querySelector("#mss_login-usersdb-save").onclick = async () => {
+    container.querySelector("#mss-login-usersdb-save").onclick = async () => {
         const b = (backendSelect.value || "sqlite").toLowerCase();
         const body = {
             backend: b,
-            sqlite_path: container.querySelector("#mss_login-usersdb-sqlite-path").value.trim() || "users/users.db",
-            postgres_host: container.querySelector("#mss_login-usersdb-pg-host").value.trim() || "localhost",
-            postgres_port: parseInt(container.querySelector("#mss_login-usersdb-pg-port").value, 10) || 5432,
-            postgres_database: container.querySelector("#mss_login-usersdb-pg-database").value.trim() || "mss_login",
-            postgres_user: container.querySelector("#mss_login-usersdb-pg-user").value.trim() || "mss_login",
+            sqlite_path: container.querySelector("#mss-login-usersdb-sqlite-path").value.trim() || "users/users.db",
+            postgres_host: container.querySelector("#mss-login-usersdb-pg-host").value.trim() || "localhost",
+            postgres_port: parseInt(container.querySelector("#mss-login-usersdb-pg-port").value, 10) || 5432,
+            postgres_database: container.querySelector("#mss-login-usersdb-pg-database").value.trim() || "mss-login",
+            postgres_user: container.querySelector("#mss-login-usersdb-pg-user").value.trim() || "mss-login",
         };
         statusEl.textContent = "Saving...";
         try {
-            const res = await api.fetchApi("/mss_login/api/users-db-config", { method: "PUT", body: JSON.stringify(body) });
+            const res = await api.fetchApi("/mss-login/api/users-db-config", { method: "PUT", body: JSON.stringify(body) });
             const data = await res.json().catch(() => ({}));
             if (res.ok) {
                 statusEl.textContent = data.message || "Saved. Restart required for new backend to take effect.";
@@ -2049,8 +2049,8 @@ async renderUsersDbConfig(container) {
         ].forEach(c => categories.add(c));
         
         // Clean exclusions
-        categories.delete("mss_login"); 
-        categories.delete("mss_login.Configuration");
+        categories.delete("mss-login"); 
+        categories.delete("mss-login.Configuration");
         const sortedCats = Array.from(categories).sort();
 
         // IDs that are already explicitly defined in Sections 1 & 2
@@ -2058,12 +2058,12 @@ async renderUsersDbConfig(container) {
         const explicitIds = new Set(Object.keys(CSS_BLOCK_MAP));
 
         // --- DRAW TABLE ---
-        let html = `<table class="mss_login-table">
-            <thead><tr><th>Feature / Category</th>${GROUPS.map(g => `<th class="mss_login-check-cell">${g.toUpperCase()}</th>`).join("")}</tr></thead>
+        let html = `<table class="mss-login-table">
+            <thead><tr><th>Feature / Category</th>${GROUPS.map(g => `<th class="mss-login-check-cell">${g.toUpperCase()}</th>`).join("")}</tr></thead>
             <tbody>`;
 
         const drawRow = (label, id, header=false) => {
-            if(header) return `<tr class="mss_login-section-row"><td colspan="${GROUPS.length+1}">${label}</td></tr>`;
+            if(header) return `<tr class="mss-login-section-row"><td colspan="${GROUPS.length+1}">${label}</td></tr>`;
             let row = `<tr><td>${label}</td>`;
             GROUPS.forEach(g => {
                 let val = groupsConfig[g]?.[id];
@@ -2079,7 +2079,7 @@ async renderUsersDbConfig(container) {
                 // Admin is always true/enabled/visible
                 if (g === "admin") val = true;
 
-                row += `<td class="mss_login-check-cell"><input type="checkbox" class="perm-chk" data-group="${g}" data-key="${id}" ${val?"checked":""} ${g==="admin"?"disabled":""}></td>`;
+                row += `<td class="mss-login-check-cell"><input type="checkbox" class="perm-chk" data-group="${g}" data-key="${id}" ${val?"checked":""} ${g==="admin"?"disabled":""}></td>`;
             });
             return row + `</tr>`;
         };
@@ -2119,7 +2119,7 @@ async renderUsersDbConfig(container) {
         //  Section 3: Settings Menu Options
         html += drawRow("Settings Menu", null, true);
         html += drawRow("Settings Menu: User", "settings_user");
-        html += drawRow("Settings Menu: mss_login", "settings_mss_loginsettings");
+        html += drawRow("Settings Menu: mss-login", "settings_mss_loginsettings");
         html += drawRow("Settings Menu: Mask Editor", "settings_maskeditor");
         html += drawRow("Settings Menu: Keybinding", "settings_keybinding");
         html += drawRow("Settings Menu: Appearance", "settings_makadiappearance");
@@ -2151,7 +2151,7 @@ async renderUsersDbConfig(container) {
                 groupsConfig[g][k] = v;
                 
                 // Save to server
-                await api.fetchApi("/mss_login/api/groups", { method: "PUT", body: JSON.stringify({ groups: { [g]: { [k]: v } } }) });
+                await api.fetchApi("/mss-login/api/groups", { method: "PUT", body: JSON.stringify({ groups: { [g]: { [k]: v } } }) });
                 
                 // Apply immediately
                 updateEnforcementStyles();
@@ -2163,11 +2163,11 @@ async renderUsersDbConfig(container) {
 // --- 4. ENFORCEMENT ENGINE (CSS INJECTION) ---
 
 async function updateEnforcementStyles() {
-    if (!currentUser) currentUser = await getData("/mss_login/api/me");
+    if (!currentUser) currentUser = await getData("/mss-login/api/me");
     if (!currentUser) return;
 
     if (!groupsConfig || Object.keys(groupsConfig).length === 0) {
-        const d = await getData("/mss_login/api/groups");
+        const d = await getData("/mss-login/api/groups");
         groupsConfig = d?.groups || {};
     }
 
@@ -2182,7 +2182,7 @@ async function updateEnforcementStyles() {
 
     const baseCfg = groupsConfig[role] || {};
 
-    //console.log("[mss_login] enforcement entry:", {
+    //console.log("[mss-login] enforcement entry:", {
      //   role,
       //  is_admin: currentUser.is_admin,
        // baseCfgKeys: Object.keys(baseCfg),
@@ -2191,7 +2191,7 @@ async function updateEnforcementStyles() {
 
     // --- BYPASS ADMIN COMPLETELY ---
     if (currentUser.is_admin) {
-        const style = document.getElementById("mss_login-css-block");
+        const style = document.getElementById("mss-login-css-block");
         if (style) style.textContent = "";
         return;
     }
@@ -2203,7 +2203,7 @@ async function updateEnforcementStyles() {
         const guestCfg = groupsConfig["guest"] || {};
 
         for (const [key, selectors] of Object.entries(CSS_BLOCK_MAP)) {
-            // Always allow mss_login settings menu and logout for guests
+            // Always allow mss-login settings menu and logout for guests
             if (key === "settings_mss_loginsettings" || key === "settings_mss_loginsettings") {
                 continue; // Skip blocking this menu item
             }
@@ -2216,15 +2216,15 @@ async function updateEnforcementStyles() {
             }
         }
 
-        css += `.mss_login-blocked-item { display: none !important; }`;
-        // Always show logout button and mss_login menu - never hide them for guests
-        css += `#mss_login-settings-logout-btn, [data-mss_login-always-visible="true"] { display: block !important; visibility: visible !important; opacity: 1 !important; }`;
-        css += `li[aria-label='mss_login'], li[aria-label='mss_login'], li.p-listbox-option[aria-label='mss_login'], li.p-listbox-option[aria-label='mss_login'] { display: block !important; visibility: visible !important; opacity: 1 !important; }`;
+        css += `.mss-login-blocked-item { display: none !important; }`;
+        // Always show logout button and mss-login menu - never hide them for guests
+        css += `#mss-login-settings-logout-btn, [data-mss-login-always-visible="true"] { display: block !important; visibility: visible !important; opacity: 1 !important; }`;
+        css += `li[aria-label='mss-login'], li[aria-label='mss-login'], li.p-listbox-option[aria-label='mss-login'], li.p-listbox-option[aria-label='mss-login'] { display: block !important; visibility: visible !important; opacity: 1 !important; }`;
 
-        let styleTag = document.getElementById("mss_login-css-block");
+        let styleTag = document.getElementById("mss-login-css-block");
         if (!styleTag) {
             styleTag = document.createElement("style");
-            styleTag.id = "mss_login-css-block";
+            styleTag.id = "mss-login-css-block";
             document.head.appendChild(styleTag);
         }
         styleTag.textContent = css;
@@ -2234,12 +2234,12 @@ async function updateEnforcementStyles() {
         patchSaveConfirmDialog(guestCfg, role);
         
         // Ensure logout button is always visible for guests
-        const logoutBtn = document.getElementById("mss_login-settings-logout-btn");
+        const logoutBtn = document.getElementById("mss-login-settings-logout-btn");
         if (logoutBtn) {
             logoutBtn.style.display = "block";
             logoutBtn.style.visibility = "visible";
             logoutBtn.style.opacity = "1";
-            logoutBtn.classList.remove("mss_login-blocked-item");
+            logoutBtn.classList.remove("mss-login-blocked-item");
         }
         
         return;
@@ -2248,7 +2248,7 @@ async function updateEnforcementStyles() {
     // ... rest of non-guest logic ...
     const cfg = baseCfg;
 
-    console.log("[mss_login] enforcement (non-guest):", {
+    console.log("[mss-login] enforcement (non-guest):", {
         role,
         cfgKeys: Object.keys(cfg),
         ui_menu_templates: cfg["ui_menu_templates"],
@@ -2273,15 +2273,15 @@ async function updateEnforcementStyles() {
         }
     }
 
-    css += `.mss_login-blocked-item { display: none !important; }`;
+    css += `.mss-login-blocked-item { display: none !important; }`;
     // Always show logout button - never hide it for any user
-    css += `#mss_login-settings-logout-btn, [data-mss_login-always-visible="true"] { display: block !important; visibility: visible !important; opacity: 1 !important; }`;
+    css += `#mss-login-settings-logout-btn, [data-mss-login-always-visible="true"] { display: block !important; visibility: visible !important; opacity: 1 !important; }`;
 
     // Apply to Head
-    let styleTag = document.getElementById("mss_login-css-block");
+    let styleTag = document.getElementById("mss-login-css-block");
     if (!styleTag) {
         styleTag = document.createElement("style");
-        styleTag.id = "mss_login-css-block";
+        styleTag.id = "mss-login-css-block";
         document.head.appendChild(styleTag);
     }
     styleTag.textContent = css;
@@ -2292,12 +2292,12 @@ async function updateEnforcementStyles() {
     patchSaveConfirmDialog(cfg, role);
     
     // Ensure logout button is always visible
-    const logoutBtn = document.getElementById("mss_login-settings-logout-btn");
+    const logoutBtn = document.getElementById("mss-login-settings-logout-btn");
     if (logoutBtn) {
         logoutBtn.style.display = "block";
         logoutBtn.style.visibility = "visible";
         logoutBtn.style.opacity = "1";
-        logoutBtn.classList.remove("mss_login-blocked-item");
+        logoutBtn.classList.remove("mss-login-blocked-item");
     }
 }
 
@@ -2312,18 +2312,18 @@ function enforceSidebar(cfg, role) {
 
     items.forEach(el => {
         // Never hide the logout button - it should always be visible
-        if (el.id === "mss_login-settings-logout-btn" || 
+        if (el.id === "mss-login-settings-logout-btn" || 
             el.innerText?.includes("Logout current user") ||
-            el.querySelector("#mss_login-settings-logout-btn")) {
-            el.classList.remove("mss_login-blocked-item");
+            el.querySelector("#mss-login-settings-logout-btn")) {
+            el.classList.remove("mss-login-blocked-item");
             el.style.display = "";
             return;
         }
         
-        // Never hide the mss_login menu item - guests need it to logout
+        // Never hide the mss-login menu item - guests need it to logout
         const ariaLabel = el.getAttribute('aria-label');
-        if (ariaLabel && (ariaLabel.toLowerCase() === 'mss_login' || ariaLabel === 'mss_login')) {
-            el.classList.remove("mss_login-blocked-item");
+        if (ariaLabel && (ariaLabel.toLowerCase() === 'mss-login' || ariaLabel === 'mss-login')) {
+            el.classList.remove("mss-login-blocked-item");
             el.style.display = "";
             return;
         }
@@ -2335,9 +2335,9 @@ function enforceSidebar(cfg, role) {
 
         let val = cfg[catId];
         
-        // Always allow mss_login menu for guests
-        if (catId === "mss_loginsettings" || catId === "mss_login" || txt.toLowerCase() === "mss_login") {
-            el.classList.remove("mss_login-blocked-item");
+        // Always allow mss-login menu for guests
+        if (catId === "mss_loginsettings" || catId === "mss-login" || txt.toLowerCase() === "mss-login") {
+            el.classList.remove("mss-login-blocked-item");
             el.style.display = "";
             return;
         }
@@ -2350,10 +2350,10 @@ function enforceSidebar(cfg, role) {
         }
 
         if (val === false) {
-            el.classList.add("mss_login-blocked-item");
+            el.classList.add("mss-login-blocked-item");
             el.style.display = "none"; // Inline force
         } else {
-            el.classList.remove("mss_login-blocked-item");
+            el.classList.remove("mss-login-blocked-item");
             el.style.display = "";
         }
     });
@@ -2497,7 +2497,7 @@ function patchSaveConfirmDialog(cfg, role) {
                 ev.preventDefault();
                 ev.stopPropagation();
                 ev.stopImmediatePropagation();
-                console.warn("[mss_login] Blocked Save in confirm dialog for this role");
+                console.warn("[mss-login] Blocked Save in confirm dialog for this role");
                 // Do NOT close the dialog; user can still click "Close without saving" / "Cancel"
             };
 
@@ -2571,12 +2571,12 @@ function guardUnsavedWorkflowDialog() {
             // You can either disable it or remove it:
             // Option A: Disable + style
             // saveButton.disabled = true;
-            // saveButton.classList.add("mss_login-blocked-item");
+            // saveButton.classList.add("mss-login-blocked-item");
 
             // Option B: Just remove it entirely (cleanest UX for guests)
             saveButton.remove();
 
-            console.warn("[mss_login] Blocked workflow save from unsaved-changes dialog for this role.");
+            console.warn("[mss-login] Blocked workflow save from unsaved-changes dialog for this role.");
         }
 
         // Rewrite dialog content with an Access Denied style message
@@ -2595,13 +2595,13 @@ function guardUnsavedWorkflowDialog() {
 
 function showWorkflowDeniedToast(message) {
     // Simple top-right toast; non-intrusive but visible
-    let existing = document.getElementById("mss_login-workflow-denied-toast");
+    let existing = document.getElementById("mss-login-workflow-denied-toast");
     if (existing) {
         existing.remove();
     }
 
 const toast = document.createElement("div");
-toast.id = "mss_login-workflow-denied-toast";
+toast.id = "mss-login-workflow-denied-toast";
 
 // --- Container Styling ---
 Object.assign(toast.style, {
@@ -2637,7 +2637,7 @@ toast.innerHTML = `
         </div>
     </div>
 
-    <button id="mss_login-toast-close" style="
+    <button id="mss-login-toast-close" style="
         background:rgba(255,255,255,0.08);
         border:none;
         width:24px;
@@ -2654,14 +2654,14 @@ toast.innerHTML = `
 `;
 
 // --- Hover effect on close button ---
-toast.querySelector("#mss_login-toast-close").onmouseover = () =>
-    toast.querySelector("#mss_login-toast-close").style.background =
+toast.querySelector("#mss-login-toast-close").onmouseover = () =>
+    toast.querySelector("#mss-login-toast-close").style.background =
         "rgba(255,255,255,0.18)";
-toast.querySelector("#mss_login-toast-close").onmouseout = () =>
-    toast.querySelector("#mss_login-toast-close").style.background =
+toast.querySelector("#mss-login-toast-close").onmouseout = () =>
+    toast.querySelector("#mss-login-toast-close").style.background =
         "rgba(255,255,255,0.08)";
 
-toast.querySelector("#mss_login-toast-close").onclick = () => {
+toast.querySelector("#mss-login-toast-close").onclick = () => {
     toast.style.opacity = "0";
     toast.style.transform = "translateX(-50%) translateY(-6px)";
     setTimeout(() => toast.remove(), 220);
@@ -2699,7 +2699,7 @@ function installWorkflowSaveDeniedWatcher() {
             // We only care about 403s on the workflow userdata endpoint
             if (response.status === 403 && url.includes("/api/userdata/workflows")) {
                 console.debug(
-                    "[mss_login] 403 on workflow endpoint (client-side watcher):",
+                    "[mss-login] 403 on workflow endpoint (client-side watcher):",
                     url
                 );
 
@@ -2714,7 +2714,7 @@ function installWorkflowSaveDeniedWatcher() {
                     }
                 } catch (e) {
                     // If body isn't JSON or cannot be parsed, just keep the default msg
-                    console.debug("[mss_login] could not parse denied response JSON:", e);
+                    console.debug("[mss-login] could not parse denied response JSON:", e);
                 }
 
                 // Extra safety: only show toast if this role is actually blocked from saving
@@ -2724,18 +2724,18 @@ function installWorkflowSaveDeniedWatcher() {
                     } else {
                         // If somehow a 403 slipped through for an allowed role, just log it
                         console.warn(
-                            "[mss_login] Got 403 on workflow save despite isWorkflowSaveAllowed() = true. Message:",
+                            "[mss-login] Got 403 on workflow save despite isWorkflowSaveAllowed() = true. Message:",
                             msg
                         );
                     }
                 } catch (e) {
                     // If helper blows up for some reason, still show the toast
-                    console.warn("[mss_login] isWorkflowSaveAllowed() check failed:", e);
+                    console.warn("[mss-login] isWorkflowSaveAllowed() check failed:", e);
                     showWorkflowDeniedToast(msg);
                 }
             }
         } catch (e) {
-            console.warn("[mss_login] error in wrappedFetch watcher:", e);
+            console.warn("[mss-login] error in wrappedFetch watcher:", e);
         }
 
         return response;
@@ -2755,7 +2755,7 @@ window.addEventListener("keydown", (ev) => {
         if (!isWorkflowSaveAllowed()) {
             ev.preventDefault();
             ev.stopPropagation();
-            console.warn("[mss_login] Blocked Ctrl+S for this role");
+            console.warn("[mss-login] Blocked Ctrl+S for this role");
             return;
         }
     }
@@ -2765,7 +2765,7 @@ window.addEventListener("keydown", (ev) => {
         if (!isWorkflowLoadAllowed()) {
             ev.preventDefault();
             ev.stopPropagation();
-            console.warn("[mss_login] Blocked Ctrl+O for this role");
+            console.warn("[mss-login] Blocked Ctrl+O for this role");
             return;
         }
     }
@@ -2774,17 +2774,17 @@ window.addEventListener("keydown", (ev) => {
 // --- 5. INITIALIZATION ---
 
 // Import logout functionality to ensure it loads
-import("/mss_login/js/logout.js").catch(err => {
-    console.error("[mss_login] Failed to load logout.js:", err);
+import("/mss-login/js/logout.js").catch(err => {
+    console.error("[mss-login] Failed to load logout.js:", err);
     // Fallback: try to load it directly
     const script = document.createElement("script");
-    script.src = "/mss_login/js/logout.js";
+    script.src = "/mss-login/js/logout.js";
     script.type = "module";
     document.head.appendChild(script);
 });
 
 app.registerExtension({
-    name: "mss_login.Settings",
+    name: "mss-login.Settings",
     async setup() {
         // Expose dialog class globally for floating button and other extensions
         mss_loginDialog.expose();
@@ -2830,18 +2830,18 @@ app.registerExtension({
             
             // Ensure logout button is always visible for all users - cache the query
             if (!cachedLogoutBtn || !cachedLogoutBtn.isConnected) {
-                cachedLogoutBtn = document.getElementById("mss_login-settings-logout-btn");
+                cachedLogoutBtn = document.getElementById("mss-login-settings-logout-btn");
             }
             if (cachedLogoutBtn) {
                 cachedLogoutBtn.style.display = "block";
                 cachedLogoutBtn.style.visibility = "visible";
                 cachedLogoutBtn.style.opacity = "1";
-                cachedLogoutBtn.classList.remove("mss_login-blocked-item");
+                cachedLogoutBtn.classList.remove("mss-login-blocked-item");
             }
             
-            // Ensure mss_login menu item is always visible - cache query results
+            // Ensure mss-login menu item is always visible - cache query results
             if (now - lastMenuCheck > MENU_CACHE_DURATION || !cachedMenuItems || cachedMenuItems.length === 0) {
-                cachedMenuItems = document.querySelectorAll('li[aria-label="mss_login"], li.p-listbox-option[aria-label="mss_login"]');
+                cachedMenuItems = document.querySelectorAll('li[aria-label="mss-login"], li.p-listbox-option[aria-label="mss-login"]');
                 lastMenuCheck = now;
             }
             cachedMenuItems.forEach(item => {
@@ -2849,12 +2849,12 @@ app.registerExtension({
                     item.style.display = "block";
                     item.style.visibility = "visible";
                     item.style.opacity = "1";
-                    item.classList.remove("mss_login-blocked-item");
+                    item.classList.remove("mss-login-blocked-item");
                 }
             });
 
             // If CSS block was nuked, rebuild it
-            if (!document.getElementById("mss_login-css-block")) {
+            if (!document.getElementById("mss-login-css-block")) {
                 updateEnforcementStyles();
             }
         }, 1000);
@@ -2862,10 +2862,10 @@ app.registerExtension({
         // Store interval ID for potential cleanup (though this extension typically lives for the page lifetime)
         window._mss_loginEnforcementInterval = enforcementInterval;
 
-        // Register "Manage mss_login" Button in Settings
+        // Register "Manage mss-login" Button in Settings
 app.ui.settings.addSetting({
-    id: "mss_login.Configuration",
-    name: "mss_login",
+    id: "mss-login.Configuration",
+    name: "mss-login",
     type: () => {
         const wrapper = document.createElement("div");
         wrapper.style.display = "flex";
@@ -2875,12 +2875,12 @@ app.ui.settings.addSetting({
         // Logout button (above) - ALWAYS visible for all users including guests
         const logoutBtn = document.createElement("button");
         logoutBtn.innerText = "Logout current user";
-        logoutBtn.className = "mss_login-launch-btn";
+        logoutBtn.className = "mss-login-launch-btn";
         logoutBtn.style.background = "#7a2525";
         logoutBtn.style.borderColor = "#aa3a3a";
-        logoutBtn.id = "mss_login-settings-logout-btn";
+        logoutBtn.id = "mss-login-settings-logout-btn";
         // Ensure logout button is never hidden by enforcement
-        logoutBtn.setAttribute('data-mss_login-always-visible', 'true');
+        logoutBtn.setAttribute('data-mss-login-always-visible', 'true');
         logoutBtn.style.display = "block"; // Force display
         
         logoutBtn.onclick = () => {
@@ -2890,8 +2890,8 @@ app.ui.settings.addSetting({
 
         // Main management button
         const btn = document.createElement("button");
-        btn.innerText = "Manage mss_login Permissions";
-        btn.className = "mss_login-launch-btn";
+        btn.innerText = "Manage mss-login Permissions";
+        btn.className = "mss-login-launch-btn";
         btn.onclick = () => new mss_loginDialog().show();
 
         wrapper.appendChild(logoutBtn);
@@ -2899,7 +2899,7 @@ app.ui.settings.addSetting({
 
         // Guest JWT toggle (Admin only)
         const guestJwtRow = document.createElement("div");
-        guestJwtRow.id = "mss_login-guest-jwt-row";
+        guestJwtRow.id = "mss-login-guest-jwt-row";
         guestJwtRow.style.display = "none";
         guestJwtRow.style.alignItems = "center";
         guestJwtRow.style.gap = "8px";
@@ -2911,13 +2911,13 @@ app.ui.settings.addSetting({
         guestJwtLabel.style.cursor = "pointer";
         const guestJwtCheck = document.createElement("input");
         guestJwtCheck.type = "checkbox";
-        guestJwtCheck.id = "mss_login-allow-guest-jwt";
+        guestJwtCheck.id = "mss-login-allow-guest-jwt";
         guestJwtLabel.appendChild(guestJwtCheck);
         guestJwtLabel.appendChild(document.createTextNode("Allow guest JWT tokens (guest login issues session JWT)"));
         guestJwtRow.appendChild(guestJwtLabel);
         guestJwtCheck.onchange = async () => {
             try {
-                const res = await api.fetchApi("/mss_login/api/settings/guest-jwt", {
+                const res = await api.fetchApi("/mss-login/api/settings/guest-jwt", {
                     method: "PUT",
                     body: JSON.stringify({ allow_guest_jwt: guestJwtCheck.checked })
                 });
@@ -2933,9 +2933,9 @@ app.ui.settings.addSetting({
         wrapper.appendChild(guestJwtRow);
         (async () => {
             try {
-                const me = await getData("/mss_login/api/me");
+                const me = await getData("/mss-login/api/me");
                 if (me && me.is_admin) {
-                    const cfg = await getData("/mss_login/api/settings/guest-jwt");
+                    const cfg = await getData("/mss-login/api/settings/guest-jwt");
                     guestJwtRow.style.display = "flex";
                     guestJwtCheck.checked = !!cfg.allow_guest_jwt;
                 }
@@ -2944,7 +2944,7 @@ app.ui.settings.addSetting({
 
         // Push notifications (ntfy) - Admin only
         const ntfySection = document.createElement("div");
-        ntfySection.id = "mss_login-ntfy-section";
+        ntfySection.id = "mss-login-ntfy-section";
         ntfySection.style.display = "none";
         ntfySection.style.marginTop = "12px";
         const ntfyHeading = document.createElement("h4");
@@ -2962,17 +2962,17 @@ app.ui.settings.addSetting({
         ntfySection.appendChild(ntfyTopicLabel);
         const ntfyCheckWrap = document.createElement("div");
         ntfyCheckWrap.style.marginTop = "8px";
-        ntfyCheckWrap.id = "mss_login-ntfy-checks";
+        ntfyCheckWrap.id = "mss-login-ntfy-checks";
         ntfySection.appendChild(ntfyCheckWrap);
         const ntfySaveBtn = document.createElement("button");
-        ntfySaveBtn.className = "mss_login-launch-btn";
+        ntfySaveBtn.className = "mss-login-launch-btn";
         ntfySaveBtn.textContent = "Save ntfy settings";
         ntfySaveBtn.style.marginTop = "8px";
         ntfySaveBtn.onclick = async () => {
             try {
                 const enabled = [];
                 ntfyCheckWrap.querySelectorAll("input[type=checkbox]:checked").forEach(cb => enabled.push(cb.value));
-                const res = await api.fetchApi("/mss_login/api/settings/ntfy", {
+                const res = await api.fetchApi("/mss-login/api/settings/ntfy", {
                     method: "PUT",
                     body: JSON.stringify({ topic: ntfyTopicInput.value.trim(), enabled_events: enabled })
                 });
@@ -2985,9 +2985,9 @@ app.ui.settings.addSetting({
         wrapper.appendChild(ntfySection);
         (async () => {
             try {
-                const me = await getData("/mss_login/api/me");
+                const me = await getData("/mss-login/api/me");
                 if (me && me.is_admin) {
-                    const cfg = await getData("/mss_login/api/settings/ntfy");
+                    const cfg = await getData("/mss-login/api/settings/ntfy");
                     ntfySection.style.display = "block";
                     ntfyTopicInput.value = cfg.topic || "";
                     const eventLabels = {
@@ -3018,12 +3018,12 @@ app.ui.settings.addSetting({
 
         // View my console button (per-user console log)
         const consoleBtn = document.createElement("button");
-        consoleBtn.className = "mss_login-launch-btn";
+        consoleBtn.className = "mss-login-launch-btn";
         consoleBtn.textContent = "View my console";
         consoleBtn.style.marginTop = "6px";
         consoleBtn.onclick = async () => {
             try {
-                const r = await getData("/mss_login/me/console");
+                const r = await getData("/mss-login/me/console");
                 const lines = (r && r.lines) ? r.lines : [];
                 const text = lines.length ? lines.join("\n") : "(No log entries yet.)";
                 const pre = document.createElement("pre");
@@ -3039,7 +3039,7 @@ app.ui.settings.addSetting({
 
         // MFA section (Two-Factor Authentication with Google Authenticator)
         const mfaSection = document.createElement("div");
-        mfaSection.id = "mss_login-mfa-section";
+        mfaSection.id = "mss-login-mfa-section";
         mfaSection.style.marginTop = "12px";
         mfaSection.style.display = "none";
         const mfaHeading = document.createElement("h4");
@@ -3053,17 +3053,17 @@ app.ui.settings.addSetting({
         mfaSubtext.textContent = "You can enable MFA here for extra security, whether or not your role requires it.";
         mfaSection.appendChild(mfaSubtext);
         const mfaStatus = document.createElement("p");
-        mfaStatus.id = "mss_login-mfa-status";
+        mfaStatus.id = "mss-login-mfa-status";
         mfaStatus.style.margin = "0 0 8px 0";
         mfaSection.appendChild(mfaStatus);
         const mfaSetupBtn = document.createElement("button");
-        mfaSetupBtn.className = "mss_login-launch-btn";
+        mfaSetupBtn.className = "mss-login-launch-btn";
         mfaSetupBtn.textContent = "Set up MFA (Google Authenticator)";
-        mfaSetupBtn.id = "mss_login-mfa-setup-btn";
+        mfaSetupBtn.id = "mss-login-mfa-setup-btn";
         mfaSetupBtn.style.display = "none";
         mfaSetupBtn.onclick = async () => {
             try {
-                const setupResp = await api.fetchApi("/mss_login/api/mfa/setup", {
+                const setupResp = await api.fetchApi("/mss-login/api/mfa/setup", {
                     method: "POST",
                     body: JSON.stringify({}),
                 });
@@ -3078,7 +3078,7 @@ app.ui.settings.addSetting({
                 content.style.gap = "12px";
                 content.innerHTML = "<p>Scan the QR code with Google Authenticator (or any TOTP app), then enter the 6-digit code.</p>";
                 const qrDiv = document.createElement("div");
-                qrDiv.id = "mss_login-mfa-dialog-qr";
+                qrDiv.id = "mss-login-mfa-dialog-qr";
                 content.appendChild(qrDiv);
                 const renderQr = () => {
                     qrDiv.innerHTML = "";
@@ -3114,7 +3114,7 @@ app.ui.settings.addSetting({
                 content.appendChild(codeLabel);
                 const btnRow = document.createElement("div");
                 const completeBtn = document.createElement("button");
-                completeBtn.className = "mss_login-launch-btn";
+                completeBtn.className = "mss-login-launch-btn";
                 completeBtn.textContent = "Complete Setup";
                 completeBtn.onclick = async () => {
                     const code = (codeInput.value || "").replace(/\s/g, "");
@@ -3124,7 +3124,7 @@ app.ui.settings.addSetting({
                     }
                     completeBtn.disabled = true;
                     try {
-                        const verifyResp = await api.fetchApi("/mss_login/api/mfa/verify-setup", {
+                        const verifyResp = await api.fetchApi("/mss-login/api/mfa/verify-setup", {
                             method: "POST",
                             body: JSON.stringify({ code }),
                         });
@@ -3154,7 +3154,7 @@ app.ui.settings.addSetting({
         wrapper.appendChild(mfaSection);
         (async () => {
             try {
-                const me = await getData("/mss_login/api/me");
+                const me = await getData("/mss-login/api/me");
                 if (me && me.username && me.username.toLowerCase() !== "guest") {
                     mfaSection.style.display = "block";
                     if (me.mfa_enabled) {
@@ -3170,21 +3170,21 @@ app.ui.settings.addSetting({
 
         // My JWT Tokens section (list, masked by default, eye to reveal, revoke)
         const jwtSection = document.createElement("div");
-        jwtSection.id = "mss_login-my-jwt-tokens";
+        jwtSection.id = "mss-login-my-jwt-tokens";
         jwtSection.style.marginTop = "12px";
         const jwtHeading = document.createElement("h4");
         jwtHeading.style.margin = "0 0 8px 0";
         jwtHeading.textContent = "My JWT Tokens";
         jwtSection.appendChild(jwtHeading);
         const jwtTableWrap = document.createElement("div");
-        jwtTableWrap.innerHTML = "<table class='mss_login-sessions-table'><thead><tr><th>Token</th><th>Created</th><th>Actions</th></tr></thead><tbody id='mss_login-sessions-tbody'></tbody></table>";
+        jwtTableWrap.innerHTML = "<table class='mss-login-sessions-table'><thead><tr><th>Token</th><th>Created</th><th>Actions</th></tr></thead><tbody id='mss-login-sessions-tbody'></tbody></table>";
         jwtSection.appendChild(jwtTableWrap);
         wrapper.appendChild(jwtSection);
         (async () => {
             try {
-                const res = await getData("/mss_login/me/sessions");
+                const res = await getData("/mss-login/me/sessions");
                 const sessions = (res && res.sessions) ? res.sessions : [];
-                const tbody = document.getElementById("mss_login-sessions-tbody");
+                const tbody = document.getElementById("mss-login-sessions-tbody");
                 if (!tbody) return;
                 tbody.innerHTML = "";
                 for (const s of sessions) {
@@ -3209,7 +3209,7 @@ app.ui.settings.addSetting({
                         eyeBtn.style.marginRight = "6px";
                         eyeBtn.onclick = async () => {
                             try {
-                                const r = await api.fetchApi("/mss_login/me/current-token");
+                                const r = await api.fetchApi("/mss-login/me/current-token");
                                 const isHttps = !!r.is_https;
                                 if (!isHttps) {
                                     const go = confirm("Connection is not secure. Revealing the token over HTTP may expose it. Please notify your administrator to enable HTTPS.\n\nReveal anyway?");
@@ -3235,7 +3235,7 @@ app.ui.settings.addSetting({
                     revokeBtn.textContent = "Revoke";
                     revokeBtn.onclick = async () => {
                         try {
-                            const r = await api.fetchApi("/mss_login/me/sessions/revoke", { method: "POST", body: JSON.stringify({ jti }) });
+                            const r = await api.fetchApi("/mss-login/me/sessions/revoke", { method: "POST", body: JSON.stringify({ jti }) });
                             if (r && r.status === "ok") {
                                 tr.remove();
                                 if (s.is_current) window.location.href = "/logout";
