@@ -229,6 +229,29 @@ API_TOKEN_STORE_CONFIG = {
 }
 
 
+def get_domain(use_https: bool = True, use_port: bool = False, port: int = 8188) -> str:
+    """Get the domain name of the server."""
+    try:
+        domain = os.getenv("COMFYUI_DOMAIN").strip().lower()
+        if not domain:
+            return (
+                f"{('https' if use_https else 'http')}://localhost:{port}"
+                if use_port
+                else f"{('https' if use_https else 'http')}://localhost"
+            )
+        if use_https and domain.startswith("https"):
+            domain = domain.split("://")[1]
+        if use_port and port:
+            domain = f"{domain}:{port}"
+        return domain
+    except Exception:
+        return (
+            f"{('https' if use_https else 'http')}://localhost:{port}"
+            if use_port
+            else f"{('https' if use_https else 'http')}://localhost"
+        )
+
+
 def reload_users_db_config() -> dict:
     """Re-read config and refresh USERS_DB_CONFIG (used after admin saves users DB config). Restart required to use new backend."""
     global config_data, USERS_DB_CONFIG, API_TOKEN_STORE_CONFIG, SESSION_TOKEN_STORE_CONFIG

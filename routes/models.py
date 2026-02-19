@@ -7,6 +7,7 @@ from aiohttp import web
 from utils import jwt_auth, users_db
 from ..globals import routes
 from ..utils.model_cache import get_model_cache
+from ..constants import USERS_DB_CONFIG
 
 
 def is_admin(request: web.Request) -> bool:

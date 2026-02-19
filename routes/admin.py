@@ -30,7 +30,7 @@ from ..utils.ntfy_notifier import (
 from ..utils.shared_items_store import get_shared_items_store
 from ..utils.model_cache import get_model_cache
 from ..utils.updater import get_cached_status
-from ..constants import USERS_DB_CONFIG
+from ..constants import USERS_DB_CONFIG, get_domain
 
 
 def is_admin(request):
@@ -612,6 +612,12 @@ async def api_add_shared_item(request):
             )
         store = get_shared_items_store(USERS_DB_CONFIG)
         if store.add(user_id, folder, item_name):
+            send_notification(
+                "shared_items_added",
+                "MSS-Login: Shared item added",
+                f"Shared item: {folder}/{item_name} added to user: {username}",
+                priority="default",
+            )
             return web.json_response(
                 {"status": "ok", "folder": folder, "item_name": item_name}
             )
@@ -645,6 +651,12 @@ async def api_remove_shared_item(request):
             )
         store = get_shared_items_store(USERS_DB_CONFIG)
         if store.remove(user_id, folder, item_name):
+            send_notification(
+                "shared_items_removed",
+                "MSS-Login: Shared item removed",
+                f"Shared item: {folder}/{item_name} removed from user: {username}",
+                priority="default",
+            )
             return web.json_response({"status": "ok"})
         return web.json_response({"error": "Item not found"}, status=404)
     except Exception as e:

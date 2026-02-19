@@ -87,6 +87,7 @@ EVENT_KEYS: List[str] = [
     "server_started",
     "server_stopped",
     "update_available",
+    "shared_items_added",
 ]
 """All recognized event keys that admins can toggle on/off."""
 
@@ -160,6 +161,14 @@ _EVENT_DEFAULTS: Dict[str, Dict[str, Union[str, List[str]]]] = {
     },
     "update_available": {
         "tags": ["loudspeaker", "update"],
+        "priority": PRIORITY_DEFAULT,
+    },
+    "shared_items_added": {
+        "tags": ["package", "shared_items"],
+        "priority": PRIORITY_DEFAULT,
+    },
+    "shared_items_removed": {
+        "tags": ["package", "shared_items"],
         "priority": PRIORITY_DEFAULT,
     },
 }
