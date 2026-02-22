@@ -43,5 +43,15 @@
 		"branch": "production",
 		"changelog_url": ""
 	},
-	"token_algorithm": "HS256"
+	"token_algorithm": "HS256",
+	"experimental_features": false,
+	"s3_storage": {
+		"enabled": false,
+		"endpoint_url": "",
+		"bucket_name": "",
+		"region": "",
+		"prefix": "comfyui/",
+		"access_key_id_env": "S3_ACCESS_KEY_ID",
+		"secret_access_key_env": "S3_SECRET_ACCESS_KEY"
+	}
 }

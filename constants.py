@@ -387,6 +387,27 @@ if AUTO_INSTALL_DEPS and AUTO_INSTALL_DEPS_FROM_ENV in ("1", "true", "yes"):
             )
 
 
+# Experimental features: opt-in flag for in-development functionality (S3 storage, etc.)
+def _get_experimental_features() -> bool:
+    env_val = str(os.environ.get("EXPERIMENTAL_FEATURES", "")).strip().lower()
+    if env_val in ("1", "true", "yes"):
+        return True
+    if env_val in ("0", "false", "no"):
+        return False
+    cfg = _load_config(CONFIG_FILE_PATH)
+    return bool(cfg.get("experimental_features", False))
+
+
+EXPERIMENTAL_FEATURES = _get_experimental_features()
+
+
+def reload_experimental_features() -> bool:
+    """Re-read config and refresh EXPERIMENTAL_FEATURES."""
+    global EXPERIMENTAL_FEATURES
+    EXPERIMENTAL_FEATURES = _get_experimental_features()
+    return EXPERIMENTAL_FEATURES
+
+
 # Guest JWT: allow guest login to receive a session JWT (default False for security)
 def _get_allow_guest_jwt():
     env_val = str(os.environ.get("ALLOW_GUEST_JWT", "")).strip().lower()
@@ -462,3 +483,41 @@ def reload_api_token_store_config() -> dict:
     """Re-read config and refresh API_TOKEN_STORE_CONFIG. Token store uses same DB as users; only json_path is token-specific."""
     reload_users_db_config()
     return API_TOKEN_STORE_CONFIG
+
+
+# ---------------------------------------------------------------------------
+# S3-compatible cloud storage (experimental)
+# Credentials are resolved from env vars only -- never stored in config.json.
+# ---------------------------------------------------------------------------
+_s3_cfg = config_data.get("s3_storage") or {}
+_s3_ak_env = _s3_cfg.get("access_key_id_env", "S3_ACCESS_KEY_ID")
+_s3_sk_env = _s3_cfg.get("secret_access_key_env", "S3_SECRET_ACCESS_KEY")
+
+S3_STORAGE_CONFIG: dict = {
+    "enabled": bool(_s3_cfg.get("enabled", False)),
+    "endpoint_url": (_s3_cfg.get("endpoint_url") or "").strip(),
+    "bucket_name": (_s3_cfg.get("bucket_name") or "").strip(),
+    "region": (_s3_cfg.get("region") or "").strip(),
+    "prefix": (_s3_cfg.get("prefix") or "comfyui/").strip(),
+    "access_key_id": (os.getenv(_s3_ak_env) or "").strip(),
+    "secret_access_key": (os.getenv(_s3_sk_env) or "").strip(),
+}
+
+
+def reload_s3_storage_config() -> dict:
+    """Re-read config and refresh S3_STORAGE_CONFIG."""
+    global S3_STORAGE_CONFIG
+    cfg = _load_config(CONFIG_FILE_PATH)
+    s3 = cfg.get("s3_storage") or {}
+    ak_env = s3.get("access_key_id_env", "S3_ACCESS_KEY_ID")
+    sk_env = s3.get("secret_access_key_env", "S3_SECRET_ACCESS_KEY")
+    S3_STORAGE_CONFIG = {
+        "enabled": bool(s3.get("enabled", False)),
+        "endpoint_url": (s3.get("endpoint_url") or "").strip(),
+        "bucket_name": (s3.get("bucket_name") or "").strip(),
+        "region": (s3.get("region") or "").strip(),
+        "prefix": (s3.get("prefix") or "comfyui/").strip(),
+        "access_key_id": (os.getenv(ak_env) or "").strip(),
+        "secret_access_key": (os.getenv(sk_env) or "").strip(),
+    }
+    return S3_STORAGE_CONFIG

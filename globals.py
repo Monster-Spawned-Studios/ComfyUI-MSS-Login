@@ -16,6 +16,7 @@ from .constants import (
 	BLACKLIST_FILE,
 	BLACKLIST_AFTER_ATTEMPTS,
 	EPHEMERAL_SECRET_KEY_PATH,
+	EXPERIMENTAL_FEATURES,
 	_load_ephemeral_key,
 	_load_config,
 )

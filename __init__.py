@@ -25,6 +25,7 @@ from .constants import (
     LOCAL_NETWORK_CIDRS,
     USERS_DB_CONFIG,
     CONFIG_FILE_PATH,
+    EXPERIMENTAL_FEATURES,
 )
 from .globals import (
     app,
@@ -40,6 +41,8 @@ from .globals import (
 from .utils import watcher
 from .utils.bootstrap import ensure_groups_config
 from .routes import static, auth, admin, user, workflow_routes, me, mfa, recovery, debug
+if EXPERIMENTAL_FEATURES:
+    from .routes import s3 as _s3_routes  # noqa: F401
 from .utils.sfw_intercept.reactor_sfw_intercept import _load_reactor_module
 from .utils.sfw_intercept.nsfw_guard import (
     should_block_image_for_current_user,

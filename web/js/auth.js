@@ -480,6 +480,8 @@ async function generate(event) {
         if (result.mfa_required && result.mfa_temp_token) {
           mfaTempToken = result.mfa_temp_token;
           document.getElementById("mfa-expire-hours").value = result.expire_hours || 720;
+          const mfaLabelEl = document.getElementById("mfa-label");
+          if (mfaLabelEl) mfaLabelEl.value = (document.getElementById("label") || {}).value || "";
           document.getElementById("generate-form").style.display = "none";
           const mfaSection = document.getElementById("mfa-verify-section");
           if (mfaSection) mfaSection.style.display = "block";
@@ -490,6 +492,7 @@ async function generate(event) {
           updateFailedAttempts(response.status, result, "generate");
           form.reset();
           showTokenOnPage(result.jwt_token);
+          loadMyTokens();
         } else {
           addToast(result.message || "Token created", "success");
         }
@@ -528,6 +531,8 @@ async function generateMfaVerify(event) {
   const formData = new FormData();
   formData.append("mfa_temp_token", mfaTempToken);
   formData.append("expire_hours", document.getElementById("mfa-expire-hours").value || "720");
+  const mfaLabelEl = document.getElementById("mfa-label");
+  if (mfaLabelEl && mfaLabelEl.value) formData.append("label", mfaLabelEl.value);
   if (backupCode) formData.append("backup_code", backupCode);
   else formData.append("code", code);
   const button = document.querySelector("#mfa-verify-form button[type='submit']");
@@ -544,6 +549,7 @@ async function generateMfaVerify(event) {
       backToGenerateForm();
       document.getElementById("generate-form").reset();
       showTokenOnPage(result.jwt_token);
+      loadMyTokens();
     } else {
       addToast(result.error || "Invalid code", "error");
     }
@@ -671,5 +677,82 @@ async function submitMfaSetup(event) {
     button.textContent = "Complete Setup";
   }
 }
+
+// ---------------------------------------------------------------------------
+// Token management (generate_token page only)
+// ---------------------------------------------------------------------------
+
+async function loadMyTokens() {
+  const container = document.getElementById("my-tokens-list");
+  if (!container) return;
+  try {
+    const response = await fetch("/mss-login/api/tokens", { credentials: "same-origin" });
+    if (!response.ok) {
+      container.innerHTML = '<p style="color:#888;">Log in to view your tokens.</p>';
+      return;
+    }
+    const data = await response.json();
+    const tokens = data.tokens || [];
+    if (tokens.length === 0) {
+      container.innerHTML = '<p style="color:#888;">No API tokens found.</p>';
+      return;
+    }
+    let html = '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">';
+    html += '<thead><tr style="border-bottom:1px solid #444;">';
+    html += '<th style="text-align:left; padding:6px;">Label</th>';
+    html += '<th style="text-align:left; padding:6px;">Hash Prefix</th>';
+    html += '<th style="text-align:left; padding:6px;">Created</th>';
+    html += '<th style="text-align:left; padding:6px;">Expires</th>';
+    html += '<th style="text-align:center; padding:6px;">Revoke</th>';
+    html += '</tr></thead><tbody>';
+    for (const t of tokens) {
+      const created = t.created_at_iso ? new Date(t.created_at_iso).toLocaleString() : "N/A";
+      const neverExpires = t.expires_iso === "9999-12-31T23:59:59+00:00";
+      const expires = neverExpires ? "Never" : (t.expires_iso ? new Date(t.expires_iso).toLocaleString() : "N/A");
+      const label = t.label || '<span style="color:#666;">Unlabeled</span>';
+      const prefix = t.token_hash_prefix || "";
+      html += '<tr style="border-bottom:1px solid #333;">';
+      html += `<td style="padding:6px;">${label}</td>`;
+      html += `<td style="padding:6px; font-family:monospace; font-size:0.8rem;">${prefix}</td>`;
+      html += `<td style="padding:6px;">${created}</td>`;
+      html += `<td style="padding:6px;">${expires}</td>`;
+      html += `<td style="padding:6px; text-align:center;"><button class="btn" style="padding:2px 10px; font-size:0.8rem;" onclick="revokeToken('${prefix}')">Revoke</button></td>`;
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    container.innerHTML = html;
+  } catch {
+    container.innerHTML = '<p style="color:#888;">Could not load tokens.</p>';
+  }
+}
+
+async function revokeToken(hashPrefix) {
+  if (!confirm("Revoke this API token? This cannot be undone.")) return;
+  const prefix = hashPrefix.replace(/\.+$/, "");
+  try {
+    const response = await fetch("/mss-login/api/tokens", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token_hash_prefix: prefix }),
+      credentials: "same-origin",
+    });
+    const result = await response.json();
+    if (response.ok) {
+      addToast(result.message || "Token revoked", "success");
+    } else {
+      addToast(result.error || "Failed to revoke token", "error");
+    }
+  } catch (err) {
+    addToast("Error: " + err.message, "error");
+  }
+  loadMyTokens();
+}
+
+// Load token list on the generate_token page
+document.addEventListener("DOMContentLoaded", () => {
+  if (document.getElementById("my-tokens-list")) {
+    loadMyTokens();
+  }
+});
 
 loadTimeoutFromStorage(window.location.pathname.replace("/", "").split("_")[0])

@@ -21,7 +21,7 @@ license = {file = "readme/LICENSE.md"}
 #     "Environment :: GPU :: Apple Metal",    # Apple Metal support
 # ]
 
-dependencies = ["uv", "aiohttp", "PyJWT", "bcrypt", "bleach", "pyotp", "python-dotenvx>=0.3.0", "cryptography", "psycopg2-binary", "sqlcipher3", "argon2-cffi", "pillow", "numpy", "torch", "torchvision", "torchaudio", "transformers"]
+dependencies = ["uv", "aiohttp", "PyJWT", "bcrypt", "bleach", "pyotp", "python-dotenvx>=0.3.0", "cryptography", "psycopg2-binary", "sqlcipher3", "argon2-cffi", "pillow", "numpy", "torch", "torchvision", "torchaudio", "transformers", "boto3"]
 
 # Local-only groups (PEP 735): not published. Use `uv sync --group comfyui` or `uv sync --group dev`.
 [dependency-groups]
@@ -34,7 +34,7 @@ cuda-deps = []
 # Testing/development: add tools with `uv add --dev pytest` etc.
 dev = ["pytest"]
 # Production dependency group:
-production = ["uv", "aiohttp", "PyJWT", "bcrypt", "bleach", "pyotp", "python-dotenvx>=0.3.0", "cryptography", "psycopg2-binary", "sqlcipher3", "argon2-cffi", "pillow", "numpy", "torch", "torchvision", "torchaudio", "transformers"]
+production = ["uv", "aiohttp", "PyJWT", "bcrypt", "bleach", "pyotp", "python-dotenvx>=0.3.0", "cryptography", "psycopg2-binary", "sqlcipher3", "argon2-cffi", "pillow", "numpy", "torch", "torchvision", "torchaudio", "transformers", "boto3"]
 
 [tool.uv]
 default-groups = ["production"]

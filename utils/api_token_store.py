@@ -48,6 +48,11 @@ def _iso_expires(expire_hours: float) -> str:
     return t.isoformat()
 
 
+def _iso_now() -> str:
+    """Return current UTC time as ISO-8601 string."""
+    return datetime.now(timezone.utc).isoformat()
+
+
 def _is_expired(expires_iso: str) -> bool:
     try:
         if not expires_iso or expires_iso == NEVER_EXPIRES_ISO:
@@ -95,13 +100,17 @@ class _JsonTokenStore:
             return None
         return (rec.get("user_id"), rec.get("username"))
 
-    def create_token(self, user_id: str, username: str, expire_hours: float) -> str:
+    def create_token(
+        self, user_id: str, username: str, expire_hours: float, label: str = ""
+    ) -> str:
         raw = secrets.token_urlsafe(32)
         h = _hash_token(raw)
         self._data[h] = {
             "user_id": user_id,
             "username": username,
             "expires_iso": _iso_expires(expire_hours),
+            "label": label,
+            "created_at_iso": _iso_now(),
         }
         self._save()
         return raw
@@ -114,6 +123,16 @@ class _JsonTokenStore:
             return True
         return False
 
+    def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
+        """Revoke a token whose hash starts with *prefix* (owned by *username*)."""
+        prefix = (prefix or "").strip().rstrip(".")
+        for h, rec in list(self._data.items()):
+            if h.startswith(prefix) and rec.get("username") == username:
+                del self._data[h]
+                self._save()
+                return True
+        return False
+
     def list_tokens_for_user(self, username: str) -> list:
         out = []
         for h, rec in list(self._data.items()):
@@ -124,6 +143,8 @@ class _JsonTokenStore:
                     {
                         "token_hash_prefix": h[:8] + "...",
                         "expires_iso": rec.get("expires_iso"),
+                        "label": rec.get("label", ""),
+                        "created_at_iso": rec.get("created_at_iso", ""),
                     }
                 )
         return out
@@ -150,6 +171,21 @@ class _SqliteTokenStore:
             "(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, username TEXT NOT NULL, expires_iso TEXT NOT NULL)"
         )
         self._conn.commit()
+        self._migrate_schema()
+
+    def _migrate_schema(self) -> None:
+        """Add label and created_at_iso columns if they don't exist yet."""
+        for col, col_def in (
+            ("label", "TEXT DEFAULT ''"),
+            ("created_at_iso", "TEXT DEFAULT ''"),
+        ):
+            try:
+                self._conn.execute(
+                    f"ALTER TABLE api_tokens ADD COLUMN {col} {col_def}"
+                )
+                self._conn.commit()
+            except Exception:
+                pass
 
     def get_user_for_token(self, token: str):
         h = _hash_token(_normalize_lookup_token(token))
@@ -166,13 +202,17 @@ class _SqliteTokenStore:
             return None
         return (user_id, username)
 
-    def create_token(self, user_id: str, username: str, expire_hours: float) -> str:
+    def create_token(
+        self, user_id: str, username: str, expire_hours: float, label: str = ""
+    ) -> str:
         raw = secrets.token_urlsafe(32)
         h = _hash_token(raw)
         exp = _iso_expires(expire_hours)
+        now = _iso_now()
         self._conn.execute(
-            "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso) VALUES (?, ?, ?, ?)",
-            (h, user_id, username, exp),
+            "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (h, user_id, username, exp, label, now),
         )
         self._conn.commit()
         return raw
@@ -183,18 +223,30 @@ class _SqliteTokenStore:
         self._conn.commit()
         return cur.rowcount > 0
 
+    def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
+        """Revoke a token whose hash starts with *prefix* (owned by *username*)."""
+        prefix = (prefix or "").strip().rstrip(".")
+        cur = self._conn.execute(
+            "DELETE FROM api_tokens WHERE token_hash LIKE ? AND username = ?",
+            (prefix + "%", username),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
+
     def list_tokens_for_user(self, username: str) -> list:
         rows = self._conn.execute(
-            "SELECT token_hash, expires_iso FROM api_tokens WHERE username = ?",
+            "SELECT token_hash, expires_iso, label, created_at_iso FROM api_tokens WHERE username = ?",
             (username,),
         ).fetchall()
         out = []
-        for token_hash, expires_iso in rows:
+        for token_hash, expires_iso, label, created_at_iso in rows:
             if not _is_expired(expires_iso):
                 out.append(
                     {
                         "token_hash_prefix": token_hash[:8] + "...",
                         "expires_iso": expires_iso,
+                        "label": label or "",
+                        "created_at_iso": created_at_iso or "",
                     }
                 )
         return out
@@ -232,6 +284,16 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
         )
         """
     )
+    for col, col_def in (
+        ("label", "TEXT DEFAULT ''"),
+        ("created_at_iso", "TEXT DEFAULT ''"),
+    ):
+        try:
+            cur.execute(
+                f"ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS {col} {col_def}"
+            )
+        except Exception:
+            conn.rollback()
     conn.commit()
     cur.close()
 
@@ -259,14 +321,18 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
                 return None
             return (row["user_id"], row["username"])
 
-        def create_token(self, user_id: str, username: str, expire_hours: float) -> str:
+        def create_token(
+            self, user_id: str, username: str, expire_hours: float, label: str = ""
+        ) -> str:
             raw = secrets.token_urlsafe(32)
             h = _hash_token(raw)
             exp = _iso_expires(expire_hours)
+            now = _iso_now()
             with self._conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso) VALUES (%s, %s, %s, %s)",
-                    (h, user_id, username, exp),
+                    "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso) "
+                    "VALUES (%s, %s, %s, %s, %s, %s)",
+                    (h, user_id, username, exp, label, now),
                 )
                 self._conn.commit()
             return raw
@@ -278,10 +344,22 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
                 self._conn.commit()
                 return cur.rowcount > 0
 
+        def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
+            """Revoke a token whose hash starts with *prefix* (owned by *username*)."""
+            prefix = (prefix or "").strip().rstrip(".")
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM api_tokens WHERE token_hash LIKE %s AND username = %s",
+                    (prefix + "%", username),
+                )
+                self._conn.commit()
+                return cur.rowcount > 0
+
         def list_tokens_for_user(self, username: str) -> list:
             with self._cursor() as cur:
                 cur.execute(
-                    "SELECT token_hash, expires_iso FROM api_tokens WHERE username = %s",
+                    "SELECT token_hash, expires_iso, label, created_at_iso "
+                    "FROM api_tokens WHERE username = %s",
                     (username,),
                 )
                 rows = cur.fetchall()
@@ -292,6 +370,8 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
                         {
                             "token_hash_prefix": r["token_hash"][:8] + "...",
                             "expires_iso": r["expires_iso"],
+                            "label": r.get("label") or "",
+                            "created_at_iso": r.get("created_at_iso") or "",
                         }
                     )
             return out

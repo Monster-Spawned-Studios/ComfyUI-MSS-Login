@@ -340,6 +340,7 @@ async def post_generate_token(request: web.Request) -> web.Response:
     ip = get_ip(request)
     username = (sanitized_data.get("username") or "").strip()
     password = sanitized_data.get("password") or ""
+    label = (sanitized_data.get("label") or "").strip()[:128]
     expire_hours_raw = sanitized_data.get("expire_hours")
     try:
         expire_hours = (
@@ -383,7 +384,7 @@ async def post_generate_token(request: web.Request) -> web.Response:
                     )
                 user_id, _ = users_db.get_user(jwt_username)
                 store = get_api_token_store(API_TOKEN_STORE_CONFIG)
-                raw_token = store.create_token(user_id, jwt_username, expire_hours)
+                raw_token = store.create_token(user_id, jwt_username, expire_hours, label=label)
                 if DEBUG_MODE:
                     logger.log_jwt_if_debug(raw_token, jwt_username)
                 else:
@@ -469,7 +470,7 @@ async def post_generate_token(request: web.Request) -> web.Response:
                 status=403,
             )
         store = get_api_token_store(API_TOKEN_STORE_CONFIG)
-        raw_token = store.create_token(user_id, username, expire_hours)
+        raw_token = store.create_token(user_id, username, expire_hours, label=label)
         if DEBUG_MODE:
             logger.log_jwt_if_debug(raw_token, username)
         else:
@@ -535,7 +536,7 @@ async def post_generate_token(request: web.Request) -> web.Response:
 
     user_id, _ = users_db.get_user(username)
     store = get_api_token_store(API_TOKEN_STORE_CONFIG)
-    raw_token = store.create_token(user_id, username, expire_hours)
+    raw_token = store.create_token(user_id, username, expire_hours, label=label)
     if DEBUG_MODE:
         logger.log_jwt_if_debug(raw_token, username)
     else:
@@ -564,3 +565,53 @@ async def post_generate_token(request: web.Request) -> web.Response:
 async def post_generate_token_legacy(request: web.Request) -> web.Response:
     """Legacy endpoint: delegate to POST /mss-login/generate_token."""
     return await post_generate_token(request)
+
+
+def _resolve_username_from_jwt(request: web.Request) -> str | None:
+    """Extract and validate the username from the current request JWT."""
+    token = jwt_auth.get_token_from_request(request)
+    if not token:
+        return None
+    try:
+        payload = jwt_auth.decode_access_token(token)
+        uname = payload.get("username")
+        if uname and users_db.get_user(uname)[0]:
+            return uname
+    except Exception:
+        pass
+    return None
+
+
+@routes.get("/mss-login/api/tokens")
+async def get_user_tokens(request: web.Request) -> web.Response:
+    """Return the calling user's API tokens (labels, expiry, hash prefix). Session tokens are excluded."""
+    username = _resolve_username_from_jwt(request)
+    if not username:
+        return web.json_response({"error": "Authentication required."}, status=401)
+    store = get_api_token_store(API_TOKEN_STORE_CONFIG)
+    tokens = store.list_tokens_for_user(username)
+    return web.json_response({"tokens": tokens})
+
+
+@routes.delete("/mss-login/api/tokens")
+async def delete_user_token(request: web.Request) -> web.Response:
+    """Revoke one of the calling user's API tokens by its hash prefix."""
+    username = _resolve_username_from_jwt(request)
+    if not username:
+        return web.json_response({"error": "Authentication required."}, status=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON body."}, status=400)
+    prefix = (body.get("token_hash_prefix") or "").strip().rstrip(".")
+    if not prefix or len(prefix) < 8:
+        return web.json_response(
+            {"error": "token_hash_prefix must be at least 8 characters."},
+            status=400,
+        )
+    store = get_api_token_store(API_TOKEN_STORE_CONFIG)
+    revoked = store.revoke_token_by_hash_prefix(prefix, username)
+    if revoked:
+        user_console_append(username, f"API token revoked (prefix: {prefix}...)")
+        return web.json_response({"message": "Token revoked."})
+    return web.json_response({"error": "Token not found."}, status=404)
