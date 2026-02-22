@@ -61,7 +61,7 @@ import asyncio
 import server  # pyright: ignore[reportMissingImports]
 from server import PromptServer  # pyright: ignore[reportMissingImports]
 
-WEB_DIRECTORY = "./web"
+WEB_DIRECTORY = "web"
 
 # Export the public API for other extensions
 try:
