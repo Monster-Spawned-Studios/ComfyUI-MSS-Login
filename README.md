@@ -1,4 +1,4 @@
-# ComfyUI MSS-Login
+# MSS-Login
 
 <p align="center">
   <img src="./web/assets/mss_logo.png" width="220" />
@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>Version 1.9.0</strong> — Latest release includes Extension Tabs API, IP filtering improvements, and performance optimizations
+  <strong>Version 0.0.1</strong> — Latest release includes Extension Tabs API, IP filtering improvements, and performance optimizations
 </p>
 
 ---
@@ -63,10 +63,6 @@ It replaces the older Sentinel system with a faster, cleaner, more modular archi
 Four roles: **Admin, Power, User, Guest**
 Each with configurable permissions stored in `mss_login_groups.json`.
 
-<p align="center">
-  <img src="./readme/images/mss-login-Login.png" />
-</p>
-
 ### 🚫 **Save & Delete Workflow Blocking**
 
 Non‑privileged roles cannot:
@@ -75,10 +71,6 @@ Non‑privileged roles cannot:
 - Export workflows
 - Overwrite existing workflows
 - Delete workflow files
-
-<p align="center">
-  <img src="./readme/images/AdminGroups.png" />
-</p>
 
 All blocked actions trigger:
 
@@ -115,10 +107,6 @@ From `user_env.py`:
 - Promote user workflow to default (all user view)
 - Delete single user workflow
 - Toggle gallery‑folder mode
-
-<p align="center">
-  <img src="./readme/images/UserFiles.png" />
-</p>
 
 ### 🖥️ **Transparent Themed Admin UI**
 
@@ -184,7 +172,7 @@ fetch('/mss-login-gallery/mark-nsfw', {
 
 ## Architecture
 
-```
+```text
 ComfyUI
 │
 ├── mss_login Core
@@ -223,7 +211,7 @@ ComfyUI
 
 1. Extract mss_login into:
 
-```
+```text
 ComfyUI/custom_nodes/mss-login/
 ```
 
@@ -264,7 +252,7 @@ When the repository has GitHub Pages enabled and the Docs workflow runs on `main
 
 ## Folder Structure
 
-```
+```text
 mss_login/
 │
 ├── __init__.py              → Main entry point, route registration
@@ -305,16 +293,16 @@ mss_login/
 
 ## RBAC Roles
 
-| Role | Description |
+|Role|Description|
 |------|-------------|
-| **Admin** | Full access to all ComfyUI and mss_login features. |
-| **Power** | Elevated user with additional permissions but no admin panel access. |
-| **User** | Standard user who can run workflows but cannot modify system behavior. |
-| **Guest** | Fully restricted by default—cannot run, upload, save, or manage. |
+|**Admin**|Full access to all ComfyUI and mss_login features.|
+|**Power**|Elevated user with additional permissions but no admin panel access.|
+|**User**|Standard user who can run workflows but cannot modify system behavior.|
+|**Guest**|Fully restricted by default—cannot run, upload, save, or manage.|
 
 Permissions are stored in:
 
-```
+```text
 users/mss_login_groups.json
 ```
 
@@ -334,7 +322,7 @@ mss_login dynamically modifies the UI by:
 
 All logic is contained in:
 
-```
+```text
 web/js/mss_login_setting.js
 ```
 
@@ -357,7 +345,7 @@ Same for delete operations.
 
 Located in:
 
-```
+```text
 utils/ip_filter.py
 ```
 
@@ -374,7 +362,7 @@ utils/ip_filter.py
 
 From:
 
-```
+```text
 utils/user_env.py
 ```
 
@@ -591,7 +579,7 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 
 Ensure the file exists:
 
-```
+```text
 mss-login/web/assets/mss_logo.png
 ```
 
@@ -603,7 +591,7 @@ Clear browser cache or disable caching dev tools.
 
 Check:
 
-```
+```json
 can_run = true
 ```
 
@@ -655,230 +643,17 @@ If the client sends a Bearer token but the server returns "API token not found o
 
 ## License
 
-MIT License
-You may modify and redistribute freely.
+Please refer to the license file found under the [readme](./readme/) folder, here: [LICENSE.md](./readme/LICENSE.md)
 
 ---
 
-# Changelog — ComfyUI mss_login
+## Changelog — MSS-Login
 
-All notable changes to **ComfyUI mss_login** are documented here.
+All notable changes to the **MSS-Login** projext are documented here.
 This project follows a semantic-style versioning flow adapted for active development.
 
----
+## 0.0.1 - **Initial release**
 
-## **v 1.7.9 - Critical issue resol ed
-
-## 🛡️ NSFW API
-
-- **Metadata tag wipe
-  - Resolved an issue which caused the metadata to be removed from images after being tagged as NSFW.
-
-=======
-
-## **v1.7.7 — NSFW Guard API & Gallery Integration (2025-12-12)**
-
-### 🛡️ NSFW Guard API Enhancements
-
-- **Metadata-based tagging system**
-  - Images are now tagged with NSFW metadata stored alongside files (`.nsfw_metadata.json`)
-- **Gallery integration endpoint**
-  - New `/mss-login-gallery/mark-nsfw` endpoint for manual image flagging from gallery UIs
-- **Recursive file search**
-  - mark-nsfw endpoint now searches subdirectories to find images
-- **Enhanced API functions**
-  - Added `set_image_nsfw_tag()` for programmatic tagging
-- **Background scanning**
-  - Automatic scanning of output directory with intelligent caching
-- **Per-user enforcement**
-  - SFW restrictions apply per-user based on role permissions
-
-### 🔗 Gallery Integration
-
-- **ComfyUI-mss_login-Gallery compatibility**
-  - Full integration with gallery extension
-- **Manual flagging**
-  - Users can manually mark images as NSFW/SFW through gallery UI
-- **Metadata persistence**
-  - NSFW tags persist across server restarts via metadata files
-
-### 🛠️ Route Registration Improvements
-
-- **Explicit route registration**
-  - Routes are now explicitly registered to ensure availability
-- **Middleware whitelisting**
-  - Gallery routes are properly whitelisted in workflow middleware
-- **Route verification**
-  - Startup verification ensures all routes are properly registered
-
-### 📂 Architecture Updates
-
-- **Modular route structure**
-  - Routes organized into dedicated modules (`routes/` directory)
-- **Separation of concerns**
-  - NSFW logic separated into `utils/sfw_intercept/` module
-- **Public API module**
-  - `api.py` provides clean public interface for other extensions
-
----
-
-## **v1.7.5 - Critical issue resolution**
-
-### 🛠️ Admin workflow
-
-- resolved an issue which barred admins from deleting default workflows
-- resolved and issue with extension name causing UI block to fail
-
-## **v1.7.0 - Updated extension logic & added sfw toggle
-
-### 🛠️ Admin User group Extension list
-
-- Resolved an issue which caused duplicate extensions to be listed
-- List now accounts for explicitly listed extensions
-
-### 🛠️ Per user SFW reactor intercept (Highly experimental)
-
-- Admin can now toggle SFW on/off per user
-- `utils/reactor_sfw_intercept.py` (added new file)
-
-## **v1.6.0 - Refactor & update User Workflow Administration
-
-### 📂 User Files Additions
-
-- **Monolith Addition:** Added options to select and delete individual files & Promote Workflows
-  - `routes/user.py` (Updated information passage)
-  - `web/mss_login_setting.js` (updated the middleware and UI architecture)
-
-## **v1.5.0 — Modular Refactor & Architecture Overhaul (2025-12-6)**
-
-### 🏗️ Architectural Refactor
-
-- **Monolith Split:** Deconstructed the massive `mss_login.py` into modular route handlers:
-  - `routes/auth.py` (Login/Register/Token)
-  - `routes/admin.py` (User & Group management)
-  - `routes/user.py` (User environment & status)
-  - `routes/static.py` (Asset serving)
-- **Circular Dependency Resolution:** Introduced `globals.py` to handle shared server instances and `constants.py` to centralize configuration paths.
-- **Logic Decoupling:** Moved business logic out of HTTP handlers into dedicated utilities (`utils/admin_logic.py`, `utils/json_utils.py`, `utils/bootstrap.py`).
-
-### 🛠️ Stability & Fixes
-
-- **Startup Resilience:** Added auto-creation logic for missing static folders (`web/css`, `web/js`, `web/html`) to prevent `aiohttp` crash on first run.
-- **Windows Pathing:** Fixed `FileNotFoundError` and path resolution issues on Windows environments.
-- **Middleware Fixes:** Restored missing `create_folder_access_control_middleware` and fixed import errors in `watcher.py`.
-- **Config Correction:** Resolved missing `MAX_TOKEN_EXPIRE_MINUTES` constant that prevented server startup.
-
-### 📂 Frontend Reorganization
-
-- Restructured `web/` directory for cleaner separation of concerns.
-- Consolidated ComfyUI extension scripts (`mss_login_setting.js`, `logout.js`, `injectCSS.js`) to ensure reliable auto-loading.
-- Moved HTML templates to `web/html/` and updated static route mappings.
-- Removed legacy `admin.js` to prevent conflicts with the integrated Settings UI.
-
----
-
-## **v1.4.0 — Major Security & UI Expansion**
-
-### 🔥 New Features
-
-- Added **multi-tab mss_login Settings Panel**
-  - Users & Roles
-  - Permissions & UI
-  - IP Rules
-  - User Environment
-- Introduced **logout button** inside mss_login settings.
-- Implemented **transparent glass UI theme** with background blur.
-- Added **mss_login logo watermark** support in upper-right corner.
-
-### 🔐 Security Enhancements
-
-- Full **save/delete workflow blocking** for restricted roles.
-- New `watcher.py` middleware to detect backend 403s and send structured UI warnings.
-- Unified blocking under `WORKFLOW_SAVE_DENIED` and `WORKFLOW_DELETE_DENIED` codes.
-- Strengthened **RBAC defaults** for guest accounts.
-- Added **extension UI gating** via CSS + runtime menu removal.
-
-### 🧠 Backend Improvements
-
-- New IP filtering system (`ip_filter.py`) with whitelist + blacklist modes.
-- New User Environment tools (`user_env.py`) including:
-  - Folder purge
-  - File listing
-  - Gallery-mode toggles
-- Added `create_mss_login_middleware()` unified security layer.
-- Path blocking now includes extension routes, workflow endpoints, manager access, and asset paths.
-
----
-
-## **v1.3.0 — UI Enforcement Engine Overhaul**
-
-### ✨ Enhancements
-
-- Added dynamic scanning of:
-  - PrimeVue menus
-  - Sidebar buttons
-  - Settings categories
-- Enforcement now applies every second to catch late UI loads.
-- Added hotkey interception (Ctrl+S / Ctrl+O) for restricted roles.
-- Rebuilt `patchSaveConfirmDialog` to override PrimeVue dialogs.
-
-### 🛠 Stability Updates
-
-- Resolved issues where guests could open extension settings.
-- Added safe defaults for undefined permissions per role.
-
----
-
-## **v1.2.0 — Folder Isolation & User Paths**
-
-### 🔧 New Features
-
-- Added per-user:
-  - input directory
-  - output directory
-  - temp directory
-- Automatic directory creation with fallback to “public” user.
-- Added `filename_prefix` rewriting for isolated naming.
-
-### 🐞 Fixes
-
-- Corrected queue ownership tracking.
-- Fixed history objects containing mixed-user entries.
-
----
-
-## **v1.1.0 — JWT Authentication Integration**
-
-### 🚀 Additions
-
-- Added JWT login, registration, expiration, and cookie storage.
-- Implemented guest login with auto-created “guest” user.
-- Created protections to ensure guest cannot escalate privileges.
-
-### ⚙ Backend
-
-- Refactored user database operations.
-- Added detection for first-time admin setup.
-
----
-
-## **v1.0.0 — Initial Release**
-
-- Base RBAC system
-- Permission flags stored in `mss_login_groups.json`
-- Middleware for execution, upload, manager access
-- Basic UI blocking
-- Initial mss_login settings entry (pre-tabs)
-
----
-
-## Upcoming Features (Planned for v1.5+)
-
-- Live audit logging panel
-- Real-time session viewer
-- Admin ability to force logout users
-- Per-user storage quotas
-- Automated workflow sandboxing
-- Theme customization panel
+- Changelog can be viewed here: [v0.0.1 Changelog](./readme/changelogs/0.0.1.md)
 
 ---
