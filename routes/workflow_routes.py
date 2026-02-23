@@ -2,12 +2,38 @@
 import os
 import json
 import time
+import asyncio
 from aiohttp import web
 
 from ..globals import jwt_auth, current_username_var, users_db
 from ..utils import user_env
 from ..utils.sfw_intercept.nsfw_guard import should_block_image_for_current_user
 import folder_paths
+
+
+def _get_workflow_sync():
+    """Lazy accessor for the S3 workflow sync singleton (None when disabled)."""
+    try:
+        from ..constants import EXPERIMENTAL_FEATURES, S3_STORAGE_CONFIG, S3_WORKFLOW_SYNC_CONFIG
+
+        if not (
+            EXPERIMENTAL_FEATURES
+            and S3_STORAGE_CONFIG.get("enabled")
+            and S3_WORKFLOW_SYNC_CONFIG.get("enabled")
+        ):
+            return None
+        from ..utils.s3_workflow_sync import get_workflow_sync
+
+        return get_workflow_sync()
+    except Exception:
+        return None
+
+
+def _fire_and_forget(coro_or_fn, *args):
+    """Schedule a blocking call in a background thread so it does not block the event loop."""
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, coro_or_fn, *args)
+
 
 # 1. Determine Paths
 COMFY_ROOT = folder_paths.base_path
@@ -181,6 +207,18 @@ async def list_workflows(request, full_info: bool = False):
         else:
             os.makedirs(user_dir, exist_ok=True)
 
+        # Pull S3-only workflows into the local dir and merge into listing
+        wf_sync = _get_workflow_sync()
+        if wf_sync is not None:
+            try:
+                s3_extras = wf_sync.get_s3_only_workflows(user)
+                for info in s3_extras:
+                    key = (info.get("file") or info.get("path") or "").replace("\\", "/")
+                    if key and key not in files_map:
+                        files_map[key] = info
+            except Exception:
+                pass
+
     return web.json_response(list(files_map.values()))
 
 
@@ -236,6 +274,11 @@ async def save_workflow(request, name_override: str | None = None):
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
+        # Sync to S3 in background (fire-and-forget)
+        wf_sync = _get_workflow_sync()
+        if wf_sync is not None:
+            _fire_and_forget(wf_sync.upload_user_workflow, user, clean_name, file_path)
+
         # Return fresh file info so UI can update list
         saved_info = get_file_info(user_dir, clean_name)
         return web.json_response(saved_info)
@@ -289,6 +332,10 @@ async def delete_workflow(request, name: str | None):
     if os.path.exists(user_path):
         os.remove(user_path)
         print(f"[mss-login] User '{user}' deleted workflow: {clean_name}")
+        # Sync deletion to S3 in background
+        wf_sync = _get_workflow_sync()
+        if wf_sync is not None:
+            _fire_and_forget(wf_sync.delete_user_workflow, user, clean_name)
         # Match core ComfyUI: DELETE /userdata/{file} -> 204 No Content
         return web.Response(status=204)
 

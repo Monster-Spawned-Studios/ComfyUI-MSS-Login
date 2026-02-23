@@ -26,6 +26,10 @@ from .constants import (
     USERS_DB_CONFIG,
     CONFIG_FILE_PATH,
     EXPERIMENTAL_FEATURES,
+    S3_STORAGE_CONFIG,
+    S3_MOUNT_CONFIG,
+    S3_WORKFLOW_SYNC_CONFIG,
+    DATA_DIR,
 )
 from .globals import (
     app,
@@ -281,6 +285,80 @@ try:
     cache.refresh_from_folder_paths()
 except Exception:
     pass  # Cache stays empty until admin uses "Refresh folders" in settings
+
+# ---------------------------------------------------------------------------
+# S3 Model Mount (rclone FUSE / sync) -- experimental
+# ---------------------------------------------------------------------------
+_s3_mount_mgr = None
+if (
+    EXPERIMENTAL_FEATURES
+    and S3_STORAGE_CONFIG.get("enabled")
+    and S3_MOUNT_CONFIG.get("enabled")
+):
+    try:
+        from .utils.s3_mount import init_mount_manager
+
+        _s3_mount_mgr = init_mount_manager(S3_STORAGE_CONFIG, S3_MOUNT_CONFIG, DATA_DIR)
+        if _s3_mount_mgr.mount_or_sync():
+            _registered = _s3_mount_mgr.register_folder_paths()
+            if _registered:
+                # Re-populate model cache so S3 models are visible
+                try:
+                    cache = get_model_cache(USERS_DB_CONFIG)
+                    cache.refresh_from_folder_paths()
+                except Exception:
+                    pass
+                print(
+                    f"[MSS-Login] S3 model mount active. "
+                    f"Registered folders: {', '.join(_registered)}"
+                )
+        else:
+            print("[MSS-Login] S3 model mount/sync failed to start.")
+    except Exception as _s3_exc:
+        print(f"[MSS-Login] S3 mount init error: {_s3_exc}")
+
+# ---------------------------------------------------------------------------
+# S3 Workflow Sync (bidirectional per-user) -- experimental
+# ---------------------------------------------------------------------------
+_s3_wf_sync = None
+if (
+    EXPERIMENTAL_FEATURES
+    and S3_STORAGE_CONFIG.get("enabled")
+    and S3_WORKFLOW_SYNC_CONFIG.get("enabled")
+):
+    try:
+        from .utils.s3_storage import get_s3_client
+        from .utils.s3_workflow_sync import init_workflow_sync
+        from .globals import users_db as _users_db_for_sync
+
+        _s3_client_for_sync = get_s3_client(S3_STORAGE_CONFIG)
+        _s3_wf_sync = init_workflow_sync(
+            s3_client=_s3_client_for_sync,
+            s3_prefix=S3_STORAGE_CONFIG.get("prefix", "comfyui/"),
+            sync_config=S3_WORKFLOW_SYNC_CONFIG,
+            users_db=_users_db_for_sync,
+        )
+        _s3_wf_sync.start_background_sync()
+        print("[MSS-Login] S3 workflow sync active.")
+    except Exception as _wf_exc:
+        print(f"[MSS-Login] S3 workflow sync init error: {_wf_exc}")
+
+
+async def _shutdown_s3(app_ref) -> None:
+    """Clean up S3 mount and workflow sync on app shutdown."""
+    if _s3_mount_mgr is not None:
+        try:
+            _s3_mount_mgr.unmount()
+        except Exception:
+            pass
+    if _s3_wf_sync is not None:
+        try:
+            _s3_wf_sync.stop_background_sync()
+        except Exception:
+            pass
+
+
+app.on_shutdown.append(_shutdown_s3)
 
 # Ensure routes are added to the app
 # In ComfyUI, instance.routes should be automatically added by PromptServer,

@@ -6,6 +6,8 @@ All endpoints are gated behind the EXPERIMENTAL_FEATURES flag and require
 admin-level authentication. They provide operations for uploading, downloading,
 listing, and deleting objects in an S3-compatible bucket (Amazon S3, Backblaze B2,
 MinIO, etc.).
+
+Also provides mount management and per-user workflow sync endpoints.
 """
 
 from aiohttp import web
@@ -34,6 +36,25 @@ def _require_experimental_and_admin(request: web.Request) -> str | None:
 	if not is_admin:
 		return None
 	return username
+
+
+def _require_experimental_and_auth(request: web.Request) -> tuple[str | None, bool]:
+	"""Validate experimental features are enabled and the caller is authenticated.
+
+	Returns (username, is_admin). username is None on failure.
+	"""
+	if not constants_module.EXPERIMENTAL_FEATURES:
+		return None, False
+	username = request.get("user")
+	if not username:
+		return None, False
+	user_id, user_rec = users_db.get_user(username)
+	if not user_rec:
+		return None, False
+	is_admin = user_rec.get("admin") or "admin" in [
+		g.lower() for g in user_rec.get("groups", [])
+	]
+	return username, is_admin
 
 
 def _error_json(msg: str, status: int = 400) -> web.Response:
@@ -152,5 +173,141 @@ async def s3_delete(request: web.Request) -> web.Response:
 		client = get_s3_client(constants_module.S3_STORAGE_CONFIG)
 		client.delete_object(s3_key)
 		return web.json_response({"message": "Object deleted."})
+	except Exception as exc:
+		return _error_json(str(exc), 500)
+
+
+# ---------------------------------------------------------------------------
+# S3 Mount Management Endpoints (admin only)
+# ---------------------------------------------------------------------------
+
+@routes.get("/mss-login/api/s3/mount/status")
+async def s3_mount_status(request: web.Request) -> web.Response:
+	"""Return mount health, mode, last sync time, and platform info."""
+	if not constants_module.EXPERIMENTAL_FEATURES:
+		return _error_json("Experimental features are not enabled.", 403)
+	username = _require_experimental_and_admin(request)
+	if not username:
+		return _error_json("Admin authentication required.", 403)
+	try:
+		from ..utils.s3_mount import get_mount_manager
+
+		mgr = get_mount_manager()
+		if mgr is None:
+			return web.json_response({"enabled": False, "message": "S3 mount is not initialized."})
+		return web.json_response({"enabled": True, **mgr.status()})
+	except Exception as exc:
+		return _error_json(str(exc), 500)
+
+
+@routes.post("/mss-login/api/s3/mount/sync")
+async def s3_mount_sync(request: web.Request) -> web.Response:
+	"""Trigger a manual rclone sync (sync mode only)."""
+	if not constants_module.EXPERIMENTAL_FEATURES:
+		return _error_json("Experimental features are not enabled.", 403)
+	username = _require_experimental_and_admin(request)
+	if not username:
+		return _error_json("Admin authentication required.", 403)
+	try:
+		from ..utils.s3_mount import get_mount_manager
+
+		mgr = get_mount_manager()
+		if mgr is None:
+			return _error_json("S3 mount is not initialized.", 400)
+		ok = mgr.trigger_sync()
+		return web.json_response({"synced": ok})
+	except Exception as exc:
+		return _error_json(str(exc), 500)
+
+
+@routes.post("/mss-login/api/s3/mount/remount")
+async def s3_mount_remount(request: web.Request) -> web.Response:
+	"""Unmount and remount the S3 storage."""
+	if not constants_module.EXPERIMENTAL_FEATURES:
+		return _error_json("Experimental features are not enabled.", 403)
+	username = _require_experimental_and_admin(request)
+	if not username:
+		return _error_json("Admin authentication required.", 403)
+	try:
+		from ..utils.s3_mount import get_mount_manager
+
+		mgr = get_mount_manager()
+		if mgr is None:
+			return _error_json("S3 mount is not initialized.", 400)
+		mgr.unmount()
+		ok = mgr.mount_or_sync()
+		if ok:
+			registered = mgr.register_folder_paths()
+			return web.json_response({"remounted": True, "registered_folders": registered})
+		return web.json_response({"remounted": False, "message": "Remount failed."})
+	except Exception as exc:
+		return _error_json(str(exc), 500)
+
+
+# ---------------------------------------------------------------------------
+# S3 Workflow Sync Endpoints
+# ---------------------------------------------------------------------------
+
+@routes.get("/mss-login/api/s3/workflows/status")
+async def s3_workflow_status(request: web.Request) -> web.Response:
+	"""Return workflow sync health and last sync times (admin only)."""
+	if not constants_module.EXPERIMENTAL_FEATURES:
+		return _error_json("Experimental features are not enabled.", 403)
+	username = _require_experimental_and_admin(request)
+	if not username:
+		return _error_json("Admin authentication required.", 403)
+	try:
+		from ..utils.s3_workflow_sync import get_workflow_sync
+
+		sync = get_workflow_sync()
+		if sync is None:
+			return web.json_response({"enabled": False, "message": "Workflow sync is not initialized."})
+		return web.json_response({"enabled": True, **sync.status()})
+	except Exception as exc:
+		return _error_json(str(exc), 500)
+
+
+@routes.post("/mss-login/api/s3/workflows/sync")
+async def s3_workflow_sync_user(request: web.Request) -> web.Response:
+	"""Trigger workflow sync for the current user (or a specific user if admin provides ?username=)."""
+	if not constants_module.EXPERIMENTAL_FEATURES:
+		return _error_json("Experimental features are not enabled.", 403)
+	username, is_admin = _require_experimental_and_auth(request)
+	if not username:
+		return _error_json("Authentication required.", 403)
+
+	target = request.rel_url.query.get("username", "").strip()
+	if target and target != username and not is_admin:
+		return _error_json("Admin privileges required to sync another user.", 403)
+	sync_target = target or username
+
+	try:
+		from ..utils.s3_workflow_sync import get_workflow_sync
+
+		sync = get_workflow_sync()
+		if sync is None:
+			return _error_json("Workflow sync is not initialized.", 400)
+		stats = sync.sync_user(sync_target)
+		return web.json_response({"user": sync_target, **stats})
+	except Exception as exc:
+		return _error_json(str(exc), 500)
+
+
+@routes.post("/mss-login/api/s3/workflows/sync-all")
+async def s3_workflow_sync_all(request: web.Request) -> web.Response:
+	"""Trigger workflow sync for all users (admin only)."""
+	if not constants_module.EXPERIMENTAL_FEATURES:
+		return _error_json("Experimental features are not enabled.", 403)
+	username = _require_experimental_and_admin(request)
+	if not username:
+		return _error_json("Admin authentication required.", 403)
+	try:
+		from ..utils.s3_workflow_sync import get_workflow_sync
+
+		sync = get_workflow_sync()
+		if sync is None:
+			return _error_json("Workflow sync is not initialized.", 400)
+		results = sync.sync_all_users()
+		return web.json_response({"results": results})
 	except Exception as exc:
 		return _error_json(str(exc), 500)

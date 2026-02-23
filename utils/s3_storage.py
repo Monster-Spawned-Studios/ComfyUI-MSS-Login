@@ -11,6 +11,7 @@ config files) to follow the project's security conventions.
 """
 
 import os
+import re
 from typing import Optional
 
 _FEATURE_GATE_MSG = (
@@ -228,3 +229,20 @@ def reset_s3_client() -> None:
 	"""Clear the singleton so the next ``get_s3_client()`` rebuilds from current config."""
 	global _s3_client
 	_s3_client = None
+
+
+def get_s3_provider_type(endpoint_url: str) -> str:
+	"""Determine the S3 provider from the endpoint URL.
+
+	Returns ``"aws"`` for standard Amazon S3, ``"backblaze"`` for Backblaze B2
+	S3-compatible endpoints, or ``"generic"`` for everything else (MinIO, etc.).
+	Used by ``s3_mount.py`` to select the correct rclone ``--s3-provider`` flag.
+	"""
+	if not endpoint_url:
+		return "aws"
+	url = endpoint_url.lower().strip()
+	if re.search(r"backblaze", url) or re.search(r"\.backblazeb2\.com", url):
+		return "backblaze"
+	if re.search(r"\.amazonaws\.com", url) or not url:
+		return "aws"
+	return "generic"

@@ -503,10 +503,41 @@ S3_STORAGE_CONFIG: dict = {
     "secret_access_key": (os.getenv(_s3_sk_env) or "").strip(),
 }
 
+# S3 mount sub-config (rclone FUSE mount / sync for model folders)
+_s3_mount_cfg = _s3_cfg.get("mount") or {}
+_s3_mount_local = (_s3_mount_cfg.get("local_mount_path") or "").strip()
+S3_MOUNT_CONFIG: dict = {
+    "enabled": bool(_s3_mount_cfg.get("enabled", False)),
+    "local_mount_path": _resolve_data_path(_s3_mount_local) if _s3_mount_local else "",
+    "rclone_path": (_s3_mount_cfg.get("rclone_path") or "rclone").strip(),
+    "mode": (_s3_mount_cfg.get("mode") or "auto").strip().lower(),
+    "sync_interval_seconds": int(_s3_mount_cfg.get("sync_interval_seconds") or 300),
+    "vfs_cache_mode": (_s3_mount_cfg.get("vfs_cache_mode") or "full").strip(),
+    "vfs_cache_max_size": (_s3_mount_cfg.get("vfs_cache_max_size") or "10G").strip(),
+    "model_folders": _s3_mount_cfg.get("model_folders") or [
+        "checkpoints", "loras", "vae", "embeddings", "controlnet",
+        "upscale_models", "clip", "clip_vision", "diffusion_models", "text_encoders",
+    ],
+    "mount_output": bool(_s3_mount_cfg.get("mount_output", False)),
+    "mount_input": bool(_s3_mount_cfg.get("mount_input", False)),
+    "read_only": _s3_mount_cfg.get("read_only", True),
+}
+
+# S3 workflow sync sub-config (bidirectional per-user workflow sync)
+_s3_wf_cfg = _s3_cfg.get("workflow_sync") or {}
+S3_WORKFLOW_SYNC_CONFIG: dict = {
+    "enabled": bool(_s3_wf_cfg.get("enabled", False)),
+    "sync_interval_seconds": int(_s3_wf_cfg.get("sync_interval_seconds") or 60),
+    "conflict_strategy": (_s3_wf_cfg.get("conflict_strategy") or "newer_wins").strip().lower(),
+    "sync_on_save": _s3_wf_cfg.get("sync_on_save", True),
+    "sync_on_delete": _s3_wf_cfg.get("sync_on_delete", True),
+    "max_workflow_size_mb": int(_s3_wf_cfg.get("max_workflow_size_mb") or 50),
+}
+
 
 def reload_s3_storage_config() -> dict:
-    """Re-read config and refresh S3_STORAGE_CONFIG."""
-    global S3_STORAGE_CONFIG
+    """Re-read config and refresh S3_STORAGE_CONFIG, S3_MOUNT_CONFIG, and S3_WORKFLOW_SYNC_CONFIG."""
+    global S3_STORAGE_CONFIG, S3_MOUNT_CONFIG, S3_WORKFLOW_SYNC_CONFIG
     cfg = _load_config(CONFIG_FILE_PATH)
     s3 = cfg.get("s3_storage") or {}
     ak_env = s3.get("access_key_id_env", "S3_ACCESS_KEY_ID")
@@ -520,4 +551,34 @@ def reload_s3_storage_config() -> dict:
         "access_key_id": (os.getenv(ak_env) or "").strip(),
         "secret_access_key": (os.getenv(sk_env) or "").strip(),
     }
+
+    mc = s3.get("mount") or {}
+    mc_local = (mc.get("local_mount_path") or "").strip()
+    S3_MOUNT_CONFIG = {
+        "enabled": bool(mc.get("enabled", False)),
+        "local_mount_path": _resolve_data_path(mc_local) if mc_local else "",
+        "rclone_path": (mc.get("rclone_path") or "rclone").strip(),
+        "mode": (mc.get("mode") or "auto").strip().lower(),
+        "sync_interval_seconds": int(mc.get("sync_interval_seconds") or 300),
+        "vfs_cache_mode": (mc.get("vfs_cache_mode") or "full").strip(),
+        "vfs_cache_max_size": (mc.get("vfs_cache_max_size") or "10G").strip(),
+        "model_folders": mc.get("model_folders") or [
+            "checkpoints", "loras", "vae", "embeddings", "controlnet",
+            "upscale_models", "clip", "clip_vision", "diffusion_models", "text_encoders",
+        ],
+        "mount_output": bool(mc.get("mount_output", False)),
+        "mount_input": bool(mc.get("mount_input", False)),
+        "read_only": mc.get("read_only", True),
+    }
+
+    wc = s3.get("workflow_sync") or {}
+    S3_WORKFLOW_SYNC_CONFIG = {
+        "enabled": bool(wc.get("enabled", False)),
+        "sync_interval_seconds": int(wc.get("sync_interval_seconds") or 60),
+        "conflict_strategy": (wc.get("conflict_strategy") or "newer_wins").strip().lower(),
+        "sync_on_save": wc.get("sync_on_save", True),
+        "sync_on_delete": wc.get("sync_on_delete", True),
+        "max_workflow_size_mb": int(wc.get("max_workflow_size_mb") or 50),
+    }
+
     return S3_STORAGE_CONFIG
