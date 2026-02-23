@@ -5,6 +5,7 @@ Granular model visibility: only show models the user has explicit permission to 
 
 Permission logic:
 - can_view_all_comfyui_items (group-based): If the user's group has this permission, show all.
+- can_access_s3_storage: If false, items originating from the S3 mount are hidden.
 - Otherwise: Show only items explicitly shared with the user (shared_items store).
 - Admins always see all models.
 - Guests and users without shared items see nothing (empty list).
@@ -12,6 +13,8 @@ Permission logic:
 The Models menu in the ComfyUI sidebar fetches from these endpoints; filtered responses
 ensure users never see models they are not permitted to use.
 """
+
+import os
 
 from aiohttp import web
 import folder_paths  # pyright: ignore[reportMissingImports]
@@ -73,6 +76,52 @@ def create_model_filter_middleware(
         """True if user has group-based override to see all models (or is admin)."""
         return perms.get("can_view_all_comfyui_items", False) is True or role == "admin"
 
+    def _user_can_access_s3(role: str, perms: dict) -> bool:
+        """True if user may see items from the S3 mount."""
+        val = perms.get("can_access_s3_storage")
+        if val is None:
+            return role == "admin"
+        return val is True
+
+    def _get_s3_mount_root() -> str | None:
+        """Return the S3 mount local_root, or None if not mounted."""
+        try:
+            from .s3_mount import get_mount_manager
+
+            mgr = get_mount_manager()
+            if mgr is not None and mgr.is_mounted():
+                return mgr.local_root
+        except Exception:
+            pass
+        return None
+
+    def _s3_item_names(mount_root: str, folder: str) -> frozenset[str]:
+        """Return the set of filenames that live under the S3 mount for a folder."""
+        s3_dir = os.path.join(mount_root, folder)
+        if not os.path.isdir(s3_dir):
+            return frozenset()
+        names: set[str] = set()
+        for dirpath, _, filenames in os.walk(s3_dir):
+            rel = os.path.relpath(dirpath, s3_dir)
+            for fn in filenames:
+                if rel == ".":
+                    names.add(fn)
+                else:
+                    names.add(os.path.join(rel, fn))
+        return frozenset(names)
+
+    def _strip_s3_items(items: list[str], folder: str, role: str, perms: dict) -> list[str]:
+        """Remove S3-mounted items from the list when the user lacks S3 access."""
+        if _user_can_access_s3(role, perms):
+            return items
+        mount_root = _get_s3_mount_root()
+        if mount_root is None:
+            return items
+        s3_names = _s3_item_names(mount_root, folder)
+        if not s3_names:
+            return items
+        return [item for item in items if item not in s3_names]
+
     def _get_folder_list():
         """Folder names: from cache if populated, else folder_paths."""
         try:
@@ -124,6 +173,7 @@ def create_model_filter_middleware(
             folder = _map_legacy(folder)
             role, perms, username = get_user_role_and_permissions(request)
             full_list = _get_item_list(folder)
+            full_list = _strip_s3_items(full_list, folder, role, perms)
             if _user_can_view_all(role, perms):
                 return web.json_response(full_list)
             user_id, _ = (
@@ -139,6 +189,7 @@ def create_model_filter_middleware(
         if path == "/embeddings":
             role, perms, username = get_user_role_and_permissions(request)
             full_list = _get_item_list("embeddings")
+            full_list = _strip_s3_items(full_list, "embeddings", role, perms)
             if _user_can_view_all(role, perms):
                 return web.json_response(full_list)
             user_id, _ = (

@@ -9,7 +9,8 @@
         "can_have_non_expiring_jwt": true,
         "can_view_console": true,
         "mfa_required": true,
-        "can_view_all_comfyui_items": true
+        "can_view_all_comfyui_items": true,
+        "can_access_s3_storage": true
     },
     "power": {
         "can_run": true,
@@ -21,7 +22,8 @@
         "can_have_non_expiring_jwt": false,
         "can_view_console": false,
         "mfa_required": false,
-        "can_view_all_comfyui_items": false
+        "can_view_all_comfyui_items": false,
+        "can_access_s3_storage": false
     },
     "user":  {
         "can_run": true,
@@ -92,7 +94,8 @@
         "ui_manage_extensions": false,
         "can_view_console": false,
         "mfa_required": false,
-        "can_view_all_comfyui_items": false
+        "can_view_all_comfyui_items": false,
+        "can_access_s3_storage": false
     },
     "guest": {
         "can_run": true,
@@ -121,6 +124,7 @@
         "settings_about": true,
         "can_view_console": false,
         "mfa_required": false,
-        "can_view_all_comfyui_items": false
+        "can_view_all_comfyui_items": false,
+        "can_access_s3_storage": false
     }
 }

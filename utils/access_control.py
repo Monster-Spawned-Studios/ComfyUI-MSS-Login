@@ -229,6 +229,16 @@ class AccessControl:
                                 status=403, text="mss-login: Access Denied"
                             )
 
+            if path.startswith("/mss-login/api/s3/"):
+                can_s3 = perms.get("can_access_s3_storage")
+                if can_s3 is None:
+                    can_s3 = role == "admin"
+                if not can_s3:
+                    return web.json_response(
+                        {"error": "MSS-Login: S3 Storage Access Denied"},
+                        status=403,
+                    )
+
             if not is_queue and not is_upload and path.startswith("/api/"):
                 if perms.get("can_access_api") is False:
                     debug_write(

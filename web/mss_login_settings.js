@@ -2037,6 +2037,7 @@ async renderUsersDbConfig(container) {
         html += drawRow("See Restricted Settings", "can_see_restricted_settings");
         html += drawRow("View built-in Console (bottom panel)", "can_view_console");
         html += drawRow("View all ComfyUI items (models, LoRAs, VAEs, embeddings)", "can_view_all_comfyui_items");
+        html += drawRow("Access S3 Storage (mount, sync, API)", "can_access_s3_storage");
 
         // Section 2: Global UI
         html += drawRow("Interface Elements", null, true);
