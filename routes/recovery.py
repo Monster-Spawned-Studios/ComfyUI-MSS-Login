@@ -9,7 +9,7 @@ import ipaddress
 from aiohttp import web
 
 from ..globals import routes, users_db, logger
-from ..constants import RECOVERY_MODE, RECOVERY_MODE_HOSTS
+from ..constants import EXPERIMENTAL_FEATURES, RECOVERY_MODE, RECOVERY_MODE_HOSTS
 from ..utils.ip_filter import get_ip
 
 
@@ -44,6 +44,13 @@ async def post_recovery_reset_mfa(request: web.Request) -> web.Response:
     Reset MFA for all users. Only allowed when RECOVERY_MODE is enabled
     and request comes from an allowed host (RECOVERY_MODE_HOST / RECOVRY_MODE_HOST).
     """
+    if not EXPERIMENTAL_FEATURES:
+        return web.json_response(
+            {
+                "error": "MFA is an experimental feature. Enable EXPERIMENTAL_FEATURES to use this endpoint."
+            },
+            status=403,
+        )
     if not RECOVERY_MODE:
         return web.json_response(
             {

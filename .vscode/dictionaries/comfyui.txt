@@ -1,3 +1,5 @@
+Civit
+civitai
 comfyui
 pycache
 venv

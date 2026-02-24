@@ -1,3 +1,7 @@
+"""
+Global variables for the MSS-Login server.
+"""
+
 # --- START OF FILE globals.py ---
 import os
 from server import PromptServer  # pyright: ignore[reportMissingImports]

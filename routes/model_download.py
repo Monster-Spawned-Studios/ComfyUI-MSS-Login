@@ -5,16 +5,14 @@ import asyncio
 import json
 import os
 import time
+
 from aiohttp import web
 
-from ..globals import routes, jwt_auth, users_db
-from ..constants import USERS_DB_CONFIG
-from ..utils.model_source_api_keys_store import (
-    get_model_source_api_keys_store,
-    SOURCES,
-)
-from ..utils.model_download import download_civitai_async, download_huggingface
+from ..constants import EXPERIMENTAL_FEATURES, USERS_DB_CONFIG
+from ..globals import jwt_auth, routes, users_db
 from ..utils.model_cache import get_model_cache
+from ..utils.model_download import download_civitai_async, download_huggingface
+from ..utils.model_source_api_keys_store import SOURCES, get_model_source_api_keys_store
 
 
 def _current_user_id_and_username(request):
@@ -49,10 +47,12 @@ async def api_model_download_sources(request: web.Request) -> web.Response:
         return web.json_response({"error": "Authentication required"}, status=401)
     store = get_model_source_api_keys_store(USERS_DB_CONFIG)
     with_keys = store.list_sources_with_keys(user_id)
-    return web.json_response({
-        "sources": list(SOURCES),
-        "sources_with_keys": with_keys,
-    })
+    return web.json_response(
+        {
+            "sources": list(SOURCES),
+            "sources_with_keys": with_keys,
+        }
+    )
 
 
 @routes.get("/mss-login/api/model-download/api-keys")
@@ -115,28 +115,42 @@ async def api_model_download_start(request: web.Request) -> web.Response:
     destination_type = (body.get("destination_type") or "local").strip().lower()
     if destination_type not in ("local", "s3"):
         return web.json_response({"error": "Invalid destination_type"}, status=400)
+    if destination_type == "s3" and not EXPERIMENTAL_FEATURES:
+        return web.json_response(
+            {"error": "S3 is an experimental feature. Enable EXPERIMENTAL_FEATURES to use it."},
+            status=403,
+        )
     folder_type = (body.get("folder_type") or "checkpoints").strip()
 
     store = get_model_source_api_keys_store(USERS_DB_CONFIG)
     token = store.get_key(user_id, source)
     if not token:
-        return web.json_response({"error": "No API key set for this source"}, status=400)
+        return web.json_response(
+            {"error": "No API key set for this source"}, status=400
+        )
 
     # Resolve destination path
     dest_dir = None
     if destination_type == "local":
         try:
-            import folder_paths
-            paths = folder_paths.get_folder_paths(folder_type)
+            from folder_paths import (  # pyright: ignore[reportMissingImports]
+                get_folder_paths,
+                models_path,
+            )
+
+            paths = get_folder_paths(folder_type)
             if paths:
                 dest_dir = paths[0]
             else:
-                dest_dir = os.path.join(folder_paths.models_path, folder_type)
+                dest_dir = os.path.join(models_path, folder_type)
         except Exception:
-            return web.json_response({"error": "Could not resolve local model path"}, status=500)
+            return web.json_response(
+                {"error": "Could not resolve local model path"}, status=500
+            )
     else:
         try:
             from ..utils.s3_mount import get_mount_manager
+
             mgr = get_mount_manager()
             dest_dir = os.path.join(mgr.local_root, folder_type)
         except Exception:
@@ -152,17 +166,28 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 
     async def write_progress(bytes_done: int, total_bytes: int | None):
         elapsed = time.perf_counter() - start_time
-        await _write_progress_line(response, {
-            "bytes_done": bytes_done,
-            "total_bytes": total_bytes,
-            "elapsed": round(elapsed, 2),
-        })
+        await _write_progress_line(
+            response,
+            {
+                "bytes_done": bytes_done,
+                "total_bytes": total_bytes,
+                "elapsed": round(elapsed, 2),
+            },
+        )
 
     try:
         if source == "civitai":
-            model_version_id = (body.get("model_version_id") or body.get("modelVersionId") or "").strip()
+            model_version_id = (
+                body.get("model_version_id") or body.get("modelVersionId") or ""
+            ).strip()
             if not model_version_id:
-                await _write_progress_line(response, {"status": "error", "error": "model_version_id required for CivitAI"})
+                await _write_progress_line(
+                    response,
+                    {
+                        "status": "error",
+                        "error": "model_version_id required for CivitAI",
+                    },
+                )
                 return response
             success, err = await download_civitai_async(
                 model_version_id,
@@ -176,7 +201,13 @@ async def api_model_download_start(request: web.Request) -> web.Response:
             repo_id = (body.get("repo_id") or "").strip()
             filename = (body.get("filename") or "").strip()
             if not repo_id or not filename:
-                await _write_progress_line(response, {"status": "error", "error": "repo_id and filename required for HuggingFace"})
+                await _write_progress_line(
+                    response,
+                    {
+                        "status": "error",
+                        "error": "repo_id and filename required for HuggingFace",
+                    },
+                )
                 return response
             progress_dict = {"bytes_done": 0, "total_bytes": None}
             loop = asyncio.get_event_loop()
@@ -200,11 +231,15 @@ async def api_model_download_start(request: web.Request) -> web.Response:
                 )
             success, err = await task
         else:
-            await _write_progress_line(response, {"status": "error", "error": "Unknown source"})
+            await _write_progress_line(
+                response, {"status": "error", "error": "Unknown source"}
+            )
             return response
 
         if not success:
-            await _write_progress_line(response, {"status": "error", "error": err or "Download failed"})
+            await _write_progress_line(
+                response, {"status": "error", "error": err or "Download failed"}
+            )
             return response
 
         # Refresh model cache so new file appears

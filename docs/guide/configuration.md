@@ -17,13 +17,23 @@ Sensitive values (e.g. database passwords, `SECRET_KEY`) should be set via **env
 
 Copy `.env.example` to `.env` and set:
 
-| Variable               | Purpose                                                                                           |
-| ---------------------- | ------------------------------------------------------------------------------------------------- |
-| `SECRET_KEY`           | JWT signing and session stability; also used for SQLite encryption key when encryption is enabled |
-| `USERS_DB_SQLITE_PATH` | Optional; default SQLite path for users/API tokens/shared items                                   |
-| `POSTGRES_*`           | Optional; PostgreSQL host, port, database, user, password                                         |
-| `RECOVERY_MODE`        | Enable recovery endpoint for MFA reset (e.g. `true` or `1`)                                       |
-| `RECOVERY_MODE_HOST`   | Comma-separated IPs allowed to call recovery (default: 127.0.0.1, ::1)                            |
+| Variable                 | Purpose                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------- |
+| `SECRET_KEY`             | JWT signing and session stability; also used for SQLite encryption key when encryption is enabled |
+| `USERS_DB_SQLITE_PATH`   | Optional; default SQLite path for users/API tokens/shared items                                   |
+| `POSTGRES_*`             | Optional; PostgreSQL host, port, database, user, password                                         |
+| `EXPERIMENTAL_FEATURES`  | Enable experimental features (MFA, S3 storage/mount/workflow sync). Set to `true` or `1` to enable. Default: false. |
+| `RECOVERY_MODE`          | Enable recovery endpoint for MFA reset (e.g. `true` or `1`)                                       |
+| `RECOVERY_MODE_HOST`     | Comma-separated IPs allowed to call recovery (default: 127.0.0.1, ::1)                            |
+
+## Experimental features
+
+**MFA** (two-factor authentication) and **S3** (S3-compatible storage, mount, and workflow sync) are experimental. They are only available when `EXPERIMENTAL_FEATURES` is enabled:
+
+- **Environment:** set `EXPERIMENTAL_FEATURES=true` (or `1`).
+- **Config:** set `"experimental_features": true` in `config.json`.
+
+When `EXPERIMENTAL_FEATURES` is false (default), login and token generation do not require MFA, MFA API endpoints and the `/mfa` page return 403, and S3 mount, workflow sync, and model-download to S3 are disabled. When experimental features are enabled, `MFA_DISABLED` (env or config) still disables MFA if you want S3 but not MFA.
 
 ## Roles and permissions
 
@@ -65,6 +75,8 @@ Example `security.json`:
 See the README in the project root for detailed troubleshooting (SECRET_KEY, recovery mode, API tokens).
 
 ## S3 model storage
+
+S3 is an experimental feature; enable `EXPERIMENTAL_FEATURES` (see above) to use it.
 
 When S3 mount is enabled, the bucket is exposed as a local path (FUSE or sync). That path is registered with ComfyUI’s `folder_paths` so models (e.g. `.safetensors`, `.pt`, `.ckpt`) are indexed and loadable like local files.
 

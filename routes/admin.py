@@ -1,5 +1,5 @@
 # --- START OF FILE routes/admin.py ---
-import os
+
 from aiohttp import web
 from ..globals import routes, jwt_auth, users_db, ip_filter
 from ..constants import (

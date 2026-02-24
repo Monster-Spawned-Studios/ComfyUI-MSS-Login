@@ -104,6 +104,11 @@ async def get_login(request: web.Request) -> web.Response:
 @routes.get("/mfa")
 async def get_mfa(request: web.Request) -> web.Response:
     """Serve the MFA page (verify or setup). Token and mode are in sessionStorage set by login."""
+    if not constants_module.EXPERIMENTAL_FEATURES:
+        return web.json_response(
+            {"error": "MFA is an experimental feature. Enable EXPERIMENTAL_FEATURES to use it."},
+            status=403,
+        )
     path = os.path.join(HTML_DIR, "mfa.html")
     if not os.path.exists(path):
         return web.Response(text="mfa.html not found", status=404)
@@ -162,8 +167,8 @@ async def post_login(request: web.Request) -> web.Response:
         user_id, user_rec = users_db.get_user(username)
         user_env.get_user_workflow_dir(username)
 
-        # When MFA is disabled, skip all MFA branches and issue JWT directly
-        if not constants_module.MFA_DISABLED:
+        # When experimental features or MFA is disabled, skip all MFA branches and issue JWT directly
+        if constants_module.EXPERIMENTAL_FEATURES and not constants_module.MFA_DISABLED:
             # Admin must set up MFA on next login if not already enabled
             is_admin = user_rec.get("admin") or "admin" in [
                 g.lower() for g in user_rec.get("groups", [])
@@ -531,8 +536,12 @@ async def post_generate_token(request: web.Request) -> web.Response:
             status=403,
         )
 
-    # User has MFA: require second factor before issuing API token (unless MFA is disabled)
-    if not constants_module.MFA_DISABLED and users_db.get_mfa_enabled(username):
+    # User has MFA: require second factor before issuing API token (unless experimental/MFA is disabled)
+    if (
+        constants_module.EXPERIMENTAL_FEATURES
+        and not constants_module.MFA_DISABLED
+        and users_db.get_mfa_enabled(username)
+    ):
         mfa_temp = create_mfa_temp_token(username)
         return web.json_response(
             {

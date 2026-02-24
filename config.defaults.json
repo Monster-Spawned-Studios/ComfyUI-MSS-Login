@@ -13,7 +13,9 @@
 	"access_token_expiration_hours": 24,
 	"max_access_token_expiration_hours": 8760,
 	"log": "mss-login.log",
-	"log_levels": ["INFO"],
+	"log_levels": [
+		"INFO"
+	],
 	"log_rotation": {
 		"max_bytes": 2097152,
 		"interval_hours": 24,
@@ -60,12 +62,12 @@
 		"secret_access_key_env": "S3_SECRET_ACCESS_KEY",
 		"mount": {
 			"enabled": true,
-			"local_mount_path": "",
+			"local_mount_path": "/workspace/s3",
 			"rclone_path": "rclone",
 			"mode": "auto",
 			"sync_interval_seconds": 600,
 			"vfs_cache_mode": "full",
-			"vfs_cache_max_size": "20G",
+			"vfs_cache_max_size": "50G",
 			"model_folders": [
 				"checkpoints",
 				"loras",

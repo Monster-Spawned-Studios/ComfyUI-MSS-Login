@@ -2046,6 +2046,17 @@ async renderModelDownload(container) {
     sourceSelect.onchange = showSourceFields;
     showSourceFields();
 
+    (async () => {
+        try {
+            const me = await getData("/mss-login/api/me");
+            if (me && !me.experimental_features) {
+                const destSelect = container.querySelector("#mss-login-dl-dest");
+                const s3Opt = destSelect && destSelect.querySelector('option[value="s3"]');
+                if (s3Opt) s3Opt.remove();
+            }
+        } catch (_) {}
+    })();
+
     container.querySelector("#mss-login-save-keys").onclick = async () => {
         const statusEl = container.querySelector("#mss-login-keys-status");
         const civitaiKey = container.querySelector("#mss-login-civitai-key").value.trim();
@@ -3317,7 +3328,7 @@ app.ui.settings.addSetting({
         (async () => {
             try {
                 const me = await getData("/mss-login/api/me");
-                if (me && me.username && me.username.toLowerCase() !== "guest") {
+                if (me && me.username && me.username.toLowerCase() !== "guest" && me.experimental_features) {
                     mfaSection.style.display = "block";
                     if (me.mfa_enabled) {
                         mfaStatus.textContent = "MFA is enabled.";

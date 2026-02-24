@@ -1,5 +1,6 @@
 # --- START OF FILE routes/user.py ---
 from aiohttp import web
+from ..constants import EXPERIMENTAL_FEATURES
 from ..globals import routes, jwt_auth, users_db
 from ..utils import user_env
 import folder_paths
@@ -106,6 +107,7 @@ async def api_me(request: web.Request) -> web.Response:
                 "groups": ["guest"],
                 "is_admin": False,
                 "mfa_enabled": False,
+                "experimental_features": EXPERIMENTAL_FEATURES,
             }
         )
 
@@ -129,6 +131,7 @@ async def api_me(request: web.Request) -> web.Response:
             "groups": groups,
             "is_admin": is_admin,
             "mfa_enabled": mfa_enabled,
+            "experimental_features": EXPERIMENTAL_FEATURES,
         }
     )
 

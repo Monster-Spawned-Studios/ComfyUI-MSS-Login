@@ -1,8 +1,8 @@
 # --- START OF FILE constants.py ---
-import os
 import json
-import warnings
+import os
 import uuid
+import warnings
 
 from .utils.install_deps import install_dependencies
 
@@ -469,10 +469,10 @@ def _get_recovery_mode() -> bool:
 
 
 def _get_recovery_mode_hosts() -> list:
-    """Allowed client IPs for recovery mode. Default 127.0.0.1, ::1. Override via RECOVERY_MODE_HOST or RECOVRY_MODE_HOST (comma-separated)."""
+    """Allowed client IPs for recovery mode. Default 127.0.0.1, ::1. Override via RECOVERY_MODE_HOST or RECOVERY_MODE_HOSTS (comma-separated)."""
     raw = (
         os.environ.get("RECOVERY_MODE_HOST")
-        or os.environ.get("RECOVRY_MODE_HOST")
+        or os.environ.get("RECOVERY_MODE_HOSTS")
         or ""
     ).strip()
     if not raw:
@@ -526,10 +526,20 @@ S3_MOUNT_CONFIG: dict = {
     "sync_interval_seconds": int(_s3_mount_cfg.get("sync_interval_seconds") or 300),
     "vfs_cache_mode": (_s3_mount_cfg.get("vfs_cache_mode") or "full").strip(),
     "vfs_cache_max_size": (_s3_mount_cfg.get("vfs_cache_max_size") or "10G").strip(),
-    "model_folders": _s3_mount_cfg.get("model_folders") or [
-        "checkpoints", "loras", "vae", "embeddings", "controlnet",
-        "upscale_models", "clip", "clip_vision", "diffusion_models", "text_encoders",
-        "hypernetworks", "vae_approx",
+    "model_folders": _s3_mount_cfg.get("model_folders")
+    or [
+        "checkpoints",
+        "loras",
+        "vae",
+        "embeddings",
+        "controlnet",
+        "upscale_models",
+        "clip",
+        "clip_vision",
+        "diffusion_models",
+        "text_encoders",
+        "hypernetworks",
+        "vae_approx",
     ],
     "mount_output": bool(_s3_mount_cfg.get("mount_output", False)),
     "mount_input": bool(_s3_mount_cfg.get("mount_input", False)),
@@ -541,7 +551,9 @@ _s3_wf_cfg = _s3_cfg.get("workflow_sync") or {}
 S3_WORKFLOW_SYNC_CONFIG: dict = {
     "enabled": bool(_s3_wf_cfg.get("enabled", False)),
     "sync_interval_seconds": int(_s3_wf_cfg.get("sync_interval_seconds") or 60),
-    "conflict_strategy": (_s3_wf_cfg.get("conflict_strategy") or "newer_wins").strip().lower(),
+    "conflict_strategy": (_s3_wf_cfg.get("conflict_strategy") or "newer_wins")
+    .strip()
+    .lower(),
     "sync_on_save": _s3_wf_cfg.get("sync_on_save", True),
     "sync_on_delete": _s3_wf_cfg.get("sync_on_delete", True),
     "max_workflow_size_mb": int(_s3_wf_cfg.get("max_workflow_size_mb") or 50),
@@ -575,10 +587,20 @@ def reload_s3_storage_config() -> dict:
         "sync_interval_seconds": int(mc.get("sync_interval_seconds") or 300),
         "vfs_cache_mode": (mc.get("vfs_cache_mode") or "full").strip(),
         "vfs_cache_max_size": (mc.get("vfs_cache_max_size") or "10G").strip(),
-        "model_folders": mc.get("model_folders") or [
-            "checkpoints", "loras", "vae", "embeddings", "controlnet",
-            "upscale_models", "clip", "clip_vision", "diffusion_models", "text_encoders",
-            "hypernetworks", "vae_approx",
+        "model_folders": mc.get("model_folders")
+        or [
+            "checkpoints",
+            "loras",
+            "vae",
+            "embeddings",
+            "controlnet",
+            "upscale_models",
+            "clip",
+            "clip_vision",
+            "diffusion_models",
+            "text_encoders",
+            "hypernetworks",
+            "vae_approx",
         ],
         "mount_output": bool(mc.get("mount_output", False)),
         "mount_input": bool(mc.get("mount_input", False)),
@@ -589,7 +611,9 @@ def reload_s3_storage_config() -> dict:
     S3_WORKFLOW_SYNC_CONFIG = {
         "enabled": bool(wc.get("enabled", False)),
         "sync_interval_seconds": int(wc.get("sync_interval_seconds") or 60),
-        "conflict_strategy": (wc.get("conflict_strategy") or "newer_wins").strip().lower(),
+        "conflict_strategy": (wc.get("conflict_strategy") or "newer_wins")
+        .strip()
+        .lower(),
         "sync_on_save": wc.get("sync_on_save", True),
         "sync_on_delete": wc.get("sync_on_delete", True),
         "max_workflow_size_mb": int(wc.get("max_workflow_size_mb") or 50),
