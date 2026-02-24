@@ -29,9 +29,10 @@ site/
 .vscode/
 !.vscode/settings.json
 !.vscode/extensions.json
-!.vscode/cspell.json
 !.vscode/tasks.json
 !.vscode/launch.json
+!.vscode/cspell.json
+!.vscode/dictionaries/*
 
 .ruff_cache/
 

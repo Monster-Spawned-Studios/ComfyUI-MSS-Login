@@ -3,7 +3,7 @@ name = "ComfyUI-MSS-Login"
 description = "A ComfyUI node to enhance the security of the overall ComfyUI experience, for both private and public-facing servers, adding more features, while still allowing ComfyUI to be usable."
 version = "0.0.1"
 requires-python = ">=3.13"
-license = {file = "readme/LICENSE.md"}
+license = { file = "readme/LICENSE.md" }
 # classifiers = [
 #     # For OS-independent nodes (works on all operating systems)
 #     "Operating System :: OS Independent",
@@ -21,7 +21,26 @@ license = {file = "readme/LICENSE.md"}
 #     "Environment :: GPU :: Apple Metal",    # Apple Metal support
 # ]
 
-dependencies = ["uv", "aiohttp", "PyJWT", "bcrypt", "bleach", "pyotp", "python-dotenvx>=0.3.0", "cryptography", "psycopg2-binary", "sqlcipher3", "argon2-cffi", "pillow", "numpy", "torch", "torchvision", "torchaudio", "transformers", "boto3"]
+dependencies = [
+	"uv",
+	"aiohttp",
+	"PyJWT",
+	"bcrypt",
+	"bleach",
+	"pyotp",
+	"python-dotenvx>=0.3.0",
+	"cryptography",
+	"psycopg2-binary",
+	"sqlcipher3",
+	"argon2-cffi",
+	"pillow",
+	"numpy",
+	"torch",
+	"torchvision",
+	"torchaudio",
+	"transformers",
+	"boto3",
+]
 
 # Local-only groups (PEP 735): not published. Use `uv sync --group comfyui` or `uv sync --group dev`.
 [dependency-groups]
@@ -34,7 +53,26 @@ cuda-deps = []
 # Testing/development: add tools with `uv add --dev pytest` etc.
 dev = ["pytest"]
 # Production dependency group:
-production = ["uv", "aiohttp", "PyJWT", "bcrypt", "bleach", "pyotp", "python-dotenvx>=0.3.0", "cryptography", "psycopg2-binary", "sqlcipher3", "argon2-cffi", "pillow", "numpy", "torch", "torchvision", "torchaudio", "transformers", "boto3"]
+production = [
+	"uv",
+	"aiohttp",
+	"PyJWT",
+	"bcrypt",
+	"bleach",
+	"pyotp",
+	"python-dotenvx>=0.3.0",
+	"cryptography",
+	"psycopg2-binary",
+	"sqlcipher3",
+	"argon2-cffi",
+	"pillow",
+	"numpy",
+	"torch",
+	"torchvision",
+	"torchaudio",
+	"transformers",
+	"boto3",
+]
 
 [tool.uv]
 default-groups = ["production"]
@@ -47,16 +85,16 @@ default-groups = ["production"]
 
 [tool.uv.sources]
 torch = [
-    { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-		{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin' and platform.machine() == 'arm64'" },
+	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
 ]
 torchvision = [
-    { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-		{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin' and platform.machine() == 'arm64'" },
+	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
 ]
 torchaudio = [
-    { index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-		{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin' and platform.machine() == 'arm64'" },
+	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
 ]
 
 [[tool.uv.index]]
@@ -85,20 +123,13 @@ includes = []
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-exclude = [
-    ".git",
-    ".venv",
-    "__pycache__",
-    "build",
-    "site",
-    "ComfyUI"
-]
+exclude = [".git", ".venv", "__pycache__", "build", "site", "ComfyUI"]
 # Lint: use defaults (E, F, W, I, UP, B, C4, etc.); ignore a few noisy rules.
 [tool.ruff.lint]
 extend-ignore = [
-    "ARG001",   # Unused function argument (often required for callbacks/signatures)
-    "PLR0913",  # Too many arguments (noisy in route/handler code),
-    "F401"      # Ignore unused variables, as we might use them later.
+	"ARG001",  # Unused function argument (often required for callbacks/signatures)
+	"PLR0913", # Too many arguments (noisy in route/handler code),
+	"F401",    # Ignore unused variables, as we might use them later.
 ]
 # Isort: treat repo as single first-party; stdlib then third-party then local.
 [tool.ruff.lint.isort]
