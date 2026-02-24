@@ -8,6 +8,10 @@ from .constants import (
 	LEGACY_USERS_JSON_PATH,
 	LOG_FILE,
 	LOG_LEVELS,
+	LOG_ROTATION_ARCHIVE_DIR,
+	LOG_ROTATION_INTERVAL_HOURS,
+	LOG_ROTATION_MAX_BYTES,
+	SECURITY_JSON_PATH,
 	GROUPS_CONFIG_FILE,
 	API_TOKEN_STORE_CONFIG,
 	TOKEN_EXPIRE_MINUTES,
@@ -39,7 +43,13 @@ app = instance.app
 routes = instance.routes
 
 # 1. Logger & DB (credentials in SQLite/PostgreSQL only; no plain-text JSON)
-logger = Logger(LOG_FILE, LOG_LEVELS)
+logger = Logger(
+	LOG_FILE,
+	LOG_LEVELS,
+	rotation_max_bytes=LOG_ROTATION_MAX_BYTES,
+	rotation_interval_hours=LOG_ROTATION_INTERVAL_HOURS,
+	rotation_archive_dir=LOG_ROTATION_ARCHIVE_DIR,
+)
 
 # Log if one-time migration from repo to external data dir was performed (done during constants load)
 from .utils.data_dir import MIGRATION_PERFORMED
@@ -99,6 +109,13 @@ jwt_auth = JWTAuth(
 )
 
 # 4. Network Security
-ip_filter = IPFilter(WHITELIST_FILE, BLACKLIST_FILE)
+from .utils.lockout_store import get_lockout_store
+_lockout_store = get_lockout_store(USERS_DB_CONFIG)
+ip_filter = IPFilter(
+	WHITELIST_FILE,
+	BLACKLIST_FILE,
+	security_json_path=SECURITY_JSON_PATH,
+	lockout_store=_lockout_store,
+)
 timeout = Timeout(ip_filter, BLACKLIST_AFTER_ATTEMPTS)
 sanitizer = Sanitizer()

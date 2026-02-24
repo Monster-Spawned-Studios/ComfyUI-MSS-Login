@@ -1,7 +1,12 @@
 {
     "version": "0.2",
     "enabled": true,
-    "words": [],
+    "words": [
+        "ckpt",
+        "DOTENV",
+        "dotenvx",
+        "loras"
+    ],
     "useGitignore": true,
     "allowCompoundWords": true,
     "caseSensitive": false,
@@ -23,7 +28,7 @@
         "software-terms",
         "mss-login",
         "comfyui",
-        "monsterspawnedstudios",
+        "monsterspawnedstudios"
     ],
     "dictionaryDefinitions": [
         {
@@ -45,5 +50,5 @@
     "numSuggestions": 10,
     "reporters": [
         "default"
-    ],
+    ]
 }

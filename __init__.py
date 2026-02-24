@@ -44,7 +44,7 @@ from .globals import (
 )
 from .utils import watcher
 from .utils.bootstrap import ensure_groups_config
-from .routes import static, auth, admin, user, workflow_routes, me, mfa, recovery, debug
+from .routes import static, auth, admin, user, workflow_routes, me, mfa, recovery, debug, model_download
 if EXPERIMENTAL_FEATURES:
     from .routes import s3 as _s3_routes  # noqa: F401
 from .utils.sfw_intercept.reactor_sfw_intercept import _load_reactor_module
@@ -137,7 +137,7 @@ async def workflow_interceptor_middleware(request, handler):
             )
             can_view_all = (
                 perms.get("can_view_all_comfyui_items", False) is True
-                or role == "admin"
+                or role in ("admin", "owner")
             )
             if not can_view_all:
                 user_id, _ = (

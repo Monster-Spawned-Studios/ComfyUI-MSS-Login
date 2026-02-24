@@ -1,32 +1,40 @@
 # --- START OF FILE routes/auth.py ---
 import os
+import sqlite3
 import uuid
+from datetime import datetime, timezone
+
+import jwt
 from aiohttp import web
-from ..globals import routes, users_db, jwt_auth, logger, timeout, access_control
+
+from .. import constants as constants_module
 from ..constants import (
+    API_TOKEN_STORE_CONFIG,
+    BLACKLIST_AFTER_ATTEMPTS,
+    DEBUG_MODE,
     HTML_DIR,
     MAX_TOKEN_EXPIRE_MINUTES,
-    DEBUG_MODE,
     SESSION_TOKEN_STORE_CONFIG,
+    USERS_DB_CONFIG,
 )
-from .. import constants as constants_module
-from ..utils.session_token_store import get_session_token_store
-from ..utils.user_console_log import append as user_console_append
-from ..utils.ntfy_notifier import send_notification
-from ..utils.bootstrap import ensure_guest_user, ensure_groups_config
-from ..utils.ip_filter import get_ip
+from ..globals import access_control, jwt_auth, logger, routes, timeout, users_db
 from ..utils import user_env
 from ..utils.api_token_store import get_api_token_store
+from ..utils.bootstrap import ensure_groups_config, ensure_guest_user
+from ..utils.ip_filter import get_device_id, get_ip
+from ..utils.lockout_store import get_lockout_store
 from ..utils.mfa_temp_store import create_mfa_temp_token
-from ..constants import API_TOKEN_STORE_CONFIG
+from ..utils.ntfy_notifier import send_notification
+from ..utils.session_token_store import get_session_token_store
+from ..utils.user_console_log import append as user_console_append
 
 
 @routes.get("/register")
 async def get_register(request: web.Request) -> web.Response:
     path = os.path.join(HTML_DIR, "register.html")
     if not os.path.exists(path):
-        return web.Response(text="register.html not found", status=404)
-    with open(path, "r") as f:
+        return web.Response(tet="register.html not found", status=404)
+    with open(path, "r", encoding="utf-8") as f:
         html_content = f.read()
     if not users_db.load_users():
         html_content = html_content.replace("{{ X-Admin-User }}", "true")
@@ -125,8 +133,6 @@ async def post_login(request: web.Request) -> web.Response:
             payload = jwt_auth.decode_access_token(token)
             jti = payload.get("jti")
             exp = payload.get("exp")
-            from datetime import datetime, timezone
-
             exp_at_iso = (
                 datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()
                 if exp
@@ -136,7 +142,7 @@ async def post_login(request: web.Request) -> web.Response:
                 get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
                     jti, guest_id, "guest", exp_at_iso
                 )
-        except Exception:
+        except (jwt.DecodeError, jwt.ExpiredSignatureError, OSError, sqlite3.Error):
             pass
         if DEBUG_MODE:
             logger.log_jwt_if_debug(token, "guest")
@@ -211,8 +217,6 @@ async def post_login(request: web.Request) -> web.Response:
             payload = jwt_auth.decode_access_token(token)
             jti = payload.get("jti")
             exp = payload.get("exp")
-            from datetime import datetime, timezone
-
             exp_at_iso = (
                 datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()
                 if exp
@@ -244,6 +248,9 @@ async def post_login(request: web.Request) -> web.Response:
         return resp
 
     timeout.add_failed_attempt(ip)
+    if timeout.get_failed_attempts(ip) >= BLACKLIST_AFTER_ATTEMPTS:
+        get_lockout_store(USERS_DB_CONFIG).add_lockout(ip, get_device_id(request))
+    logger.login_failed(ip, username or "")
     try:
         send_notification(
             "login_failure",
@@ -257,19 +264,20 @@ async def post_login(request: web.Request) -> web.Response:
 
 @routes.get("/logout")
 async def get_logout(request: web.Request) -> web.Response:
+    username = None
     try:
         token = jwt_auth.get_token_from_request(request)
         if token and token.count(".") >= 2:
             payload = jwt_auth.decode_access_token(token)
             username = payload.get("username")
             if username:
-                from ..utils.ip_filter import get_ip
-
+                ip = get_ip(request)
                 send_notification(
                     "user_logout",
                     "mss-login: User logout",
-                    f"User {username} logged out from IP: {get_ip(request)}",
+                    f"User {username} logged out from IP: {ip}",
                 )
+                logger.logout(ip, username)
     except Exception:
         pass
     resp = web.HTTPFound("/login")
@@ -298,13 +306,13 @@ def _user_can_have_api_tokens(username: str) -> bool:
     role = groups[0] if groups else "user"
     cfg = access_control._load_group_config()
     perms = cfg.get(role, {})
-    if role == "admin":
+    if role in ("admin", "owner"):
         return True
     return perms.get("can_have_api_tokens", False) is True
 
 
 def _user_can_have_non_expiring_jwt(username: str) -> bool:
-    """Return True if the user's role has can_have_non_expiring_jwt (admin only by default)."""
+    """Return True if the user's role has can_have_non_expiring_jwt (admin/owner by default)."""
     user_id, user_rec = users_db.get_user(username)
     if not user_rec:
         return False
@@ -312,7 +320,7 @@ def _user_can_have_non_expiring_jwt(username: str) -> bool:
     role = groups[0] if groups else "user"
     cfg = access_control._load_group_config()
     perms = cfg.get(role, {})
-    if role == "admin":
+    if role in ("admin", "owner"):
         return True
     return perms.get("can_have_non_expiring_jwt", False) is True
 
@@ -384,7 +392,9 @@ async def post_generate_token(request: web.Request) -> web.Response:
                     )
                 user_id, _ = users_db.get_user(jwt_username)
                 store = get_api_token_store(API_TOKEN_STORE_CONFIG)
-                raw_token = store.create_token(user_id, jwt_username, expire_hours, label=label)
+                raw_token = store.create_token(
+                    user_id, jwt_username, expire_hours, label=label
+                )
                 if DEBUG_MODE:
                     logger.log_jwt_if_debug(raw_token, jwt_username)
                 else:
@@ -498,13 +508,13 @@ async def post_generate_token(request: web.Request) -> web.Response:
         )
 
     if not username or not password:
-        logger.generate_attempt(ip, username or "", password or "", int(expire_hours))
+        logger.generate_attempt(ip, username or "", int(expire_hours))
         return web.json_response(
             {"error": "Username and password required."}, status=401
         )
 
     if not users_db.check_username_password(username, password):
-        logger.generate_attempt(ip, username, password, int(expire_hours))
+        logger.generate_attempt(ip, username, int(expire_hours))
         timeout.add_failed_attempt(ip)
         return web.json_response({"error": "Invalid credentials."}, status=401)
 

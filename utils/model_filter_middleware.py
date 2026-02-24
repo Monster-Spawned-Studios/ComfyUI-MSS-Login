@@ -74,13 +74,13 @@ def create_model_filter_middleware(
 
     def _user_can_view_all(role: str, perms: dict) -> bool:
         """True if user has group-based override to see all models (or is admin)."""
-        return perms.get("can_view_all_comfyui_items", False) is True or role == "admin"
+        return perms.get("can_view_all_comfyui_items", False) is True or role in ("admin", "owner")
 
     def _user_can_access_s3(role: str, perms: dict) -> bool:
         """True if user may see items from the S3 mount."""
         val = perms.get("can_access_s3_storage")
         if val is None:
-            return role == "admin"
+            return role in ("admin", "owner")
         return val is True
 
     def _get_s3_mount_root() -> str | None:

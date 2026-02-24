@@ -17,26 +17,45 @@ Sensitive values (e.g. database passwords, `SECRET_KEY`) should be set via **env
 
 Copy `.env.example` to `.env` and set:
 
-| Variable | Purpose |
-|----------|---------|
-| `SECRET_KEY` | JWT signing and session stability; also used for SQLite encryption key when encryption is enabled |
-| `USERS_DB_SQLITE_PATH` | Optional; default SQLite path for users/API tokens/shared items |
-| `POSTGRES_*` | Optional; PostgreSQL host, port, database, user, password |
-| `RECOVERY_MODE` | Enable recovery endpoint for MFA reset (e.g. `true` or `1`) |
-| `RECOVERY_MODE_HOST` | Comma-separated IPs allowed to call recovery (default: 127.0.0.1, ::1) |
+| Variable               | Purpose                                                                                           |
+| ---------------------- | ------------------------------------------------------------------------------------------------- |
+| `SECRET_KEY`           | JWT signing and session stability; also used for SQLite encryption key when encryption is enabled |
+| `USERS_DB_SQLITE_PATH` | Optional; default SQLite path for users/API tokens/shared items                                   |
+| `POSTGRES_*`           | Optional; PostgreSQL host, port, database, user, password                                         |
+| `RECOVERY_MODE`        | Enable recovery endpoint for MFA reset (e.g. `true` or `1`)                                       |
+| `RECOVERY_MODE_HOST`   | Comma-separated IPs allowed to call recovery (default: 127.0.0.1, ::1)                            |
 
 ## Roles and permissions
 
 Roles are defined in `users/mss_login_groups.json` (or the path set in config). Default roles:
 
-| Role | Typical permissions |
-|------|---------------------|
+| Role      | Typical permissions                                                                                                          |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | **admin** | Full access; can_run, can_upload, can_access_manager, can_access_api, can_see_restricted_settings, can_have_api_tokens, etc. |
-| **power** | Elevated; no restricted settings, API tokens allowed |
-| **user** | Standard; run and upload, no manager, no API tokens |
-| **guest** | Restricted; can_access_api only (e.g. prompt), no run/upload/save |
+| **power** | Elevated; no restricted settings, API tokens allowed                                                                         |
+| **user**  | Standard; run and upload, no manager, no API tokens                                                                          |
+| **guest** | Restricted; can_access_api only (e.g. prompt), no run/upload/save                                                            |
 
 Permissions control workflow save/delete, extension access, and whether a user can have API tokens. Edit via **Settings → mss-login** or by modifying the groups JSON (with ComfyUI stopped or after a reload).
+
+## Lockout and security.json
+
+If lockout is enabled (`blacklist_after_attempts` in config), too many failed logins blacklist the IP and can lock the device. To **unlock** (e.g. if the owner is locked out):
+
+- **security.json** in the MSS-Login data directory: create or edit `security.json` with a `lockout` section. Add your IP to `unlock_ips` or your device ID to `unlock_devices` to allow access again. Optional: `disable_lockout_until` (Unix timestamp) to temporarily disable lockout checks.
+- **users.db**: If using SQLite, you can remove rows from the `ip_blacklist` or `locked_devices` table in the same database as users to clear a lock.
+
+Example `security.json`:
+
+```json
+{
+ "lockout": {
+  "unlock_ips": ["192.168.1.100"],
+  "unlock_devices": [],
+  "disable_lockout_until": null
+ }
+}
+```
 
 ## Users database
 
@@ -44,3 +63,10 @@ Permissions control workflow save/delete, extension access, and whether a user c
 - **Encrypted SQLite**: Set `encryption_level` in `config.json` under `users_db` to `low`, `standard`, or `secure`. Requires `argon2-cffi` and, for encryption at rest, `sqlcipher3` with a system SQLCipher build.
 
 See the README in the project root for detailed troubleshooting (SECRET_KEY, recovery mode, API tokens).
+
+## S3 model storage
+
+When S3 mount is enabled, the bucket is exposed as a local path (FUSE or sync). That path is registered with ComfyUI’s `folder_paths` so models (e.g. `.safetensors`, `.pt`, `.ckpt`) are indexed and loadable like local files.
+
+- **Bucket layout:** Mirror ComfyUI folder names under your prefix, e.g. `prefix/checkpoints/`, `prefix/loras/`, `prefix/vae/`. Default `model_folders` include checkpoints, loras, vae, embeddings, controlnet, upscale_models, clip, clip_vision, diffusion_models, text_encoders, hypernetworks, vae_approx.
+- **Relative path:** The effective local path is `s3_mount` under the data directory (or the path set in `s3_storage.mount.local_mount_path`). Models there are discovered at startup and after mount/sync; assign them to users via the admin shared-items UI (same permissions as local models).

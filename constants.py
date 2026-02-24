@@ -112,6 +112,18 @@ WHITELIST_FILE = _resolve_data_path(config_data.get("whitelist", "data/whitelist
 BLACKLIST_FILE = _resolve_data_path(config_data.get("blacklist", "data/blacklist.txt"))
 LOG_FILE = _resolve_data_path(config_data.get("log", "mss_login.log"))
 
+# Log rotation: rotate when size >= max bytes or once per interval
+_log_rot_cfg = config_data.get("log_rotation") or {}
+LOG_ROTATION_MAX_BYTES = int(_log_rot_cfg.get("max_bytes", 2 * 1024 * 1024))  # 2 MB
+LOG_ROTATION_INTERVAL_HOURS = float(_log_rot_cfg.get("interval_hours", 24))
+_log_archive = (_log_rot_cfg.get("archive_dir") or "").strip()
+LOG_ROTATION_ARCHIVE_DIR = (
+    _resolve_data_path(_log_archive) if _log_archive else os.path.dirname(LOG_FILE)
+)
+
+# security.json: lockout unlock overrides (unlock_ips, unlock_devices) in DATA_DIR
+SECURITY_JSON_PATH = os.path.join(DATA_DIR, "security.json")
+
 # --- Ephemeral SECRET_KEY (for migration when switching to permanent SECRET_KEY) ---
 EPHEMERAL_SECRET_KEY_PATH = os.path.join(DATA_DIR, "data", ".ephemeral_secret_key")
 
@@ -517,6 +529,7 @@ S3_MOUNT_CONFIG: dict = {
     "model_folders": _s3_mount_cfg.get("model_folders") or [
         "checkpoints", "loras", "vae", "embeddings", "controlnet",
         "upscale_models", "clip", "clip_vision", "diffusion_models", "text_encoders",
+        "hypernetworks", "vae_approx",
     ],
     "mount_output": bool(_s3_mount_cfg.get("mount_output", False)),
     "mount_input": bool(_s3_mount_cfg.get("mount_input", False)),
@@ -565,6 +578,7 @@ def reload_s3_storage_config() -> dict:
         "model_folders": mc.get("model_folders") or [
             "checkpoints", "loras", "vae", "embeddings", "controlnet",
             "upscale_models", "clip", "clip_vision", "diffusion_models", "text_encoders",
+            "hypernetworks", "vae_approx",
         ],
         "mount_output": bool(mc.get("mount_output", False)),
         "mount_input": bool(mc.get("mount_input", False)),

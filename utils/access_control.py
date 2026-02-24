@@ -203,7 +203,7 @@ class AccessControl:
                 can_modify = perms.get("can_modify_workflows")
                 if can_modify is None:
                     can_modify = role != "guest"
-                if role == "admin":
+                if role in ("admin", "owner"):
                     can_modify = True
 
                 if not can_modify:
@@ -220,7 +220,7 @@ class AccessControl:
                 allow = perms.get(perm_key)
                 if allow is None:
                     allow = role != "guest"
-                if role == "admin":
+                if role in ("admin", "owner"):
                     allow = True
                 if allow is False:
                     for blocked_prefix in blocked_paths:
@@ -232,7 +232,7 @@ class AccessControl:
             if path.startswith("/mss-login/api/s3/"):
                 can_s3 = perms.get("can_access_s3_storage")
                 if can_s3 is None:
-                    can_s3 = role == "admin"
+                    can_s3 = role in ("admin", "owner")
                 if not can_s3:
                     return web.json_response(
                         {"error": "MSS-Login: S3 Storage Access Denied"},

@@ -182,6 +182,6 @@ def _user_can_have_non_expiring_jwt(username: str) -> bool:
     role = groups[0] if groups else "user"
     cfg = access_control._load_group_config()
     perms = cfg.get(role, {})
-    if role == "admin":
+    if role in ("admin", "owner"):
         return True
     return perms.get("can_have_non_expiring_jwt", False) is True

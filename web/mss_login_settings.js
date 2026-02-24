@@ -742,11 +742,12 @@ class mss_loginDialog extends ComfyDialog {
             { id: "users", label: "Users & Roles", order: 0 },
             { id: "perms", label: "Permissions & UI", order: 1 },
             { id: "shared-models", label: "Shared Models", order: 2 },
-            { id: "ip", label: "IP Rules", order: 3 },
-            { id: "env", label: "User Env", order: 4 },
-            { id: "nsfw", label: "NSFW Management", order: 5 },
-            { id: "token-storage", label: "Token Storage", order: 6 },
-            { id: "users-db", label: "Users DB", order: 7 }
+            { id: "model-download", label: "Model download", order: 3 },
+            { id: "ip", label: "IP Rules", order: 4 },
+            { id: "env", label: "User Env", order: 5 },
+            { id: "nsfw", label: "NSFW Management", order: 6 },
+            { id: "token-storage", label: "Token Storage", order: 7 },
+            { id: "users-db", label: "Users DB", order: 8 }
         ];
         
         // Combine and sort all tabs
@@ -813,6 +814,7 @@ class mss_loginDialog extends ComfyDialog {
         await this.renderSharedModels(this.element.querySelector("#mss-login-tab-shared-models"), usersList);
         await this.renderTokenStorage(this.element.querySelector("#mss-login-tab-token-storage"));
         await this.renderUsersDbConfig(this.element.querySelector("#mss-login-tab-users-db"));
+        await this.renderModelDownload(this.element.querySelector("#mss-login-tab-model-download"));
         
         // Fill Data - Extension tabs
         const context = {
@@ -1959,6 +1961,225 @@ async renderUsersDbConfig(container) {
             }
         } catch (e) {
             statusEl.textContent = "Error: " + (e.message || "Request failed");
+        }
+    };
+}
+
+async renderModelDownload(container) {
+    let sourcesWithKeys = [];
+    try {
+        const res = await api.fetchApi("/mss-login/api/model-download/sources", { method: "GET" });
+        if (res.ok) {
+            const data = await res.json();
+            sourcesWithKeys = data.sources_with_keys || [];
+        }
+    } catch (e) {
+        console.warn("[mss-login] Model download sources load failed:", e);
+    }
+    let folders = ["checkpoints", "loras", "vae", "embeddings", "controlnet", "upscale_models"];
+    try {
+        const fr = await api.fetchApi("/mss-login/api/model-cache/folders", { method: "GET" });
+        const fd = await fr.json();
+        if (fd.folders && fd.folders.length) folders = fd.folders;
+    } catch (e) {}
+    const folderOptions = folders.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
+    container.innerHTML = `
+        <div class="mss-login-section">
+            <h3>API keys (CivitAI / HuggingFace)</h3>
+            <p>Store your API keys to download models. Keys are encrypted and bound to your user.</p>
+            <div class="mss-login-row" style="margin-top:12px; gap:12px; flex-wrap:wrap;">
+                <div>
+                    <label class="mss-login-field-label">CivitAI</label>
+                    <input type="password" id="mss-login-civitai-key" class="mss-login-input" placeholder="${sourcesWithKeys.includes("civitai") ? "•••••••• (set)" : "API key"}" style="min-width:200px;">
+                </div>
+                <div>
+                    <label class="mss-login-field-label">HuggingFace</label>
+                    <input type="password" id="mss-login-hf-key" class="mss-login-input" placeholder="${sourcesWithKeys.includes("huggingface") ? "•••••••• (set)" : "API key"}" style="min-width:200px;">
+                </div>
+                <div style="align-self:flex-end;">
+                    <button class="mss-login-btn" id="mss-login-save-keys">Save keys</button>
+                </div>
+            </div>
+            <p id="mss-login-keys-status" class="mss-login-note" style="margin-top:8px;"></p>
+        </div>
+        <div class="mss-login-section" style="margin-top:24px;">
+            <h3>Download model</h3>
+            <p>Download from CivitAI or HuggingFace to local models or S3 mount. Newly downloaded models are visible only to admin/owner until you assign them in Shared Models.</p>
+            <div class="mss-login-row" style="margin-top:12px; gap:8px; align-items:center;">
+                <label class="mss-login-field-label">Source</label>
+                <select id="mss-login-dl-source" class="mss-login-select">
+                    <option value="civitai">CivitAI</option>
+                    <option value="huggingface">HuggingFace</option>
+                </select>
+                <label class="mss-login-field-label">Destination</label>
+                <select id="mss-login-dl-dest" class="mss-login-select">
+                    <option value="local">Local models</option>
+                    <option value="s3">S3 mount</option>
+                </select>
+                <label class="mss-login-field-label">Folder type</label>
+                <select id="mss-login-dl-folder" class="mss-login-select">${folderOptions}</select>
+            </div>
+            <div id="mss-login-dl-civitai-fields" class="mss-login-row" style="margin-top:12px; gap:8px; align-items:center;">
+                <label class="mss-login-field-label">Model version ID</label>
+                <input type="text" id="mss-login-dl-civitai-version" class="mss-login-input" placeholder="e.g. 138296" style="min-width:120px;">
+            </div>
+            <div id="mss-login-dl-hf-fields" class="mss-login-row" style="margin-top:12px; gap:8px; align-items:center; display:none;">
+                <label class="mss-login-field-label">Repo ID</label>
+                <input type="text" id="mss-login-dl-hf-repo" class="mss-login-input" placeholder="username/repo-name" style="min-width:200px;">
+                <label class="mss-login-field-label">Filename</label>
+                <input type="text" id="mss-login-dl-hf-filename" class="mss-login-input" placeholder="model.safetensors" style="min-width:160px;">
+            </div>
+            <div class="mss-login-row" style="margin-top:16px;">
+                <button class="mss-login-btn" id="mss-login-dl-start">Download</button>
+            </div>
+            <p id="mss-login-dl-status" class="mss-login-note" style="margin-top:8px;"></p>
+        </div>
+    `;
+    const sourceSelect = container.querySelector("#mss-login-dl-source");
+    const civitaiFields = container.querySelector("#mss-login-dl-civitai-fields");
+    const hfFields = container.querySelector("#mss-login-dl-hf-fields");
+    function showSourceFields() {
+        const v = sourceSelect.value;
+        civitaiFields.style.display = v === "civitai" ? "" : "none";
+        hfFields.style.display = v === "huggingface" ? "" : "none";
+    }
+    sourceSelect.onchange = showSourceFields;
+    showSourceFields();
+
+    container.querySelector("#mss-login-save-keys").onclick = async () => {
+        const statusEl = container.querySelector("#mss-login-keys-status");
+        const civitaiKey = container.querySelector("#mss-login-civitai-key").value.trim();
+        const hfKey = container.querySelector("#mss-login-hf-key").value.trim();
+        statusEl.textContent = "Saving...";
+        try {
+            if (civitaiKey) {
+                const r = await api.fetchApi("/mss-login/api/model-download/api-keys", { method: "PUT", body: JSON.stringify({ source: "civitai", api_key: civitaiKey }) });
+                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
+            }
+            if (hfKey) {
+                const r = await api.fetchApi("/mss-login/api/model-download/api-keys", { method: "PUT", body: JSON.stringify({ source: "huggingface", api_key: hfKey }) });
+                if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
+            }
+            statusEl.textContent = "Keys saved.";
+            container.querySelector("#mss-login-civitai-key").value = "";
+            container.querySelector("#mss-login-hf-key").value = "";
+            container.querySelector("#mss-login-civitai-key").placeholder = "•••••••• (set)";
+            container.querySelector("#mss-login-hf-key").placeholder = "•••••••• (set)";
+        } catch (e) {
+            statusEl.textContent = "Error: " + (e.message || "Save failed");
+        }
+    };
+
+    container.querySelector("#mss-login-dl-start").onclick = async () => {
+        const statusEl = container.querySelector("#mss-login-dl-status");
+        const source = sourceSelect.value;
+        const dest = container.querySelector("#mss-login-dl-dest").value;
+        const folder = container.querySelector("#mss-login-dl-folder").value;
+        const body = { source, destination_type: dest, folder_type: folder };
+        if (source === "civitai") {
+            body.model_version_id = container.querySelector("#mss-login-dl-civitai-version").value.trim();
+            if (!body.model_version_id) {
+                statusEl.textContent = "Enter CivitAI model version ID.";
+                return;
+            }
+        } else {
+            body.repo_id = container.querySelector("#mss-login-dl-hf-repo").value.trim();
+            body.filename = container.querySelector("#mss-login-dl-hf-filename").value.trim();
+            if (!body.repo_id || !body.filename) {
+                statusEl.textContent = "Enter HuggingFace repo ID and filename.";
+                return;
+            }
+        }
+        statusEl.textContent = "Downloading...";
+        const prevTitle = document.title;
+        try {
+            const res = await api.fetchApi("/mss-login/api/model-download/download", { method: "POST", body: JSON.stringify(body) });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                statusEl.textContent = "Error: " + (data.error || res.status);
+                return;
+            }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = "";
+            let lastData = null;
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, { stream: true });
+                const lines = buf.split("\n");
+                buf = lines.pop() || "";
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const data = JSON.parse(line);
+                        lastData = data;
+                        if (data.status === "ok") {
+                            document.title = prevTitle;
+                            statusEl.textContent = "Download complete: " + (data.destination || "");
+                            return;
+                        }
+                        if (data.status === "error") {
+                            document.title = prevTitle;
+                            statusEl.textContent = "Error: " + (data.error || "Download failed");
+                            return;
+                        }
+                        const bytesDone = data.bytes_done ?? 0;
+                        const totalBytes = data.total_bytes ?? null;
+                        const elapsed = data.elapsed ?? 0;
+                        const mb = (bytesDone / (1024 * 1024)).toFixed(1);
+                        let statusText = "Downloading... " + mb + " MB";
+                        let titleSuffix = " – " + mb + " MB";
+                        if (totalBytes != null && totalBytes > 0 && bytesDone > 0) {
+                            const pct = Math.min(99, Math.round((bytesDone / totalBytes) * 100));
+                            statusText = "Downloading... " + pct + "% (" + mb + " MB)";
+                            titleSuffix = " – " + pct + "%";
+                            if (elapsed > 0.5) {
+                                const speed = bytesDone / elapsed;
+                                const remainingSec = (totalBytes - bytesDone) / speed;
+                                if (remainingSec >= 60) {
+                                    const min = Math.round(remainingSec / 60);
+                                    titleSuffix += " – ~" + min + " min remaining";
+                                    statusText += " – ~" + min + " min remaining";
+                                } else if (remainingSec >= 1) {
+                                    const sec = Math.round(remainingSec);
+                                    titleSuffix += " – ~" + sec + " sec remaining";
+                                    statusText += " – ~" + sec + " sec remaining";
+                                }
+                            }
+                        } else if (elapsed > 1) {
+                            titleSuffix += " – estimating...";
+                        }
+                        document.title = "MSS-Login: Downloading" + titleSuffix;
+                        statusEl.textContent = statusText;
+                    } catch (_) {}
+                }
+            }
+            if (buf.trim()) {
+                try {
+                    const data = JSON.parse(buf);
+                    lastData = data;
+                    if (data.status === "ok") {
+                        document.title = prevTitle;
+                        statusEl.textContent = "Download complete: " + (data.destination || "");
+                        return;
+                    }
+                    if (data.status === "error") {
+                        document.title = prevTitle;
+                        statusEl.textContent = "Error: " + (data.error || "Download failed");
+                        return;
+                    }
+                } catch (_) {}
+            }
+            document.title = prevTitle;
+            if (lastData && lastData.status === "ok") {
+                statusEl.textContent = "Download complete: " + (lastData.destination || "");
+            } else {
+                statusEl.textContent = lastData && lastData.error ? "Error: " + lastData.error : "Download finished.";
+            }
+        } catch (e) {
+            document.title = prevTitle;
+            statusEl.textContent = "Error: " + (e.message || "Download failed");
         }
     };
 }

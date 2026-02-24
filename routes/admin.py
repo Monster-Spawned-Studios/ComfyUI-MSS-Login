@@ -40,8 +40,9 @@ def is_admin(request):
     try:
         p = jwt_auth.decode_access_token(token)
         _, u = users_db.get_user(p["username"])
-        return u.get("admin", False) or "admin" in u.get("groups", [])
-    except:
+        groups = [g.lower() for g in (u.get("groups") or [])]
+        return u.get("admin", False) or "admin" in groups or "owner" in groups
+    except Exception:
         return False
 
 

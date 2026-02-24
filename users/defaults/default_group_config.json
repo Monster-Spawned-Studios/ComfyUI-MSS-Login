@@ -1,4 +1,17 @@
 {
+    "owner": {
+        "can_run": true,
+        "can_upload": true,
+        "can_access_manager": true,
+        "can_access_api": true,
+        "can_see_restricted_settings": true,
+        "can_have_api_tokens": true,
+        "can_have_non_expiring_jwt": true,
+        "can_view_console": true,
+        "mfa_required": true,
+        "can_view_all_comfyui_items": true,
+        "can_access_s3_storage": true
+    },
     "admin": {
         "can_run": true,
         "can_upload": true,

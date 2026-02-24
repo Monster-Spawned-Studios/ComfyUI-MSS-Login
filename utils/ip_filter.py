@@ -1,9 +1,16 @@
 import os
 import hashlib
 import ipaddress
+import time
+from pathlib import Path
+from typing import Optional
 
 from aiohttp import web
-from pathlib import Path
+
+
+# Cookie name for device ID (set by client or server on first visit)
+DEVICE_ID_COOKIE = "mss_login_device_id"
+DEVICE_ID_HEADER = "X-Device-ID"
 
 
 def get_ip(request: web.Request) -> str:
@@ -30,10 +37,29 @@ def get_ip(request: web.Request) -> str:
     return ip
 
 
+def get_device_id(request: web.Request) -> Optional[str]:
+    """Extract device identifier from request (X-Device-ID header or cookie). Used for lockout across IP changes."""
+    did = request.headers.get(DEVICE_ID_HEADER)
+    if did:
+        return (did or "").strip() or None
+    did = request.cookies.get(DEVICE_ID_COOKIE)
+    if did:
+        return (did or "").strip() or None
+    return None
+
+
 class IPFilter:
-    def __init__(self, whitelist_file: str | Path, blacklist_file: str | Path):
+    def __init__(
+        self,
+        whitelist_file: str | Path,
+        blacklist_file: str | Path,
+        security_json_path: Optional[str | Path] = None,
+        lockout_store=None,
+    ):
         self.whitelist_file = whitelist_file
         self.blacklist_file = blacklist_file
+        self.security_json_path = security_json_path
+        self.lockout_store = lockout_store
 
         self._whitelist_hash = None
         self._blacklist_hash = None
@@ -97,13 +123,12 @@ class IPFilter:
 
         return self.whitelist, self.blacklist
 
-    def is_allowed(self, ip: str) -> bool:
+    def is_allowed(self, ip: str, request: Optional[web.Request] = None) -> bool:
         """
-        Checks if the given IP address is allowed based on the whitelist and blacklist.
-        - If the whitelist is not empty, the IP must be in the whitelist to be allowed.
-        - If the whitelist is empty, the IP is denied if it is in the blacklist.
-        - If the whitelist is empty and IP is not in the blacklist, it is allowed.
-        Supports both single IPs and CIDR ranges.
+        Checks if the given IP (and optional request for device ID) is allowed.
+        Order: 1) security.json unlock_ips / unlock_devices -> allow
+               2) IP in blacklist (file + DB) or device in locked_devices -> deny
+               3) Existing whitelist/blacklist file logic.
         """
         self.load_filter_list()
 
@@ -111,6 +136,39 @@ class IPFilter:
             ip_addr = ipaddress.ip_address(ip)
         except ValueError:
             return False
+
+        # 1) security.json unlock overrides
+        if self.security_json_path:
+            from .security_config import (
+                get_unlock_ips,
+                get_unlock_devices,
+                is_lockout_disabled_until,
+            )
+            unlock_ips = get_unlock_ips(self.security_json_path)
+            unlock_devices = get_unlock_devices(self.security_json_path)
+            disable_until = is_lockout_disabled_until(self.security_json_path)
+            if disable_until is not None and time.time() < disable_until:
+                pass  # Skip lockout checks below
+            elif ip in unlock_ips:
+                return True
+            elif request and get_device_id(request) and get_device_id(request) in unlock_devices:
+                return True
+
+        # 2) Lockout: DB blacklist and locked devices (unless disabled above)
+        if self.security_json_path:
+            disable_until = is_lockout_disabled_until(self.security_json_path)
+            if disable_until is None or time.time() >= disable_until:
+                if self.lockout_store:
+                    db_blacklist = self.lockout_store.get_blacklisted_ips()
+                    if ip in db_blacklist:
+                        return False
+                    if request:
+                        did = get_device_id(request)
+                        if did and did in self.lockout_store.get_locked_devices():
+                            return False
+
+        # 3) File blacklist (merge with DB for backward compatibility)
+        file_blacklist = self.blacklist
 
         # Check whitelist (if not empty, IP must be whitelisted)
         if self.whitelist:
@@ -125,8 +183,8 @@ class IPFilter:
                         return True
             return False
 
-        # Check blacklist (if whitelist is empty)
-        for entry in self.blacklist:
+        # Check blacklist (file + DB; if whitelist is empty)
+        for entry in file_blacklist:
             if isinstance(entry, (ipaddress.IPv4Network, ipaddress.IPv6Network)):
                 # CIDR range check
                 if ip_addr in entry:
@@ -184,7 +242,7 @@ class IPFilter:
         async def ip_filter_middleware(request: web.Request, handler) -> web.Response:
             ip = get_ip(request)
 
-            if not self.is_allowed(ip):
+            if not self.is_allowed(ip, request):
                 return await handle_access_denied(
                     request,
                     "Access denied: IP is either not whitelisted or is blacklisted.",

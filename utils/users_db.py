@@ -505,9 +505,25 @@ class UsersDB:
             ):
                 user["groups"] = ["admin"] if user.get("admin") else ["user"]
                 changed = True
+        self._ensure_owner_assigned()
         if changed:
             for uid, user in self.users.items():
                 self._backend.update(uid, user, self._secret_key)
+
+    def _ensure_owner_assigned(self) -> None:
+        """If no user has 'owner' in groups, assign owner to the first admin (migration)."""
+        for _uid, user in self.users.items():
+            groups = [g.lower() for g in user.get("groups", [])]
+            if "owner" in groups:
+                return
+        admin_uid, admin_user = self.get_admin_user()
+        if not admin_uid or not admin_user:
+            return
+        groups = list(admin_user.get("groups", ["admin"]))
+        if "owner" not in [g.lower() for g in groups]:
+            admin_user["groups"] = ["owner"] + [g for g in groups if g.lower() != "owner"]
+            self._backend.update(admin_uid, admin_user, self._secret_key)
+            self.users[admin_uid] = admin_user
 
     def save_users(self, users: dict) -> None:
         """Persist entire users dict (used by code that expects legacy behavior). Prefer update_user/add_user/delete_user."""
@@ -530,7 +546,8 @@ class UsersDB:
         has_admin = self._has_admin()
         if not has_admin and len(self.users) == 0:
             admin = True
-        groups = ["admin"] if admin else ["user"]
+        # First admin gets owner group
+        groups = ["owner", "admin"] if admin and not has_admin else (["admin"] if admin else ["user"])
         user = {
             "username": username,
             "password": self.hash_password(password),
