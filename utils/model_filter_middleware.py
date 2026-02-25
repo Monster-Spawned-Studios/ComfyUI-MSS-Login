@@ -97,11 +97,13 @@ def create_model_filter_middleware(
 
     def _s3_item_names(mount_root: str, folder: str) -> frozenset[str]:
         """Return the set of filenames that live under the S3 mount for a folder."""
+        if not folder or ".." in folder or "/" in folder or "\\" in folder:
+            return frozenset()
         s3_dir = os.path.join(mount_root, folder)
         if not os.path.isdir(s3_dir):
             return frozenset()
         names: set[str] = set()
-        for dirpath, _, filenames in os.walk(s3_dir):
+        for dirpath, _, filenames in os.walk(os.path.basename(s3_dir)):
             rel = os.path.relpath(dirpath, s3_dir)
             for fn in filenames:
                 if rel == ".":

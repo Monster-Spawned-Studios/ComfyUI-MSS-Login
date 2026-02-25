@@ -42,13 +42,10 @@ except ImportError:
         load_dotenvx(dotenv_path=_env_data, override=True)
     except ImportError:
         print("[MSS-Login] dotenvx not found, using os.environ")
-        pass
     except Exception as e:
         print(f"[mss_login] Failed to load .env with dotenvx: {e}")
-        pass
 except Exception as e:
     print(f"[mss_login] Failed to load .env with dotenv: {e}")
-    pass
 
 # NTFY API Key
 NTFY_API_KEY = (os.getenv("NTFY_API_KEY") or "").strip()

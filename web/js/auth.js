@@ -320,7 +320,7 @@ async function login(event) {
         if (!token) {
           addToast("Login succeeded but no token was returned", "error");
         } else {
-          let cookieString = `jwt_token=${token}; path=/; HttpOnly; SameSite=Strict`;
+          let cookieString = `jwt_token=${DOMPurify.sanitize(token)}; path=/; HttpOnly; secure; SameSite=Strict`;
 
           if (window.location.protocol === "https:") {
             cookieString += "; Secure";
@@ -385,7 +385,7 @@ async function guestLogin(event) {
     if (response.ok) {
       const token = result.token || result.jwt_token;
       if (token) {
-        let cookieString = `jwt_token=${token}; path=/; HttpOnly; SameSite=Strict`;
+        let cookieString = `jwt_token=${DOMPurify.sanitize(token)}; path=/; HttpOnly; secure; SameSite=Strict`;
         if (window.location.protocol === "https:") {
           cookieString += "; Secure";
         }
@@ -609,7 +609,7 @@ async function submitMfaVerify(event) {
     });
     const result = await response.json();
     if (response.ok && result.jwt_token) {
-      let cookieString = `jwt_token=${result.jwt_token}; path=/; HttpOnly; SameSite=Strict`;
+      let cookieString = `jwt_token=${DOMPurify.sanitize(result.jwt_token)}; path=/; HttpOnly; secure; SameSite=Strict`;
       if (window.location.protocol === "https:") cookieString += "; Secure";
       document.cookie = cookieString;
       addToast(result.message || "Login successful", "success");
@@ -661,7 +661,7 @@ async function submitMfaSetup(event) {
     });
     const verifyData = await verifyResp.json();
     if (verifyResp.ok && verifyData.jwt_token) {
-      let cookieString = `jwt_token=${verifyData.jwt_token}; path=/; HttpOnly; SameSite=Strict`;
+      let cookieString = `jwt_token=${DOMPurify.sanitize(verifyData.jwt_token)}; path=/; HttpOnly; secure; SameSite=Strict`;
       if (window.location.protocol === "https:") cookieString += "; Secure";
       document.cookie = cookieString;
       addToast(verifyData.message || "MFA enabled. Login successful.", "success");
@@ -681,6 +681,8 @@ async function submitMfaSetup(event) {
 // ---------------------------------------------------------------------------
 // Token management (generate_token page only)
 // ---------------------------------------------------------------------------
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
 
 async function loadMyTokens() {
   const container = document.getElementById("my-tokens-list");
@@ -720,7 +722,7 @@ async function loadMyTokens() {
       html += '</tr>';
     }
     html += '</tbody></table>';
-    container.innerHTML = html;
+    container.textContent = DOMPurify.sanitize(html);
   } catch {
     container.innerHTML = '<p style="color:#888;">Could not load tokens.</p>';
   }

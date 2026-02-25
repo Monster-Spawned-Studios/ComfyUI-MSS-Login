@@ -492,12 +492,21 @@ routes.get("/mss-login/api/available-model-folders")(api_available_model_folders
 routes.get("/api/mss-login/api/available-model-folders")(api_available_model_folders)
 
 
+def _safe_folder_segment(folder: str) -> bool:
+    """Return True if folder is a single path segment (no path traversal)."""
+    if not folder or ".." in folder or "/" in folder or "\\" in folder:
+        return False
+    return True
+
+
 @routes.get("/mss-login/api/available-models/{folder}")
 async def api_available_models_in_folder(request):
     """List model/item names in a folder (for admin shared-items UI). Admin only."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     folder = request.match_info.get("folder", "")
+    if not _safe_folder_segment(folder):
+        return web.json_response({"error": "Invalid folder"}, status=400)
     try:
         import folder_paths  # type: ignore[import-untyped]  # ComfyUI core module; resolves at runtime
 
@@ -536,6 +545,8 @@ async def api_model_cache_folder_items(request):
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     folder = request.match_info.get("folder", "")
+    if not _safe_folder_segment(folder):
+        return web.json_response({"error": "Invalid folder"}, status=400)
     try:
         cache = get_model_cache(USERS_DB_CONFIG)
         items = cache.list_items(folder)

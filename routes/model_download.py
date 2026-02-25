@@ -117,10 +117,30 @@ async def api_model_download_start(request: web.Request) -> web.Response:
         return web.json_response({"error": "Invalid destination_type"}, status=400)
     if destination_type == "s3" and not EXPERIMENTAL_FEATURES:
         return web.json_response(
-            {"error": "S3 is an experimental feature. Enable EXPERIMENTAL_FEATURES to use it."},
+            {
+                "error": "S3 is an experimental feature. Enable EXPERIMENTAL_FEATURES to use it."
+            },
             status=403,
         )
     folder_type = (body.get("folder_type") or "checkpoints").strip()
+    # Prevent path traversal: allow only a single path segment (no "..", no separators)
+    if (
+        not folder_type
+        or ".." in folder_type
+        or "/" in folder_type
+        or "\\" in folder_type
+        or os.path.isabs(folder_type)
+    ):
+        return web.json_response(
+            {"error": "Invalid folder_type: must be a single path segment"},
+            status=400,
+        )
+    # Restrict to safe characters used by ComfyUI folder names (e.g. checkpoints, loras)
+    if not all(c.isalnum() or c in "_-" for c in folder_type):
+        return web.json_response(
+            {"error": "Invalid folder_type: only letters, digits, underscore, hyphen allowed"},
+            status=400,
+        )
 
     store = get_model_source_api_keys_store(USERS_DB_CONFIG)
     token = store.get_key(user_id, source)
@@ -200,6 +220,14 @@ async def api_model_download_start(request: web.Request) -> web.Response:
         elif source == "huggingface":
             repo_id = (body.get("repo_id") or "").strip()
             filename = (body.get("filename") or "").strip()
+            # Prevent path traversal: use basename only; reject path separators
+            if filename and (".." in filename or "/" in filename or "\\" in filename):
+                filename = os.path.basename(filename)
+            subfolder = body.get("subfolder")
+            if isinstance(subfolder, str):
+                subfolder = subfolder.strip()
+                if ".." in subfolder or subfolder.startswith("/"):
+                    subfolder = None
             if not repo_id or not filename:
                 await _write_progress_line(
                     response,
@@ -218,7 +246,7 @@ async def api_model_download_start(request: web.Request) -> web.Response:
                     filename,
                     token,
                     dest_dir,
-                    subfolder=body.get("subfolder"),
+                    subfolder=subfolder,
                     progress_dict=progress_dict,
                 )
 

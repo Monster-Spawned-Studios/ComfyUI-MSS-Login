@@ -64,6 +64,9 @@ def get_user_root(username: str) -> str:
       <ext_root>/Users/<username>/
     """
     username = (username or "guest").strip() or "guest"
+    # Prevent path traversal: username must be a single path segment
+    if ".." in username or "/" in username or "\\" in username:
+        username = "guest"
     path = os.path.join(get_users_root(), username)
     os.makedirs(path, exist_ok=True)
     return path

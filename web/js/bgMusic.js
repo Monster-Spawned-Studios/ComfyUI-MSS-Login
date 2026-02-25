@@ -10,6 +10,9 @@
  * or from <audio data-bg-music> elements in the page.
  */
 
+/** DOMPurify for sanitizing the background music URLs. */
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
+
 /** Cached list of background music URLs from the server (filesystem). */
 let _bgMusicFilesFromServer = null;
 
@@ -95,7 +98,7 @@ function loopBackgroundMusic(shuffle = true, repeat = true) {
         currentAudio.autoplay = true;
         currentAudio.controls = false;     // no controls
         currentAudio.style.display = "none"; // not visible
-        document.body.appendChild(currentAudio);
+        document.body.textContent += DOMPurify.sanitize(currentAudio.src);
 
         // Move to next index for next track
         index++;

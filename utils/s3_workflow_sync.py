@@ -13,8 +13,8 @@ are small JSON files that do not benefit from FUSE mounting.
 
 import os
 import re
-import time
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -23,6 +23,16 @@ from .s3_storage import S3StorageClient
 
 _LOG_PREFIX = "[MSS-Login::S3WorkflowSync]"
 _SAFE_USERNAME_RE = re.compile(r"[^a-zA-Z0-9_\-]")
+
+
+def _path_under(path: str, base_dir: str) -> bool:
+    """Return True if path resolves under base_dir (prevents path traversal)."""
+    try:
+        resolved = os.path.abspath(path)
+        base = os.path.abspath(base_dir)
+        return resolved == base or resolved.startswith(base + os.sep)
+    except Exception:
+        return False
 
 # Cap to prevent syncing absurdly large files
 _DEFAULT_MAX_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
@@ -225,23 +235,27 @@ class S3WorkflowSync:
 
         return result
 
-    def _upload_workflow(
-        self, username: str, local_dir: str, rel_name: str
-    ) -> None:
-        local_path = os.path.join(local_dir, rel_name.replace("/", os.sep))
+    def _upload_workflow(self, username: str, local_dir: str, rel_name: str) -> None:
+        if ".." in rel_name:
+            return
+        local_path = os.path.normpath(os.path.join(local_dir, rel_name.replace("/", os.sep)))
+        if not _path_under(local_path, local_dir):
+            return
         s3_key = self._s3_key_for_workflow(username, rel_name)
         # Strip the global prefix since upload_file applies it
         if self._prefix and s3_key.startswith(self._prefix):
             s3_key = s3_key[len(self._prefix) :].lstrip("/")
         self._s3.upload_file(local_path, s3_key)
 
-    def _download_workflow(
-        self, username: str, local_dir: str, rel_name: str
-    ) -> None:
+    def _download_workflow(self, username: str, local_dir: str, rel_name: str) -> None:
+        if ".." in rel_name:
+            return
+        local_path = os.path.normpath(os.path.join(local_dir, rel_name.replace("/", os.sep)))
+        if not _path_under(local_path, local_dir):
+            return
         s3_key = self._s3_key_for_workflow(username, rel_name)
         if self._prefix and s3_key.startswith(self._prefix):
             s3_key = s3_key[len(self._prefix) :].lstrip("/")
-        local_path = os.path.join(local_dir, rel_name.replace("/", os.sep))
         self._s3.download_file(s3_key, local_path)
 
     # ------------------------------------------------------------------
@@ -298,10 +312,14 @@ class S3WorkflowSync:
         for rel_name, mtime in remote_files.items():
             if rel_name in local_files:
                 continue
-            # Pull down to local so ComfyUI can serve it
+            # Pull down to local so ComfyUI can serve it (skip if rel_name suggests path traversal)
+            if ".." in rel_name:
+                continue
             try:
+                full_path = os.path.normpath(os.path.join(local_dir, rel_name.replace("/", os.sep)))
+                if not _path_under(full_path, local_dir):
+                    continue
                 self._download_workflow(username, local_dir, rel_name)
-                full_path = os.path.join(local_dir, rel_name.replace("/", os.sep))
                 from ..routes.workflow_routes import get_file_info
 
                 info = get_file_info(local_dir, rel_name)
@@ -324,6 +342,7 @@ class S3WorkflowSync:
         return results
 
     def _get_all_usernames(self) -> list[str]:
+        """Return a list of all known usernames."""
         if self._users_db is None:
             return []
         try:
@@ -337,6 +356,7 @@ class S3WorkflowSync:
             return []
 
     def _bg_loop(self) -> None:
+        """Background thread that periodically syncs workflows for all users."""
         while not self._stop_event.is_set():
             try:
                 self.sync_all_users()
@@ -345,6 +365,9 @@ class S3WorkflowSync:
             self._stop_event.wait(self._interval)
 
     def start_background_sync(self) -> None:
+        """
+        Start the background sync thread.
+        """
         if self._bg_thread and self._bg_thread.is_alive():
             return
         self._stop_event.clear()
@@ -355,6 +378,7 @@ class S3WorkflowSync:
         _log(f"Background workflow sync started (interval={self._interval}s)")
 
     def stop_background_sync(self) -> None:
+        """Stop the background sync thread."""
         self._stop_event.set()
         if self._bg_thread and self._bg_thread.is_alive():
             self._bg_thread.join(timeout=5)
@@ -393,8 +417,10 @@ def init_workflow_sync(
     sync_config: dict,
     users_db=None,
 ) -> S3WorkflowSync:
-    """Create and store the singleton S3WorkflowSync."""
+    """Initialize the singleton S3WorkflowSync."""
     global _workflow_sync
     _workflow_sync = S3WorkflowSync(s3_client, s3_prefix, sync_config, users_db)
     return _workflow_sync
+
+
 # --- END OF FILE utils/s3_workflow_sync.py ---

@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.debugpy",
+    "usernamehw.errorlens",
+    "njpwerner.autodocstring",
+    "ms-python.black-formatter",
+    "edwinhuish.better-comments-next"
+  ]
+}

@@ -2,6 +2,7 @@
 // Minimal, dependency-free UI that talks to /mss-login/api/*
 // NOTE: For now this panel is only callable from localhost (enforced server-side).
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
 async function api(path, options = {}) {
   const res = await fetch(path, {
     headers: {
@@ -36,7 +37,7 @@ async function loadUsers() {
     tableBody.innerHTML = '';
     for (const u of users) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `
+      tr.innerText = DOMPurify.sanitize(`
         <td>${u.username}</td>
         <td><input type="checkbox" data-field="is_admin" ${u.is_admin ? 'checked' : ''}></td>
         <td><input type="text" data-field="groups" value="${(u.groups || []).join(', ')}"></td>
@@ -51,13 +52,14 @@ async function loadUsers() {
           <button data-action="save">Save</button>
           <button data-action="delete">Delete</button>
         </td>
-      `;
+      `);
       tr.dataset.username = u.username;
       tableBody.appendChild(tr);
     }
   } catch (err) {
     console.error(err);
-    tableBody.innerHTML = `<tr><td colspan="7">Failed to load users: ${err.message}</td></tr>`;
+    tableBody.innerText = DOMPurify.sanitize(`<tr><td colspan="7">Failed to load users: ${err.message}</td></tr>`);
+    tableBody.appendChild(tr);
   }
 }
 

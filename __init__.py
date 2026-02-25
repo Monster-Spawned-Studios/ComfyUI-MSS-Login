@@ -189,24 +189,36 @@ async def workflow_interceptor_middleware(request, handler):
         img_type = q.get("type", "output")
 
         if filename and (img_type == "output" or img_type == "temp"):
-            if img_type == "temp":
-                target_dir = folder_paths.get_temp_directory()
-            else:
-                target_dir = folder_paths.get_output_directory()
+            # Prevent path traversal: use basename only
+            safe_name = os.path.basename(filename)
+            if ".." in safe_name:
+                safe_name = None
+            if safe_name:
+                if img_type == "temp":
+                    target_dir = folder_paths.get_temp_directory()
+                else:
+                    target_dir = folder_paths.get_output_directory()
+                img_path = os.path.join(target_dir, safe_name)
 
-            img_path = os.path.join(target_dir, filename)
-
-            if os.path.isfile(img_path):
+            if safe_name and os.path.isfile(img_path):
                 if should_block_image_for_current_user(img_path):
                     return web.Response(status=403, text="NSFW Blocked")
 
     # --- Case B: /static_gallery ---
     if path.startswith("/static_gallery/") and method == "GET":
         rel = path[len("/static_gallery/") :].lstrip("/\\")
-        out_dir = folder_paths.get_output_directory()
-        img_path = os.path.join(out_dir, rel)
-        if os.path.isfile(img_path) and should_block_image_for_current_user(img_path):
-            return web.Response(status=403, text="NSFW Blocked")
+        if ".." in rel:
+            rel = None
+        if rel:
+            out_dir = folder_paths.get_output_directory()
+            out_abs = os.path.abspath(out_dir)
+            img_path = os.path.normpath(os.path.join(out_dir, rel))
+            img_abs = os.path.abspath(img_path)
+            if not img_abs.startswith(out_abs + os.sep) and img_abs != out_abs:
+                rel = None
+        if rel:
+            if os.path.isfile(img_path) and should_block_image_for_current_user(img_path):
+                return web.Response(status=403, text="NSFW Blocked")
 
     return await handler(request)
 

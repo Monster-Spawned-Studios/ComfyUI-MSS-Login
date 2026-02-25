@@ -3,6 +3,7 @@ Download models from CivitAI and HuggingFace to a local path or S3 mount path.
 """
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Awaitable, Callable, Optional, Union
 
@@ -58,7 +59,8 @@ async def download_civitai_async(
                 if content_disp and "filename=" in content_disp:
                     part = content_disp.split("filename=")[-1].strip().strip('"\'')
                     if part:
-                        filename = part
+                        # Use basename only to prevent path traversal from server-provided filename
+                        filename = Path(part).name or part
                 if not filename and dest_path.suffix:
                     filename = dest_path.name
                 if not filename:
@@ -66,6 +68,22 @@ async def download_civitai_async(
                 out = dest_path if dest_path.suffix else dest_path / filename
                 if out.is_dir():
                     out = dest_path / filename
+                # Ensure final path stays under dest_path (defense in depth)
+                dest_resolved = dest_path.resolve()
+                out_resolved = out.resolve()
+                try:
+                    common = os.path.commonpath([out_resolved, dest_resolved])
+                except ValueError:
+                    return False, "Path traversal prevented"
+                if os.path.abspath(common) != os.path.abspath(dest_resolved):
+                    out = dest_path / Path(filename).name
+                    out_resolved = out.resolve()
+                    try:
+                        common = os.path.commonpath([out_resolved, dest_resolved])
+                    except ValueError:
+                        return False, "Path traversal prevented"
+                    if os.path.abspath(common) != os.path.abspath(dest_resolved):
+                        return False, "Path traversal prevented"
                 out.parent.mkdir(parents=True, exist_ok=True)
                 raw_len = getattr(resp, "content_length", None) or resp.headers.get("Content-Length")
                 total_bytes = None

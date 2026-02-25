@@ -1,10 +1,12 @@
-import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { ComfyDialog, $el } from "../../scripts/ui.js";
+import { app } from "../../scripts/app.js";
+import { $el, ComfyDialog } from "../../scripts/ui.js";
 
 const GROUPS = ["admin", "power", "user", "guest"];
 let currentUser = null;
 let groupsConfig = {};
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
 
 // --- Extension Tab Registry API ---
 /**
@@ -842,13 +844,13 @@ class mss_loginDialog extends ComfyDialog {
                     // Escape error message to prevent XSS
                     const errorMsg = String(error.message || "Unknown error").replace(/[<>]/g, "");
                     const escapedLabel = escapeHtml(extTab.label);
-                    container.innerHTML = `
+                    container.innerText = DOMPurify.sanitize(`
                         <div style="padding:20px; text-align:center; color:#ff6b6b;">
                             <h3>Error Loading Tab</h3>
                             <p>Failed to render "${escapedLabel}" tab.</p>
                             <p style="font-size:11px; color:#c5c8d3;">${errorMsg}</p>
                         </div>
-                    `;
+                    `);
                 }
             } else {
                 console.warn(`[mss-login] Container not found for extension tab: "${extTab.id}"`);

@@ -3,6 +3,8 @@
  * Token and mode are read from sessionStorage (set by login page before redirect).
  * APIs: /mss-login/api/mfa/setup, verify-setup, verify.
  */
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
+
 (function () {
 	"use strict";
 
@@ -117,10 +119,9 @@
 								height: 200,
 							});
 						} else {
-							qrContainer.innerHTML =
-								'<p><a href="' +
-								(data.provisioning_uri || "") +
-								'" target="_blank">Open in authenticator</a></p>';
+							qrContainer.innerText = DOMPurify.sanitize(
+								`<p><a href="${data.provisioning_uri || ""}" target="_blank">Open in authenticator</a></p>`
+							);
 						}
 					}
 					if (data.backup_code && backupCodeEl && backupDisplay) {

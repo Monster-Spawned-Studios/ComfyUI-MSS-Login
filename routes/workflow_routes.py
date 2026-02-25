@@ -135,9 +135,19 @@ def sanitize_name(name: str | None) -> str | None:
 
 # --- Helper: Get File Info ---
 def get_file_info(root_dir: str, rel_path: str) -> dict:
-    full_path = os.path.join(root_dir, rel_path)
-
+    # Prevent path traversal: ensure resolved path stays under root_dir
     rel_norm = rel_path.replace("\\", "/")
+    if ".." in rel_norm or rel_norm.startswith("/"):
+        rel_norm = ""
+    full_path = os.path.join(root_dir, rel_norm)
+    try:
+        if os.path.abspath(full_path) != os.path.abspath(root_dir) and not os.path.abspath(full_path).startswith(
+            os.path.abspath(root_dir) + os.sep
+        ):
+            full_path = root_dir  # fallback to root to avoid escaping
+    except Exception:
+        full_path = root_dir
+
     parts = rel_norm.split("/")
     filename = parts[-1]
     subfolder = "/".join(parts[:-1]) if len(parts) > 1 else ""
@@ -394,6 +404,9 @@ async def middleware_dispatch(request):
         q = request.rel_url.query
         filename = q.get("filename") or q.get("file") or q.get("name")
         img_type = q.get("type", "output")
+        # Prevent path traversal: only use filename if it has no path components
+        if filename and (".." in filename or "/" in filename or "\\" in filename):
+            filename = None
 
         # Only guard standard output images for now
         if filename and img_type == "output":

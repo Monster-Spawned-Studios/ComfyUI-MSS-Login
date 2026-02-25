@@ -10,6 +10,8 @@ MinIO, etc.).
 Also provides mount management and per-user workflow sync endpoints.
 """
 
+import os
+
 from aiohttp import web
 
 from .. import constants as constants_module
@@ -63,6 +65,28 @@ def _require_experimental_and_auth(request: web.Request) -> tuple[str | None, bo
 
 def _error_json(msg: str, status: int = 400) -> web.Response:
     return web.json_response({"error": msg}, status=status)
+
+
+def _local_path_allowed(local_path: str) -> bool:
+    """Return True if local_path resolves under a permitted base (no path traversal)."""
+    if not local_path or ".." in local_path:
+        return False
+    try:
+        resolved = os.path.abspath(local_path)
+    except Exception:
+        return False
+    bases = [os.path.abspath(constants_module.DATA_DIR)]
+    try:
+        import folder_paths  # pyright: ignore[reportMissingImports]
+        bases.append(os.path.abspath(getattr(folder_paths, "base_path", "")))
+    except Exception:
+        pass
+    for base in bases:
+        if not base:
+            continue
+        if resolved == base or resolved.startswith(base + os.sep):
+            return True
+    return False
 
 
 @routes.get("/mss-login/api/s3/status")
@@ -126,6 +150,8 @@ async def s3_upload(request: web.Request) -> web.Response:
     s3_key = (body.get("s3_key") or "").strip()
     if not local_path or not s3_key:
         return _error_json("local_path and s3_key are required.")
+    if not _local_path_allowed(local_path):
+        return _error_json("local_path must be under DATA_DIR or ComfyUI root.", 400)
     try:
         client = get_s3_client(constants_module.S3_STORAGE_CONFIG)
         result = client.upload_file(local_path, s3_key)
@@ -152,6 +178,8 @@ async def s3_download(request: web.Request) -> web.Response:
     local_path = (body.get("local_path") or "").strip()
     if not s3_key or not local_path:
         return _error_json("s3_key and local_path are required.")
+    if not _local_path_allowed(local_path):
+        return _error_json("local_path must be under DATA_DIR or ComfyUI root.", 400)
     try:
         client = get_s3_client(constants_module.S3_STORAGE_CONFIG)
         saved_path = client.download_file(s3_key, local_path)

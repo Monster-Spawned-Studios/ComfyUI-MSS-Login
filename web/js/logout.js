@@ -1,5 +1,8 @@
 import { $el } from "/scripts/ui.js";
 
+/** DOMPurify for sanitizing the logout button. */
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
+
 async function setupLogout() {
   try {
     await new Promise((resolve) => {
@@ -18,7 +21,7 @@ async function setupLogout() {
         sessionStorage.clear();
         document.cookie.split(";").forEach((cookie) => {
           const cookieName = cookie.split("=")[0].trim();
-          document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
+          document.cookie = `${DOMPurify.sanitize(cookieName)}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; secure; samesite=strict`;
         });
 
         window.location.href = "/logout";
