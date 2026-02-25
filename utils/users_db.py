@@ -18,6 +18,7 @@ from .encryption import (
     hash_backup_code,
     verify_backup_code,
 )
+from .input_sanitizer import sanitize_username as _sanitize_username
 
 # Schema: user_id, username, password_hash, admin, groups (JSON), sfw_check,
 #         mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used
@@ -543,6 +544,9 @@ class UsersDB:
 
     def add_user(self, id: str, username: str, password: str, admin: bool) -> None:
         self.load_users()
+        username = _sanitize_username(username)
+        if not username:
+            return
         has_admin = self._has_admin()
         if not has_admin and len(self.users) == 0:
             admin = True
@@ -566,6 +570,8 @@ class UsersDB:
             if user is not None:
                 return user_id, dict(user)
             return None, {}
+        # Normalize username for lookup (defense-in-depth; prevents injection-style values)
+        username = _sanitize_username(username)
         for uid, user_data in self.users.items():
             if user_data.get("username") == username:
                 return uid, dict(user_data)

@@ -24,9 +24,18 @@ from ..utils.bootstrap import ensure_groups_config, ensure_guest_user
 from ..utils.ip_filter import get_device_id, get_ip
 from ..utils.lockout_store import get_lockout_store
 from ..utils.mfa_temp_store import create_mfa_temp_token
+from ..utils.input_sanitizer import (
+    sanitize_backup_code_input,
+    sanitize_label,
+    sanitize_password_input,
+    sanitize_token_hash_prefix,
+    sanitize_totp_code,
+    sanitize_username,
+)
 from ..utils.ntfy_notifier import send_notification
 from ..utils.session_token_store import get_session_token_store
 from ..utils.user_console_log import append as user_console_append
+from ..utils.validate import validate_password, validate_username
 
 
 @routes.get("/register")
@@ -47,10 +56,17 @@ async def get_register(request: web.Request) -> web.Response:
 async def post_register(request: web.Request) -> web.Response:
     sanitized_data = request.get("_sanitized_data", {})
     ip = get_ip(request)
-    new_username = sanitized_data.get("new_user_username")
-    new_password = sanitized_data.get("new_user_password")
-    username = sanitized_data.get("username")
-    password = sanitized_data.get("password")
+    new_username = sanitize_username(sanitized_data.get("new_user_username"))
+    new_password = sanitize_password_input(sanitized_data.get("new_user_password"))
+    username = sanitize_username(sanitized_data.get("username"))
+    password = sanitize_password_input(sanitized_data.get("password"))
+
+    ok, msg = validate_username(new_username)
+    if not ok:
+        return web.json_response({"error": msg}, status=400)
+    ok, msg = validate_password(new_password)
+    if not ok:
+        return web.json_response({"error": msg}, status=400)
 
     admin_user = users_db.get_admin_user()
     is_first_admin = admin_user[0] is None
@@ -160,8 +176,8 @@ async def post_login(request: web.Request) -> web.Response:
         timeout.remove_failed_attempts(ip)
         return resp
 
-    username = sanitized_data.get("username")
-    password = sanitized_data.get("password")
+    username = sanitize_username(sanitized_data.get("username"))
+    password = sanitize_password_input(sanitized_data.get("password"))
 
     if users_db.check_username_password(username, password):
         user_id, user_rec = users_db.get_user(username)
@@ -351,9 +367,9 @@ async def post_generate_token(request: web.Request) -> web.Response:
         except Exception:
             pass
     ip = get_ip(request)
-    username = (sanitized_data.get("username") or "").strip()
-    password = sanitized_data.get("password") or ""
-    label = (sanitized_data.get("label") or "").strip()[:128]
+    username = sanitize_username(sanitized_data.get("username"))
+    password = sanitize_password_input(sanitized_data.get("password"))
+    label = sanitize_label(sanitized_data.get("label"))
     expire_hours_raw = sanitized_data.get("expire_hours")
     try:
         expire_hours = (
@@ -430,14 +446,8 @@ async def post_generate_token(request: web.Request) -> web.Response:
 
     # MFA second step: mfa_temp_token + code (from first step when user has MFA)
     mfa_temp = (sanitized_data.get("mfa_temp_token") or "").strip()
-    mfa_code = (sanitized_data.get("code") or "").strip().replace(" ", "")
-    mfa_backup = (
-        (sanitized_data.get("backup_code") or "")
-        .strip()
-        .replace(" ", "")
-        .replace("-", "")
-        .upper()
-    )
+    mfa_code = sanitize_totp_code(sanitized_data.get("code"))
+    mfa_backup = sanitize_backup_code_input(sanitized_data.get("backup_code"))
     if mfa_temp and (mfa_code or mfa_backup):
         from ..utils.mfa_temp_store import consume_mfa_temp_token
 
@@ -622,10 +632,10 @@ async def delete_user_token(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON body."}, status=400)
-    prefix = (body.get("token_hash_prefix") or "").strip().rstrip(".")
+    prefix = sanitize_token_hash_prefix(body.get("token_hash_prefix"))
     if not prefix or len(prefix) < 8:
         return web.json_response(
-            {"error": "token_hash_prefix must be at least 8 characters."},
+            {"error": "token_hash_prefix must be at least 8 alphanumeric characters."},
             status=400,
         )
     store = get_api_token_store(API_TOKEN_STORE_CONFIG)
