@@ -12,7 +12,7 @@ permissions:
 jobs:
   labeler:
     name: Label PR
-    runs-on: [self-hosted, win11]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -25,7 +25,7 @@ jobs:
 
   pr-check:
     name: PR description check
-    runs-on: [self-hosted, win11]
+    runs-on: ubuntu-latest
     steps:
       - name: Check PR body
         run: |

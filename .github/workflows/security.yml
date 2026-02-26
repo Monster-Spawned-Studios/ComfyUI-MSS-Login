@@ -19,7 +19,7 @@ permissions:
 jobs:
     secrets:
         name: Secrets scan (Gitleaks)
-        runs-on: [self-hosted, win11]
+        runs-on: ubuntu-latest
         steps:
             - name: Checkout (full history for push)
               uses: actions/checkout@v6
@@ -33,7 +33,7 @@ jobs:
 
     dependencies:
         name: Dependency audit (pip-audit)
-        runs-on: [self-hosted, win11]
+        runs-on: ubuntu-latest
         steps:
             - name: Checkout
               uses: actions/checkout@v6
