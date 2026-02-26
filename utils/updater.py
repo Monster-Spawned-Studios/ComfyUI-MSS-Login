@@ -103,7 +103,8 @@ async def check_for_update(
     timeout_sec: float = 10.0,
 ) -> tuple[bool, str]:
     """
-    Fetch remote version from check_url. URL can be GitLab tags API or a version.json.
+    Fetch remote version from check_url. URL can be GitHub releases/latest (single
+    object), GitLab tags API (list), or a version.json (dict with "version").
     Returns (update_available, latest_version_str). On any error returns (False, "").
     """
     local = local_version or get_local_version()
@@ -118,10 +119,11 @@ async def check_for_update(
                 if resp.status != 200:
                     return False, ""
                 body = await resp.text()
-        # Support GitLab tags API (list) or version.json (dict with "version")
         data = json.loads(body)
+        release_url = ""
+
         if isinstance(data, list) and len(data) > 0:
-            # Find highest version among tags
+            # GitLab tags API: find highest version among tags
             candidates = []
             for item in data:
                 name = (
@@ -133,15 +135,20 @@ async def check_for_update(
                 max(candidates, key=lambda x: _parse_version(x)) if candidates else ""
             )
         elif isinstance(data, dict):
+            # GitHub releases/latest (single object) or version.json
             latest = (
                 (data.get("version") or data.get("tag_name") or "").lstrip("v").strip()
             )
+            release_url = (data.get("html_url") or "").strip()
         else:
             latest = ""
+
         if not latest:
             return False, ""
         _CACHE["latest_version"] = latest
         _CACHE["current_version"] = local
+        if release_url:
+            _CACHE["release_url"] = release_url
         return _version_gt(local, latest), latest
     except Exception:
         return False, ""
@@ -155,6 +162,7 @@ def get_cached_status() -> dict[str, Any]:
         "update_available": _CACHE.get("update_available", False),
         "mode": _CACHE.get("mode", "notify"),
         "changelog_url": _CACHE.get("changelog_url", ""),
+        "release_url": _CACHE.get("release_url", ""),
     }
 
 
@@ -321,6 +329,7 @@ async def run_update_check(
         _CACHE["update_available"] = available
         _CACHE["mode"] = mode
         _CACHE["changelog_url"] = (au.get("changelog_url") or "").strip()
+        # release_url is set inside check_for_update when GitHub API returns html_url
         if available and latest:
             logger.info(
                 f"[mss-login] Update available: {latest} (current: {get_local_version()}). "

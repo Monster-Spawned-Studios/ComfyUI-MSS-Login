@@ -1,6 +1,15 @@
 donotpresent
 ehthumbs
 mkdocs
+mss_login
+mss-login
 noindex
 osascript
+pymdownx
 rclone
+totp
+seperate
+loras
+dotenvx
+dotenv
+ckpt

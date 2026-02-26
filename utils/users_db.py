@@ -5,19 +5,18 @@ Supports migration from legacy JSON on first run. MFA fields encrypted with SECR
 SQLite may use SQLCipher (encryption_level in config) with SECRET_KEY-derived key.
 """
 
-import bcrypt
 import json
 import os
 import secrets
 from pathlib import Path
 from typing import Any, Optional, Tuple
 
-from .encryption import (
-    encrypt_value,
-    decrypt_value,
-    hash_backup_code,
-    verify_backup_code,
-)
+import bcrypt
+
+from globals import logger
+
+from .encryption import (decrypt_value, encrypt_value, hash_backup_code,
+                         verify_backup_code)
 from .input_sanitizer import sanitize_username as _sanitize_username
 
 # Schema: user_id, username, password_hash, admin, groups (JSON), sfw_check,
@@ -194,6 +193,7 @@ class _SqliteUsersBackend:
         return out
 
     def insert(self, user_id: str, user: dict, secret_key: str) -> None:
+        """Insert a user into the database."""
         row = _user_to_row(user, secret_key)
         self._conn.execute(
             f"""
@@ -217,6 +217,7 @@ class _SqliteUsersBackend:
         self._conn.commit()
 
     def update(self, user_id: str, user: dict, secret_key: str) -> None:
+        """Update a user in the database."""
         row = _user_to_row(user, secret_key)
         self._conn.execute(
             f"""
@@ -241,6 +242,7 @@ class _SqliteUsersBackend:
         self._conn.commit()
 
     def delete(self, user_id: str) -> None:
+        """Delete a user from the database."""
         self._conn.execute(f"DELETE FROM {USERS_TABLE} WHERE user_id = ?", (user_id,))
         self._conn.commit()
 
@@ -251,14 +253,20 @@ class _SqliteUsersBackend:
 
 
 class _PostgresUsersBackend:
+    """PostgreSQL backend for the users database."""
+
     def __init__(self, host: str, port: int, database: str, user: str, password: str):
+        """Initialize the PostgreSQL backend for the users database."""
         try:
             import psycopg2
             from psycopg2.extras import RealDictCursor
-        except ImportError:
-            raise RuntimeError(
-                "PostgreSQL backend requires psycopg2; pip install psycopg2-binary"
+        except ImportError as e:
+            logger.error(
+                f"PostgreSQL backend requires psycopg2; pip install psycopg2-binary: {e}"
             )
+            raise RuntimeError(
+                f"PostgreSQL backend requires psycopg2; pip install psycopg2-binary: {e}"
+            ) from e
         self._conn = psycopg2.connect(
             host=host,
             port=port,
@@ -270,6 +278,7 @@ class _PostgresUsersBackend:
         self._ensure_schema()
 
     def _ensure_schema(self) -> None:
+        """Ensure the schema is correct."""
         cur = self._conn.cursor()
         cur.execute(
             f"""
@@ -291,6 +300,9 @@ class _PostgresUsersBackend:
         cur.close()
 
     def migrate_from_json(self, legacy_path: str) -> bool:
+        """
+        If legacy_path exists, load JSON and insert users; then rename file. Return True if migration ran.
+        """
         if not os.path.exists(legacy_path):
             return False
         try:
@@ -335,6 +347,7 @@ class _PostgresUsersBackend:
         return True
 
     def get_all(self, secret_key: str) -> dict:
+        """Return { user_id: user_dict }."""
         cur = self._conn.cursor(cursor_factory=self._cursor_factory)
         cur.execute(
             f"SELECT user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used FROM {USERS_TABLE}"
@@ -348,6 +361,7 @@ class _PostgresUsersBackend:
         return out
 
     def insert(self, user_id: str, user: dict, secret_key: str) -> None:
+        """Insert a user into the database."""
         row = _user_to_row(user, secret_key)
         cur = self._conn.cursor()
         cur.execute(
@@ -373,6 +387,7 @@ class _PostgresUsersBackend:
         cur.close()
 
     def update(self, user_id: str, user: dict, secret_key: str) -> None:
+        """Update a user in the database."""
         row = _user_to_row(user, secret_key)
         cur = self._conn.cursor()
         cur.execute(
@@ -399,6 +414,7 @@ class _PostgresUsersBackend:
         cur.close()
 
     def delete(self, user_id: str) -> None:
+        """Delete a user from the database."""
         cur = self._conn.cursor()
         cur.execute(f"DELETE FROM {USERS_TABLE} WHERE user_id = %s", (user_id,))
         self._conn.commit()
@@ -454,9 +470,12 @@ def migrate_totp_to_new_key(config: dict, old_key: str, new_key: str) -> bool:
 
 
 class UsersDB:
+    """Users database (unified API)."""
+
     def __init__(
         self, config: dict, secret_key: str, legacy_json_path: Optional[str] = None
     ):
+        """Initialize the users database."""
         self._config = config
         self._secret_key = secret_key
         self._legacy_path = legacy_json_path
@@ -489,14 +508,21 @@ class UsersDB:
 
     @staticmethod
     def hash_password(password: str) -> str:
-        return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        """Hash a password."""
+        try:
+            return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")  # type: ignore
+        except Exception as e:
+            logger.error(f"[MSS-Login] Failed to hash password: {password}: {e}")
+            return ""
 
     def load_users(self) -> dict:
+        """Load all users from the database."""
         self.users = self._backend.get_all(self._secret_key)
         self._ensure_groups_schema()
         return self.users
 
     def _ensure_groups_schema(self) -> None:
+        """Ensure the groups schema is correct."""
         changed = False
         for uid, user in list(self.users.items()):
             if (
@@ -522,7 +548,9 @@ class UsersDB:
             return
         groups = list(admin_user.get("groups", ["admin"]))
         if "owner" not in [g.lower() for g in groups]:
-            admin_user["groups"] = ["owner"] + [g for g in groups if g.lower() != "owner"]
+            admin_user["groups"] = ["owner"] + [
+                g for g in groups if g.lower() != "owner"
+            ]
             self._backend.update(admin_uid, admin_user, self._secret_key)
             self.users[admin_uid] = admin_user
 
@@ -542,28 +570,37 @@ class UsersDB:
                 return True
         return False
 
-    def add_user(self, id: str, username: str, password: str, admin: bool) -> None:
-        self.load_users()
-        username = _sanitize_username(username)
-        if not username:
-            return
-        has_admin = self._has_admin()
-        if not has_admin and len(self.users) == 0:
-            admin = True
-        # First admin gets owner group
-        groups = ["owner", "admin"] if admin and not has_admin else (["admin"] if admin else ["user"])
-        user = {
-            "username": username,
-            "password": self.hash_password(password),
-            "admin": bool(admin),
-            "groups": groups,
-        }
-        self._backend.insert(id, user, self._secret_key)
-        self.users[id] = user
+    def add_user(self, user_id: str, username: str, password: str, admin: bool) -> None:
+        """Add a user to the database."""
+        try:
+            self.load_users()
+            username = _sanitize_username(username)
+            if not username:
+                return
+            has_admin = self._has_admin()
+            if not has_admin and len(self.users) == 0:
+                admin = True
+            # First admin gets owner group
+            groups = (
+                ["owner", "admin"]
+                if admin and not has_admin
+                else (["admin"] if admin else ["user"])
+            )
+            user = {
+                "username": username,
+                "password": self.hash_password(password),
+                "admin": bool(admin),
+                "groups": groups,
+            }
+            self._backend.insert(user_id, user, self._secret_key)
+            self.users[user_id] = user
+        except Exception as e:
+            logger.error(f"[MSS-Login] Failed to add user: {user_id}: {e}")
 
     def get_user(
         self, username: str = "", user_id: str = ""
     ) -> tuple[Optional[str], dict]:
+        """Get a user by username or user_id."""
         self.load_users()
         if user_id:
             user = self.users.get(user_id)
@@ -578,6 +615,7 @@ class UsersDB:
         return None, {}
 
     def check_username_password(self, username: str, password: str) -> bool:
+        """Check if a username and password match."""
         user_id, user_data = self.get_user(username=username)
         if not user_id or not user_data:
             return False
@@ -585,6 +623,7 @@ class UsersDB:
         return bcrypt.checkpw(password.encode("utf-8"), pw.encode("utf-8"))
 
     def get_admin_user(self) -> tuple[Optional[str], dict] | None:
+        """Get the admin user."""
         self.load_users()
         self.admin_user = (None, {})
         for uid, user_data in self.users.items():

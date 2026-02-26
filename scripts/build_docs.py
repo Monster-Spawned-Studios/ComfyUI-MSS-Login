@@ -24,13 +24,15 @@ GENERATOR = ROOT / "docs" / "scripts" / "generate_api_docs.py"
 
 
 def main() -> None:
+    """Build the API reference and extension API documentation from source."""
     os.chdir(ROOT)
     if not GENERATOR.exists():
-        print("Generator not found:", GENERATOR, file=sys.stderr)
+        print("Generator not found: %s", GENERATOR, file=sys.stderr)
         sys.exit(1)
     result = subprocess.run(
         [sys.executable, str(GENERATOR)],
         cwd=str(ROOT),
+        check=True,
     )
     if result.returncode != 0:
         sys.exit(result.returncode)

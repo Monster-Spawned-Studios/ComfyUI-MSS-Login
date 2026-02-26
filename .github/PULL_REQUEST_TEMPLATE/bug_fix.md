@@ -1,4 +1,4 @@
-## Description
+# Description
 
 What bug this fixes and a short summary of the change.
 

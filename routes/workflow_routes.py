@@ -259,6 +259,10 @@ async def save_workflow(request, name_override: str | None = None):
         user_dir = user_env.get_user_workflow_dir(user)
         file_path = os.path.join(user_dir, clean_name)
 
+        real_user_dir = os.path.realpath(user_dir)
+        if not os.path.realpath(file_path).startswith(real_user_dir + os.sep):
+            return web.Response(status=400, text="Invalid filename")
+
         print(f"[mss-login] User '{user}' saving workflow: {clean_name}")
 
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -339,6 +343,10 @@ async def delete_workflow(request, name: str | None):
     user_dir = user_env.get_user_workflow_dir(user)
     user_path = os.path.join(user_dir, clean_name)
 
+    real_user_dir = os.path.realpath(user_dir)
+    if not os.path.realpath(user_path).startswith(real_user_dir + os.sep):
+        return web.Response(status=400, text="Invalid filename")
+
     if os.path.exists(user_path):
         os.remove(user_path)
         print(f"[mss-login] User '{user}' deleted workflow: {clean_name}")
@@ -357,6 +365,9 @@ async def delete_workflow(request, name: str | None):
 
     for global_dir in POTENTIAL_GLOBALS:
         global_path = os.path.join(global_dir, clean_name)
+        real_global = os.path.realpath(global_dir)
+        if not os.path.realpath(global_path).startswith(real_global + os.sep):
+            continue
         if os.path.exists(global_path):
             if is_admin:
                 os.remove(global_path)

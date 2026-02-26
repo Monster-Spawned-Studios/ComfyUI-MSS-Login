@@ -10,8 +10,19 @@
  * or from <audio data-bg-music> elements in the page.
  */
 
-/** DOMPurify for sanitizing the background music URLs. */
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
+/** DOMPurify for sanitizing the background music URLs (loaded dynamically when run inside ComfyUI). */
+const DOMPURIFY_CDN = "https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js";
+
+function loadDOMPurify() {
+  if (typeof window.DOMPurify !== "undefined") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = DOMPURIFY_CDN;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load DOMPurify"));
+    document.head.appendChild(s);
+  });
+}
 
 /** Cached list of background music URLs from the server (filesystem). */
 let _bgMusicFilesFromServer = null;
@@ -65,11 +76,11 @@ function getBackgroundMusicFiles() {
  * Play background music on page load.
  * Loads the list from the server (filesystem) first, then starts the loop.
  */
-function playBackgroundMusic() {
+async function playBackgroundMusic() {
     if (!(page.path === "/login" || page.path === "/register" || page.path === "/mfa")) {
-        loadBackgroundMusicList().then(() => {
-            loopBackgroundMusic(true, true);
-        });
+        await loadDOMPurify();
+        await loadBackgroundMusicList();
+        loopBackgroundMusic(true, true);
     }
 }
 /**

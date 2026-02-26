@@ -2,7 +2,18 @@
 // Minimal, dependency-free UI that talks to /mss-login/api/*
 // NOTE: For now this panel is only callable from localhost (enforced server-side).
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
+const DOMPURIFY_CDN = "https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js";
+function loadDOMPurify() {
+  if (typeof window.DOMPurify !== "undefined") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = DOMPURIFY_CDN;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load DOMPurify"));
+    document.head.appendChild(s);
+  });
+}
+
 async function api(path, options = {}) {
   const res = await fetch(path, {
     headers: {
@@ -23,6 +34,7 @@ async function api(path, options = {}) {
 }
 
 async function loadUsers() {
+  await loadDOMPurify();
   const root = document.getElementById('mss-login-admin-root');
   const tableBody = root.querySelector('tbody[data-role="users-body"]');
   tableBody.innerHTML = '<tr><td colspan="7">Loading…</td></tr>';

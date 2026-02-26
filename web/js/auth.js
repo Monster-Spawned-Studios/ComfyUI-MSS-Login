@@ -2,6 +2,7 @@ let failedAttempts = 0;
 let timeoutEndTime = null;
 let mfaTempToken = null;
 
+/** DOMPurify for sanitizing the authentication forms (loaded by the HTML page when used standalone). */
 Object.defineProperty(String.prototype, 'capitalize', {
   value: function() {
     return this.charAt(0).toUpperCase() + this.slice(1);
@@ -320,7 +321,7 @@ async function login(event) {
         if (!token) {
           addToast("Login succeeded but no token was returned", "error");
         } else {
-          let cookieString = `jwt_token=${DOMPurify.sanitize(token)}; path=/; HttpOnly; secure; SameSite=Strict`;
+          let cookieString = `jwt_token=${DOMPurify.sanitize(token)}; path=/; HttpOnly; SameSite=Strict`;
 
           if (window.location.protocol === "https:") {
             cookieString += "; Secure";
@@ -330,7 +331,9 @@ async function login(event) {
         }
 
         addToast(result.message || "Login successful", "success");
-        window.location.href = "/";
+        // Browser-only redirect: only runs after form submit on the login page. Does not affect
+        // headless/API JWT usage (POST /login returns JSON; API clients use the token and never load this script).
+        window.location.href = "/loading";
       } else {
         usernameField.classList.add("error");
         passwordField.classList.add("error");
@@ -385,7 +388,7 @@ async function guestLogin(event) {
     if (response.ok) {
       const token = result.token || result.jwt_token;
       if (token) {
-        let cookieString = `jwt_token=${DOMPurify.sanitize(token)}; path=/; HttpOnly; secure; SameSite=Strict`;
+        let cookieString = `jwt_token=${token}; path=/; HttpOnly; SameSite=Strict`;
         if (window.location.protocol === "https:") {
           cookieString += "; Secure";
         }
@@ -393,7 +396,8 @@ async function guestLogin(event) {
       }
 
       addToast(result.message || "Guest login successful", "success");
-      window.location.href = "/";
+      // Browser-only redirect; API/headless JWT clients are unaffected (they do not run this code).
+      window.location.href = "/loading";
     } else {
       addToast(result.error || result.message || "Guest login failed", "error");
     }
@@ -609,7 +613,7 @@ async function submitMfaVerify(event) {
     });
     const result = await response.json();
     if (response.ok && result.jwt_token) {
-      let cookieString = `jwt_token=${DOMPurify.sanitize(result.jwt_token)}; path=/; HttpOnly; secure; SameSite=Strict`;
+      let cookieString = `jwt_token=${result.jwt_token}; path=/; HttpOnly; SameSite=Strict`;
       if (window.location.protocol === "https:") cookieString += "; Secure";
       document.cookie = cookieString;
       addToast(result.message || "Login successful", "success");
@@ -661,7 +665,7 @@ async function submitMfaSetup(event) {
     });
     const verifyData = await verifyResp.json();
     if (verifyResp.ok && verifyData.jwt_token) {
-      let cookieString = `jwt_token=${DOMPurify.sanitize(verifyData.jwt_token)}; path=/; HttpOnly; secure; SameSite=Strict`;
+      let cookieString = `jwt_token=${verifyData.jwt_token}; path=/; HttpOnly; SameSite=Strict`;
       if (window.location.protocol === "https:") cookieString += "; Secure";
       document.cookie = cookieString;
       addToast(verifyData.message || "MFA enabled. Login successful.", "success");
@@ -681,8 +685,6 @@ async function submitMfaSetup(event) {
 // ---------------------------------------------------------------------------
 // Token management (generate_token page only)
 // ---------------------------------------------------------------------------
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
 
 async function loadMyTokens() {
   const container = document.getElementById("my-tokens-list");

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#05060a" media="(prefers-color-scheme: dark)">
+
+    <title>MSS-Login - Loading</title>
+
+    <link rel="icon" href="/mss-login/assets/mss_logo.png" type="image/png">
+    <link rel="stylesheet" type="text/css" href="/mss-login/css/styles.css">
+
+    <style>
+        .loading-page .container { max-width: 420px; }
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            margin: 1rem auto;
+            border: 4px solid #3f3f46;
+            border-top-color: #60a5fa;
+            border-radius: 50%;
+            animation: loading-spin 0.9s linear infinite;
+        }
+        @keyframes loading-spin {
+            to { transform: rotate(360deg); }
+        }
+        .loading-tip {
+            min-height: 3rem;
+            margin: 1rem 0;
+            padding: 0.75rem;
+            text-align: center;
+            font-size: 0.95rem;
+            color: #a1a1aa;
+            transition: opacity 0.4s ease;
+        }
+        .loading-update-banner {
+            margin-bottom: 1rem;
+            padding: 0.75rem 1rem;
+            background: rgba(96, 165, 250, 0.15);
+            border: 1px solid #60a5fa;
+            border-radius: 0.25rem;
+            font-size: 0.9rem;
+        }
+        .loading-update-banner a { color: #60a5fa; }
+        .loading-continue { margin-top: 1rem; }
+    </style>
+</head>
+
+<body class="loading-page">
+    <div class="container">
+        <picture>
+            <source srcset="/mss-login/assets/mss_logo.png" media="(prefers-color-scheme: dark)">
+            <source srcset="/mss-login/assets/mss_logo.png" media="(prefers-color-scheme: light)">
+            <img class="logo" src="/mss-login/assets/mss_logo.png" alt="MSS-Login Logo">
+        </picture>
+        <h1 class="title">Loading</h1>
+
+        <div id="loading-update-banner" class="loading-update-banner" style="display: none;"></div>
+
+        <div class="loading-spinner" aria-hidden="true"></div>
+        <p id="loading-tip" class="loading-tip">Preparing ComfyUI…</p>
+
+        <div class="form-field loading-continue">
+            <button id="loading-continue-btn" class="btn" type="button">Continue</button>
+        </div>
+    </div>
+</body>
+<script>
+(function () {
+    "use strict";
+
+    const TIPS_URL = "https://monsterspawned.studio/data/mss-login/loading.json";
+    const TIP_INTERVAL_MS = 10000;
+
+    const tipEl = document.getElementById("loading-tip");
+    const bannerEl = document.getElementById("loading-update-banner");
+    const continueBtn = document.getElementById("loading-continue-btn");
+
+    let tips = [];
+    let tipIndex = 0;
+    let tipTimer = null;
+
+    function setTip(text) {
+        if (tipEl) tipEl.textContent = text || "Preparing ComfyUI…";
+    }
+
+    function nextTip() {
+        if (tips.length === 0) return;
+        tipIndex = (tipIndex + 1) % tips.length;
+        setTip(tips[tipIndex]);
+    }
+
+    function startTipRotation() {
+        if (tipTimer) clearInterval(tipTimer);
+        if (tips.length <= 1) return;
+        tipTimer = setInterval(nextTip, TIP_INTERVAL_MS);
+    }
+
+    function fetchTips() {
+        fetch(TIPS_URL, { method: "GET" })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (Array.isArray(data)) {
+                    tips = data.filter(function (s) { return typeof s === "string" && s.trim(); });
+                } else if (data && Array.isArray(data.messages)) {
+                    tips = data.messages.filter(function (s) { return typeof s === "string" && s.trim(); });
+                }
+                if (tips.length > 0) {
+                    tipIndex = 0;
+                    setTip(tips[0]);
+                    startTipRotation();
+                }
+            })
+            .catch(function () { /* keep default tip */ });
+    }
+
+    function showUpdateBanner(status) {
+        if (!status || !status.update_available || !bannerEl) return;
+        var url = status.release_url || status.changelog_url || "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases";
+        var ver = status.latest_version ? " (" + status.latest_version + ")" : "";
+        bannerEl.innerHTML = "An update is available" + ver + ". <a href=\"" + url + "\" target=\"_blank\" rel=\"noopener noreferrer\">View release</a>";
+        bannerEl.style.display = "block";
+    }
+
+    function checkAdminUpdateBanner() {
+        fetch("/mss-login/api/me", { credentials: "same-origin" })
+            .then(function (r) { return r.json(); })
+            .then(function (me) {
+                if (me && me.is_admin) {
+                    return fetch("/mss-login/api/update-status", { credentials: "same-origin" })
+                        .then(function (r) { return r.ok ? r.json() : null; })
+                        .then(showUpdateBanner);
+                }
+            })
+            .catch(function () {});
+    }
+
+    function goToApp() {
+        window.location.href = "/";
+    }
+
+    if (continueBtn) continueBtn.addEventListener("click", goToApp);
+
+    fetchTips();
+    checkAdminUpdateBanner();
+})();
+</script>
+
+</html>

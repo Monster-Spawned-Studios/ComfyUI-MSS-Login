@@ -44,7 +44,7 @@ from .globals import (
 )
 from .utils import watcher
 from .utils.bootstrap import ensure_groups_config
-from .routes import static, auth, admin, user, workflow_routes, me, mfa, recovery, debug, model_download
+from .routes import static, auth, admin, user, workflow_routes, me, mfa, recovery, debug, model_download, news
 if EXPERIMENTAL_FEATURES:
     from .routes import s3 as _s3_routes  # noqa: F401
 from .utils.sfw_intercept.reactor_sfw_intercept import _load_reactor_module

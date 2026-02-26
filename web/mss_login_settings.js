@@ -6,7 +6,18 @@ const GROUPS = ["admin", "power", "user", "guest"];
 let currentUser = null;
 let groupsConfig = {};
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
+/** DOMPurify (loaded dynamically when run inside ComfyUI). */
+const DOMPURIFY_CDN = "https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js";
+function loadDOMPurify() {
+  if (typeof window.DOMPurify !== "undefined") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = DOMPURIFY_CDN;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load DOMPurify"));
+    document.head.appendChild(s);
+  });
+}
 
 // --- Extension Tab Registry API ---
 /**
@@ -692,6 +703,7 @@ class mss_loginDialog extends ComfyDialog {
     }
 
     async show() {
+        await loadDOMPurify();
         // Prevent multiple dialogs from being open at the same time
         if (window._mss_loginDialogInstance && window._mss_loginDialogInstance.overlay && 
             document.body.contains(window._mss_loginDialogInstance.overlay)) {

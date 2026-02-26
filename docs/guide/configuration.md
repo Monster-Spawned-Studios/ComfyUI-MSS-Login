@@ -35,6 +35,8 @@ Copy `.env.example` to `.env` and set:
 
 When `EXPERIMENTAL_FEATURES` is false (default), login and token generation do not require MFA, MFA API endpoints and the `/mfa` page return 403, and S3 mount, workflow sync, and model-download to S3 are disabled. When experimental features are enabled, `MFA_DISABLED` (env or config) still disables MFA if you want S3 but not MFA.
 
+**Server news feed (experimental):** With experimental features enabled, admins can add a `news.md` file in the node’s data directory (`~/.comfyui-mss-login/` or `MSS_LOGIN_DATA_DIR`). The file is converted to an RSS feed and shown on the login page. See `readme/news_feed_template.md` for the format.
+
 ## Roles and permissions
 
 Roles are defined in `users/mss_login_groups.json` (or the path set in config). Default roles:

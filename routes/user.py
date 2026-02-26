@@ -213,6 +213,10 @@ async def api_user_env(request: web.Request) -> web.Response:
         root = user_env.get_user_root(target_user)
         full = os.path.join(root, rel)
 
+        real_root = os.path.realpath(root)
+        if not os.path.realpath(full).startswith(real_root + os.sep):
+            return web.json_response({"error": "Invalid file path"}, status=400)
+
         if os.path.exists(full) and os.path.isfile(full):
             try:
                 os.remove(full)
@@ -279,6 +283,11 @@ async def api_user_env(request: web.Request) -> web.Response:
 
         user_wf_dir = user_env.get_user_workflow_dir(target_user)
         src = os.path.join(user_wf_dir, wf_name)
+
+        real_wf_dir = os.path.realpath(user_wf_dir)
+        if not os.path.realpath(src).startswith(real_wf_dir + os.sep):
+            return web.json_response({"error": "Invalid workflow name"}, status=400)
+
         if not (os.path.exists(src) and os.path.isfile(src)):
             return web.json_response(
                 {
@@ -290,6 +299,10 @@ async def api_user_env(request: web.Request) -> web.Response:
 
         global_root = get_global_workflows_root()
         dst = os.path.join(global_root, wf_name)
+
+        real_global = os.path.realpath(global_root)
+        if not os.path.realpath(dst).startswith(real_global + os.sep):
+            return web.json_response({"error": "Invalid workflow name"}, status=400)
 
         try:
             os.makedirs(os.path.dirname(dst), exist_ok=True)

@@ -1,13 +1,7 @@
 {
     "version": "0.2",
     "enabled": true,
-    "words": [
-        "ckpt",
-        "DOTENV",
-        "dotenvx",
-        "loras",
-        "seperate"
-    ],
+    "words": [],
     "useGitignore": true,
     "allowCompoundWords": true,
     "caseSensitive": false,

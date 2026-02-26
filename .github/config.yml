@@ -5,9 +5,9 @@ blank_issues_enabled: false
 
 contact_links:
   - name: Documentation / Wiki
-    url: https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login/wiki
-    about: Check the project wiki for setup and usage.
-  - name: Monster Spawned Studios SupportEmail
+    url: https://mss-login.monsterspawned.studio/
+    about: Check the project documentation for setup and usage.
+  - name: Monster Spawned Studios Support (Email)
     url: mailto:site-admin@monsterspawned.studio?subject=ComfyUI-MSS-Login%20Support&body=Please%20describe%20the%20issue%20you%20are%20facing%20and%20any%20steps%20you%20have%20taken%20to%20reproduce%20it.
     about: Support for the project (via email).
   - name: Monster Spawned Studios Discord
@@ -16,12 +16,12 @@ contact_links:
   - name: Monster Spawned Studios GitHub
     url: https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login
     about: Support for the project (via GitHub).
-  - name: Monster Spawned Studios GitLab
-    url: https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login/-/issues
-    about: Support for the project (via GitLab Issue Tracker).
-  - name: Monster Spawned Studios GitLab Wiki
-    url: https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login/-/wikis
-    about: Support for the project (via GitLab Wiki).
+  - name: Monster Spawned Studios GitHub Issues
+    url: https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/issues
+    about: Support for the project (via the GitHub Issue Tracker).
+  - name: Monster Spawned Studios GitHub Wiki
+    url: https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/wiki
+    about: Information on the project (via the GitHub Wiki).
   - name: Monster Spawned Studios (YouTube Channel)
     url: https://www.youtube.com/@MonsterSpawnedStudios
     about: Support for the project (via the official Monster Spawned Studios YouTube Channel).

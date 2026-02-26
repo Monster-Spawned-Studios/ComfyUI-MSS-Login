@@ -1,4 +1,4 @@
-## Description
+# Description
 
 Brief description of what this PR does (refactor, small change, dependency update, etc.).
 

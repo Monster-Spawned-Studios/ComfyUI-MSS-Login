@@ -9,7 +9,7 @@ import time
 from aiohttp import web
 
 from ..constants import EXPERIMENTAL_FEATURES, USERS_DB_CONFIG
-from ..globals import jwt_auth, routes, users_db
+from ..globals import jwt_auth, logger, routes, users_db
 from ..utils.model_cache import get_model_cache
 from ..utils.model_download import download_civitai_async, download_huggingface
 from ..utils.model_source_api_keys_store import SOURCES, get_model_source_api_keys_store
@@ -26,7 +26,8 @@ def _current_user_id_and_username(request):
             return None, None
         user_id, _ = users_db.get_user(username=username)
         return user_id, username
-    except Exception:
+    except Exception as e:
+        logger.error(f"[MSS-Login] _current_user_id_and_username error: {e}")
         return None, None
 
 
@@ -74,8 +75,8 @@ async def api_model_download_api_keys_put(request: web.Request) -> web.Response:
         return web.json_response({"error": "Authentication required"}, status=401)
     try:
         body = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
+    except Exception as e:
+        return web.json_response({"error": f"Invalid JSON: {e}"}, status=400)
     source = (body.get("source") or "").strip().lower()
     if source not in SOURCES:
         return web.json_response({"error": "Invalid source"}, status=400)
@@ -106,8 +107,8 @@ async def api_model_download_start(request: web.Request) -> web.Response:
         return web.json_response({"error": "Authentication required"}, status=401)
     try:
         body = await request.json()
-    except Exception:
-        return web.json_response({"error": "Invalid JSON"}, status=400)
+    except Exception as e:
+        return web.json_response({"error": f"Invalid JSON: {e}"}, status=400)
 
     source = (body.get("source") or "").strip().lower()
     if source not in SOURCES:
@@ -138,7 +139,9 @@ async def api_model_download_start(request: web.Request) -> web.Response:
     # Restrict to safe characters used by ComfyUI folder names (e.g. checkpoints, loras)
     if not all(c.isalnum() or c in "_-" for c in folder_type):
         return web.json_response(
-            {"error": "Invalid folder_type: only letters, digits, underscore, hyphen allowed"},
+            {
+                "error": "Invalid folder_type: only letters, digits, underscore, hyphen allowed"
+            },
             status=400,
         )
 
@@ -149,23 +152,23 @@ async def api_model_download_start(request: web.Request) -> web.Response:
             {"error": "No API key set for this source"}, status=400
         )
 
-    # Resolve destination path
+    # Resolve destination path and verify it stays within the expected base directory
     dest_dir = None
+    base_dir = None
     if destination_type == "local":
         try:
-            from folder_paths import (  # pyright: ignore[reportMissingImports]
-                get_folder_paths,
-                models_path,
-            )
+            from folder_paths import get_folder_paths, models_path
 
             paths = get_folder_paths(folder_type)
             if paths:
                 dest_dir = paths[0]
+                base_dir = os.path.realpath(models_path)
             else:
                 dest_dir = os.path.join(models_path, folder_type)
-        except Exception:
+                base_dir = os.path.realpath(models_path)
+        except Exception as e:
             return web.json_response(
-                {"error": "Could not resolve local model path"}, status=500
+                {"error": f"Could not resolve local model path: {e}"}, status=500
             )
     else:
         try:
@@ -173,8 +176,18 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 
             mgr = get_mount_manager()
             dest_dir = os.path.join(mgr.local_root, folder_type)
-        except Exception:
-            return web.json_response({"error": "S3 mount not available"}, status=500)
+            base_dir = os.path.realpath(mgr.local_root)
+        except Exception as e:
+            return web.json_response(
+                {"error": f"S3 mount not available: {e}"}, status=500
+            )
+
+    # Path-traversal containment: resolved dest_dir must be under or equal to the base
+    resolved_dest = os.path.realpath(dest_dir)
+    if not (resolved_dest == base_dir or resolved_dest.startswith(base_dir + os.sep)):
+        return web.json_response(
+            {"error": "Destination path escapes allowed directory"}, status=400
+        )
 
     response = web.StreamResponse(
         status=200,
@@ -260,13 +273,14 @@ async def api_model_download_start(request: web.Request) -> web.Response:
             success, err = await task
         else:
             await _write_progress_line(
-                response, {"status": "error", "error": "Unknown source"}
+                response,
+                {"status": "error", "error": f"{err or 'Unknown source: {source}'}"},
             )
             return response
 
         if not success:
             await _write_progress_line(
-                response, {"status": "error", "error": err or "Download failed"}
+                response, {"status": "error", "error": f"{err or 'Download failed'}"}
             )
             return response
 
@@ -274,11 +288,11 @@ async def api_model_download_start(request: web.Request) -> web.Response:
         try:
             cache = get_model_cache(USERS_DB_CONFIG)
             cache.refresh_from_folder_paths()
-        except Exception:
+        except Exception as e:
             pass
 
         await _write_progress_line(response, {"status": "ok", "destination": dest_dir})
     except Exception as e:
-        await _write_progress_line(response, {"status": "error", "error": str(e)})
+        await _write_progress_line(response, {"status": "error", "error": f"{e}"})
 
     return response

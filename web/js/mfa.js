@@ -3,8 +3,8 @@
  * Token and mode are read from sessionStorage (set by login page before redirect).
  * APIs: /mss-login/api/mfa/setup, verify-setup, verify.
  */
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
 
+/** DOMPurify for sanitizing the MFA forms (loaded by the HTML page when used standalone). */
 (function () {
 	"use strict";
 
@@ -169,7 +169,8 @@
 						setCookieFromJwt(result.jwt_token);
 						clearMfaStorage();
 						addToast(result.message || "Login successful", "success");
-						window.location.href = "/";
+						// Browser-only redirect; API/headless JWT clients do not use the MFA page.
+						window.location.href = "/loading";
 					} else {
 						addToast(result.error || "Invalid code", "error");
 						if (btn) {
@@ -233,7 +234,8 @@
 						setCookieFromJwt(verifyData.jwt_token);
 						clearMfaStorage();
 						addToast(verifyData.message || "MFA enabled. Login successful.", "success");
-						window.location.href = "/";
+						// Browser-only redirect; API/headless JWT clients do not use the MFA page.
+						window.location.href = "/loading";
 					} else {
 						addToast(verifyData.error || "Verification failed", "error");
 						if (btn) {

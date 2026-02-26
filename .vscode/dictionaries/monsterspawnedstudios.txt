@@ -1,2 +1,8 @@
+gitea
+Memez
+Monster-Spawned-Studios
+MonsterSpawned
+MonsterSpawnedStudios
 mss
 ntfy
+tmd

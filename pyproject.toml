@@ -51,7 +51,7 @@ m-deps = []
 # CUDA computer/GPU dependencies are here:
 cuda-deps = []
 # Testing/development: add tools with `uv add --dev pytest` etc.
-dev = ["pytest"]
+dev = ["pytest", "mkdocs", "pip-audit"]
 # Production dependency group:
 production = [
 	"uv",
@@ -73,6 +73,8 @@ production = [
 	"transformers",
 	"boto3",
 ]
+# MKDocs documentation dependencies:
+documentation = ["mkdocs", "mkdocs-material"]
 
 [tool.uv]
 default-groups = ["production"]
@@ -108,15 +110,15 @@ url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [project.urls]
-Repository = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login"
+Repository = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login"
 #  Used by Comfy Registry https://registry.comfy.org
-Documentation = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login/-/wiki"
-"Bug Tracker" = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login/-/issues"
+Documentation = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/wiki"
+"Bug Tracker" = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/issues"
 
 [tool.comfy]
 PublisherId = "Monster Spawned Studios"
 DisplayName = "ComfyUI-MSS-Login"
-Icon = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login/-/raw/development/web/assets/mss_logo.png"
+Icon = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/raw/production/web/assets/mss_logo.png"
 includes = []
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
 
@@ -130,10 +132,12 @@ extend-ignore = [
 	"ARG001",  # Unused function argument (often required for callbacks/signatures)
 	"PLR0913", # Too many arguments (noisy in route/handler code),
 	"F401",    # Ignore unused variables, as we might use them later.
+	"F841",    # Ignore unused variable, as we might use it later.
+	"E402",    # Ignore imports being out of order. This is a trivial issue (might remove later).
 ]
 # Isort: treat repo as single first-party; stdlib then third-party then local.
 [tool.ruff.lint.isort]
-known-first-party = ["utils", "routes"]
+known-first-party = ["utils", "utils.sfw_intercept", "routes"]
 # Format: match EditorConfig and common Python style (4 spaces, LF).
 [tool.ruff.format]
 indent-style = "tab"

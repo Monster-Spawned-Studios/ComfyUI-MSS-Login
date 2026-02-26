@@ -1,11 +1,11 @@
 # MkDocs configuration for ComfyUI-MSS-Login documentation
 # Build: mkdocs build | Serve locally: mkdocs serve
-site_name: ComfyUI-MSS-Login
-site_description: Security, governance, and multi-user control for ComfyUI
-site_url: https://monsterspawned.studio/ComfyUI-MSS-Login  # Update for your GitHub Pages URL
-repo_url: https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login
+site_name: ComfyUI MSS Login
+site_description: The next-generation security, governance, permissions, and multi-user control system for ComfyUI.
+site_url: https://mss-login.monsterspawned.studio/
+repo_url: https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login
 repo_name: ComfyUI-MSS-Login
-edit_uri: edit/development/docs/
+edit_uri: edit/production/docs/
 docs_dir: docs
 site_dir: site
 
@@ -35,14 +35,14 @@ theme:
 nav:
   - Home: index.md
   - Guide:
-    - Installation: guide/installation.md
-    - Configuration: guide/configuration.md
-    - Extending the node: guide/extending.md
+      - Installation: guide/installation.md
+      - Configuration: guide/configuration.md
+      - Extending the node: guide/extending.md
   - API Reference:
-    - HTTP Endpoints: api-reference/endpoints.md
-    - Workflow & intercepted: api-reference/workflow-endpoints.md
+      - HTTP Endpoints: api-reference/endpoints.md
+      - Workflow & intercepted: api-reference/workflow-endpoints.md
   - Extension API:
-    - NSFW Guard API: extension-api/nsfw-guard-api.md
+      - NSFW Guard API: extension-api/nsfw-guard-api.md
 
 markdown_extensions:
   - pymdownx.highlight
