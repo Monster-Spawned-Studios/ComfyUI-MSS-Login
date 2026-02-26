@@ -9,6 +9,8 @@ import folder_paths
 from server import PromptServer
 from execution import PromptQueue, MAXIMUM_HISTORY_SIZE
 from .users_db import UsersDB
+from .api_token_store import get_api_token_store
+from .debug_log import debug_write
 
 # Map Permission Keys -> URL Paths to Block
 EXTENSION_BLOCK_MAP = {
@@ -23,20 +25,28 @@ EXTENSION_BLOCK_MAP = {
         "/api/settings/Comfy/Extension/enable",
         "/api/settings/Comfy/Extension/Disabled",
         "/api/extensions/apply",
-        "/extensions"
+        "/extensions",
     ],
     "can_modify_workflows": [
         "/api/userdata/workflows:",
         "/api/userdata/workflows/save",
-        "/api/userdata/workflows/export"
-    ]
+        "/api/userdata/workflows/export",
+    ],
 }
 
+
 class AccessControl:
-    def __init__(self, users_db: UsersDB, server: PromptServer, groups_config_file: str):
+    def __init__(
+        self,
+        users_db: UsersDB,
+        server: PromptServer,
+        groups_config_file: str,
+        api_token_store_config: dict = None,
+    ):
         self.users_db = users_db
         self.server = server
         self.groups_config_file = groups_config_file
+        self.api_token_store_config = api_token_store_config or {}
 
         self._current_user = contextvars.ContextVar("user_id", default=None)
         self.__current_user_id = None
@@ -50,7 +60,7 @@ class AccessControl:
         if not os.path.exists(self.groups_config_file):
             return {}
         try:
-            with open(self.groups_config_file, 'r') as f:
+            with open(self.groups_config_file, "r") as f:
                 return json.load(f)
         except Exception:
             return {}
@@ -61,19 +71,47 @@ class AccessControl:
             token = request.cookies.get("jwt_token")
         if not token and "Authorization" in request.headers:
             parts = request.headers.get("Authorization", "").split(" ")
-            if len(parts) == 2: token = parts[1]
+            if len(parts) == 2:
+                token = parts[1]
+        if not token:
+            try:
+                q = getattr(getattr(request, "rel_url", None), "query", None)
+                if q and (q.get("token") or q.get("access_token")):
+                    token = (q.get("token") or q.get("access_token") or "").strip()
+            except Exception:
+                pass
 
-        if not token: return "guest", {}, None
+        if not token:
+            return "guest", {}, None
+
+        # Try long-lived API token store first (Bearer tokens)
+        try:
+            api_store = get_api_token_store(self.api_token_store_config)
+            api_user = api_store.get_user_for_token(token)
+            if api_user is not None:
+                _user_id, username = api_user
+                _, user_rec = self.users_db.get_user(username)
+                if not user_rec:
+                    return "guest", {}, None
+                groups = [g.lower() for g in user_rec.get("groups", [])]
+                role = groups[0] if groups else "user"
+                cfg = self._load_group_config()
+                perms = cfg.get(role, {})
+                return role, perms, username
+        except Exception:
+            pass
 
         try:
             import jwt
+
             # Decode without verification here just to get username for role lookup
             # The actual security check happens in JWTAuth middleware
             payload = jwt.decode(token, options={"verify_signature": False})
             username = payload.get("username")
 
             _, user_rec = self.users_db.get_user(username)
-            if not user_rec: return "guest", {}, None
+            if not user_rec:
+                return "guest", {}, None
 
             groups = [g.lower() for g in user_rec.get("groups", [])]
             role = groups[0] if groups else "user"
@@ -83,74 +121,166 @@ class AccessControl:
         except Exception:
             return "guest", {}, None
 
-    def create_usgromana_middleware(self):
+    def create_mss_login_middleware(self):
         @web.middleware
         async def middleware(request: web.Request, handler):
             path = request.path
-            
+
             # 1. Public Whitelist
-            if (path.startswith(("/login", "/register", "/logout", "/usgromana", "/usgromana-gallery", "/static", "/favicon", "/ws", "/assets")) or path == "/"):
+            if (
+                path.startswith(
+                    (
+                        "/login",
+                        "/register",
+                        "/logout",
+                        "/mss-login",
+                        "/mss-login-gallery",
+                        "/static",
+                        "/favicon",
+                        "/ws",
+                        "/assets",
+                    )
+                )
+                or path == "/"
+            ):
                 return await handler(request)
-            
+
             # 2. Core Extensions
-            if path.startswith(("/extensions/core", "/extensions/ComfyUI-Usgromana", "/extensions/Usgromana")):
+            if path.startswith(
+                (
+                    "/extensions/core",
+                    "/extensions/ComfyUI-MSS-Login",
+                    "/extensions/MSS-Login",
+                )
+            ):
                 return await handler(request)
 
             # 3. Resolve User
             role, perms, username = self._get_user_role_and_permissions(request)
 
-            # 4. Check Permissions
-            is_queue = path.startswith(("/prompt", "/api/prompt", "/api/queue", "/queue"))
+            # 4. Check Permissions (token-authenticated users get standard ComfyUI + custom endpoints
+            #    e.g. comfy-portal / Comfy Portal iOS when can_run/can_access_api are true)
+            is_queue = path.startswith(
+                ("/prompt", "/api/prompt", "/api/queue", "/queue")
+            )
             is_upload = path.startswith(("/upload", "/api/upload"))
-            is_userdata_workflow = path.startswith(("/api/userdata/workflows", "/api/userdata/workflows:"))
+            is_userdata_workflow = path.startswith(
+                ("/api/userdata/workflows", "/api/userdata/workflows:")
+            )
 
             if is_queue and perms.get("can_run") is False:
-                return web.json_response({"error": "Usgromana: Execution Denied"}, status=403)
+                debug_write(
+                    {
+                        "location": "access_control",
+                        "message": "deny_403",
+                        "data": {"path": path, "reason": "can_run"},
+                        "hypothesisId": "D",
+                    }
+                )
+                return web.json_response(
+                    {"error": "MSS-Login: Execution Denied"}, status=403
+                )
 
             if is_upload and perms.get("can_upload") is False:
-                return web.json_response({"error": "Usgromana: Upload Denied"}, status=403)
+                debug_write(
+                    {
+                        "location": "access_control",
+                        "message": "deny_403",
+                        "data": {"path": path, "reason": "can_upload"},
+                        "hypothesisId": "D",
+                    }
+                )
+                return web.json_response(
+                    {"error": "MSS-Login: Upload Denied"}, status=403
+                )
 
-            if is_userdata_workflow and request.method in ("POST", "PUT", "DELETE", "PATCH"):
+            if is_userdata_workflow and request.method in (
+                "POST",
+                "PUT",
+                "DELETE",
+                "PATCH",
+            ):
                 can_modify = perms.get("can_modify_workflows")
-                if can_modify is None: can_modify = (role != "guest")
-                if role == "admin": can_modify = True
+                if can_modify is None:
+                    can_modify = role != "guest"
+                if role in ("admin", "owner"):
+                    can_modify = True
 
                 if not can_modify:
-                    return web.json_response({"error": "Usgromana: Workflow Denied", "code": "WORKFLOW_DENIED", "role": role}, status=403)
+                    return web.json_response(
+                        {
+                            "error": "MSS-Login: Workflow Denied",
+                            "code": "WORKFLOW_DENIED",
+                            "role": role,
+                        },
+                        status=403,
+                    )
 
             for perm_key, blocked_paths in EXTENSION_BLOCK_MAP.items():
                 allow = perms.get(perm_key)
-                if allow is None: allow = (role != "guest")
-                if role == "admin": allow = True
+                if allow is None:
+                    allow = role != "guest"
+                if role in ("admin", "owner"):
+                    allow = True
                 if allow is False:
                     for blocked_prefix in blocked_paths:
                         if path.lower().startswith(blocked_prefix.lower()):
-                            return web.Response(status=403, text="Usgromana: Access Denied")
+                            return web.Response(
+                                status=403, text="mss-login: Access Denied"
+                            )
+
+            if path.startswith("/mss-login/api/s3/"):
+                can_s3 = perms.get("can_access_s3_storage")
+                if can_s3 is None:
+                    can_s3 = role in ("admin", "owner")
+                if not can_s3:
+                    return web.json_response(
+                        {"error": "MSS-Login: S3 Storage Access Denied"},
+                        status=403,
+                    )
 
             if not is_queue and not is_upload and path.startswith("/api/"):
                 if perms.get("can_access_api") is False:
-                    return web.json_response({"error": "Usgromana: API Denied"}, status=403)
+                    debug_write(
+                        {
+                            "location": "access_control",
+                            "message": "deny_403",
+                            "data": {"path": path, "reason": "can_access_api"},
+                            "hypothesisId": "D",
+                        }
+                    )
+                    return web.json_response(
+                        {"error": "MSS-Login: API Denied"}, status=403
+                    )
 
             return await handler(request)
+
         return middleware
 
     # --- Folder & User Context Methods ---
 
     def set_current_user_id(self, user_id: str, set_fallback=False):
         self._current_user.set(user_id)
-        if set_fallback: self.__current_user_id = user_id
-    
+        if set_fallback:
+            self.__current_user_id = user_id
+
     def get_current_user_id(self):
         return self._current_user.get() or self.__current_user_id
 
     def get_user_output_directory(self):
-        return os.path.join(self.__get_output_directory(), self.get_current_user_id() or "public")
+        return os.path.join(
+            self.__get_output_directory(), self.get_current_user_id() or "public"
+        )
 
     def get_user_temp_directory(self):
-        return os.path.join(self.__get_temp_directory(), self.get_current_user_id() or "public")
+        return os.path.join(
+            self.__get_temp_directory(), self.get_current_user_id() or "public"
+        )
 
     def get_user_input_directory(self):
-        directory = os.path.join(self.__get_input_directory(), self.get_current_user_id() or "public")
+        directory = os.path.join(
+            self.__get_input_directory(), self.get_current_user_id() or "public"
+        )
         os.makedirs(directory, exist_ok=True)
         return directory
 
@@ -208,13 +338,15 @@ class AccessControl:
         if user_rec:
             if os.path.exists(self.groups_config_file):
                 try:
-                    with open(self.groups_config_file, 'r') as f:
+                    with open(self.groups_config_file, "r") as f:
                         cfg = json.load(f)
                     groups = user_rec.get("groups", ["user"])
                     role = groups[0] if groups else "user"
                     perms = cfg.get(role, {})
                     if perms.get("can_run") is False:
-                        print(f"[AccessControl] Blocked execution for {current_user_id}")
+                        print(
+                            f"[AccessControl] Blocked execution for {current_user_id}"
+                        )
                         return
                 except Exception:
                     pass
@@ -243,24 +375,32 @@ class AccessControl:
             item = self.__prompt_queue.currently_running.pop(item_id)
             while len(self.__prompt_queue.history) > MAXIMUM_HISTORY_SIZE:
                 self.__prompt_queue.history.pop(next(iter(self.__prompt_queue.history)))
-            prompt_tuple = item[:-1] if isinstance(item[-1], dict) else item
+            raw = item[:-1] if isinstance(item[-1], dict) else item
+            # ComfyUI comfy_execution/jobs.py normalize_history_item expects exactly 5 elements
+            prompt_tuple = tuple(raw[:5]) if len(raw) > 5 else raw
             meta = item[-1] if isinstance(item[-1], dict) else {}
             self.__prompt_queue.history[prompt_tuple[1]] = {
                 "prompt": prompt_tuple,
                 "outputs": {},
                 "status": {
                     "completed": kwargs.get("completed"),
-                    "messages": kwargs.get("messages"),
+                    "messages": kwargs.get("messages") or [],
                 },
                 "user_id": meta.get("user_id"),
             }
             if history_result:
                 self.__prompt_queue.history[prompt_tuple[1]].update(history_result)
+            # ComfyUI jobs.normalize_history_item iterates status.messages; ensure it is never None
+            entry = self.__prompt_queue.history[prompt_tuple[1]]
+            st = entry.get("status")
+            if isinstance(st, dict) and st.get("messages") is None:
+                st["messages"] = []
             self.server.queue_updated()
 
     def user_queue_get_current_queue(self):
         def unwrap(entry):
-            if isinstance(entry, tuple) and isinstance(entry[-1], dict): return entry[:-1]
+            if isinstance(entry, tuple) and isinstance(entry[-1], dict):
+                return entry[:-1]
             return entry
 
         current_user = self.get_current_user_id()
@@ -269,11 +409,13 @@ class AccessControl:
             pending = []
             for item in self.__prompt_queue.currently_running.values():
                 meta = item[-1] if isinstance(item[-1], dict) else None
-                if not meta or meta.get("user_id") != current_user: continue
+                if not meta or meta.get("user_id") != current_user:
+                    continue
                 running.append(unwrap(item))
             for item in self.__prompt_queue.queue:
                 meta = item[-1] if isinstance(item[-1], dict) else None
-                if not meta or meta.get("user_id") != current_user: continue
+                if not meta or meta.get("user_id") != current_user:
+                    continue
                 pending.append(unwrap(item))
             return (running, copy.deepcopy(pending))
 
@@ -281,20 +423,28 @@ class AccessControl:
         with self.__prompt_queue.mutex:
             current_user = self.get_current_user_id()
             self.__prompt_queue.queue = [
-                i for i in self.__prompt_queue.queue
-                if not (isinstance(i[-1], dict) and i[-1].get("user_id") == current_user)
+                i
+                for i in self.__prompt_queue.queue
+                if not (
+                    isinstance(i[-1], dict) and i[-1].get("user_id") == current_user
+                )
             ]
             self.server.queue_updated()
 
     def user_queue_delete_queue_item(self, func):
         def unwrap(entry):
-            if isinstance(entry, tuple) and isinstance(entry[-1], dict): return entry[:-1]
+            if isinstance(entry, tuple) and isinstance(entry[-1], dict):
+                return entry[:-1]
             return entry
 
         with self.__prompt_queue.mutex:
             for i, item in enumerate(self.__prompt_queue.queue):
                 meta = item[-1] if isinstance(item[-1], dict) else None
-                if meta and meta.get("user_id") == self.get_current_user_id() and func(unwrap(item)):
+                if (
+                    meta
+                    and meta.get("user_id") == self.get_current_user_id()
+                    and func(unwrap(item))
+                ):
                     self.__prompt_queue.queue.pop(i)
                     heapq.heapify(self.__prompt_queue.queue)
                     self.server.queue_updated()
@@ -305,11 +455,16 @@ class AccessControl:
         with self.__prompt_queue.mutex:
             user = self.get_current_user_id()
             filtered = {
-                k: v for k, v in self.__prompt_queue.history.items()
+                k: v
+                for k, v in self.__prompt_queue.history.items()
                 if v.get("user_id") == user
             }
             if prompt_id:
-                return {prompt_id: filtered.get(prompt_id)} if prompt_id in filtered else {}
+                return (
+                    {prompt_id: filtered.get(prompt_id)}
+                    if prompt_id in filtered
+                    else {}
+                )
             keys = list(filtered.keys())
             if offset < 0:
                 offset = max(0, len(keys) - max_items) if max_items else 0
@@ -324,6 +479,7 @@ class AccessControl:
         with self.__prompt_queue.mutex:
             u = self.get_current_user_id()
             self.__prompt_queue.history = {
-                k: v for k, v in self.__prompt_queue.history.items()
+                k: v
+                for k, v in self.__prompt_queue.history.items()
                 if v.get("user_id") != u
             }

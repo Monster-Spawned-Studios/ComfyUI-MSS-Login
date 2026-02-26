@@ -1,12 +1,12 @@
 """
-ComfyUI-usgromana per-user environment helpers.
+ComfyUI-MSS-Login per-user environment helpers.
 
 Responsible for:
 - Resolving the extension root
 - Managing the shared Users/ directory
 - Creating / locating per-user folders (Users/<username>/...)
 - Loading / saving per-user settings JSON
-- Centralizing paths for user_db.json and (renamed) usgromana_settings.js
+- Centralizing paths for user_db.json and (renamed) mss_login_settings.js
 """
 
 import os
@@ -19,9 +19,10 @@ from typing import List
 # Path helpers
 # -----------------------
 
+
 def get_extension_root() -> str:
     """
-    Returns the root directory of the ComfyUI-Usgromana extension.
+    Returns the root directory of the ComfyUI-mss-login extension.
     Assumes this file lives in `<root>/utils/user_env.py`.
     """
     here = os.path.dirname(os.path.abspath(__file__))
@@ -30,7 +31,7 @@ def get_extension_root() -> str:
 
 def get_users_root() -> str:
     """
-    Root folder for all Usgromana user-related files:
+    Root folder for all MSS-Login user-related files:
       <ext_root>/Users/
     """
     root = os.path.join(get_extension_root(), "Users")
@@ -49,12 +50,12 @@ def get_user_db_path() -> str:
 def get_frontend_settings_js_path() -> str:
     """
     Location of the frontend settings JS file (renamed from sentinel_settings.js):
-      <ext_root>/Users/usgromana_settings.js
+      <ext_root>/Users/mss_login_settings.js
 
     This file is still served as a static asset by the backend, but physically
-    lives under Users/ so everything related to Usgromana is in one place.
+    lives under Users/ so everything related to MSS-Login is in one place.
     """
-    return os.path.join(get_users_root(), "usgromana_settings.js")
+    return os.path.join(get_users_root(), "mss_login_settings.js")
 
 
 def get_user_root(username: str) -> str:
@@ -63,6 +64,9 @@ def get_user_root(username: str) -> str:
       <ext_root>/Users/<username>/
     """
     username = (username or "guest").strip() or "guest"
+    # Prevent path traversal: username must be a single path segment
+    if ".." in username or "/" in username or "\\" in username:
+        username = "guest"
     path = os.path.join(get_users_root(), username)
     os.makedirs(path, exist_ok=True)
     return path
@@ -90,6 +94,7 @@ def get_user_settings_path(username: str) -> str:
 # JSON helpers
 # -----------------------
 
+
 def _load_json_file(path: str, default: Any) -> Any:
     if not os.path.exists(path):
         return default
@@ -111,6 +116,7 @@ def _save_json_file(path: str, data: Any) -> None:
 # -----------------------
 # Per-user settings API
 # -----------------------
+
 
 def load_user_settings(username: str) -> Dict[str, Any]:
     """
@@ -135,14 +141,16 @@ def save_user_settings(username: str, settings: Dict[str, Any]) -> None:
 # Group / global config path helper (optional)
 # -----------------------
 
-def get_groups_config_path(filename: str = "usgromana_groups.json") -> str:
+
+def get_groups_config_path(filename: str = "mss_login_groups.json") -> str:
     """
     Path helper for the role/group config file.
 
-    If you want to rename sentinel_groups.json to usgromana_groups.json and keep
+    If you want to rename sentinel_groups.json to mss_login_groups.json and keep
     it in the extension root, this gives you a single place to reference it.
     """
     return os.path.join(get_extension_root(), filename)
+
 
 def get_gallery_root_config_path() -> str:
     """
@@ -214,6 +222,7 @@ def purge_user_root(username: str) -> None:
         shutil.rmtree(root, ignore_errors=True)
     os.makedirs(root, exist_ok=True)
 
+
 def get_user_workflow_dir(username: str) -> str:
     """
     Per-user workflow directory:
@@ -223,6 +232,7 @@ def get_user_workflow_dir(username: str) -> str:
     wf_dir = os.path.join(user_root, "workflows")
     os.makedirs(wf_dir, exist_ok=True)
     return wf_dir
+
 
 def list_user_workflows(username: str) -> List[str]:
     """

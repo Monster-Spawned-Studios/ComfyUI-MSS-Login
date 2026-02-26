@@ -1,5 +1,6 @@
 # --- START OF FILE routes/user.py ---
 from aiohttp import web
+from ..constants import EXPERIMENTAL_FEATURES
 from ..globals import routes, jwt_auth, users_db
 from ..utils import user_env
 import folder_paths
@@ -48,16 +49,55 @@ def _get_caller_admin_info(request):
         is_admin = bool(rec and (rec.get("admin") or ("admin" in groups)))
         return is_admin, username, groups
     except Exception as e:
-        print(f"[usgromana] admin check error: {e}")
+        print(f"[MSS-Login] admin check error: {e}")
         return False, None, ["guest"]
 
 
-@routes.get("/usgromana/api/me")
+# #region agent log
+def _debug_log_me(path: str, is_admin: bool, username) -> None:
+    try:
+        import json
+        import time
+
+        _log_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            ".cursor",
+            "debug.log",
+        )
+        os.makedirs(os.path.dirname(_log_path), exist_ok=True)
+        with open(_log_path, "a", encoding="utf-8") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "location": "api_me",
+                        "message": "handler_called",
+                        "data": {
+                            "path": path,
+                            "is_admin": is_admin,
+                            "username": username,
+                        },
+                        "hypothesisId": "A",
+                        "timestamp": int(time.time() * 1000),
+                    }
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+
+
+# #endregion
+
+
+@routes.get("/mss-login/api/me")
 async def api_me(request: web.Request) -> web.Response:
     """
     Basic identity info for the frontend.
     """
+    from ..globals import users_db
+
     is_admin, username, groups = _get_caller_admin_info(request)
+    _debug_log_me(request.path, is_admin, username)
     if username is None:
         # no / invalid token → guest
         return web.json_response(
@@ -66,6 +106,8 @@ async def api_me(request: web.Request) -> web.Response:
                 "role": "guest",
                 "groups": ["guest"],
                 "is_admin": False,
+                "mfa_enabled": False,
+                "experimental_features": EXPERIMENTAL_FEATURES,
             }
         )
 
@@ -76,17 +118,30 @@ async def api_me(request: web.Request) -> web.Response:
             role = candidate
             break
 
+    mfa_enabled = (
+        users_db.get_mfa_enabled(username)
+        if username and username.lower() != "guest"
+        else False
+    )
+
     return web.json_response(
         {
             "username": username,
             "role": role,
             "groups": groups,
             "is_admin": is_admin,
+            "mfa_enabled": mfa_enabled,
+            "experimental_features": EXPERIMENTAL_FEATURES,
         }
     )
 
 
-@routes.post("/usgromana/api/user-env")
+# Frontend calls /mss-login/api/me (underscore); ComfyUI may send /api/mss-login/api/me. Register aliases so both match.
+routes.get("/mss-login/api/me")(api_me)
+routes.get("/api/mss-login/api/me")(api_me)
+
+
+@routes.post("/mss-login/api/user-env")
 async def api_user_env(request: web.Request) -> web.Response:
     """
     Admin-only per-user environment + workflow management.
@@ -121,9 +176,7 @@ async def api_user_env(request: web.Request) -> web.Response:
     # Guard: this whole endpoint is for admins
     is_admin, caller, groups = _get_caller_admin_info(request)
     if not is_admin:
-        return web.json_response(
-            {"error": "Admin privileges required"}, status=403
-        )
+        return web.json_response({"error": "Admin privileges required"}, status=403)
 
     # --- STATUS ----------------------------------------------------
     if action == "status":
@@ -164,12 +217,12 @@ async def api_user_env(request: web.Request) -> web.Response:
             try:
                 os.remove(full)
                 msg = f"Deleted file '{rel}' for user '{target_user}'."
-                print(f"[usgromana] {msg}")
+                print(f"[mss-login] {msg}")
                 return web.json_response(
                     {"user": target_user, "file": rel, "message": msg}
                 )
             except Exception as e:
-                print(f"[usgromana] delete_file error: {e}")
+                print(f"[mss-login] delete_file error: {e}")
                 return web.json_response(
                     {"error": f"Failed to delete: {e}"}, status=500
                 )
@@ -183,7 +236,7 @@ async def api_user_env(request: web.Request) -> web.Response:
     if action == "purge":
         user_env.purge_user_root(target_user)
         msg = f"Purged environment folders for user '{target_user}'."
-        print(f"[usgromana] {msg}")
+        print(f"[mss-login] {msg}")
         return web.json_response({"user": target_user, "message": msg})
 
     # --- SET / CLEAR GALLERY ROOT ---------------------------------
@@ -198,7 +251,7 @@ async def api_user_env(request: web.Request) -> web.Response:
             msg = "Gallery root cleared."
             is_root = False
 
-        print(f"[usgromana] {msg}")
+        print(f"[mss-login] {msg}")
         return web.json_response(
             {"user": target_user, "message": msg, "is_gallery_root": is_root}
         )
@@ -220,9 +273,7 @@ async def api_user_env(request: web.Request) -> web.Response:
         if not wf_name:
             return web.json_response({"error": "Missing 'workflow'"}, status=400)
         if ".." in wf_name or wf_name.startswith("/"):
-            return web.json_response(
-                {"error": "Invalid workflow name"}, status=400
-            )
+            return web.json_response({"error": "Invalid workflow name"}, status=400)
 
         delete_source = bool(data.get("delete_source"))
 
@@ -256,14 +307,16 @@ async def api_user_env(request: web.Request) -> web.Response:
                         f"Workflow '{wf_name}' promoted to global defaults, "
                         f"but failed to delete source: {del_err}"
                     )
-                    print(f"[usgromana] promote_workflow delete_source error: {del_err}")
+                    print(
+                        f"[mss-login] promote_workflow delete_source error: {del_err}"
+                    )
             else:
                 msg = (
                     f"Workflow '{wf_name}' from user '{target_user}' "
                     f"promoted to global defaults ({dst})."
                 )
 
-            print(f"[usgromana] {msg}")
+            print(f"[mss-login] {msg}")
             return web.json_response(
                 {
                     "user": target_user,
@@ -274,7 +327,7 @@ async def api_user_env(request: web.Request) -> web.Response:
                 }
             )
         except Exception as e:
-            print(f"[usgromana] promote_workflow error: {e}")
+            print(f"[mss-login] promote_workflow error: {e}")
             return web.json_response(
                 {"error": f"Failed to promote workflow: {e}"}, status=500
             )
@@ -283,12 +336,16 @@ async def api_user_env(request: web.Request) -> web.Response:
     return web.json_response({"error": f"Unknown action '{action}'"}, status=400)
 
 
-@routes.post("/usgromana-gallery/mark-nsfw")
+routes.post("/mss-login/api/user-env")(api_user_env)
+routes.post("/api/mss-login/api/user-env")(api_user_env)
+
+
+@routes.post("/mss-login-gallery/mark-nsfw")
 async def mark_nsfw(request: web.Request) -> web.Response:
     """
     Manually mark an image as NSFW or SFW.
     This endpoint allows gallery apps to review and flag images.
-    
+
     Body (JSON):
         {
             "filename": "image.png",
@@ -301,19 +358,19 @@ async def mark_nsfw(request: web.Request) -> web.Response:
         data = await request.json()
     except Exception:
         return web.json_response({"error": "Invalid JSON body"}, status=400)
-    
+
     filename = data.get("filename", "").strip()
     if not filename:
         return web.json_response({"error": "Missing 'filename'"}, status=400)
-    
+
     # Validate filename is safe (no path traversal)
     if ".." in filename or "/" in filename or "\\" in filename:
         return web.json_response({"error": "Invalid filename"}, status=400)
-    
+
     # Get output directory and construct full path
     output_dir = folder_paths.get_output_directory()
     image_path = os.path.join(output_dir, filename)
-    
+
     # If file not found at direct path, search recursively in output directory
     if not os.path.exists(image_path):
         found_path = None
@@ -324,34 +381,39 @@ async def mark_nsfw(request: web.Request) -> web.Response:
                 if os.path.abspath(found_path).startswith(os.path.abspath(output_dir)):
                     image_path = found_path
                     break
-        
+
         if not os.path.exists(image_path):
             return web.json_response({"error": "File not found"}, status=404)
-    
+
     # Final security check - ensure file is within output directory
     if not os.path.abspath(image_path).startswith(os.path.abspath(output_dir)):
         return web.json_response({"error": "Invalid file path"}, status=403)
-    
+
     # Get NSFW flag (default to True if not provided)
     is_nsfw = bool(data.get("is_nsfw", True))
     score = float(data.get("score", 1.0))
     label = str(data.get("label", "manual"))
-    
+
     # Import and call the API function
     try:
         from ..api import set_image_nsfw_tag
+
         success = set_image_nsfw_tag(image_path, is_nsfw, score, label)
-        
+
         if success:
-            return web.json_response({
-                "status": "ok",
-                "message": f"Image marked as {'NSFW' if is_nsfw else 'SFW'}",
-                "filename": filename,
-                "is_nsfw": is_nsfw
-            })
+            return web.json_response(
+                {
+                    "status": "ok",
+                    "message": f"Image marked as {'NSFW' if is_nsfw else 'SFW'}",
+                    "filename": filename,
+                    "is_nsfw": is_nsfw,
+                }
+            )
         else:
             return web.json_response({"error": "Failed to set NSFW tag"}, status=500)
     except Exception as e:
-        print(f"[Usgromana] Error in mark-nsfw endpoint: {e}")
+        print(f"[mss-login] Error in mark-nsfw endpoint: {e}")
         return web.json_response({"error": str(e)}, status=500)
+
+
 # --- END OF FILE routes/user.py ---

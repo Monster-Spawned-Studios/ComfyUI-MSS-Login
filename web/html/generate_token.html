@@ -4,16 +4,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ComfyUI Usgromana - Generate API Token</title>
+    <title>MSS-Login - Generate API Token</title>
 
-    <link rel="icon" href="/usgromana/assets/icon.ico" type="image/x-icon">
+    <link rel="icon" href="/mss-login/assets/mss_logo.png" type="image/png">
 
-    <link rel="stylesheet" type="text/css" href="/usgromana/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="/mss-login/css/styles.css">
 </head>
 
-<body">
+<body>
     <div class="container">
-        <img class="logo" src="/usgromana/assets/logo_transparent.png" alt="Transparent Logo">
+        <img class="logo" src="/mss-login/assets/mss_logo.png" alt="MSS-Login Logo">
         <h1 class="title generate">Generate Token</h1>
         <form id="generate-form" onsubmit="generate(event)">
             <div class="form-field">
@@ -25,17 +25,61 @@
                 <input type="password" id="password" name="password" required>
             </div>
             <div class="form-field">
+                <label for="label">Token Label (optional):</label>
+                <input type="text" id="label" name="label" maxlength="128" placeholder="e.g. CI/CD pipeline, my-script">
+                <small style="display:block; margin-top:4px; color:#888;">A short name to help you identify this token later.</small>
+            </div>
+            <div class="form-field">
                 <label for="expire_hours">Expiration (in hours):</label>
-                <input type="integer" id="expire_hours" name="expire_hours" value="720" required>
+                <input type="number" id="expire_hours" name="expire_hours" value="720" min="0" step="1" required>
+                <small style="display:block; margin-top:4px; color:#888;">Use 0 for never expire (requires &quot;Non-expiring JWT&quot; permission for your role; set in Settings &rarr; MSS-Login &rarr; Manage MSS-Login Permissions &rarr; Permissions &amp; UI).</small>
             </div>
             <div class="form-field" id="login-link">
                 <a href="/login">Back to Login</a>
             </div>
             <button class="btn" type="submit">Generate</button>
         </form>
+
+        <!-- MFA Verify (shown when mfa_required for API token) -->
+        <div id="mfa-verify-section" style="display:none;">
+            <h2 class="title">Two-Factor Authentication Required</h2>
+            <p>Enter the 6-digit code from your authenticator app to create the API token.</p>
+            <form id="mfa-verify-form" onsubmit="generateMfaVerify(event)">
+                <input type="hidden" id="mfa-expire-hours" value="720">
+                <input type="hidden" id="mfa-label" value="">
+                <div class="form-field">
+                    <label for="mfa-code">Verification code:</label>
+                    <input type="text" id="mfa-code" name="code" maxlength="8" placeholder="000000" autocomplete="one-time-code" inputmode="numeric">
+                </div>
+                <div class="form-field">
+                    <label for="mfa-backup">Or backup code:</label>
+                    <input type="text" id="mfa-backup" name="backup_code" maxlength="12" placeholder="XXXX-XXXX" autocomplete="off">
+                </div>
+                <div class="form-field">
+                    <button class="btn" type="submit">Verify and Generate</button>
+                    <button class="btn" type="button" onclick="backToGenerateForm()">Back</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- API token display (hidden until token is created; cleared on refresh/navigation) -->
+        <div id="token-display-container" style="display:none;" aria-live="polite">
+            <p>Your API token (copy it now; it will not be shown again):</p>
+            <pre id="token-display-value"></pre>
+            <button type="button" class="btn" id="token-copy-btn">Copy</button>
+        </div>
+
+        <!-- My Tokens management section (API tokens only; session tokens are excluded) -->
+        <div id="my-tokens-section" style="margin-top:2rem;">
+            <h2 class="title" style="font-size:1.25rem;">My API Tokens</h2>
+            <p style="color:#888; font-size:0.85rem;">Only manually created API tokens appear here. Session tokens (auto-generated on login) expire on logout or after 24 hours of inactivity and are not shown.</p>
+            <div id="my-tokens-list" style="margin-top:0.75rem;">
+                <p style="color:#666;">Loading...</p>
+            </div>
+        </div>
     </div>
     <div class="toast-container" id="toasts"></div>
     </body>
-    <script src="/usgromana/js/auth.js"></script>
+    <script src="/mss-login/js/auth.js"></script>
 
 </html>

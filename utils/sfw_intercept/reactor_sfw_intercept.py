@@ -13,8 +13,8 @@ def _load_reactor_module():
     Always fails silently and returns None if not found.
     """
     try:
-        base = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  
-        # .../ComfyUI-Usgromana
+        base = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        # .../ComfyUI-mss-login
         custom_nodes_dir = os.path.dirname(base)
 
         possible_names = [
@@ -32,14 +32,14 @@ def _load_reactor_module():
                 break
 
         if not reactor_root:
-            print("[Usgromana] Reactor plugin not found — continuing without it.")
+            print("[MSS-Login] Reactor plugin not found — continuing without it.")
             return None
 
         scripts_dir = os.path.join(reactor_root, "scripts")
         reactor_path = os.path.join(scripts_dir, "reactor_sfw.py")
 
         if not os.path.isfile(reactor_path):
-            print("[Usgromana] reactor_sfw.py missing — skipping reactor patch.")
+            print("[MSS-Login] reactor_sfw.py missing — skipping reactor patch.")
             return None
 
         if reactor_root not in sys.path:
@@ -54,7 +54,7 @@ def _load_reactor_module():
         return mod
 
     except Exception as e:
-        print(f"[Usgromana] Silent Reactor load failure: {e}")
+        print(f"[mss-login] Silent Reactor load failure: {e}")
         return None
 
 
@@ -68,11 +68,11 @@ def _apply_patch():
         return  # <-- SILENT EXIT
 
     if not hasattr(reactor_sfw_mod, "nsfw_image"):
-        print("[Usgromana] reactor_sfw module found but nsfw_image missing.")
+        print("[MSS-Login] reactor_sfw module found but nsfw_image missing.")
         return
 
     original = reactor_sfw_mod.nsfw_image
-    print("[Usgromana] Reactor SFW patch installed.")
+    print("[MSS-Login] Reactor SFW patch installed.")
 
     def nsfw_image_patched(img_data, model_path):
         try:
@@ -99,4 +99,4 @@ def _apply_patch():
 try:
     _apply_patch()
 except Exception as e:
-    print(f"[Usgromana] Reactor intercept skipped (error: {e})")
+    print(f"[mss-login] Reactor intercept skipped (error: {e})")

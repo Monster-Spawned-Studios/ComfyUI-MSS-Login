@@ -1,0 +1,49 @@
+# Security: secrets scan (Gitleaks) and dependency vulnerability scan (pip-audit).
+# Do not disable; keeps credentials and known-vuln deps out of the repo.
+name: Security scan
+
+on:
+    push:
+        branches: [development, production]
+    pull_request:
+        branches: [development, production]
+    schedule:
+        - cron: "0 6 * * 1" # Weekly Monday 06:00 UTC
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    security-events: write
+    actions: read
+
+jobs:
+    secrets:
+        name: Secrets scan (Gitleaks)
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout (full history for push)
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - name: Run Gitleaks
+              uses: gitleaks/gitleaks-action@v2
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              # GITLEAKS_LICENSE only needed for orgs; omit for personal repos
+
+    dependencies:
+        name: Dependency audit (pip-audit)
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.13"
+            - name: Install project and pip-audit
+              run: |
+                  pip install pip-audit
+                  pip install -e .
+            - name: Run pip-audit
+              run: pip-audit

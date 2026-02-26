@@ -1,6 +1,6 @@
-# Usgromana Admin Panel Extension Tabs API
+# mss-login Admin Panel Extension Tabs API
 
-This API allows ComfyUI extensions to add custom tabs to the Usgromana admin panel, enabling them to manage permissions and settings within the unified admin interface.
+This API allows ComfyUI extensions to add custom tabs to the mss-login admin panel, enabling them to manage permissions and settings within the unified admin interface.
 
 ## Overview
 
@@ -8,7 +8,7 @@ Extensions can register custom tabs that appear alongside the built-in tabs (Use
 
 ## API Reference
 
-### `window.UsgromanaAdminTabs.register(config)`
+### `window.mss_loginAdminTabs.register(config)`
 
 Registers a new tab in the admin panel.
 
@@ -30,13 +30,13 @@ Registers a new tab in the admin panel.
 
 **Example:**
 ```javascript
-window.UsgromanaAdminTabs.register({
+window.mss_loginAdminTabs.register({
     id: "myextension",
     label: "My Extension",
     order: 50,
     render: async (container, context) => {
         const { usersList, groupsConfig, currentUser } = context;
-        
+
         container.innerHTML = `
             <div style="padding: 20px;">
                 <h3>My Extension Settings</h3>
@@ -44,7 +44,7 @@ window.UsgromanaAdminTabs.register({
                 <div id="myextension-content"></div>
             </div>
         `;
-        
+
         // Render your custom content
         const contentDiv = container.querySelector("#myextension-content");
         // ... your rendering logic
@@ -52,7 +52,7 @@ window.UsgromanaAdminTabs.register({
 });
 ```
 
-### `window.UsgromanaAdminTabs.unregister(id)`
+### `window.mss_loginAdminTabs.unregister(id)`
 
 Unregisters a tab by ID.
 
@@ -63,16 +63,16 @@ Unregisters a tab by ID.
 
 **Example:**
 ```javascript
-window.UsgromanaAdminTabs.unregister("myextension");
+window.mss_loginAdminTabs.unregister("myextension");
 ```
 
-### `window.UsgromanaAdminTabs.getAll()`
+### `window.mss_loginAdminTabs.getAll()`
 
 Gets all registered extension tabs.
 
 **Returns:** `Array` - Array of tab configurations
 
-### `window.UsgromanaAdminTabs.clear()`
+### `window.mss_loginAdminTabs.clear()`
 
 Clears all registered extension tabs.
 
@@ -86,7 +86,7 @@ app.registerExtension({
     name: "MyExtension.Admin",
     async setup() {
         // Register tab when extension loads
-        window.UsgromanaAdminTabs.register({
+        window.mss_loginAdminTabs.register({
             id: "myextension",
             label: "My Extension",
             order: 50,
@@ -106,22 +106,22 @@ app.registerExtension({
 ### Advanced Tab with Permissions Management
 
 ```javascript
-window.UsgromanaAdminTabs.register({
+window.mss_loginAdminTabs.register({
     id: "gallery-perms",
     label: "Gallery Permissions",
     order: 60,
     render: async (container, context) => {
         const { usersList, groupsConfig } = context;
-        
+
         // Fetch your extension's permission data
         const perms = await fetch("/myextension/api/permissions")
             .then(r => r.json())
             .catch(() => ({}));
-        
+
         container.innerHTML = `
             <div style="padding: 20px;">
                 <h3>Gallery Access Control</h3>
-                <table class="usgromana-table">
+                <table class="mss-login-table">
                     <thead>
                         <tr>
                             <th>User</th>
@@ -135,7 +135,7 @@ window.UsgromanaAdminTabs.register({
                 </table>
             </div>
         `;
-        
+
         // Populate table
         const tbody = container.querySelector("#gallery-perms-body");
         usersList.forEach(user => {
@@ -144,11 +144,11 @@ window.UsgromanaAdminTabs.register({
                 <td>${user.username}</td>
                 <td><input type="checkbox" data-user="${user.username}" data-perm="view"></td>
                 <td><input type="checkbox" data-user="${user.username}" data-perm="upload"></td>
-                <td><button class="usgromana-btn">Save</button></td>
+                <td><button class="mss-login-btn">Save</button></td>
             `;
             tbody.appendChild(row);
         });
-        
+
         // Add event handlers
         container.querySelectorAll("button").forEach(btn => {
             btn.onclick = async () => {
@@ -165,7 +165,7 @@ window.UsgromanaAdminTabs.register({
 ### Tab with Dynamic Content Updates
 
 ```javascript
-window.UsgromanaAdminTabs.register({
+window.mss_loginAdminTabs.register({
     id: "extension-stats",
     label: "Extension Stats",
     order: 70,
@@ -174,18 +174,18 @@ window.UsgromanaAdminTabs.register({
             <div style="padding: 20px;">
                 <h3>Extension Statistics</h3>
                 <div id="stats-content">Loading...</div>
-                <button class="usgromana-btn" id="refresh-stats">Refresh</button>
+                <button class="mss-login-btn" id="refresh-stats">Refresh</button>
             </div>
         `;
-        
+
         const updateStats = async () => {
             const statsDiv = container.querySelector("#stats-content");
             statsDiv.textContent = "Loading...";
-            
+
             try {
                 const stats = await fetch("/myextension/api/stats")
                     .then(r => r.json());
-                
+
                 statsDiv.innerHTML = `
                     <p>Active Users: ${stats.activeUsers}</p>
                     <p>Total Requests: ${stats.totalRequests}</p>
@@ -194,9 +194,9 @@ window.UsgromanaAdminTabs.register({
                 statsDiv.textContent = "Error loading stats";
             }
         };
-        
+
         await updateStats();
-        
+
         container.querySelector("#refresh-stats").onclick = updateStats;
     }
 });
@@ -210,7 +210,7 @@ window.UsgromanaAdminTabs.register({
 
 3. **Handle Errors**: Wrap your render function in try-catch or handle errors gracefully to prevent breaking the admin panel.
 
-4. **Use Existing Styles**: Leverage the existing CSS classes (`.usgromana-table`, `.usgromana-btn`, etc.) for consistent styling.
+4. **Use Existing Styles**: Leverage the existing CSS classes (`.mss-login-table`, `.mss-login-btn`, etc.) for consistent styling.
 
 5. **Async Operations**: The render function is async, so you can fetch data from your backend before rendering.
 
@@ -224,7 +224,7 @@ window.UsgromanaAdminTabs.register({
 
 ## Integration with Permissions System
 
-Extensions can integrate with Usgromana's permission system by:
+Extensions can integrate with mss-login's permission system by:
 
 1. **Reading Groups Config**: Use `context.groupsConfig` to read existing permission configurations
 2. **Custom Permission Keys**: Add your own permission keys to the groups config (e.g., `"myextension_view"`, `"myextension_upload"`)

@@ -1,0 +1,93 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Copy MSS-Login to ComfyUI",
+            "type": "shell",
+            "command": "rsync",
+            "args": [
+                "-a",
+                "--del",
+                "--exclude=.git",
+                "--exclude=.env",
+                "--exclude=.env.keys",
+                "--exclude=.venv",
+                "--exclude=__pycache__",
+                "--exclude=*.log",
+                "--exclude=logs",
+                "--exclude=.vscode",
+                "--exclude=.agent",
+                "--exclude=docs",
+                "--exclude=readme",
+                "--exclude=.github",
+                "--exclude=users/.ephemeral_secret_key",
+                "${workspaceFolder}/",
+                "/Volumes/Mando Drive/ComfyUI/custom_nodes/ComfyUI-MSS-Login/"
+            ],
+            "options": {
+                "env": {}
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "silent",
+                "panel": "shared"
+            },
+            "group": "build"
+        },
+        {
+            "label": "Deploy and Launch ComfyUI",
+            "dependsOrder": "sequence",
+            "dependsOn": ["Copy MSS-Login to ComfyUI"],
+            "type": "shell",
+            "command": "comfy",
+            "args": [
+                "--workspace",
+                "/Volumes/Mando Drive/ComfyUI",
+                "launch"
+            ],
+            "options": {
+                "cwd": "/Volumes/Mando Drive/ComfyUI",
+                "env": {
+                    "DEBUG_MODE": "true",
+                    "SECRET_KEY": "CHANGE_ME_TO_A_REAL_SECRET_KEY",
+                    "RECOVERY_MODE": "false",
+                    "RECOVERY_MODE_HOST": "127.0.0.1,::1",
+                    "USERS_DB_SQLITE_PATH": "users/users.db"
+                }
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "focus": true
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Install ComfyUI Dependencies",
+            "type": "shell",
+            "command": "uv",
+            "args": [
+                "sync",
+                "--group",
+                "comfyui"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/ComfyUI",
+                "env": {
+                    "AUTO_INSTALL_DEPS": "1",
+                    "DEBUG_MODE": "true"
+                }
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "silent",
+                "panel": "shared"
+            },
+            "group": "build"
+        }
+    ]
+}

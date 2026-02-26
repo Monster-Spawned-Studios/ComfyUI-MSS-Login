@@ -1,0 +1,55 @@
+{
+    "version": "0.2",
+    "enabled": true,
+    "words": [
+        "ckpt",
+        "DOTENV",
+        "dotenvx",
+        "loras",
+        "seperate"
+    ],
+    "useGitignore": true,
+    "allowCompoundWords": true,
+    "caseSensitive": false,
+    "description": "Spell check for the MSS-Login ComfyUI node project.",
+    "engines": {
+        "node": ">=22.0.0"
+    },
+    "minWordLength": 4,
+    "ignorePaths": [
+        ".git",
+        ".venv"
+    ],
+    "dictionaries": [
+        "en-GB",
+        "en_US",
+        "python",
+        "javascript",
+        "json",
+        "software-terms",
+        "mss-login",
+        "comfyui",
+        "monsterspawnedstudios"
+    ],
+    "dictionaryDefinitions": [
+        {
+            "name": "mss-login",
+            "path": "./dictionaries/mss-login.txt"
+        },
+        {
+            "name": "comfyui",
+            "path": "./dictionaries/comfyui.txt"
+        },
+        {
+            "name": "monsterspawnedstudios",
+            "path": "./dictionaries/monsterspawnedstudios.txt"
+        }
+    ],
+    "maxDuplicateProblems": 5,
+    "maxNumberOfProblems": 100,
+    "suggestionNumChanges": 3,
+    "numSuggestions": 10,
+    "reporters": [
+        "default"
+    ]
+}

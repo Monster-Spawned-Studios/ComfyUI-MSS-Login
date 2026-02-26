@@ -16,19 +16,17 @@ from ..globals import users_db, current_username_var
 
 def _load_reactor_module():
     try:
-        # This file: .../custom_nodes/ComfyUI-Usgromana/utils/reactor_sfw_intercept.py
-        # base -> .../custom_nodes/ComfyUI-Usgromana
+        # This file: .../custom_nodes/ComfyUI-mss-login/utils/reactor_sfw_intercept.py
+        # base -> .../custom_nodes/ComfyUI-mss-login
         base = os.path.dirname(os.path.dirname(__file__))
 
         # reactor_root -> .../custom_nodes/comfyui-reactor
-        reactor_root = os.path.abspath(
-            os.path.join(base, "..", "comfyui-reactor")
-        )
+        reactor_root = os.path.abspath(os.path.join(base, "..", "comfyui-reactor"))
         scripts_dir = os.path.join(reactor_root, "scripts")
         reactor_path = os.path.join(scripts_dir, "reactor_sfw.py")
 
         if not os.path.exists(reactor_path):
-            print("[Usgromana] Reactor SFW script not found at:", reactor_path)
+            print("[MSS-Login] Reactor SFW script not found at:", reactor_path)
             return None
 
         # Add the Reactor root so:
@@ -37,11 +35,11 @@ def _load_reactor_module():
         # both work as in the original environment.
         if reactor_root not in sys.path:
             sys.path.insert(0, reactor_root)
-            print("[Usgromana] Added Reactor root to sys.path:", reactor_root)
+            print("[MSS-Login] Added Reactor root to sys.path:", reactor_root)
 
         spec = importlib.util.spec_from_file_location("reactor_sfw", reactor_path)
         if spec is None or spec.loader is None:
-            print("[Usgromana] Could not create spec for reactor_sfw.")
+            print("[MSS-Login] Could not create spec for reactor_sfw.")
             return None
 
         mod = importlib.util.module_from_spec(spec)
@@ -49,18 +47,18 @@ def _load_reactor_module():
         return mod
 
     except Exception as e:
-        print("[Usgromana] Failed to load reactor_sfw:", e)
+        print("[MSS-Login] Failed to load reactor_sfw:", e)
         return None
 
 
 def _apply_patch():
     reactor_sfw_mod = _load_reactor_module()
     if reactor_sfw_mod is None:
-        print("[Usgromana] Reactor not found; SFW intercept is disabled.")
+        print("[MSS-Login] Reactor not found; SFW intercept is disabled.")
         return
 
     if not hasattr(reactor_sfw_mod, "nsfw_image"):
-        print("[Usgromana] reactor_sfw.nsfw_image not found; cannot patch.")
+        print("[MSS-Login] reactor_sfw.nsfw_image not found; cannot patch.")
         return
 
     original_nsfw_image = reactor_sfw_mod.nsfw_image
@@ -87,11 +85,11 @@ def _apply_patch():
         return original_nsfw_image(img_data, model_path)
 
     reactor_sfw_mod.nsfw_image = nsfw_image_patched
-    print("[Usgromana] Reactor SFW intercept installed successfully.")
+    print("[MSS-Login] Reactor SFW intercept installed successfully.")
 
 
 # Run the patch at import time, but never crash the extension if it fails.
 try:
     _apply_patch()
 except Exception as e:
-    print(f"[Usgromana] Unexpected error while applying Reactor SFW intercept: {e}")
+    print(f"[mss-login] Unexpected error while applying Reactor SFW intercept: {e}")

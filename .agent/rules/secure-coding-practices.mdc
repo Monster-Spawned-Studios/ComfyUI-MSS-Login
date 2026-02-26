@@ -1,0 +1,31 @@
+---
+description: Secure, up-to-date coding practices (no plaintext PII, HTTPS, cited code, language security)
+alwaysApply: true
+---
+
+# Secure Coding Practices (January 2026+)
+
+Follow current secure coding practices. These rules apply to all code and configuration.
+
+## Sensitive Data
+
+- **Never store or log in plaintext**: passwords, API keys, tokens, IP addresses, email addresses, names, physical addresses, phone numbers, or other PII.
+- Use environment variables, secret managers, or encrypted storage; never hardcode secrets in source.
+- If code must handle credentials or PII, document how they are protected (e.g., env vars, vault).
+
+## Communication and Dependencies
+
+- Prefer **HTTPS** (or equivalent secure channels) for all network communication. If HTTP or other insecure methods are used, **warn the user** clearly (e.g., in logs, UI, or docs).
+- Keep dependencies **up to date** and address known vulnerabilities (e.g., `pip audit`, `npm audit`, dependabot).
+
+## External and Third-Party Code
+
+- **Do not use arbitrary code from the internet without a citable source.** When reusing code (snippets, algorithms, libraries):
+  - Prefer well-maintained, reputable libraries over one-off snippets.
+  - If using a snippet or non-obvious logic, add a comment with the **source URL or reference** so authors can be credited and issues traced.
+- Only use code that is publicly available and legally usable (license-compatible).
+
+## Security and Stability
+
+- Before implementing security-sensitive behavior (auth, crypto, serialization, file I/O, network), **check current best practices** for the language and ecosystem (e.g., OWASP, language security guides, official docs).
+- Write **clean, readable code** and favor patterns that are both maintainable and secure (e.g., parameterized queries, validated inputs, least privilege).

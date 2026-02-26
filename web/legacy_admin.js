@@ -1,7 +1,8 @@
-// ComfyUI-usgromana admin panel
-// Minimal, dependency-free UI that talks to /usgromana/api/*
+// ComfyUI-mss-login admin panel
+// Minimal, dependency-free UI that talks to /mss-login/api/*
 // NOTE: For now this panel is only callable from localhost (enforced server-side).
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
 async function api(path, options = {}) {
   const res = await fetch(path, {
     headers: {
@@ -22,11 +23,11 @@ async function api(path, options = {}) {
 }
 
 async function loadUsers() {
-  const root = document.getElementById('usgromana-admin-root');
+  const root = document.getElementById('mss-login-admin-root');
   const tableBody = root.querySelector('tbody[data-role="users-body"]');
   tableBody.innerHTML = '<tr><td colspan="7">Loading…</td></tr>';
   try {
-    const data = await api('/usgromana/api/users');
+    const data = await api('/mss-login/api/users');
     const users = data.users || [];
     if (!users.length) {
       tableBody.innerHTML =
@@ -36,7 +37,7 @@ async function loadUsers() {
     tableBody.innerHTML = '';
     for (const u of users) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `
+      tr.innerText = DOMPurify.sanitize(`
         <td>${u.username}</td>
         <td><input type="checkbox" data-field="is_admin" ${u.is_admin ? 'checked' : ''}></td>
         <td><input type="text" data-field="groups" value="${(u.groups || []).join(', ')}"></td>
@@ -51,18 +52,19 @@ async function loadUsers() {
           <button data-action="save">Save</button>
           <button data-action="delete">Delete</button>
         </td>
-      `;
+      `);
       tr.dataset.username = u.username;
       tableBody.appendChild(tr);
     }
   } catch (err) {
     console.error(err);
-    tableBody.innerHTML = `<tr><td colspan="7">Failed to load users: ${err.message}</td></tr>`;
+    tableBody.innerText = DOMPurify.sanitize(`<tr><td colspan="7">Failed to load users: ${err.message}</td></tr>`);
+    tableBody.appendChild(tr);
   }
 }
 
 function attachHandlers() {
-  const root = document.getElementById('usgromana-admin-root');
+  const root = document.getElementById('mss-login-admin-root');
   const form = root.querySelector('form[data-role="create-user"]');
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
@@ -81,7 +83,7 @@ function attachHandlers() {
       gallery_root: fd.get('gallery_root') || null,
     };
     try {
-      await api('/usgromana/api/users', {
+      await api('/mss-login/api/users', {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -103,7 +105,7 @@ function attachHandlers() {
     if (btn.dataset.action === 'delete') {
       if (!confirm(`Delete user "${username}"?`)) return;
       try {
-        await api(`/usgromana/api/users/${encodeURIComponent(username)}`, {
+        await api(`/mss-login/api/users/${encodeURIComponent(username)}`, {
           method: 'DELETE',
         });
         await loadUsers();
@@ -137,7 +139,7 @@ function attachHandlers() {
       payload.gallery_root = galleryInput?.value || null;
 
       try {
-        await api(`/usgromana/api/users/${encodeURIComponent(username)}`, {
+        await api(`/mss-login/api/users/${encodeURIComponent(username)}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         });
@@ -150,7 +152,7 @@ function attachHandlers() {
 }
 
 function renderShell() {
-  const root = document.getElementById('Usgromana-admin-root');
+  const root = document.getElementById('mss-login-admin-root');
   root.innerHTML = `
     <section style="margin-bottom: 1.5rem; padding: 1rem; border-radius: 0.75rem; background: #1b1b1b; border: 1px solid #333;">
       <h2 style="margin-top: 0; font-size: 1.2rem;">Create user</h2>

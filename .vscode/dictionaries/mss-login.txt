@@ -1,0 +1,6 @@
+donotpresent
+ehthumbs
+mkdocs
+noindex
+osascript
+rclone

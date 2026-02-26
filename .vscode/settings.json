@@ -1,0 +1,21 @@
+{
+    "python.venvPath": ".venv",
+    "git.ignoreLimitWarning": true,
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 1000,
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll.ruff": "always"
+    },
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnSave": true,
+        "editor.formatOnPaste": true
+    },
+    "snyk.features.codeSecurity": true,
+    "snyk.features.openSourceSecurity": true,
+    "snyk.scanningMode": "manual",
+    "snyk.securityAtInception.autoConfigureSnykMcpServer": true,
+    "snyk.advanced.autoSelectOrganization": true,
+    "snyk.advanced.organization": "d13aa900-0f01-4482-8d09-46a5c818d1d0"
+}

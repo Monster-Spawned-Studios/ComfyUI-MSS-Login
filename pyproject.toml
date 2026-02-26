@@ -1,8 +1,9 @@
 [project]
-name = "ComfyUI-Usgromana"
-description = "The next-generation security, governance, permissions, and multi‑user login control system for ComfyUI. Extension implements login, multi-user registration, user group management, ui management, group workflow management, SFW user management, IP filtering, and user-specific input/output workflow directories, and more."
-version = "1.8.1"
-license = {file = "LICENSE"} 
+name = "ComfyUI-MSS-Login"
+description = "A ComfyUI node to enhance the security of the overall ComfyUI experience, for both private and public-facing servers, adding more features, while still allowing ComfyUI to be usable."
+version = "0.0.1"
+requires-python = ">=3.13"
+license = { file = "readme/LICENSE.md" }
 # classifiers = [
 #     # For OS-independent nodes (works on all operating systems)
 #     "Operating System :: OS Independent",
@@ -20,18 +21,120 @@ license = {file = "LICENSE"}
 #     "Environment :: GPU :: Apple Metal",    # Apple Metal support
 # ]
 
-dependencies = ["aiohttp", "PyJWT", "bcrypt", "bleach"]
+dependencies = [
+	"uv",
+	"aiohttp",
+	"PyJWT",
+	"bcrypt",
+	"bleach",
+	"pyotp",
+	"python-dotenvx>=0.3.0",
+	"cryptography",
+	"psycopg2-binary",
+	"sqlcipher3",
+	"argon2-cffi",
+	"pillow",
+	"numpy",
+	"torch",
+	"torchvision",
+	"torchaudio",
+	"transformers",
+	"boto3",
+]
+
+# Local-only groups (PEP 735): not published. Use `uv sync --group comfyui` or `uv sync --group dev`.
+[dependency-groups]
+# Run/launch ComfyUI (e.g. `uv run --group comfyui comfy --workspace /path launch`). Separate from dev.
+comfyui = ["comfy-cli"]
+# Apple M-based computer dependencies are here:
+m-deps = []
+# CUDA computer/GPU dependencies are here:
+cuda-deps = []
+# Testing/development: add tools with `uv add --dev pytest` etc.
+dev = ["pytest"]
+# Production dependency group:
+production = [
+	"uv",
+	"aiohttp",
+	"PyJWT",
+	"bcrypt",
+	"bleach",
+	"pyotp",
+	"python-dotenvx>=0.3.0",
+	"cryptography",
+	"psycopg2-binary",
+	"sqlcipher3",
+	"argon2-cffi",
+	"pillow",
+	"numpy",
+	"torch",
+	"torchvision",
+	"torchaudio",
+	"transformers",
+	"boto3",
+]
+
+[tool.uv]
+default-groups = ["production"]
+
+# PyTorch with CUDA: PEP 621 does not define extra-index-url. For pip, use:
+#   pip install --extra-index-url https://download.pytorch.org/whl/cu124 .
+# (Use cu121, cu118, etc. for other CUDA versions; see https://download.pytorch.org/whl/)
+# For uv: use CUDA wheels on Linux/Windows (e.g. Docker on NAS); on macOS (e.g. M1) use PyPI (CPU/Metal).
+# See: https://docs.astral.sh/uv/guides/integration/pytorch/#configuring-accelerators-with-environment-markers
+
+[tool.uv.sources]
+torch = [
+	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
+]
+torchvision = [
+	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
+]
+torchaudio = [
+	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [project.urls]
-Repository = "https://github.com/DayMan84/ComfyUI-Usgromana"
+Repository = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login"
 #  Used by Comfy Registry https://registry.comfy.org
-Documentation = "https://github.com/DayMan84/ComfyUI-Usgromana/wiki"
-"Bug Tracker" = "https://github.com/DayMan84/ComfyUI-Usgromana/issues"
+Documentation = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login/-/wiki"
+"Bug Tracker" = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login/-/issues"
 
 [tool.comfy]
-PublisherId = "dayman84"
-DisplayName = "ComfyUI-Usgromana"
-Icon = "https://raw.githubusercontent.com/DayMan84/ComfyUI-Usgromana/refs/heads/main/web/assets/Dark_Usgromana.png"
-includes = [] 
+PublisherId = "Monster Spawned Studios"
+DisplayName = "ComfyUI-MSS-Login"
+Icon = "https://gitlab.monsterspawned.studio/Monster-Spawned-Studios/ComfyUI-MSS-Login/-/raw/development/web/assets/mss_logo.png"
+includes = []
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
 
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+exclude = [".git", ".venv", "__pycache__", "build", "site", "ComfyUI"]
+# Lint: use defaults (E, F, W, I, UP, B, C4, etc.); ignore a few noisy rules.
+[tool.ruff.lint]
+extend-ignore = [
+	"ARG001",  # Unused function argument (often required for callbacks/signatures)
+	"PLR0913", # Too many arguments (noisy in route/handler code),
+	"F401",    # Ignore unused variables, as we might use them later.
+]
+# Isort: treat repo as single first-party; stdlib then third-party then local.
+[tool.ruff.lint.isort]
+known-first-party = ["utils", "routes"]
+# Format: match EditorConfig and common Python style (4 spaces, LF).
+[tool.ruff.format]
+indent-style = "tab"
+line-ending = "lf"

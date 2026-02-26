@@ -1,0 +1,98 @@
+{
+	"secret_key_env": "SECRET_KEY",
+	"users_db": {
+		"backend": "sqlite",
+		"sqlite_path": "data/users.db",
+		"postgres_host": "localhost",
+		"postgres_port": 5432,
+		"postgres_database": "mss_login",
+		"postgres_user": "mss_login",
+		"encryption_level": "secure"
+	},
+	"legacy_users_json_path": "data/users.json",
+	"access_token_expiration_hours": 24,
+	"max_access_token_expiration_hours": 8760,
+	"log": "mss-login.log",
+	"log_levels": [
+		"INFO"
+	],
+	"log_rotation": {
+		"max_bytes": 2097152,
+		"interval_hours": 24,
+		"archive_dir": ""
+	},
+	"whitelist": "data/whitelist.txt",
+	"blacklist": "data/blacklist.txt",
+	"blacklist_after_attempts": 10,
+	"free_memory_on_logout": true,
+	"force_https": false,
+	"seperate_users": true,
+	"manager_admin_only": true,
+	"api_token_store": {
+		"backend": "sqlite",
+		"json_path": "data/api_tokens.json",
+		"sqlite_path": "data/users.db"
+	},
+	"require_auth_for_remote_api": true,
+	"local_network_cidrs": [],
+	"debug_mode": false,
+	"allow_guest_jwt": false,
+	"mfa_disabled": true,
+	"auto_install_deps": true,
+	"session_token_store": {
+		"legacy_json_path": "data/session_tokens.json"
+	},
+	"auto_update": {
+		"enabled": false,
+		"mode": "notify",
+		"check_url": "",
+		"check_interval_hours": 24,
+		"branch": "production",
+		"changelog_url": ""
+	},
+	"token_algorithm": "HS256",
+	"experimental_features": false,
+	"s3_storage": {
+		"enabled": true,
+		"endpoint_url": "",
+		"bucket_name": "",
+		"region": "",
+		"prefix": "comfyui/",
+		"access_key_id_env": "S3_ACCESS_KEY_ID",
+		"secret_access_key_env": "S3_SECRET_ACCESS_KEY",
+		"mount": {
+			"enabled": true,
+			"local_mount_path": "/workspace/s3",
+			"rclone_path": "rclone",
+			"mode": "auto",
+			"sync_interval_seconds": 600,
+			"vfs_cache_mode": "full",
+			"vfs_cache_max_size": "50G",
+			"model_folders": [
+				"checkpoints",
+				"loras",
+				"vae",
+				"embeddings",
+				"controlnet",
+				"upscale_models",
+				"clip",
+				"clip_vision",
+				"diffusion_models",
+				"text_encoders",
+				"hypernetworks",
+				"vae_approx"
+			],
+			"mount_output": false,
+			"mount_input": false,
+			"read_only": false
+		},
+		"workflow_sync": {
+			"enabled": true,
+			"sync_interval_seconds": 120,
+			"conflict_strategy": "newer_wins",
+			"sync_on_save": true,
+			"sync_on_delete": true,
+			"max_workflow_size_mb": 50
+		}
+	}
+}

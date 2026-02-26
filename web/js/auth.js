@@ -1,5 +1,6 @@
 let failedAttempts = 0;
 let timeoutEndTime = null;
+let mfaTempToken = null;
 
 Object.defineProperty(String.prototype, 'capitalize', {
   value: function() {
@@ -19,6 +20,30 @@ if (window.location.pathname === "/register") {
     registerLink.style.display = isAdminUser ? "none" : "block";
     verticalDivider.style.display = isAdminUser ? "none" : "block";
   });
+}
+
+// Clear token display on load so refresh/navigation removes it entirely (generate token page only)
+document.addEventListener("DOMContentLoaded", () => {
+  const container = document.getElementById("token-display-container");
+  if (container) {
+    container.style.display = "none";
+    const val = document.getElementById("token-display-value");
+    if (val) val.textContent = "";
+  }
+});
+
+function showTokenOnPage(token) {
+  const container = document.getElementById("token-display-container");
+  const val = document.getElementById("token-display-value");
+  const copyBtn = document.getElementById("token-copy-btn");
+  if (!container || !val) return;
+  val.textContent = token;
+  container.style.display = "block";
+  if (copyBtn) {
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(token).then(() => addToast("Copied to clipboard", "success")).catch(() => addToast("Copy failed", "error"));
+    };
+  }
 }
 
 function addToast(message, type) {
@@ -272,12 +297,30 @@ async function login(event) {
       const result = await response.json();
 
       if (response.ok) {
-        // backend should return { message, token } (and optionally jwt_token)
+        // MFA required: redirect to dedicated MFA page
+        if (result.mfa_required && result.mfa_temp_token) {
+          sessionStorage.setItem("mfa_temp_token", result.mfa_temp_token);
+          sessionStorage.setItem("mfa_mode", "verify");
+          button.disabled = false;
+          button.textContent = "Login";
+          window.location.href = "/mfa";
+          return;
+        }
+        // MFA setup required: redirect to dedicated MFA page
+        if (result.mfa_setup_required && result.mfa_temp_token) {
+          sessionStorage.setItem("mfa_temp_token", result.mfa_temp_token);
+          sessionStorage.setItem("mfa_mode", "setup");
+          button.disabled = false;
+          button.textContent = "Login";
+          window.location.href = "/mfa";
+          return;
+        }
+        // Normal login: backend returned { message, token } (and optionally jwt_token)
         const token = result.token || result.jwt_token;
         if (!token) {
           addToast("Login succeeded but no token was returned", "error");
         } else {
-          let cookieString = `jwt_token=${token}; path=/; HttpOnly; SameSite=Strict`;
+          let cookieString = `jwt_token=${DOMPurify.sanitize(token)}; path=/; HttpOnly; secure; SameSite=Strict`;
 
           if (window.location.protocol === "https:") {
             cookieString += "; Secure";
@@ -342,7 +385,7 @@ async function guestLogin(event) {
     if (response.ok) {
       const token = result.token || result.jwt_token;
       if (token) {
-        let cookieString = `jwt_token=${token}; path=/; HttpOnly; SameSite=Strict`;
+        let cookieString = `jwt_token=${DOMPurify.sanitize(token)}; path=/; HttpOnly; secure; SameSite=Strict`;
         if (window.location.protocol === "https:") {
           cookieString += "; Secure";
         }
@@ -426,7 +469,7 @@ async function generate(event) {
       button.disabled = true;
       button.textContent = "Sending...";
 
-      const response = await fetch("/generate_token", {
+      const response = await fetch("/mss-login/generate_token", {
         method: "POST",
         body: formData,
       });
@@ -434,17 +477,34 @@ async function generate(event) {
       const result = await response.json();
 
       if (response.ok) {
-        addToast(result.message, "success");
-        updateFailedAttempts(response.status, result, "generate");
-
-        form.reset();
-
-        alert("API Token:\n"+result.jwt_token+"\n\nPlease copy this token and store it in a safe place. You will not be able to retrieve it again.");
+        if (result.mfa_required && result.mfa_temp_token) {
+          mfaTempToken = result.mfa_temp_token;
+          document.getElementById("mfa-expire-hours").value = result.expire_hours || 720;
+          const mfaLabelEl = document.getElementById("mfa-label");
+          if (mfaLabelEl) mfaLabelEl.value = (document.getElementById("label") || {}).value || "";
+          document.getElementById("generate-form").style.display = "none";
+          const mfaSection = document.getElementById("mfa-verify-section");
+          if (mfaSection) mfaSection.style.display = "block";
+          addToast(result.message || "Enter your verification code", "success");
+          document.getElementById("mfa-code").focus();
+        } else if (result.jwt_token) {
+          addToast(result.message, "success");
+          updateFailedAttempts(response.status, result, "generate");
+          form.reset();
+          showTokenOnPage(result.jwt_token);
+          loadMyTokens();
+        } else {
+          addToast(result.message || "Token created", "success");
+        }
+        button.textContent = "Generate";
+        button.disabled = false;
       } else {
         addToast(
           result.error || result.message || "Generation failed",
           "error"
         );
+        button.textContent = "Generate";
+        button.disabled = false;
       }
       updateFailedAttempts(response.status, result, "generate");
     } catch (error) {
@@ -454,5 +514,247 @@ async function generate(event) {
     }
   }
 }
+
+async function generateMfaVerify(event) {
+  event.preventDefault();
+  const code = (document.getElementById("mfa-code").value || "").replace(/\s/g, "");
+  const backupCode = (document.getElementById("mfa-backup").value || "").replace(/\s/g, "").replace(/-/g, "").toUpperCase();
+  if (!mfaTempToken) {
+    addToast("Session expired. Please try again.", "error");
+    backToGenerateForm();
+    return;
+  }
+  if (!backupCode && !code) {
+    addToast("Enter verification code or backup code", "error");
+    return;
+  }
+  const formData = new FormData();
+  formData.append("mfa_temp_token", mfaTempToken);
+  formData.append("expire_hours", document.getElementById("mfa-expire-hours").value || "720");
+  const mfaLabelEl = document.getElementById("mfa-label");
+  if (mfaLabelEl && mfaLabelEl.value) formData.append("label", mfaLabelEl.value);
+  if (backupCode) formData.append("backup_code", backupCode);
+  else formData.append("code", code);
+  const button = document.querySelector("#mfa-verify-form button[type='submit']");
+  button.disabled = true;
+  button.textContent = "Verifying...";
+  try {
+    const response = await fetch("/mss-login/generate_token", {
+      method: "POST",
+      body: formData,
+    });
+    const result = await response.json();
+    if (response.ok && result.jwt_token) {
+      addToast(result.message, "success");
+      backToGenerateForm();
+      document.getElementById("generate-form").reset();
+      showTokenOnPage(result.jwt_token);
+      loadMyTokens();
+    } else {
+      addToast(result.error || "Invalid code", "error");
+    }
+  } catch (err) {
+    addToast("Error: " + err.message, "error");
+  }
+  button.disabled = false;
+  button.textContent = "Verify and Generate";
+}
+
+function backToGenerateForm() {
+  const form = document.getElementById("generate-form");
+  const mfaSection = document.getElementById("mfa-verify-section");
+  if (form) form.style.display = "block";
+  if (mfaSection) mfaSection.style.display = "none";
+  mfaTempToken = null;
+  const mfaCode = document.getElementById("mfa-code");
+  const mfaBackup = document.getElementById("mfa-backup");
+  if (mfaCode) mfaCode.value = "";
+  if (mfaBackup) mfaBackup.value = "";
+}
+
+function backToLogin() {
+  document.getElementById("login-form").style.display = "block";
+  document.getElementById("mfa-verify-section").style.display = "none";
+  document.getElementById("mfa-setup-section").style.display = "none";
+  mfaTempToken = null;
+  document.getElementById("mfa-code").value = "";
+  document.getElementById("mfa-backup").value = "";
+  document.getElementById("mfa-setup-code").value = "";
+}
+
+async function submitMfaVerify(event) {
+  event.preventDefault();
+  const code = (document.getElementById("mfa-code").value || "").replace(/\s/g, "");
+  const backupCode = (document.getElementById("mfa-backup").value || "").replace(/\s/g, "").replace(/-/g, "").toUpperCase();
+  if (!mfaTempToken) {
+    addToast("Session expired. Please log in again.", "error");
+    backToLogin();
+    return;
+  }
+  const body = { mfa_temp_token: mfaTempToken };
+  if (backupCode) body.backup_code = backupCode;
+  else if (code) body.code = code;
+  else {
+    addToast("Enter verification code or backup code", "error");
+    return;
+  }
+  const button = document.querySelector("#mfa-verify-form button[type='submit']");
+  button.disabled = true;
+  button.textContent = "Verifying...";
+  try {
+    const response = await fetch("/mss-login/api/mfa/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const result = await response.json();
+    if (response.ok && result.jwt_token) {
+      let cookieString = `jwt_token=${DOMPurify.sanitize(result.jwt_token)}; path=/; HttpOnly; secure; SameSite=Strict`;
+      if (window.location.protocol === "https:") cookieString += "; Secure";
+      document.cookie = cookieString;
+      addToast(result.message || "Login successful", "success");
+      window.location.href = "/";
+    } else {
+      addToast(result.error || "Invalid code", "error");
+      button.disabled = false;
+      button.textContent = "Verify";
+    }
+  } catch (err) {
+    addToast("Error: " + err.message, "error");
+    button.disabled = false;
+    button.textContent = "Verify";
+  }
+}
+
+async function submitMfaSetup(event) {
+  event.preventDefault();
+  const code = (document.getElementById("mfa-setup-code").value || "").replace(/\s/g, "");
+  if (!code || code.length !== 6) {
+    addToast("Enter a 6-digit code from your authenticator app", "error");
+    return;
+  }
+  if (!mfaTempToken) {
+    addToast("Session expired. Please log in again.", "error");
+    backToLogin();
+    return;
+  }
+  const button = document.querySelector("#mfa-setup-form button[type='submit']");
+  button.disabled = true;
+  button.textContent = "Verifying...";
+  try {
+    const verifySetupResp = await fetch("/mss-login/api/mfa/verify-setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mfa_temp_token: mfaTempToken, code }),
+    });
+    const verifySetupData = await verifySetupResp.json();
+    if (!verifySetupResp.ok) {
+      addToast(verifySetupData.error || "Invalid code", "error");
+      button.disabled = false;
+      button.textContent = "Complete Setup";
+      return;
+    }
+    const verifyResp = await fetch("/mss-login/api/mfa/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mfa_temp_token: mfaTempToken, code }),
+    });
+    const verifyData = await verifyResp.json();
+    if (verifyResp.ok && verifyData.jwt_token) {
+      let cookieString = `jwt_token=${DOMPurify.sanitize(verifyData.jwt_token)}; path=/; HttpOnly; secure; SameSite=Strict`;
+      if (window.location.protocol === "https:") cookieString += "; Secure";
+      document.cookie = cookieString;
+      addToast(verifyData.message || "MFA enabled. Login successful.", "success");
+      window.location.href = "/";
+    } else {
+      addToast(verifyData.error || "Verification failed", "error");
+      button.disabled = false;
+      button.textContent = "Complete Setup";
+    }
+  } catch (err) {
+    addToast("Error: " + err.message, "error");
+    button.disabled = false;
+    button.textContent = "Complete Setup";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Token management (generate_token page only)
+// ---------------------------------------------------------------------------
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
+
+async function loadMyTokens() {
+  const container = document.getElementById("my-tokens-list");
+  if (!container) return;
+  try {
+    const response = await fetch("/mss-login/api/tokens", { credentials: "same-origin" });
+    if (!response.ok) {
+      container.innerHTML = '<p style="color:#888;">Log in to view your tokens.</p>';
+      return;
+    }
+    const data = await response.json();
+    const tokens = data.tokens || [];
+    if (tokens.length === 0) {
+      container.innerHTML = '<p style="color:#888;">No API tokens found.</p>';
+      return;
+    }
+    let html = '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">';
+    html += '<thead><tr style="border-bottom:1px solid #444;">';
+    html += '<th style="text-align:left; padding:6px;">Label</th>';
+    html += '<th style="text-align:left; padding:6px;">Hash Prefix</th>';
+    html += '<th style="text-align:left; padding:6px;">Created</th>';
+    html += '<th style="text-align:left; padding:6px;">Expires</th>';
+    html += '<th style="text-align:center; padding:6px;">Revoke</th>';
+    html += '</tr></thead><tbody>';
+    for (const t of tokens) {
+      const created = t.created_at_iso ? new Date(t.created_at_iso).toLocaleString() : "N/A";
+      const neverExpires = t.expires_iso === "9999-12-31T23:59:59+00:00";
+      const expires = neverExpires ? "Never" : (t.expires_iso ? new Date(t.expires_iso).toLocaleString() : "N/A");
+      const label = t.label || '<span style="color:#666;">Unlabeled</span>';
+      const prefix = t.token_hash_prefix || "";
+      html += '<tr style="border-bottom:1px solid #333;">';
+      html += `<td style="padding:6px;">${label}</td>`;
+      html += `<td style="padding:6px; font-family:monospace; font-size:0.8rem;">${prefix}</td>`;
+      html += `<td style="padding:6px;">${created}</td>`;
+      html += `<td style="padding:6px;">${expires}</td>`;
+      html += `<td style="padding:6px; text-align:center;"><button class="btn" style="padding:2px 10px; font-size:0.8rem;" onclick="revokeToken('${prefix}')">Revoke</button></td>`;
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    container.textContent = DOMPurify.sanitize(html);
+  } catch {
+    container.innerHTML = '<p style="color:#888;">Could not load tokens.</p>';
+  }
+}
+
+async function revokeToken(hashPrefix) {
+  if (!confirm("Revoke this API token? This cannot be undone.")) return;
+  const prefix = hashPrefix.replace(/\.+$/, "");
+  try {
+    const response = await fetch("/mss-login/api/tokens", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token_hash_prefix: prefix }),
+      credentials: "same-origin",
+    });
+    const result = await response.json();
+    if (response.ok) {
+      addToast(result.message || "Token revoked", "success");
+    } else {
+      addToast(result.error || "Failed to revoke token", "error");
+    }
+  } catch (err) {
+    addToast("Error: " + err.message, "error");
+  }
+  loadMyTokens();
+}
+
+// Load token list on the generate_token page
+document.addEventListener("DOMContentLoaded", () => {
+  if (document.getElementById("my-tokens-list")) {
+    loadMyTokens();
+  }
+});
 
 loadTimeoutFromStorage(window.location.pathname.replace("/", "").split("_")[0])

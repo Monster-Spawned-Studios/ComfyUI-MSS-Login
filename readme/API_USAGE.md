@@ -1,10 +1,11 @@
 # NSFW Guard API Usage Guide
 
-This guide explains how other ComfyUI extensions can use the NSFW Guard functionality from ComfyUI-Usgromana.
+This guide explains how other ComfyUI extensions can use the NSFW Guard functionality from ComfyUI-mss-login.
 
 ## Overview
 
 The NSFW Guard API allows other extensions to:
+
 - Check if a user has SFW (Safe For Work) restrictions enabled
 - Validate image tensors, PIL Images, or image file paths for NSFW content
 - Set user context for worker threads
@@ -12,7 +13,7 @@ The NSFW Guard API allows other extensions to:
 
 ## Installation
 
-Ensure that `ComfyUI-Usgromana` is installed in your ComfyUI `custom_nodes` directory. The extension must be loaded before your extension tries to use the API.
+Ensure that `ComfyUI-mss-login` is installed in your ComfyUI `custom_nodes` directory. The extension must be loaded before your extension tries to use the API.
 
 ## Import Methods
 
@@ -24,11 +25,11 @@ Add the extension path to `sys.path` and import directly:
 import sys
 import os
 
-# Add ComfyUI-Usgromana to the path
+# Add ComfyUI-mss-login to the path
 extension_path = os.path.join(
     os.path.dirname(__file__),  # Your extension's directory
     "..",  # Go up to custom_nodes
-    "ComfyUI-Usgromana"  # Usgromana extension folder
+    "ComfyUI-mss-login"  # mss-login extension folder
 )
 extension_path = os.path.abspath(extension_path)
 
@@ -48,7 +49,7 @@ try:
     NSFW_GUARD_AVAILABLE = True
 except ImportError:
     NSFW_GUARD_AVAILABLE = False
-    print("[YourExtension] ComfyUI-Usgromana not found. NSFW guard unavailable.")
+    print("[YourExtension] ComfyUI-mss-login not found. NSFW guard unavailable.")
 ```
 
 ### Method 2: Using importlib
@@ -58,30 +59,30 @@ import importlib.util
 import os
 import sys
 
-def load_usgromana_api():
-    """Load the Usgromana API module."""
+def load_mss_login_api():
+    """Load the mss-login API module."""
     extension_path = os.path.join(
         os.path.dirname(__file__),
         "..",
-        "ComfyUI-Usgromana"
+        "ComfyUI-mss-login"
     )
     api_path = os.path.join(extension_path, "api.py")
-    
+
     if not os.path.exists(api_path):
         return None
-    
-    spec = importlib.util.spec_from_file_location("usgromana_api", api_path)
+
+    spec = importlib.util.spec_from_file_location("mss_login_api", api_path)
     if spec is None or spec.loader is None:
         return None
-    
+
     module = importlib.util.module_from_spec(spec)
-    sys.modules["usgromana_api"] = module
+    sys.modules["mss_login_api"] = module
     spec.loader.exec_module(module)
     return module
 
 # Load the API
-usgromana_api = load_usgromana_api()
-if usgromana_api and usgromana_api.is_available():
+mss_login_api = load_mss_login_api()
+if mss_login_api and mss_login_api.is_available():
     # Use the API
     pass
 ```
@@ -156,10 +157,10 @@ from aiohttp import web
 async def view_image(request):
     image_path = "/path/to/image.png"
     username = get_user_from_request(request)
-    
+
     if check_image_path_nsfw(image_path, username):
         return web.Response(status=403, text="NSFW Blocked")
-    
+
     # Serve the image
     return web.FileResponse(image_path)
 ```
@@ -216,7 +217,7 @@ import os
 extension_path = os.path.join(
     os.path.dirname(__file__),
     "..",
-    "ComfyUI-Usgromana"
+    "ComfyUI-mss-login"
 )
 if extension_path not in sys.path:
     sys.path.insert(0, extension_path)
@@ -239,11 +240,11 @@ class MyCustomNode:
                 "image": ("IMAGE",),
             }
         }
-    
+
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "execute"
     CATEGORY = "image"
-    
+
     def execute(self, image):
         # Check if NSFW guard is available
         if NSFW_GUARD_AVAILABLE:
@@ -254,7 +255,7 @@ class MyCustomNode:
                     # Replace with black image
                     print("[MyNode] NSFW content detected, blocking...")
                     image = torch.zeros_like(image)
-        
+
         return (image,)
 ```
 
@@ -271,7 +272,7 @@ if not is_available():
 
 ## Notes
 
-1. **Fail-Open Behavior**: If the NSFW guard is unavailable or encounters errors, it returns `False` (allows content). This ensures your extension continues to work even if Usgromana is not installed.
+1. **Fail-Open Behavior**: If the NSFW guard is unavailable or encounters errors, it returns `False` (allows content). This ensures your extension continues to work even if mss-login is not installed.
 
 2. **User Context**: The API automatically resolves the current user from:
    - HTTP request context (for web routes)
@@ -286,7 +287,7 @@ if not is_available():
 
 ### ImportError when importing api
 
-- Ensure ComfyUI-Usgromana is installed in `custom_nodes/ComfyUI-Usgromana`
+- Ensure ComfyUI-mss-login is installed in `custom_nodes/ComfyUI-mss-login`
 - Check that the extension loaded successfully (check ComfyUI console)
 - Verify the path is correct when adding to `sys.path`
 
@@ -302,4 +303,3 @@ if not is_available():
 - Check internet connection
 - Verify you have enough disk space in `models/nsfw_detector/`
 - Check console for specific error messages
-

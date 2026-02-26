@@ -1,7 +1,7 @@
-# ComfyUI Usgromana
+# MSS-Login
 
 <p align="center">
-  <img src="./web/assets/Dark_Usgromana.png" width="220" />
+  <img src="./web/assets/mss_logo.png" width="220" />
 </p>
 
 <p align="center">
@@ -9,43 +9,45 @@
 </p>
 
 <p align="center">
-  <strong>Version 1.9.0</strong> — Latest release includes Extension Tabs API, IP filtering improvements, and performance optimizations
+  <strong>Version 0.0.1</strong> — Latest release includes Extension Tabs API, IP filtering improvements, and performance optimizations
 </p>
 
 ---
 
 ## Table of Contents
-1. [Overview](#overview)  
-2. [Key Features](#key-features)  
-3. [Architecture](#architecture)  
-4. [Installation](#installation)  
-5. [Folder Structure](#folder-structure)  
-6. [RBAC Roles](#rbac-roles)  
-7. [UI Enforcement Layer](#ui-enforcement-layer)  
-8. [Workflow Protection](#workflow-protection)  
-9. [IP Rules System](#ip-rules-system)  
-10. [User Environment Tools](#user-environment-tools)  
-11. [Settings Panel](#settings-panel)  
-12. [API Endpoints](#api-endpoints)  
-13. [Backend Components](#backend-components)  
-14. [Troubleshooting](#troubleshooting)  
-15. [License](#license)
+
+1. [Overview](#overview)
+2. [Key Features](#key-features)
+3. [Architecture](#architecture)
+4. [Installation](#installation)
+5. [Documentation](#documentation)
+6. [Folder Structure](#folder-structure)
+7. [RBAC Roles](#rbac-roles)
+8. [UI Enforcement Layer](#ui-enforcement-layer)
+9. [Workflow Protection](#workflow-protection)
+10. [IP Rules System](#ip-rules-system)
+11. [User Environment Tools](#user-environment-tools)
+12. [Settings Panel](#settings-panel)
+13. [API Endpoints](#api-endpoints)
+14. [Backend Components](#backend-components)
+15. [Troubleshooting](#troubleshooting)
+16. [License](#license)
 
 ---
 
 ## Overview
 
-**ComfyUI Usgromana** is a comprehensive security layer that adds:
+**ComfyUI mss_login** is a comprehensive security layer that adds:
 
-- Role‑Based Access Control (RBAC)  
-- UI element gating  
-- Workflow save/delete blocking  
-- Transparent user folder isolation  
-- IP whitelist and blacklist enforcement  
-- User environment management utilities  
-- A modern administrative panel with multiple tabs  
-- Dynamic theme integration with the ComfyUI dark mode  
-- Live UI popups, toast notifications, and visual enforcement  
+- Role‑Based Access Control (RBAC)
+- UI element gating
+- Workflow save/delete blocking
+- Transparent user folder isolation
+- IP whitelist and blacklist enforcement
+- User environment management utilities
+- A modern administrative panel with multiple tabs
+- Dynamic theme integration with the ComfyUI dark mode
+- Live UI popups, toast notifications, and visual enforcement
 - **NSFW Guard API** - Public API for NSFW detection and enforcement
 - **Gallery integration** - Manual image flagging and metadata-based tagging
 - **Extension Tabs API** - Allow other extensions to add custom tabs to the admin panel
@@ -57,84 +59,89 @@ It replaces the older Sentinel system with a faster, cleaner, more modular archi
 ## Key Features
 
 ### 🔐 **RBAC Security**
-Four roles: **Admin, Power, User, Guest**  
-Each with configurable permissions stored in `usgromana_groups.json`.
 
-<p align="center">
-  <img src="./readme/images/UsgromanaLogin.png" />
-</p>
+Four roles: **Admin, Power, User, Guest**
+Each with configurable permissions stored in `mss_login_groups.json`.
 
 ### 🚫 **Save & Delete Workflow Blocking**
-Non‑privileged roles cannot:
-- Save workflows  
-- Export workflows  
-- Overwrite existing workflows  
-- Delete workflow files  
 
-<p align="center">
-  <img src="./readme/images/AdminGroups.png" />
-</p>
+Non‑privileged roles cannot:
+
+- Save workflows
+- Export workflows
+- Overwrite existing workflows
+- Delete workflow files
 
 All blocked actions trigger:
-- A server‑side 403  
-- A UI toast popup explaining the denial  
+
+- A server‑side 403
+- A UI toast popup explaining the denial
 
 ### 👁️ **Dynamic UI Enforcement**
-Usgromana hides or disables:
-- Top‑menu items  
-- Sidebar tabs  
-- Settings categories  
-- Extension panels  
-- File menu operations  
+
+mss_login hides or disables:
+
+- Top‑menu items
+- Sidebar tabs
+- Settings categories
+- Extension panels
+- File menu operations
 
 Enforcement occurs every 1 second to catch late‑loading UI elements.
 
 ### 🌐 **IP Filtering System**
+
 Complete backend implementation:
-- Whitelist mode  
-- Blacklist mode  
-- Live editing in Usgromana settings tab  
-- Persistent storage via `ip_filter.py`  
+
+- Whitelist mode
+- Blacklist mode
+- Live editing in mss_login settings tab
+- Persistent storage via `ip_filter.py`
 
 ### 🗂️ **User Environment Tools**
+
 From `user_env.py`:
-- Purge a user’s folders  
+
+- Purge a user’s folders
 - List user-owned files
 - Promote user workflow to default (all user view)
 - Delete single user workflow
 - Toggle gallery‑folder mode
 
-<p align="center">
-  <img src="./readme/images/UserFiles.png" />
-</p>
-
 ### 🖥️ **Transparent Themed Admin UI**
+
 The administrative modal features:
-- Transparent blurred glass background  
-- Neon accent tabs  
-- Integrated logo watermark  
-- Scrollable permission tables  
-- Responsive layout  
+
+- Transparent blurred glass background
+- Neon accent tabs
+- Integrated logo watermark
+- Scrollable permission tables
+- Responsive layout
 
 ### 🔧 **Watcher Middleware**
+
 A new middleware that detects:
-- Forbidden workflow saves  
-- Forbidden deletes  
+
+- Forbidden workflow saves
+- Forbidden deletes
 And triggers UI-side toast popups through a custom fetch wrapper.
 
 ### 🛡️ **NSFW Guard API**
+
 A comprehensive public API that allows other ComfyUI extensions to:
+
 - Check user NSFW viewing permissions
 - Validate image tensors, PIL Images, or file paths for NSFW content
 - Integrate NSFW protection into custom nodes and extensions
 - **Metadata-based tagging system** - Images are tagged with NSFW metadata stored alongside files
-- **Gallery integration endpoint** - `/usgromana-gallery/mark-nsfw` for manual image flagging
+- **Gallery integration endpoint** - `/mss-login-gallery/mark-nsfw` for manual image flagging
 - **Automatic scanning** - Background scanning of output directory with caching
 - **Per-user enforcement** - SFW restrictions apply per-user based on role permissions
 
 See [API_USAGE.md](./readme/API_USAGE.md) for complete documentation and examples.
 
 **Quick Example:**
+
 ```python
 from api import check_tensor_nsfw, is_sfw_enforced_for_user
 
@@ -146,9 +153,10 @@ if is_sfw_enforced_for_user():
 ```
 
 **Gallery Integration:**
+
 ```javascript
 // Mark an image as NSFW from gallery UI
-fetch('/usgromana-gallery/mark-nsfw', {
+fetch('/mss-login-gallery/mark-nsfw', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -164,10 +172,10 @@ fetch('/usgromana-gallery/mark-nsfw', {
 
 ## Architecture
 
-```
+```text
 ComfyUI
 │
-├── Usgromana Core
+├── mss_login Core
 │   ├── access_control.py    → RBAC, path blocking, folder isolation
 │   ├── __init__.py          → Route registration, middleware setup
 │   ├── api.py               → NSFW Guard API (public interface)
@@ -190,9 +198,9 @@ ComfyUI
 │   │   │   └── node_interceptor.py → Node-level image interception
 │   │   └── reactor_sfw_intercept.py → ReActor SFW patch
 │   └── web/
-│       ├── js/usgromana_settings.js → UI enforcement + settings panel
-│       ├── css/usgromana.css        → Themed UI
-│       └── assets/dark_logo_transparent.png
+│       ├── js/mss_login_setting.js → UI enforcement + settings panel
+│       ├── css/mss-login.css        → Themed UI
+│       └── assets/mss_logo.png
 │
 └── ComfyUI (upstream)
 ```
@@ -201,23 +209,51 @@ ComfyUI
 
 ## Installation
 
-1. Extract Usgromana into:
+1. Extract mss_login into:
+
+```text
+ComfyUI/custom_nodes/mss-login/
 ```
-ComfyUI/custom_nodes/Usgromana/
+
+1. Restart ComfyUI.
+
+2. On first launch, register the initial admin.
+
+3. Open settings → **mss_login** to configure.
+
+---
+
+## Documentation
+
+Full documentation (installation, configuration, **API reference**, and **Extension API** for integrating the node in your projects) is built with [MkDocs](https://www.mkdocs.org/) and the [Material](https://squidfunk.github.io/mkdocs-material/) theme. It is available in the **`docs/`** folder and can be published to GitHub Pages or any static host.
+
+### Building the docs locally
+
+From the project root:
+
+```bash
+pip install mkdocs "mkdocs-material"
+python scripts/build_docs.py
+mkdocs build
+mkdocs serve
 ```
 
-2. Restart ComfyUI.
+Then open `http://127.0.0.1:8000`. The script `scripts/build_docs.py` regenerates the API reference (HTTP endpoints) and Extension API (NSFW Guard Python API) from the source code.
 
-3. On first launch, register the initial admin.
+### Extending the node
 
-4. Open settings → **Usgromana** to configure.
+- **HTTP API** — See the generated [API Reference](docs/api-reference/endpoints.md) for all custom endpoints (auth, admin, user, MFA, recovery). For workflow and intercepted paths, see [Workflow & intercepted](docs/api-reference/workflow-endpoints.md).
+- **Python Extension API** — Use the [NSFW Guard API](docs/extension-api/nsfw-guard-api.md) from other ComfyUI extensions to check or tag NSFW content.
+- **Overview** — [Extending the node](docs/guide/extending.md) summarizes how to use both the HTTP and Python APIs in your projects.
+
+When the repository has GitHub Pages enabled and the Docs workflow runs on `main` or `production`, the site is deployed automatically.
 
 ---
 
 ## Folder Structure
 
-```
-Usgromana/
+```text
+mss_login/
 │
 ├── __init__.py              → Main entry point, route registration
 ├── api.py                   → NSFW Guard API (public interface)
@@ -244,30 +280,30 @@ Usgromana/
 │   └── reactor_sfw_intercept.py → ReActor SFW patch
 │
 ├── web/
-│   ├── js/usgromana_settings.js → UI enforcement + settings panel
-│   ├── css/usgromana.css        → Themed UI
-│   └── assets/dark_logo_transparent.png
+│   ├── js/mss_login_setting.js → UI enforcement + settings panel
+│   ├── css/mss-login.css        → Themed UI
+│   └── assets/mss_logo.png
 │
 └── users/
     ├── users.json
-    └── usgromana_groups.json
+    └── mss_login_groups.json
 ```
 
 ---
 
 ## RBAC Roles
 
-| Role | Description |
+|Role|Description|
 |------|-------------|
-| **Admin** | Full access to all ComfyUI and Usgromana features. |
-| **Power** | Elevated user with additional permissions but no admin panel access. |
-| **User** | Standard user who can run workflows but cannot modify system behavior. |
-| **Guest** | Fully restricted by default—cannot run, upload, save, or manage. |
+|**Admin**|Full access to all ComfyUI and mss_login features.|
+|**Power**|Elevated user with additional permissions but no admin panel access.|
+|**User**|Standard user who can run workflows but cannot modify system behavior.|
+|**Guest**|Fully restricted by default—cannot run, upload, save, or manage.|
 
 Permissions are stored in:
 
-```
-users/usgromana_groups.json
+```text
+users/mss_login_groups.json
 ```
 
 and editable through the settings panel.
@@ -276,7 +312,8 @@ and editable through the settings panel.
 
 ## UI Enforcement Layer
 
-Usgromana dynamically modifies the UI by:
+mss_login dynamically modifies the UI by:
+
 - Injecting CSS rules to hide elements
 - Removing menu entries (Save, Load, Manage Extensions)
 - Blocking iTools, Crystools, rgthree, ImpactPack for restricted roles
@@ -285,8 +322,8 @@ Usgromana dynamically modifies the UI by:
 
 All logic is contained in:
 
-```
-web/js/usgromana_settings.js
+```text
+web/js/mss_login_setting.js
 ```
 
 ---
@@ -308,11 +345,12 @@ Same for delete operations.
 
 Located in:
 
-```
+```text
 utils/ip_filter.py
 ```
 
 ### Features
+
 - Whitelist mode: Only listed IPs allowed
 - Blacklist mode: Block specific IPs
 - Configurable through new “IP Rules” tab in settings
@@ -324,39 +362,41 @@ utils/ip_filter.py
 
 From:
 
-```
+```text
 utils/user_env.py
 ```
 
 Features:
+
 - Purge a user’s input/output/temp folders
 - List all user-bound files
 - Toggle whether their folder functions as a gallery
 
-Exposed through the “User Env” tab in the Usgromana settings modal.
+Exposed through the “User Env” tab in the mss_login settings modal.
 
 ---
 
 ## Settings Panel
 
 Access via:
-**Settings → Usgromana**
+**Settings → mss_login**
 
 Tabs:
 
-1. **Users & Roles**  
-2. **Permissions & UI**  
-3. **IP Rules**  
-4. **User Environment**  
+1. **Users & Roles**
+2. **Permissions & UI**
+3. **IP Rules**
+4. **User Environment**
 5. **NSFW Management**
 
 ### Extension Tabs API
 
-Other ComfyUI extensions can register custom tabs in the Usgromana admin panel to manage their own permissions and settings. See [EXTENSION_TABS_API.md](./EXTENSION_TABS_API.md) for complete documentation.
+Other ComfyUI extensions can register custom tabs in the mss_login admin panel to manage their own permissions and settings. See [EXTENSION_TABS_API.md](./EXTENSION_TABS_API.md) for complete documentation.
 
 **Quick Example:**
+
 ```javascript
-window.UsgromanaAdminTabs.register({
+window.mss_loginAdminTabs.register({
     id: "myextension",
     label: "My Extension",
     order: 50,
@@ -369,19 +409,22 @@ window.UsgromanaAdminTabs.register({
 ```
 
 ### Additional UI Features
-- Integrated logout button in the settings entry  
-- Transparent blurred panel  
-- Neon-accented tab bar  
-- Logo watermark in top-right  
+
+- Integrated logout button in the settings entry
+- Transparent blurred panel
+- Neon-accented tab bar
+- Logo watermark in top-right
 
 ---
 
 ## API Endpoints
 
 ### NSFW Guard API (Public)
+
 The NSFW Guard API provides programmatic access to NSFW detection and enforcement. See [API_USAGE.md](./readme/API_USAGE.md) for complete documentation.
 
 **Key Functions:**
+
 - `check_tensor_nsfw(images_tensor, threshold=0.5)` - Check image tensors
 - `check_image_path_nsfw(image_path, username=None)` - Check image files
 - `check_pil_image_nsfw(pil_image, threshold=0.5)` - Check PIL Images
@@ -391,10 +434,11 @@ The NSFW Guard API provides programmatic access to NSFW detection and enforcemen
 
 ### Gallery Integration Endpoint
 
-**POST `/usgromana-gallery/mark-nsfw`**
+**POST `/mss-login-gallery/mark-nsfw`**
 Manually mark an image as NSFW or SFW. Designed for integration with gallery extensions.
 
 **Request Body:**
+
 ```json
 {
     "filename": "image.png",
@@ -405,6 +449,7 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 ```
 
 **Response:**
+
 ```json
 {
     "status": "ok",
@@ -415,6 +460,7 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 ```
 
 **Features:**
+
 - Recursively searches output directory subdirectories
 - Security checks prevent path traversal
 - Integrates with metadata tagging system
@@ -422,21 +468,21 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 
 ### Authentication Endpoints
 
-**POST `/usgromana/api/login`** - User login  
-**POST `/usgromana/api/register`** - User registration  
-**POST `/usgromana/api/guest-login`** - Guest login  
-**POST `/usgromana/api/refresh-token`** - Token refresh
+**POST `/mss-login/api/login`** - User login
+**POST `/mss-login/api/register`** - User registration
+**POST `/mss-login/api/guest-login`** - Guest login
+**POST `/mss-login/api/refresh-token`** - Token refresh
 
 ### Admin Endpoints
 
-**GET/PUT `/usgromana/api/users`** - User management  
-**GET/PUT `/usgromana/api/groups`** - Group/permission management  
-**PUT `/usgromana/api/ip-lists`** - IP whitelist/blacklist  
-**POST `/usgromana/api/nsfw-management`** - NSFW admin tools (scan, fix, clear)
+**GET/PUT `/mss-login/api/users`** - User management
+**GET/PUT `/mss-login/api/groups`** - Group/permission management
+**PUT `/mss-login/api/ip-lists`** - IP whitelist/blacklist
+**POST `/mss-login/api/nsfw-management`** - NSFW admin tools (scan, fix, clear)
 
 ### User Environment Endpoints
 
-**POST `/usgromana/api/user-env`** - User folder operations (purge, list, promote)
+**POST `/mss-login/api/user-env`** - User folder operations (purge, list, promote)
 
 ### Extension Integration
 
@@ -447,67 +493,80 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 ## Backend Components
 
 ### `__init__.py`
+
 - Main entry point for ComfyUI extension
 - Route registration and middleware setup
 - Server instance initialization
 
 ### `api.py`
+
 - **NSFW Guard API** - Public interface for other extensions
 - Functions: `check_tensor_nsfw()`, `check_image_path_nsfw()`, `is_sfw_enforced_for_user()`
 - Metadata tagging: `set_image_nsfw_tag()`, `get_image_nsfw_tag()`
 - User context management for worker threads
 
 ### `access_control.py`
-- Folder isolation  
-- RBAC  
-- Middleware for blocking paths  
-- Workflow protection  
-- Extension gating  
+
+- Folder isolation
+- RBAC
+- Middleware for blocking paths
+- Workflow protection
+- Extension gating
 
 ### `routes/auth.py`
+
 - JWT authentication endpoints
 - Login, registration, token refresh
 - Guest login support
 
 ### `routes/admin.py`
+
 - User & group management
 - Permission editing
 - NSFW management tools (scan, fix, clear)
 - IP rules management
 
 ### `routes/user.py`
+
 - User environment operations
-- **Gallery integration**: `/usgromana-gallery/mark-nsfw` endpoint
+- **Gallery integration**: `/mss-login-gallery/mark-nsfw` endpoint
 - File management (purge, list, promote workflows)
 
 ### `routes/workflow_routes.py`
+
 - Workflow save/delete protection
 - Global NSFW enforcement on `/view` endpoint
 - Workflow listing and loading
 
 ### `routes/static.py`
+
 - Asset serving (CSS, JS, images)
 - Logo and UI resources
 
 ### `utils/sfw_intercept/nsfw_guard.py`
+
 - NSFW detection using AI models
 - Metadata-based tagging system
 - Background scanning and caching
 - Per-user enforcement logic
 
 ### `utils/sfw_intercept/node_interceptor.py`
+
 - Node-level image interception
 - Real-time NSFW blocking in custom nodes
 
 ### `utils/reactor_sfw_intercept.py`
+
 - ReActor extension SFW patch
 - Per-user SFW enforcement for face swap operations
 
 ### `utils/ip_filter.py`
+
 - Whitelist & blacklist logic
 - Persistent storage
 
 ### `utils/user_env.py`
+
 - Folder operations
 - Metadata tools
 - User file management
@@ -517,230 +576,84 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 ## Troubleshooting
 
 ### Missing Logo
+
 Ensure the file exists:
-```
-Usgromana/web/assets/dark_logo_transparent.png
+
+```text
+mss-login/web/assets/mss_logo.png
 ```
 
 ### UI Not Updating
+
 Clear browser cache or disable caching dev tools.
 
 ### Guest cannot run workflows
+
 Check:
-```
+
+```json
 can_run = true
 ```
-in `usgromana_groups.json`.
+
+in `mss_login_groups.json`.
 
 ### mark-nsfw endpoint returns 404
+
 - Ensure the image file exists in the output directory or subdirectories
 - Check that the filename doesn't contain path traversal characters (`..`, `/`, `\`)
 - Verify the file is within the output directory (security check)
 
 ### NSFW Guard API not working
-- Ensure `ComfyUI-Usgromana` is loaded before your extension
+
+- Ensure `ComfyUI-mss_login` is loaded before your extension
 - Check that the API is available: `from api import is_available; print(is_available())`
 - Verify user context is set in worker threads using `set_user_context()`
 
 ### NSFW tags not persisting
+
 - Check that metadata files (`.nsfw_metadata.json`) are being created alongside images
 - Verify write permissions in the output directory
 - Ensure metadata files aren't being deleted by cleanup scripts
 
+### DEBUG_MODE for token / "Unable to connect to server" issues
+
+When using API tokens (e.g. Comfy Portal iOS) and seeing "Unable to connect to server", enable debug logging to see where the request is blocked (remote API guard, JWT/token validation, or access control).
+
+- **Environment (Docker/Compose):** set `DEBUG_MODE=1` or `DEBUG_MODE=true` in your env or Compose file.
+- **Config:** in `config.json` set `"debug_mode": true`.
+- Logs are written to `.cursor/debug.log` (NDJSON). Check for `location` values: `remote_api_guard` (blocked before auth), `jwt_auth` (token not found or invalid), `access_control` (403 after auth).
+- 401 responses include a `debug` hint when DEBUG_MODE is on. Do not leave DEBUG_MODE enabled in production.
+
+### API token "not found or expired"
+
+If the client sends a Bearer token but the server returns "API token not found or expired", the token is not in this server's token store. **Generate the token on the same ComfyUI instance (and same container/host) that the client connects to.** In Docker, ensure the database (unified SQLite file or PostgreSQL) is on a **persisted volume** so tokens survive restarts and are the same instance the client hits.
+
+### Unified database and encrypted SQLite
+
+- **Single database:** Users, API tokens, and shared items use one SQLite file or one PostgreSQL database (config: `users_db` in `config.json`). Token storage no longer uses a separate DB; set token storage backend to "database" in Settings.
+- **Encrypted SQLite:** To encrypt the SQLite file with a key derived from `SECRET_KEY`, set `encryption_level` in `users_db` to `low`, `standard`, or `secure` (Settings → Users DB). Requires **argon2-cffi** (`pip install argon2-cffi`) and, for encryption at rest, **sqlcipher3** with a system SQLCipher build (`pip install sqlcipher3`; see [SQLCipher](https://www.zetetic.net/sqlcipher/) for your OS). If `encryption_level` is set but sqlcipher3 is not installed, startup fails with a clear message.
+
+### SECRET_KEY and recovery
+
+- **Unset SECRET_KEY:** If the `SECRET_KEY` environment variable is not set, a random key is used and persisted to `users/.ephemeral_secret_key` (do not commit this file). Sessions and MFA data use this key until restart.
+- **Setting a permanent SECRET_KEY:** When you later set `SECRET_KEY` in the environment and restart, the extension will automatically migrate TOTP secrets from the ephemeral key to the new key and then remove the ephemeral file. No manual action needed if the file is still present.
+- **Recovery mode:** If the ephemeral file was deleted or migration failed, users with MFA may be unable to log in. Enable recovery mode: set `RECOVERY_MODE=1`, then from an allowed host (default: localhost only), send `POST /api/mss-login/recovery/reset-mfa`. This clears MFA for all users so they can log in with password and re-enroll MFA. Override allowed hosts with `RECOVERY_MODE_HOST` or `RECOVRY_MODE_HOST` (comma-separated IPs). Recovery is only accessible when `RECOVERY_MODE` is enabled and the client IP is in the allowed list.
+
 ---
 
 ## License
-MIT License  
-You may modify and redistribute freely.
+
+Please refer to the license file found under the [readme](./readme/) folder, here: [LICENSE.md](./readme/LICENSE.md)
 
 ---
 
-# Changelog — ComfyUI Usgromana
+## Changelog — MSS-Login
 
-All notable changes to **ComfyUI Usgromana** are documented here.  
+All notable changes to the **MSS-Login** projext are documented here.
 This project follows a semantic-style versioning flow adapted for active development.
 
----
+## 0.0.1 - **Initial release**
 
-## **v 1.7.9 - Critical issue resol ed
-## 🛡️ NSFW API
-  - **Metadata tag wipe
-    - Resolved an issue which caused the metadata to be removed from images after being tagged as NSFW.
-
-=======
-
-## **v1.7.7 — NSFW Guard API & Gallery Integration (2025-12-12)**
-### 🛡️ NSFW Guard API Enhancements
-- **Metadata-based tagging system** 
-  - Images are now tagged with NSFW metadata stored alongside files (`.nsfw_metadata.json`)
-- **Gallery integration endpoint** 
-  - New `/usgromana-gallery/mark-nsfw` endpoint for manual image flagging from gallery UIs
-- **Recursive file search** 
-  - mark-nsfw endpoint now searches subdirectories to find images
-- **Enhanced API functions** 
-  - Added `set_image_nsfw_tag()` for programmatic tagging
-- **Background scanning** 
-  - Automatic scanning of output directory with intelligent caching
-- **Per-user enforcement** 
-  - SFW restrictions apply per-user based on role permissions
-
-### 🔗 Gallery Integration
-- **ComfyUI-Usgromana-Gallery compatibility** 
-  - Full integration with gallery extension
-- **Manual flagging** 
-  - Users can manually mark images as NSFW/SFW through gallery UI
-- **Metadata persistence** 
-  - NSFW tags persist across server restarts via metadata files
-
-### 🛠️ Route Registration Improvements
-- **Explicit route registration** 
-  - Routes are now explicitly registered to ensure availability
-- **Middleware whitelisting** 
-  - Gallery routes are properly whitelisted in workflow middleware
-- **Route verification** 
-  - Startup verification ensures all routes are properly registered
-
-### 📂 Architecture Updates
-- **Modular route structure** 
-  - Routes organized into dedicated modules (`routes/` directory)
-- **Separation of concerns** 
-  - NSFW logic separated into `utils/sfw_intercept/` module
-- **Public API module** 
-  - `api.py` provides clean public interface for other extensions
+- Changelog can be viewed here: [v0.0.1 Changelog](./readme/changelogs/0.0.1.md)
 
 ---
-
-## **v1.7.5 - Critical issue resolution**
-### 🛠️ Admin workflow
-  - resolved an issue which barred admins from deleting default workflows
-  - resolved and issue with extension name causing UI block to fail
-
-## **v1.7.0 - Updated extension logic & added sfw toggle
-### 🛠️ Admin User group Extension list
-  - Resolved an issue which caused duplicate extensions to be listed
-  - List now accounts for explicitly listed extensions
-### 🛠️ Per user SFW reactor intercept (Highly experimental)
-  - Admin can now toggle SFW on/off per user
-  - `utils/reactor_sfw_intercept.py` (added new file)
-
-## **v1.6.0 - Refactor & update User Workflow Administration
-### 📂 User Files Additions
-- **Monolith Addition:** Added options to select and delete individual files & Promote Workflows
-  - `routes/user.py` (Updated information passage)
-  - `web/usgromana_settings.js` (updated the middleware and UI architecture)
-
-## **v1.5.0 — Modular Refactor & Architecture Overhaul (2025-12-6)**
-### 🏗️ Architectural Refactor
-- **Monolith Split:** Deconstructed the massive `usgromana.py` into modular route handlers:
-  - `routes/auth.py` (Login/Register/Token)
-  - `routes/admin.py` (User & Group management)
-  - `routes/user.py` (User environment & status)
-  - `routes/static.py` (Asset serving)
-- **Circular Dependency Resolution:** Introduced `globals.py` to handle shared server instances and `constants.py` to centralize configuration paths.
-- **Logic Decoupling:** Moved business logic out of HTTP handlers into dedicated utilities (`utils/admin_logic.py`, `utils/json_utils.py`, `utils/bootstrap.py`).
-
-### 🛠️ Stability & Fixes
-- **Startup Resilience:** Added auto-creation logic for missing static folders (`web/css`, `web/js`, `web/html`) to prevent `aiohttp` crash on first run.
-- **Windows Pathing:** Fixed `FileNotFoundError` and path resolution issues on Windows environments.
-- **Middleware Fixes:** Restored missing `create_folder_access_control_middleware` and fixed import errors in `watcher.py`.
-- **Config Correction:** Resolved missing `MAX_TOKEN_EXPIRE_MINUTES` constant that prevented server startup.
-
-### 📂 Frontend Reorganization
-- Restructured `web/` directory for cleaner separation of concerns.
-- Consolidated ComfyUI extension scripts (`usgromana_settings.js`, `logout.js`, `injectCSS.js`) to ensure reliable auto-loading.
-- Moved HTML templates to `web/html/` and updated static route mappings.
-- Removed legacy `admin.js` to prevent conflicts with the integrated Settings UI.
-
----
-
-## **v1.4.0 — Major Security & UI Expansion**
-### 🔥 New Features
-- Added **multi-tab Usgromana Settings Panel**  
-  - Users & Roles  
-  - Permissions & UI  
-  - IP Rules  
-  - User Environment  
-- Introduced **logout button** inside Usgromana settings.
-- Implemented **transparent glass UI theme** with background blur.
-- Added **Usgromana logo watermark** support in upper-right corner.
-
-### 🔐 Security Enhancements
-- Full **save/delete workflow blocking** for restricted roles.
-- New `watcher.py` middleware to detect backend 403s and send structured UI warnings.
-- Unified blocking under `WORKFLOW_SAVE_DENIED` and `WORKFLOW_DELETE_DENIED` codes.
-- Strengthened **RBAC defaults** for guest accounts.
-- Added **extension UI gating** via CSS + runtime menu removal.
-
-### 🧠 Backend Improvements
-- New IP filtering system (`ip_filter.py`) with whitelist + blacklist modes.
-- New User Environment tools (`user_env.py`) including:  
-  - Folder purge  
-  - File listing  
-  - Gallery-mode toggles  
-- Added `create_usgromana_middleware()` unified security layer.
-- Path blocking now includes extension routes, workflow endpoints, manager access, and asset paths.
-
----
-
-## **v1.3.0 — UI Enforcement Engine Overhaul**
-### ✨ Enhancements
-- Added dynamic scanning of:  
-  - PrimeVue menus  
-  - Sidebar buttons  
-  - Settings categories  
-- Enforcement now applies every second to catch late UI loads.
-- Added hotkey interception (Ctrl+S / Ctrl+O) for restricted roles.
-- Rebuilt `patchSaveConfirmDialog` to override PrimeVue dialogs.
-
-### 🛠 Stability Updates
-- Resolved issues where guests could open extension settings.
-- Added safe defaults for undefined permissions per role.
-
----
-
-## **v1.2.0 — Folder Isolation & User Paths**
-### 🔧 New Features
-- Added per-user:  
-  - input directory  
-  - output directory  
-  - temp directory  
-- Automatic directory creation with fallback to “public” user.
-- Added `filename_prefix` rewriting for isolated naming.
-
-### 🐞 Fixes
-- Corrected queue ownership tracking.
-- Fixed history objects containing mixed-user entries.
-
----
-
-## **v1.1.0 — JWT Authentication Integration**
-### 🚀 Additions
-- Added JWT login, registration, expiration, and cookie storage.
-- Implemented guest login with auto-created “guest” user.
-- Created protections to ensure guest cannot escalate privileges.
-
-### ⚙ Backend
-- Refactored user database operations.
-- Added detection for first-time admin setup.
-
----
-
-## **v1.0.0 — Initial Release**
-- Base RBAC system  
-- Permission flags stored in `usgromana_groups.json`  
-- Middleware for execution, upload, manager access  
-- Basic UI blocking  
-- Initial Usgromana settings entry (pre-tabs)
-
----
-
-## Upcoming Features (Planned for v1.5+)
-- Live audit logging panel  
-- Real-time session viewer  
-- Admin ability to force logout users  
-- Per-user storage quotas  
-- Automated workflow sandboxing  
-- Theme customization panel
-
----
-

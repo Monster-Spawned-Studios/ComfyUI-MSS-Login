@@ -1,5 +1,8 @@
 import { $el } from "/scripts/ui.js";
 
+/** DOMPurify for sanitizing the logout button. */
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
+
 async function setupLogout() {
   try {
     await new Promise((resolve) => {
@@ -18,7 +21,7 @@ async function setupLogout() {
         sessionStorage.clear();
         document.cookie.split(";").forEach((cookie) => {
           const cookieName = cookie.split("=")[0].trim();
-          document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
+          document.cookie = `${DOMPurify.sanitize(cookieName)}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; secure; samesite=strict`;
         });
 
         window.location.href = "/logout";
@@ -36,7 +39,7 @@ async function setupLogout() {
           "button",
           {
             className:
-              "p-button p-component p-button-icon-only p-button-text comfy-settings-btn side-bar-button p-button-secondary usgromana-logout",
+              "p-button p-component p-button-icon-only p-button-text comfy-settings-btn side-bar-button p-button-secondary mss-login-logout",
             type: "button",
             id: "logout-button",
             ariaLabel: "Logout",
@@ -82,12 +85,12 @@ async function setupLogout() {
           ]
         );
       } catch (err) {
-        console.error("Error creating menu logout button:", err);
+        console.error("Error creating menu logout button: ", err);
       }
     }
 
   } catch (error) {
-    console.error("Error setting up Logout button:", error);
+    console.error("Error setting up Logout button: ", error);
   }
 }
 
@@ -128,14 +131,14 @@ async function checkAndSetupLogout() {
 // Register as ComfyUI extension to ensure it loads
 if (typeof app !== 'undefined' && app.registerExtension) {
   app.registerExtension({
-    name: "Usgromana.Logout",
+    name: "mss-login.Logout",
     async setup() {
       // Start the interval to check for logout button
       // Only run if interval isn't already running (prevent duplicates)
       if (!logoutIntervalId) {
         logoutIntervalId = setInterval(checkAndSetupLogout, 500);
         // Store for potential cleanup
-        window._usgromanaLogoutInterval = logoutIntervalId;
+        window._mss_loginLogoutInterval = logoutIntervalId;
       }
     }
   });
@@ -144,6 +147,6 @@ if (typeof app !== 'undefined' && app.registerExtension) {
   // Only run if interval isn't already running
   if (!logoutIntervalId) {
     logoutIntervalId = setInterval(checkAndSetupLogout, 500);
-    window._usgromanaLogoutInterval = logoutIntervalId;
+    window._mss_loginLogoutInterval = logoutIntervalId;
   }
 }

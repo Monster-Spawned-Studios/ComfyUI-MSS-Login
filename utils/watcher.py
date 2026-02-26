@@ -3,7 +3,7 @@
 import logging
 from aiohttp import web
 
-LOG = logging.getLogger("usgromana.watcher")
+LOG = logging.getLogger("mss-login.watcher")
 
 WORKFLOW_DENY_CODE = "WORKFLOW_SAVE_DENIED"
 
@@ -15,6 +15,7 @@ def create_error_watcher_middleware():
       - If a 403 occurs on /api/userdata/workflows*, tag it so the UI can react
       - Optionally log it
     """
+
     @web.middleware
     async def middleware(request: web.Request, handler):
         resp = await handler(request)
@@ -27,7 +28,7 @@ def create_error_watcher_middleware():
 
         # Only touch workflow userdata endpoints
         if path.startswith("/api/userdata/workflows"):
-            resp.headers["X-Usgromana-Error"] = WORKFLOW_DENY_CODE
+            resp.headers["X-mss-login-Error"] = WORKFLOW_DENY_CODE
             LOG.info(
                 "[Watcher] Tagged workflow save denial: path=%s method=%s",
                 path,
@@ -42,6 +43,6 @@ def create_error_watcher_middleware():
 def register(app: web.Application):
     """
     Attach the watcher middleware to the app.
-    Call this *after* access_control.create_usgromana_middleware()
+    Call this *after* access_control.create_mss_login_middleware()
     """
     app.middlewares.append(create_error_watcher_middleware())

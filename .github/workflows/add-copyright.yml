@@ -1,0 +1,22 @@
+# Add copyright headers to the project
+name: Add copyright headers
+
+on:
+    push:
+        branches: [development, production]
+    pull_request:
+        branches: [development, production]
+
+jobs:
+    add-copyright:
+        name: Add copyright headers
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.13"
+            - name: Check copyright headers
+              run: python scripts/add_copyright.py --check

@@ -7,38 +7,39 @@
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#05060a" media="(prefers-color-scheme: dark)">
 
-    <title>ComfyUI Usgromana - Login</title>
+    <title>MSS-Login - Login</title>
 
-    <link rel="icon" href="/usgromana/assets/light_icon.ico" type="image/x-icon">
+    <link rel="icon" href="/mss-login/assets/mss_logo.png" type="image/png">
 
     <!-- Light mode favicon -->
-    <link rel="icon" type="image/x-icon"
-        href="/usgromana/assets/light_icon.ico"
+    <link rel="icon" type="image/png"
+        href="/mss-login/assets/mss_logo.png"
         media="(prefers-color-scheme: light)">
 
     <!-- Dark mode favicon -->
-    <link rel="icon" type="image/x-icon"
-        href="/usgromana/assets/dark_icon.ico"
+    <link rel="icon" type="image/png"
+        href="/mss-login/assets/mss_logo.png"
         media="(prefers-color-scheme: dark)">
 
-    <link rel="stylesheet" type="text/css" href="/usgromana/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="/mss-login/css/styles.css">
 </head>
 
 <body>
     <div class="container">
         <picture>
-            <!-- Dark mode neon logo -->
-            <source srcset="/usgromana/assets/dark_logo_transparent.png"
+            <!-- Dark mode logo -->
+            <source srcset="/mss-login/assets/mss_logo.png"
                     media="(prefers-color-scheme: dark)">
-            <!-- Light mode metallic logo -->
-            <source srcset="/usgromana/assets/light_logo_transparent.png"
+            <!-- Light mode logo -->
+            <source srcset="/mss-login/assets/mss_logo.png"
                     media="(prefers-color-scheme: light)">
             <img class="logo"
-                src="/usgromana/assets/logo_transparent.png"
-                alt="USG Logo">
+                src="/mss-login/assets/mss_logo.png"
+                alt="MSS-Login Logo">
         </picture>
         <h1 class="title login">Login</h1>
-        <form id="login-form" onsubmit="login(event)">
+        <!-- method="post" and action prevent credentials from ever being sent in the URL (e.g. if JS is disabled). -->
+        <form id="login-form" method="post" action="/login" onsubmit="login(event)">
             <div class="form-field">
                 <label for="username">Username:</label>
                 <input type="text" id="username" name="username" required>
@@ -48,7 +49,7 @@
                 <input type="password" id="password" name="password" required>
             </div>
             <div class="form-field">
-                <a href="/usgromana/generate_token">Get API Token</a>
+                <a href="/mss-login/generate_token">Get API Token</a>
             </div>
             <div class="form-field">
                 <a href="/register">Register a New User</a>
@@ -64,20 +65,14 @@
             <input type="hidden" id="guest_login_flag" name="guest_login" value="false">
             <!-- Version info -->
             <div>
-                <p class="version-info",
-                    style="margin-top:1rem;
-                    font-size:0.9rem;
-                    color: #888888;
-                    text-align:center;
-                    "
-                    >
-                ComfyUI Usgromana - v1.8.1</p>
+                <p class="version-info" style="margin-top:1rem; font-size:0.9rem; color: #888888; text-align:center;">
+                MSS-Login - v1.8.1</p>
             </div>
         </form>
     </div>
     <div class="toast-container" id="toasts"></div>
 </body>
-<script src="/usgromana/js/auth.js"></script>
+<script src="/mss-login/js/auth.js"></script>
 
 </html>
 
