@@ -149,8 +149,9 @@ async def api_model_download_start(request: web.Request) -> web.Response:
             {"error": "No API key set for this source"}, status=400
         )
 
-    # Resolve destination path
+    # Resolve destination path and verify it stays within the expected base directory
     dest_dir = None
+    base_dir = None
     if destination_type == "local":
         try:
             from folder_paths import (  # pyright: ignore[reportMissingImports]
@@ -161,8 +162,10 @@ async def api_model_download_start(request: web.Request) -> web.Response:
             paths = get_folder_paths(folder_type)
             if paths:
                 dest_dir = paths[0]
+                base_dir = os.path.realpath(models_path)
             else:
                 dest_dir = os.path.join(models_path, folder_type)
+                base_dir = os.path.realpath(models_path)
         except Exception:
             return web.json_response(
                 {"error": "Could not resolve local model path"}, status=500
@@ -173,8 +176,16 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 
             mgr = get_mount_manager()
             dest_dir = os.path.join(mgr.local_root, folder_type)
+            base_dir = os.path.realpath(mgr.local_root)
         except Exception:
             return web.json_response({"error": "S3 mount not available"}, status=500)
+
+    # Path-traversal containment: resolved dest_dir must be under or equal to the base
+    resolved_dest = os.path.realpath(dest_dir)
+    if not (resolved_dest == base_dir or resolved_dest.startswith(base_dir + os.sep)):
+        return web.json_response(
+            {"error": "Destination path escapes allowed directory"}, status=400
+        )
 
     response = web.StreamResponse(
         status=200,

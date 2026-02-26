@@ -4,3 +4,5 @@ mkdocs
 noindex
 osascript
 rclone
+mss_login
+mss-login

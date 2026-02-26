@@ -43,7 +43,7 @@
 		"legacy_json_path": "data/session_tokens.json"
 	},
 	"auto_update": {
-		"enabled": false,
+		"enabled": true,
 		"mode": "notify",
 		"check_url": "https://api.github.com/repos/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases/latest",
 		"check_interval_hours": 24,
@@ -53,7 +53,7 @@
 	"token_algorithm": "HS256",
 	"experimental_features": false,
 	"s3_storage": {
-		"enabled": true,
+		"enabled": false,
 		"endpoint_url": "",
 		"bucket_name": "",
 		"region": "",
