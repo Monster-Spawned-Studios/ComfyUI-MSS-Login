@@ -3,34 +3,47 @@
 name: Code quality
 
 on:
-    push:
-        branches: [production]
-    pull_request:
-        branches: [production]
+  push:
+    branches: [production]
+  pull_request:
+    branches: [production]
 
 jobs:
-    ruff:
-        name: Ruff (lint)
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v5
-            - name: Run Ruff
-              uses: astral-sh/ruff-action@v3
-              with:
-                  args: "check --output-format=github ."
-                  src: "."
-                  version: "latest"
+  ruff:
+    name: Ruff (lint)
+    runs-on: [self-hosted, win11]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Run Ruff
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: "check --output-format=github"
+          src: "."
+          version: "latest"
 
-    ruff-format:
-        name: Ruff (format check)
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v5
-            - name: Run Ruff format check
-              uses: astral-sh/ruff-action@v3
-              with:
-                  args: "format --check ."
-                  src: "."
-                  version: "latest"
+  ruff-format:
+    name: Ruff (format check)
+    runs-on: [self-hosted, win11]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Run Ruff format check
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: "format check --diff --output-format=github"
+          src: "."
+          version: "latest"
+
+  ruff-fix:
+    name: Ruff (fix)
+    runs-on: [self-hosted, win11]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Run Ruff fix
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: "fix --output-format=github"
+          src: "."
+          version: "latest"

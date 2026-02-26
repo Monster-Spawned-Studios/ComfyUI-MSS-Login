@@ -1,6 +1,10 @@
+checkpw
 Civit
 civitai
 comfyui
+cuda
+hashpw
 pycache
+rocm
 venv
 webdav

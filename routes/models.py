@@ -5,9 +5,10 @@ Routes: GET /models, GET /models/{folder}, GET /embeddings.
 from aiohttp import web
 
 from utils import jwt_auth, users_db
-from ..globals import routes
-from ..utils.model_cache import get_model_cache
+
 from ..constants import USERS_DB_CONFIG
+from ..globals import logger, routes
+from ..utils.model_cache import get_model_cache
 
 
 def is_admin(request: web.Request) -> bool:
@@ -24,7 +25,8 @@ def is_admin(request: web.Request) -> bool:
         if not u:
             return False
         return u.get("admin", False) or "admin" in u.get("groups", [])
-    except:
+    except Exception as e:
+        logger.error(f"[MSS-Login] is_admin error: {e}")
         return False
 
 

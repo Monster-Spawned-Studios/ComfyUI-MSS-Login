@@ -1,10 +1,23 @@
 {
   "recommendations": [
-    "ms-python.python",
     "ms-python.debugpy",
     "usernamehw.errorlens",
     "njpwerner.autodocstring",
     "ms-python.black-formatter",
-    "edwinhuish.better-comments-next"
+    "edwinhuish.better-comments-next",
+    "streetsidesoftware.code-spell-checker",
+    "editorconfig.editorconfig",
+    "github.vscode-github-actions",
+    "ms-azuretools.vscode-docker",
+    "docker.docker",
+    "gitlab.gitlab-workflow",
+    "ms-python.isort",
+    "christian-kohler.path-intellisense",
+    "esbenp.prettier-vscode",
+    "donjayamanne.python-extension-pack",
+    "mgesbert.python-path",
+    "snyk-security.snyk-vulnerability-scanner",
+    "gruntfuggly.todo-tree",
+    "ygqygq2.turbo-file-header"
   ]
 }

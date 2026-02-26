@@ -15,24 +15,11 @@ ComfyUI-MSS-Login adds role-based access control (RBAC), UI enforcement, workflo
 
 ## Key features
 
-| Feature | Description |
-|--------|-------------|
-| **RBAC** | Four roles (Admin, Power, User, Guest) with configurable permissions in `mss_login_groups.json` |
-| **UI enforcement** | Dynamic hiding/blocking of menu items, extensions, and workflow save/load for restricted roles |
-| **Workflow protection** | Per-user workflow storage; save/delete blocked for non-privileged users |
-| **IP filtering** | Whitelist/blacklist with live editing in the settings panel |
-| **NSFW Guard API** | Public Python API and HTTP endpoints for NSFW detection and manual tagging |
-| **Extension Tabs API** | JavaScript API for other extensions to add tabs to the mss-login admin panel |
-
-## Building this documentation locally
-
-From the project root:
-
-```bash
-pip install mkdocs mkdocs-material
-python scripts/build_docs.py
-mkdocs build
-mkdocs serve
-```
-
-Then open `http://127.0.0.1:8000`. The `build_docs.py` script regenerates the API reference and extension API pages from the source code.
+| Feature                 | Description                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| **RBAC**                | Five roles (Owner, Admin, Power, User, Guest) with configurable permissions in `mss_login_groups.json` |
+| **UI enforcement**      | Dynamic hiding/blocking of menu items, extensions, and workflow save/load for restricted roles         |
+| **Workflow protection** | Per-user workflow storage; save/delete blocked for non-privileged users                                |
+| **IP filtering**        | Whitelist/blacklist with live editing in the settings panel                                            |
+| **NSFW Guard API**      | Public Python API and HTTP endpoints for NSFW detection and manual tagging                             |
+| **Extension Tabs API**  | JavaScript API for other extensions to add tabs to the mss-login admin panel                           |

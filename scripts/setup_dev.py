@@ -5,12 +5,12 @@ All Rights Reserved.
 """
 
 import logging
+import subprocess
+from argparse import ArgumentParser
 from os import getcwd, makedirs
 from os.path import exists
-from argparse import ArgumentParser
-import subprocess
+from platform import machine, system
 from time import sleep
-from platform import system, machine
 
 parser = ArgumentParser(
     description="Setup the local development environment for the ComfyUI-MSS-Login extension."
@@ -69,7 +69,7 @@ args = parser.parse_args()
 
 logger = logging.getLogger("MSS-Login Setup Tool")
 
-logger.info(f"The application has started and will now begin its task.")
+logger.info("The application has started and will now begin its task.")
 
 arg_values = {
     "python_version": args.python,
@@ -89,9 +89,9 @@ if not exists(f"{getcwd()}/logs"):
     try:
         makedirs(f"{getcwd()}/logs", exist_ok=True)
     except Exception as e:
-        logger.error(f"Failed to create the logs directory: {e}")
+        logger.error("Failed to create the logs directory: %s", e)
         logger.error("Please create the logs directory manually and try again.")
-        logger.error(f"The logs directory should be located at: {getcwd()}/logs")
+        logger.error("The logs directory should be located at: %s", f"{getcwd()}/logs")
         logger.error("This application will now exit.")
         sleep(3)
     exit(1)
@@ -112,69 +112,60 @@ else:
         filemode="a",
     )
 
-"""
-Setup the local development environment for the ComfyUI-MSS-Login extension.
-
-This function will:
-- Create a virtual environment for the project, using the `uv venv` command.
-- Install the dependencies for the project, using the `uv sync` command.
-- Create a local ComfyUI installation, using the `comfy` command (based on
-	the current system platform and architecture).
-
-Args:
-    python_version: The version of Python to use for the virtual environment.
-    dev_group: The group to use for the development dependencies.
-    comfyui_group: The group to use for the ComfyUI dependencies.
-"""
-
 
 def setup_dev(
     python_version: str = "3.13", dev_group: str = "dev", comfyui_group: str = "comfyui"
 ) -> bool:
+    """
+    Setup the local development environment for the ComfyUI-MSS-Login extension.
+
+    This function will:
+    - Create a virtual environment for the project, using the `uv venv` command.
+    - Install the dependencies for the project, using the `uv sync` command.
+    - Create a local ComfyUI installation, using the `comfy` command (based on
+            the current system platform and architecture).
+
+    Args:
+        python_version: The version of Python to use for the virtual environment.
+        dev_group: The group to use for the development dependencies.
+        comfyui_group: The group to use for the ComfyUI dependencies.
+    """
     logger.info(
-        f"Setting up the local development environment for the ComfyUI-MSS-Login extension using Python {python_version}."
+        "[MSS-Login] Setting up the local development environment for the ComfyUI-MSS-Login extension using Python %s.",
+        python_version,
     )
     logger.debug(
-        f"Creating a virtual environment for the project using Python {python_version}."
+        "Creating a virtual environment for the project using Python %s.",
+        python_version,
     )
     try:
         subprocess.run(["uv", "venv", "--python", f"{python_version}"], check=True)
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to create a virtual environment for the project: {e}")
+        logger.error("Failed to create a virtual environment for the project: %s", e)
         return False
     logger.debug(
-        f"Installing the dependencies for the project using the {dev_group} group."
+        "Installing the dependencies for the project using the %s group.",
+        dev_group,
     )
     try:
         subprocess.run(["uv", "sync", "--group", f"{dev_group}"], check=True)
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to install the dependencies for the project: {e}")
+        logger.error("Failed to install the dependencies for the project: %s", e)
         return False
     logger.debug(
-        f"Creating a local ComfyUI installation using the {comfyui_group} group."
+        "Creating a local ComfyUI installation using the %s group.",
+        comfyui_group,
     )
     try:
-        subprocess.run(["comfy", "install", "--group", f"{comfyui_group}"], check=True)
+        subprocess.run(["comfy", "install", "--group", comfyui_group], check=True)
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to create a local ComfyUI installation: {e}")
+        logger.error("Failed to create a local ComfyUI installation: %s", e)
         return False
     logger.info(
-        f"Local development environment setup complete for the ComfyUI-MSS-Login extension using Python {python_version}."
+        "[MSS-Login] Local development environment setup complete for the ComfyUI-MSS-Login extension using Python %s.",
+        python_version,
     )
     return True
-
-
-"""I
-Install ComfyUI and its dependencies.
-
-Args:
-    python_version: The version of Python to use for the virtual environment.
-    dev_group: The group to use for the development dependencies.
-    comfyui_group: The group to use for the ComfyUI dependencies.
-    debug_mode: Whether to enable debug logging.
-    verbose: Whether to enable verbose logging.
-    install_comfyui: Whether to install ComfyUI and its dependencies.
-"""
 
 
 def install_comfyui(
@@ -182,11 +173,24 @@ def install_comfyui(
     comfyui_group: str = "comfyui",
     comfyui_dir: str = "ComfyUI",
 ) -> bool:
+    """Install ComfyUI and its dependencies.
+
+    Args:
+        python_version: The version of Python to use for the virtual environment.
+        dev_group: The group to use for the development dependencies.
+        comfyui_group: The group to use for the ComfyUI dependencies.
+        debug_mode: Whether to enable debug logging.
+        verbose: Whether to enable verbose logging.
+        install_comfyui: Whether to install ComfyUI and its dependencies.
+    """
     logger.info(
-        f"Installing ComfyUI and its dependencies using Python version '{python_version}'."
+        "Installing ComfyUI and its dependencies using Python version '%s'.",
+        python_version,
     )
     logger.debug(
-        f"Installing ComfyUI and its dependencies using the {comfyui_group} group into the {comfyui_dir} directory."
+        "Installing ComfyUI and its dependencies using the %s group into the %s directory.",
+        comfyui_group,
+        comfyui_dir,
     )
     try:
         if (system() == "Darwin" and machine() == "arm64") or arg_values.get(
@@ -197,7 +201,7 @@ def install_comfyui(
                     "uv",
                     "run",
                     "--group",
-                    f"{comfyui_group}",
+                    comfyui_group,
                     "comfy",
                     f"--workspace={comfyui_dir.replace('\\', '/')}",
                     "install",
@@ -216,7 +220,7 @@ def install_comfyui(
                     "uv",
                     "run",
                     "--group",
-                    f"{comfyui_group}",
+                    comfyui_group,
                     "comfy",
                     f"--workspace={comfyui_dir.replace('\\', '/')}",
                     "install",
@@ -233,7 +237,7 @@ def install_comfyui(
                     "uv",
                     "run",
                     "--group",
-                    f"{comfyui_group}",
+                    comfyui_group,
                     "comfy",
                     f"--workspace={comfyui_dir.replace('\\', '/')}",
                     "install",
@@ -262,27 +266,31 @@ def install_comfyui(
             return False
     except subprocess.CalledProcessError as e:
         logger.error(
-            f"Failed to install ComfyUI and its dependencies into the {comfyui_dir} directory: {e}"
+            "Failed to install ComfyUI and its dependencies into the %s directory: %s",
+            comfyui_dir,
+            e,
         )
         return False
     logger.info(
-        f"ComfyUI and its dependencies installed successfully into the {comfyui_dir} directory using Python version '{python_version}'."
+        "[MSS-Login] ComfyUI and its dependencies installed successfully into the %s directory using Python version '%s'.",
+        comfyui_dir,
+        python_version,
     )
     return True
 
 
-"""
-Main function to setup the local development environment for the ComfyUI-MSS-Login extension.
-
-Args:
-    python_version: The version of Python to use for the virtual environment.
-    dev_group: The group to use for the development dependencies.
-    comfyui_group: The group to use for the ComfyUI dependencies.
-    debug_mode: Whether to enable debug logging.
-    verbose: Whether to enable verbose logging.
-    install_comfyui: Whether to install ComfyUI and its dependencies.
-"""
 if __name__ == "__main__":
+    """
+    Main function to setup the local development environment for the ComfyUI-MSS-Login extension.
+
+    Args:
+        python_version: The version of Python to use for the virtual environment.
+        dev_group: The group to use for the development dependencies.
+        comfyui_group: The group to use for the ComfyUI dependencies.
+        debug_mode: Whether to enable debug logging.
+        verbose: Whether to enable verbose logging.
+        install_comfyui: Whether to install ComfyUI and its dependencies.
+    """
     try:
         if setup_dev(
             arg_values["python_version"],
@@ -301,10 +309,12 @@ if __name__ == "__main__":
                     logger.error("Failed to install ComfyUI and its dependencies.")
             else:
                 logger.info(
-                    "ComfyUI and its dependencies not installed. You can install them manually using the `install_comfyui` flag."
+                    "[MSS-Login] ComfyUI and its dependencies not installed. You can install them manually using the `install_comfyui` flag."
                 )
     except Exception as e:
-        logger.error(f"Failed to setup the local development environment: {e}")
+        logger.error("Failed to setup the local development environment: %s", e)
+        logger.info("Please review the log file for more information.")
+        logger.info("The log file is located at: %s", log_file)
     finally:
         logger.info("The application has completed its task and will now exit.")
         sleep(3)

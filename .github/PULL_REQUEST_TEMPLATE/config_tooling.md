@@ -1,4 +1,4 @@
-## Description
+# Description
 
 What CI, config, or tooling this PR changes (workflows, Ruff/pyproject, labels, scripts, etc.).
 

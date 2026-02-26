@@ -50,7 +50,7 @@ What actually happened (error message, screenshot, or console output if relevant
 
 Paste relevant server logs, browser console errors, or `mss-login.log` excerpts (redact secrets/tokens).
 
-```
+```plaintext
 (paste here)
 ```
 

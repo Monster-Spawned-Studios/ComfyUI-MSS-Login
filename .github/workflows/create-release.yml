@@ -1,0 +1,44 @@
+name: Create Release
+
+on:
+    push:
+        branches:
+            - production
+            - release/*
+    workflow_dispatch:
+        inputs:
+            version:
+                description: The version of the release
+                required: true
+                default: "0.0.1"
+
+permissions:
+    contents: read
+    discussions: write
+    pull-requests: write
+
+jobs:
+    build:
+        name: Build
+        runs-on: [self-hosted, win11]
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6
+            - name: Compress Node Files
+              run: zip -r MSS-Login-v{{ inputs.version }}.zip readme/*.md readme/changelogs/{{ inputs.version }}.md routes scripts users web utils __init__.py .env.example api.py config.default.json constants.py globals.py mss_login.py nodes.py pyproject.toml requirements.txt requirements_cuda.txt requirements_metal.txt README.md
+            - name: Test Changelog
+              run: cat readme/changelogs/{{ inputs.version }}.md
+            - name: Release
+              uses: softprops/action-gh-release@v2
+              if: github.ref_type == 'tag'
+              with:
+                  files: |
+                      - "readme/changelogs/{{ inputs.version }}.md"
+                      - "MSS-Login-v{{ inputs.version }}.zip"
+                  token: ${{ secrets.GITHUB_TOKEN }}
+                  name: "Release v{{ inputs.version }}"
+                  tag_name: "{{ inputs.version }}"
+                  make_latest: true
+                  draft: false
+                  prerelease: false
+                  body_path: "readme/changelogs/{{ inputs.version }}.md"
