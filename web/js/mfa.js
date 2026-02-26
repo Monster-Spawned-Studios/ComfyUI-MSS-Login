@@ -3,8 +3,8 @@
  * Token and mode are read from sessionStorage (set by login page before redirect).
  * APIs: /mss-login/api/mfa/setup, verify-setup, verify.
  */
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
 
+/** DOMPurify for sanitizing the MFA forms (loaded by the HTML page when used standalone). */
 (function () {
 	"use strict";
 

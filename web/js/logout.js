@@ -1,10 +1,22 @@
 import { $el } from "/scripts/ui.js";
 
-/** DOMPurify for sanitizing the logout button. */
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/2.4.0/purify.min.js"></script>
+/** DOMPurify for sanitizing the logout button (loaded dynamically when run inside ComfyUI). */
+const DOMPURIFY_CDN = "https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js";
+
+function loadDOMPurify() {
+  if (typeof window.DOMPurify !== "undefined") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = DOMPURIFY_CDN;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("Failed to load DOMPurify"));
+    document.head.appendChild(s);
+  });
+}
 
 async function setupLogout() {
   try {
+    await loadDOMPurify();
     await new Promise((resolve) => {
       const interval = setInterval(() => {
         const sideBar = document.querySelector(".side-tool-bar-end");
