@@ -331,7 +331,9 @@ async function login(event) {
         }
 
         addToast(result.message || "Login successful", "success");
-        window.location.href = "/";
+        // Browser-only redirect: only runs after form submit on the login page. Does not affect
+        // headless/API JWT usage (POST /login returns JSON; API clients use the token and never load this script).
+        window.location.href = "/loading";
       } else {
         usernameField.classList.add("error");
         passwordField.classList.add("error");
@@ -394,7 +396,8 @@ async function guestLogin(event) {
       }
 
       addToast(result.message || "Guest login successful", "success");
-      window.location.href = "/";
+      // Browser-only redirect; API/headless JWT clients are unaffected (they do not run this code).
+      window.location.href = "/loading";
     } else {
       addToast(result.error || result.message || "Guest login failed", "error");
     }

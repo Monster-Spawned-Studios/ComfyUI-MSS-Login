@@ -133,6 +133,7 @@ class AccessControl:
                         "/login",
                         "/register",
                         "/logout",
+                        "/loading",
                         "/mss-login",
                         "/mss-login-gallery",
                         "/static",

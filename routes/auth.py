@@ -103,6 +103,16 @@ async def post_register(request: web.Request) -> web.Response:
     return web.json_response({"message": "User registered"})
 
 
+@routes.get("/loading")
+async def get_loading(request: web.Request) -> web.Response:
+    """Serve the loading page (between login and ComfyUI). Requires valid JWT; unauthenticated users are redirected by JWT middleware.
+    Browser-only: headless/API clients that use JWT (e.g. ComfyUI API image generation) never request this route; they use the token from POST /login and call /prompt etc. directly."""
+    path = os.path.join(HTML_DIR, "loading.html")
+    if not os.path.exists(path):
+        return web.Response(text="loading.html not found", status=404)
+    return web.FileResponse(path)
+
+
 @routes.get("/login")
 async def get_login(request: web.Request) -> web.Response:
     if not users_db.load_users():
