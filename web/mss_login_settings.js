@@ -2,7 +2,7 @@ import { api } from "../../scripts/api.js";
 import { app } from "../../scripts/app.js";
 import { $el, ComfyDialog } from "../../scripts/ui.js";
 
-const GROUPS = ["admin", "power", "user", "guest"];
+const GROUPS = ["owner", "admin", "power", "user", "guest"];
 let currentUser = null;
 let groupsConfig = {};
 

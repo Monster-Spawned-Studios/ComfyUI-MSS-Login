@@ -1,5 +1,10 @@
+agentic
+ckpt
 donotpresent
+dotenv
+dotenvx
 ehthumbs
+loras
 mkdocs
 mss_login
 mss-login
@@ -7,9 +12,6 @@ noindex
 osascript
 pymdownx
 rclone
-totp
 seperate
-loras
-dotenvx
-dotenv
-ckpt
+totp
+Usgromana
