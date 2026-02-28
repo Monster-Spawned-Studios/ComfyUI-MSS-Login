@@ -49,7 +49,7 @@ jobs:
                   python-version: "3.13"
 
             - name: Install MkDocs and Material theme
-              run: pip install mkdocs "mkdocs-material"
+              run: pip install -U mkdocs "mkdocs-material"
 
             - name: Generate API docs
               run: python scripts/build_docs.py
