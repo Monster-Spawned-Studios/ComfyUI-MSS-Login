@@ -4,9 +4,9 @@ name: Security scan
 
 on:
     push:
-        branches: [development, production]
+        branches: [development, production, release/*]
     pull_request:
-        branches: [development, production]
+        branches: [development, production, release/*]
     schedule:
         - cron: "0 6 * * 1" # Weekly Monday 06:00 UTC
     workflow_dispatch:

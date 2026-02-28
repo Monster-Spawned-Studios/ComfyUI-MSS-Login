@@ -3,17 +3,16 @@ name: Create Release
 on:
   push:
     branches:
-      - production
       - release/*
   workflow_dispatch:
     inputs:
       version:
-        description: The version of the release
-        required: true
-        default: "0.0.1"
+        description: "Release version (X.X.X). Leave empty to auto-increment patch from latest tag"
+        required: false
+        default: ""
 
 permissions:
-  contents: read
+  contents: write
   discussions: write
   pull-requests: write
 
@@ -24,21 +23,78 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            v="${{ inputs.version }}"
+            v="${v// /}"
+            if [ -n "$v" ]; then
+              echo "version=$v" >> "$GITHUB_OUTPUT"
+              echo "Resolved version (from input): $v"
+            else
+              # Auto-increment: latest tag (e.g. v1.2.3 or 1.2.3) -> bump patch
+              latest=$(git tag -l --sort=-v:refname 2>/dev/null | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+              if [ -z "$latest" ]; then
+                echo "version=0.0.1" >> "$GITHUB_OUTPUT"
+                echo "Resolved version (no tags): 0.0.1"
+              else
+                latest=${latest#v}
+                maj=${latest%%.*}; rest=${latest#*.}
+                min=${rest%%.*}; patch=${rest#*.}
+                patch=${patch%%-*}; patch=${patch%%+*}
+                patch=$((patch + 1))
+                next="${maj}.${min}.${patch}"
+                echo "version=$next" >> "$GITHUB_OUTPUT"
+                echo "Resolved version (auto-incremented from $latest): $next"
+              fi
+            fi
+          else
+            # Push to release/*: use branch name e.g. release/1.2.3 -> 1.2.3
+            echo "version=${GITHUB_REF_NAME#release/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate version format (manual run)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          v="${{ steps.version.outputs.version }}"
+          if [[ ! "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Version must look like X.X.X (e.g. 1.2.3). Got: $v"
+            exit 1
+          fi
+          echo "Version format OK: $v"
+
+      - name: Create and push release branch
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          BRANCH="release/${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git push -u origin "$BRANCH"
+
       - name: Compress Node Files
-        run: zip -r MSS-Login-v{{ inputs.version }}.zip readme/*.md readme/changelogs/{{ inputs.version }}.md routes scripts users web utils __init__.py .env.example api.py config.default.json constants.py globals.py mss_login.py nodes.py pyproject.toml requirements.txt requirements_cuda.txt requirements_metal.txt README.md
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          zip -r "MSS-Login-v${V}.zip" readme/*.md "readme/changelogs/${V}.md" routes scripts users web utils __init__.py .env.example api.py config.default.json constants.py globals.py mss_login.py nodes.py pyproject.toml requirements.txt requirements_cuda.txt requirements_metal.txt README.md
+
       - name: Test Changelog
-        run: cat readme/changelogs/{{ inputs.version }}.md
+        run: cat "readme/changelogs/${{ steps.version.outputs.version }}.md"
+
       - name: Release
+        if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
-        if: github.ref_type == 'tag'
         with:
           files: |
-            - "readme/changelogs/{{ inputs.version }}.md"
-            - "MSS-Login-v{{ inputs.version }}.zip"
+            readme/changelogs/${{ steps.version.outputs.version }}.md
+            MSS-Login-v${{ steps.version.outputs.version }}.zip
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: "Release v{{ inputs.version }}"
-          tag_name: "{{ inputs.version }}"
+          name: "Release v${{ steps.version.outputs.version }}"
+          tag_name: "${{ steps.version.outputs.version }}"
           make_latest: true
           draft: false
           prerelease: false
-          body_path: "readme/changelogs/{{ inputs.version }}.md"
+          body_path: readme/changelogs/${{ steps.version.outputs.version }}.md
