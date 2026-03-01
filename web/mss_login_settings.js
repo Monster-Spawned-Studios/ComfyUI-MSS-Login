@@ -241,7 +241,7 @@ const CSS_BLOCK_MAP = {
         "li[aria-label='Lite Graph']",
         "li.p-listbox-option[aria-label='Lite Graph']"
     ],
-    "Serttings_3D": [
+    "Settings_3D": [
         "li[aria-label='3D']",
         "li.p-listbox-option[aria-label='3D']"
     ],

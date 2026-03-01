@@ -1,3 +1,5 @@
+"""Force HTTPS middleware."""
+
 from aiohttp import web
 
 
