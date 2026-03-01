@@ -243,6 +243,7 @@ Then open `http://127.0.0.1:8000`. The script `scripts/build_docs.py` regenerate
 ### Extending the node
 
 - **HTTP API** — See the generated [API Reference](docs/api-reference/endpoints.md) for all custom endpoints (auth, admin, user, MFA, recovery). For workflow and intercepted paths, see [Workflow & intercepted](docs/api-reference/workflow-endpoints.md).
+- **Headless JWT session** — Use [WebSocket and REST only](docs/guide/headless-jwt-session.md) (no HTML) with a valid JWT to run ComfyUI headless; no loading page or full UI required.
 - **Python Extension API** — Use the [NSFW Guard API](docs/extension-api/nsfw-guard-api.md) from other ComfyUI extensions to check or tag NSFW content.
 - **Overview** — [Extending the node](docs/guide/extending.md) summarizes how to use both the HTTP and Python APIs in your projects.
 

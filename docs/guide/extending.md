@@ -16,6 +16,8 @@ Full list with methods and paths:
 
 Authentication is typically via session cookie (browser) or JWT / API token (Bearer) for programmatic access. Generate long-lived API tokens via `POST /mss-login/generate_token` (see endpoints doc).
 
+**Headless clients** (no browser, no HTML): use only WebSocket and REST with the same token. See [Headless JWT session](headless-jwt-session.md) for WebSocket URL, REST endpoints (prompt, queue, history, workflows, view), and how to send the token. No loading page or full UI is required.
+
 ## Python extension API (NSFW Guard)
 
 Other ComfyUI custom nodes can use the **NSFW Guard** API to:
@@ -60,5 +62,6 @@ Other extensions can add custom tabs to the mss-login admin panel. See the proje
 |----------|----------------|
 | Call login, token, admin, user, MFA, recovery endpoints | [API Reference: Endpoints](../api-reference/endpoints.md) |
 | Workflow list/save/load/delete, /view NSFW, /prompt user tagging | [Workflow & intercepted](../api-reference/workflow-endpoints.md) |
+| Headless session (WebSocket + REST only, no HTML) | [Headless JWT session](headless-jwt-session.md) |
 | Use NSFW checks or tagging from Python (custom nodes) | [NSFW Guard API](../extension-api/nsfw-guard-api.md) |
 | Add a tab to the mss-login settings modal | README / EXTENSION_TABS_API.md |

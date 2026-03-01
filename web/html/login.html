@@ -88,50 +88,6 @@
 </body>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js"></script>
 <script src="/mss-login/js/auth.js"></script>
-<script>
-(function () {
-    var section = document.getElementById("login-news-section");
-    var feedEl = document.getElementById("login-news-feed");
-    if (!section || !feedEl) return;
-    fetch("/mss-login/api/news/feed.xml", { credentials: "same-origin" })
-        .then(function (r) {
-            if (!r.ok) return null;
-            return r.text();
-        })
-        .then(function (xmlText) {
-            if (!xmlText) return;
-            var parser = new DOMParser();
-            var doc = parser.parseFromString(xmlText, "text/xml");
-            var items = doc.querySelectorAll("channel > item");
-            if (!items.length) return;
-            feedEl.innerHTML = "";
-            for (var i = 0; i < items.length; i++) {
-                var item = items[i];
-                var title = (item.querySelector("title") && item.querySelector("title").textContent) || "";
-                var desc = (item.querySelector("description") && item.querySelector("description").textContent) || "";
-                var pubDate = (item.querySelector("pubDate") && item.querySelector("pubDate").textContent) || "";
-                var div = document.createElement("div");
-                div.className = "login-news-item";
-                var strong = document.createElement("strong");
-                strong.textContent = title;
-                var timeEl = document.createElement("time");
-                timeEl.textContent = pubDate ? " " + pubDate : "";
-                div.appendChild(strong);
-                div.appendChild(timeEl);
-                if (desc) {
-                    var p = document.createElement("p");
-                    p.style.margin = "0.25rem 0 0 0";
-                    p.textContent = desc;
-                    div.appendChild(p);
-                }
-                feedEl.appendChild(div);
-            }
-            section.style.display = "block";
-        })
-        .catch(function () {});
-})();
-</script>
-
 </html>
 
 

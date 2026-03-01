@@ -23,6 +23,50 @@ if (window.location.pathname === "/register") {
   });
 }
 
+if (window.location.pathname === "/login") {
+  document.addEventListener("DOMContentLoaded", () => {
+    const section = document.getElementById("login-news-section");
+    const feedEl = document.getElementById("login-news-feed");
+    if (!section || !feedEl) return;
+    fetch("/mss-login/api/news/feed.xml", { credentials: "same-origin" })
+      .then(function (r) {
+        if (!r.ok) return null;
+        return r.text();
+      })
+      .then(function (xmlText) {
+        if (!xmlText) return;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlText, "text/xml");
+        const items = doc.querySelectorAll("channel > item");
+        if (!items.length) return;
+        feedEl.innerHTML = "";
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const title = (item.querySelector("title") && item.querySelector("title").textContent) || "";
+          const desc = (item.querySelector("description") && item.querySelector("description").textContent) || "";
+          const pubDate = (item.querySelector("pubDate") && item.querySelector("pubDate").textContent) || "";
+          const div = document.createElement("div");
+          div.className = "login-news-item";
+          const strong = document.createElement("strong");
+          strong.textContent = title;
+          const timeEl = document.createElement("time");
+          timeEl.textContent = pubDate ? " " + pubDate : "";
+          div.appendChild(strong);
+          div.appendChild(timeEl);
+          if (desc) {
+            const p = document.createElement("p");
+            p.style.margin = "0.25rem 0 0 0";
+            p.textContent = desc;
+            div.appendChild(p);
+          }
+          feedEl.appendChild(div);
+        }
+        section.style.display = "block";
+      })
+      .catch(function () {});
+  });
+}
+
 // Clear token display on load so refresh/navigation removes it entirely (generate token page only)
 document.addEventListener("DOMContentLoaded", () => {
   const container = document.getElementById("token-display-container");

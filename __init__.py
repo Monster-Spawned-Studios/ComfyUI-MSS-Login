@@ -55,6 +55,7 @@ from .utils.sfw_intercept.nsfw_guard import (
 from .utils.sfw_intercept.node_interceptor import install_node_interceptor
 from .utils.remote_api_guard import create_remote_api_guard_middleware
 from .utils.model_filter_middleware import create_model_filter_middleware
+from .utils.csp import create_csp_middleware
 from .utils.shared_items_store import get_shared_items_store
 from .utils.prompt_model_validator import validate_prompt_models
 from .utils.model_cache import get_model_cache
@@ -252,6 +253,8 @@ app.middlewares.append(
 )
 
 # IMPORTANT: run JWT auth BEFORE we try to read request.user in workflow_interceptor
+# Headless JWT sessions use only WebSocket (/ws?token=...) and REST (Bearer/cookie/query);
+# /ws, /history, /prompt, /queue, /view, /api/userdata are NOT in public, so they require a valid token.
 app.middlewares.append(
     jwt_auth.create_jwt_middleware(
         public=("/login", "/logout", "/register", "/generate_token", "/mfa"),
@@ -285,6 +288,7 @@ if SEPERATE_USERS:
     access_control.patch_prompt_queue()
 
 app.middlewares.append(access_control.create_mss_login_middleware())
+app.middlewares.append(create_csp_middleware())
 watcher.register(app)
 
 install_node_interceptor()
