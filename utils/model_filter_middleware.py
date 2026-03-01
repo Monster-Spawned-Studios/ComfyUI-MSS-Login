@@ -9,15 +9,14 @@ Permission logic:
 - Otherwise: Show only items explicitly shared with the user (shared_items store).
 - Admins always see all models.
 - Guests and users without shared items see nothing (empty list).
-
-The Models menu in the ComfyUI sidebar fetches from these endpoints; filtered responses
-ensure users never see models they are not permitted to use.
 """
 
 import os
 
 from aiohttp import web
 import folder_paths  # pyright: ignore[reportMissingImports]
+
+from .path_safety import is_safe_folder_segment
 
 
 # Folder names we treat as "asset" lists (models, loras, vae, embeddings, etc.)
@@ -172,6 +171,8 @@ def create_model_filter_middleware(
 
         if path.startswith("/models/"):
             folder = path[len("/models/") :].strip("/")
+            if not is_safe_folder_segment(folder):
+                return web.json_response([])
             folder = _map_legacy(folder)
             role, perms, username = get_user_role_and_permissions(request)
             full_list = _get_item_list(folder)

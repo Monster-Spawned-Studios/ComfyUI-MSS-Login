@@ -28,6 +28,7 @@ from ..utils.ntfy_notifier import (
     EVENT_KEYS,
 )
 from ..utils.shared_items_store import get_shared_items_store
+from ..utils.path_safety import is_safe_folder_segment, is_safe_filename
 from ..utils.model_cache import get_model_cache
 from ..utils.updater import get_cached_status
 from ..constants import USERS_DB_CONFIG, get_domain
@@ -549,9 +550,7 @@ routes.get("/api/mss-login/api/available-model-folders")(api_available_model_fol
 
 def _safe_folder_segment(folder: str) -> bool:
     """Return True if folder is a single path segment (no path traversal)."""
-    if not folder or ".." in folder or "/" in folder or "\\" in folder:
-        return False
-    return True
+    return is_safe_folder_segment(folder)
 
 
 @routes.get("/mss-login/api/available-models/{folder}")
@@ -677,6 +676,11 @@ async def api_add_shared_item(request):
             return web.json_response(
                 {"error": "folder and item_name required"}, status=400
             )
+        if not is_safe_folder_segment(folder) or not is_safe_filename(item_name):
+            return web.json_response(
+                {"error": "Invalid folder or item_name (path traversal not allowed)"},
+                status=400,
+            )
         store = get_shared_items_store(USERS_DB_CONFIG)
         if store.add(user_id, folder, item_name):
             send_notification(
@@ -715,6 +719,11 @@ async def api_remove_shared_item(request):
         if not folder or not item_name:
             return web.json_response(
                 {"error": "folder and item_name required"}, status=400
+            )
+        if not is_safe_folder_segment(folder) or not is_safe_filename(item_name):
+            return web.json_response(
+                {"error": "Invalid folder or item_name (path traversal not allowed)"},
+                status=400,
             )
         store = get_shared_items_store(USERS_DB_CONFIG)
         if store.remove(user_id, folder, item_name):

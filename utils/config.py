@@ -20,9 +20,12 @@ USER_TEMP_ROOT = COMFY_ROOT / "temp" / "users"
 
 
 def _resolve_data_path(rel_or_abs: str) -> str:
+    """Resolve relative path under _DATA_DIR; contain to prevent path traversal."""
     if not rel_or_abs or os.path.isabs(rel_or_abs):
         return rel_or_abs or ""
-    return os.path.join(_DATA_DIR, rel_or_abs)
+    from .path_safety import resolve_path_under
+    resolved = resolve_path_under(_DATA_DIR, rel_or_abs)
+    return resolved if resolved is not None else _DATA_DIR
 
 
 def load_config(file_path: str) -> Dict[str, Any]:

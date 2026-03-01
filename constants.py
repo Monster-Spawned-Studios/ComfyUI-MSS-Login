@@ -17,12 +17,15 @@ DATA_DIR = get_data_dir()
 
 
 def _resolve_data_path(rel_or_abs: str) -> str:
-    """If path is absolute return as-is; otherwise resolve relative to external data directory."""
+    """If path is absolute return as-is; otherwise resolve relative to external data directory.
+    Relative paths are contained under DATA_DIR to prevent path traversal (e.g. from config)."""
     if not rel_or_abs:
         return rel_or_abs
     if os.path.isabs(rel_or_abs):
         return rel_or_abs
-    return os.path.join(DATA_DIR, rel_or_abs)
+    from .utils.path_safety import resolve_path_under
+    resolved = resolve_path_under(DATA_DIR, rel_or_abs)
+    return resolved if resolved is not None else DATA_DIR
 
 
 # --- Load .env: data dir first, then repo (so data dir secrets take precedence) ---

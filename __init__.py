@@ -56,6 +56,7 @@ from .utils.sfw_intercept.node_interceptor import install_node_interceptor
 from .utils.remote_api_guard import create_remote_api_guard_middleware
 from .utils.model_filter_middleware import create_model_filter_middleware
 from .utils.csp import create_csp_middleware
+from .utils.path_safety import is_safe_filename, resolve_path_under
 from .utils.shared_items_store import get_shared_items_store
 from .utils.prompt_model_validator import validate_prompt_models
 from .utils.model_cache import get_model_cache
@@ -190,36 +191,27 @@ async def workflow_interceptor_middleware(request, handler):
         img_type = q.get("type", "output")
 
         if filename and (img_type == "output" or img_type == "temp"):
-            # Prevent path traversal: use basename only
-            safe_name = os.path.basename(filename)
-            if ".." in safe_name:
-                safe_name = None
-            if safe_name:
+            if not is_safe_filename(filename):
+                filename = None
+            if filename:
                 if img_type == "temp":
                     target_dir = folder_paths.get_temp_directory()
                 else:
                     target_dir = folder_paths.get_output_directory()
-                img_path = os.path.join(target_dir, safe_name)
-
-            if safe_name and os.path.isfile(img_path):
-                if should_block_image_for_current_user(img_path):
-                    return web.Response(status=403, text="NSFW Blocked")
+                img_path = resolve_path_under(target_dir, filename)
+                if img_path and os.path.isfile(img_path):
+                    if should_block_image_for_current_user(img_path):
+                        return web.Response(status=403, text="NSFW Blocked")
 
     # --- Case B: /static_gallery ---
     if path.startswith("/static_gallery/") and method == "GET":
         rel = path[len("/static_gallery/") :].lstrip("/\\")
-        if ".." in rel:
-            rel = None
         if rel:
             out_dir = folder_paths.get_output_directory()
-            out_abs = os.path.abspath(out_dir)
-            img_path = os.path.normpath(os.path.join(out_dir, rel))
-            img_abs = os.path.abspath(img_path)
-            if not img_abs.startswith(out_abs + os.sep) and img_abs != out_abs:
-                rel = None
-        if rel:
-            if os.path.isfile(img_path) and should_block_image_for_current_user(img_path):
-                return web.Response(status=403, text="NSFW Blocked")
+            img_path = resolve_path_under(out_dir, rel)
+            if img_path and os.path.isfile(img_path):
+                if should_block_image_for_current_user(img_path):
+                    return web.Response(status=403, text="NSFW Blocked")
 
     return await handler(request)
 

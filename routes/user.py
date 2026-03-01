@@ -3,6 +3,7 @@ from aiohttp import web
 from ..constants import EXPERIMENTAL_FEATURES
 from ..globals import routes, jwt_auth, users_db
 from ..utils import user_env
+from ..utils.path_safety import is_safe_filename, resolve_path_under
 import folder_paths
 import os
 import shutil
@@ -376,31 +377,25 @@ async def mark_nsfw(request: web.Request) -> web.Response:
     if not filename:
         return web.json_response({"error": "Missing 'filename'"}, status=400)
 
-    # Validate filename is safe (no path traversal)
-    if ".." in filename or "/" in filename or "\\" in filename:
+    if not is_safe_filename(filename):
         return web.json_response({"error": "Invalid filename"}, status=400)
 
-    # Get output directory and construct full path
     output_dir = folder_paths.get_output_directory()
-    image_path = os.path.join(output_dir, filename)
+    image_path = resolve_path_under(output_dir, filename)
 
     # If file not found at direct path, search recursively in output directory
-    if not os.path.exists(image_path):
-        found_path = None
-        for root, dirs, files in os.walk(output_dir):
+    if not image_path or not os.path.exists(image_path):
+        image_path = None
+        for root, _dirs, files in os.walk(output_dir):
             if filename in files:
-                found_path = os.path.join(root, filename)
-                # Ensure found file is within output directory (security check)
-                if os.path.abspath(found_path).startswith(os.path.abspath(output_dir)):
-                    image_path = found_path
+                candidate = os.path.join(root, filename)
+                resolved = resolve_path_under(output_dir, os.path.relpath(candidate, output_dir))
+                if resolved and os.path.isfile(resolved):
+                    image_path = resolved
                     break
 
-        if not os.path.exists(image_path):
-            return web.json_response({"error": "File not found"}, status=404)
-
-    # Final security check - ensure file is within output directory
-    if not os.path.abspath(image_path).startswith(os.path.abspath(output_dir)):
-        return web.json_response({"error": "Invalid file path"}, status=403)
+    if not image_path or not os.path.isfile(image_path):
+        return web.json_response({"error": "File not found"}, status=404)
 
     # Get NSFW flag (default to True if not provided)
     is_nsfw = bool(data.get("is_nsfw", True))

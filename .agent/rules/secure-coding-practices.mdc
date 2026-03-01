@@ -1,5 +1,8 @@
 ---
 description: Secure, up-to-date coding practices (no plaintext PII, HTTPS, cited code, language security)
+always_on: true
+trigger: always_on
+applyTo: "**"
 alwaysApply: true
 ---
 

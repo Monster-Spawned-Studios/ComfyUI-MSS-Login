@@ -7,6 +7,7 @@ from aiohttp import web
 
 from ..globals import jwt_auth, current_username_var, users_db
 from ..utils import user_env
+from ..utils.path_safety import is_safe_filename, resolve_path_under
 from ..utils.sfw_intercept.nsfw_guard import should_block_image_for_current_user
 import folder_paths
 
@@ -122,34 +123,29 @@ def user_is_admin(username: str) -> bool:
 def sanitize_name(name: str | None) -> str | None:
     if not name:
         return None
-    # Fix backslashes and remove ..
     clean = name.replace("\\", "/").strip()
-    # Basic path traversal protection
-    if ".." in clean or clean.startswith("/"):
+    if not is_safe_filename(clean):
         return None
-    # Ensure json extension
     if not clean.lower().endswith(".json"):
         clean += ".json"
+    if not is_safe_filename(clean):
+        return None
     return clean
 
 
 # --- Helper: Get File Info ---
 def get_file_info(root_dir: str, rel_path: str) -> dict:
-    # Prevent path traversal: ensure resolved path stays under root_dir
-    rel_norm = rel_path.replace("\\", "/")
-    if ".." in rel_norm or rel_norm.startswith("/"):
-        rel_norm = ""
-    full_path = os.path.join(root_dir, rel_norm)
-    try:
-        if os.path.abspath(full_path) != os.path.abspath(root_dir) and not os.path.abspath(full_path).startswith(
-            os.path.abspath(root_dir) + os.sep
-        ):
-            full_path = root_dir  # fallback to root to avoid escaping
-    except Exception:
+    full_path = resolve_path_under(root_dir, rel_path or "")
+    if full_path is None:
         full_path = root_dir
-
-    parts = rel_norm.split("/")
-    filename = parts[-1]
+    try:
+        rel_norm = os.path.relpath(full_path, root_dir).replace("\\", "/")
+        if rel_norm.startswith("..") or rel_norm == "..":
+            rel_norm = ""
+    except ValueError:
+        rel_norm = ""
+    parts = rel_norm.split("/") if rel_norm else []
+    filename = parts[-1] if parts else ""
     subfolder = "/".join(parts[:-1]) if len(parts) > 1 else ""
 
     ext = "json"
@@ -310,16 +306,16 @@ async def get_workflow_content(request, name: str):
     if not clean_name:
         return web.Response(status=404)
 
-    # First: user-specific workflow
+    # First: user-specific workflow (path traversal: serve only if under dir)
     user_dir = user_env.get_user_workflow_dir(user)
-    user_path = os.path.join(user_dir, clean_name)
-    if os.path.exists(user_path) and os.path.isfile(user_path):
+    user_path = resolve_path_under(user_dir, clean_name)
+    if user_path and os.path.isfile(user_path):
         return web.FileResponse(user_path)
 
     # Then: global workflows
     for global_dir in POTENTIAL_GLOBALS:
-        global_path = os.path.join(global_dir, clean_name)
-        if os.path.exists(global_path) and os.path.isfile(global_path):
+        global_path = resolve_path_under(global_dir, clean_name)
+        if global_path and os.path.isfile(global_path):
             return web.FileResponse(global_path)
 
     return web.Response(status=404, text="Workflow not found")
@@ -415,16 +411,15 @@ async def middleware_dispatch(request):
         q = request.rel_url.query
         filename = q.get("filename") or q.get("file") or q.get("name")
         img_type = q.get("type", "output")
-        # Prevent path traversal: only use filename if it has no path components
-        if filename and (".." in filename or "/" in filename or "\\" in filename):
+        if not filename or not is_safe_filename(filename):
             filename = None
 
         # Only guard standard output images for now
         if filename and img_type == "output":
             out_dir = folder_paths.get_output_directory()
-            img_path = os.path.join(out_dir, filename)
+            img_path = resolve_path_under(out_dir, filename)
 
-            if os.path.isfile(img_path):
+            if img_path and os.path.isfile(img_path):
                 try:
                     if should_block_image_for_current_user(img_path):
                         # Hard global block for this user

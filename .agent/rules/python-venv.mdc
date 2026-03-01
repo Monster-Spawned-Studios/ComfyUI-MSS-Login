@@ -1,0 +1,38 @@
+---
+description: Use project .venv Python when running or testing Python files to avoid import failures
+alwaysApply: true
+always_on: true
+trigger: always_on
+applyTo: "**"
+---
+
+# Use Project Virtual Environment for Python
+
+When running or testing Python code (e.g., scripts, tests, or modules), **always use the project’s `.venv` Python** instead of the system Python. This keeps dependencies consistent and reduces import and version issues.
+
+## Rules
+
+- **Prefer the venv interpreter**: Use `.venv\Scripts\python.exe` on Windows or `.venv/bin/python` on Unix when executing Python from the terminal or when suggesting run commands.
+- **Run commands**: Prefer `".venv\Scripts\python" -m pytest` or `".venv\Scripts\python" script.py` (Windows) over `python script.py` or `pytest` so the correct environment is used.
+- **One-liner (Windows)**: `".venv\Scripts\python" -c "..."` for quick checks.
+- **One-liner (Unix/macOS)**: `.venv/bin/python -c "..."` or `.venv/bin/python script.py`.
+
+## Examples
+
+```powershell
+# Prefer (Windows)
+.\.venv\Scripts\python -m pytest tests/
+.\.venv\Scripts\python -m mymodule
+
+# Avoid when a .venv exists
+python -m pytest
+py script.py
+```
+
+```bash
+# Prefer (Unix/macOS)
+.venv/bin/python -m pytest tests/
+.venv/bin/python -m mymodule
+```
+
+If the project has no `.venv`, you may use the system Python and suggest creating a venv if dependencies are missing.
