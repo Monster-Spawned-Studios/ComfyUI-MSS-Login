@@ -98,19 +98,33 @@ class _JsonTokenStore:
             del self._data[h]
             self._save()
             return None
+        self.update_last_used(token)
         return (rec.get("user_id"), rec.get("username"))
+
+    def update_last_used(self, token: str) -> bool:
+        """Update last_used_at_iso for the token. Returns True if updated."""
+        h = _hash_token(_normalize_lookup_token(token))
+        if h not in self._data:
+            return False
+        if _is_expired(self._data[h].get("expires_iso", "")):
+            return False
+        self._data[h]["last_used_at_iso"] = _iso_now()
+        self._save()
+        return True
 
     def create_token(
         self, user_id: str, username: str, expire_hours: float, label: str = ""
     ) -> str:
         raw = secrets.token_urlsafe(32)
         h = _hash_token(raw)
+        now = _iso_now()
         self._data[h] = {
             "user_id": user_id,
             "username": username,
             "expires_iso": _iso_expires(expire_hours),
             "label": label,
-            "created_at_iso": _iso_now(),
+            "created_at_iso": now,
+            "last_used_at_iso": "",
         }
         self._save()
         return raw
@@ -145,6 +159,7 @@ class _JsonTokenStore:
                         "expires_iso": rec.get("expires_iso"),
                         "label": rec.get("label", ""),
                         "created_at_iso": rec.get("created_at_iso", ""),
+                        "last_used_at_iso": rec.get("last_used_at_iso", ""),
                     }
                 )
         return out
@@ -174,10 +189,11 @@ class _SqliteTokenStore:
         self._migrate_schema()
 
     def _migrate_schema(self) -> None:
-        """Add label and created_at_iso columns if they don't exist yet."""
+        """Add label, created_at_iso, and last_used_at_iso columns if they don't exist yet."""
         for col, col_def in (
             ("label", "TEXT DEFAULT ''"),
             ("created_at_iso", "TEXT DEFAULT ''"),
+            ("last_used_at_iso", "TEXT DEFAULT ''"),
         ):
             try:
                 self._conn.execute(
@@ -200,7 +216,19 @@ class _SqliteTokenStore:
             self._conn.execute("DELETE FROM api_tokens WHERE token_hash = ?", (h,))
             self._conn.commit()
             return None
+        self.update_last_used(token)
         return (user_id, username)
+
+    def update_last_used(self, token: str) -> bool:
+        """Update last_used_at_iso for the token. Returns True if updated."""
+        h = _hash_token(_normalize_lookup_token(token))
+        now = _iso_now()
+        cur = self._conn.execute(
+            "UPDATE api_tokens SET last_used_at_iso = ? WHERE token_hash = ?",
+            (now, h),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
 
     def create_token(
         self, user_id: str, username: str, expire_hours: float, label: str = ""
@@ -210,9 +238,9 @@ class _SqliteTokenStore:
         exp = _iso_expires(expire_hours)
         now = _iso_now()
         self._conn.execute(
-            "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (h, user_id, username, exp, label, now),
+            "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso, last_used_at_iso) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (h, user_id, username, exp, label, now, ""),
         )
         self._conn.commit()
         return raw
@@ -235,11 +263,16 @@ class _SqliteTokenStore:
 
     def list_tokens_for_user(self, username: str) -> list:
         rows = self._conn.execute(
-            "SELECT token_hash, expires_iso, label, created_at_iso FROM api_tokens WHERE username = ?",
+            "SELECT token_hash, expires_iso, label, created_at_iso, last_used_at_iso FROM api_tokens WHERE username = ?",
             (username,),
         ).fetchall()
         out = []
-        for token_hash, expires_iso, label, created_at_iso in rows:
+        for row in rows:
+            token_hash = row[0]
+            expires_iso = row[1]
+            label = row[2] if len(row) > 2 else ""
+            created_at_iso = row[3] if len(row) > 3 else ""
+            last_used_at_iso = row[4] if len(row) > 4 else ""
             if not _is_expired(expires_iso):
                 out.append(
                     {
@@ -247,6 +280,7 @@ class _SqliteTokenStore:
                         "expires_iso": expires_iso,
                         "label": label or "",
                         "created_at_iso": created_at_iso or "",
+                        "last_used_at_iso": last_used_at_iso or "",
                     }
                 )
         return out
@@ -287,6 +321,7 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
     for col, col_def in (
         ("label", "TEXT DEFAULT ''"),
         ("created_at_iso", "TEXT DEFAULT ''"),
+        ("last_used_at_iso", "TEXT DEFAULT ''"),
     ):
         try:
             cur.execute(
@@ -319,7 +354,20 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
                     cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
                     self._conn.commit()
                 return None
+            self.update_last_used(token)
             return (row["user_id"], row["username"])
+
+        def update_last_used(self, token: str) -> bool:
+            """Update last_used_at_iso for the token. Returns True if updated."""
+            h = _hash_token(_normalize_lookup_token(token))
+            now = _iso_now()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE api_tokens SET last_used_at_iso = %s WHERE token_hash = %s",
+                    (now, h),
+                )
+                self._conn.commit()
+                return cur.rowcount > 0
 
         def create_token(
             self, user_id: str, username: str, expire_hours: float, label: str = ""
@@ -330,9 +378,9 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
             now = _iso_now()
             with self._conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso) "
-                    "VALUES (%s, %s, %s, %s, %s, %s)",
-                    (h, user_id, username, exp, label, now),
+                    "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso, last_used_at_iso) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (h, user_id, username, exp, label, now, ""),
                 )
                 self._conn.commit()
             return raw
@@ -358,7 +406,7 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
         def list_tokens_for_user(self, username: str) -> list:
             with self._cursor() as cur:
                 cur.execute(
-                    "SELECT token_hash, expires_iso, label, created_at_iso "
+                    "SELECT token_hash, expires_iso, label, created_at_iso, last_used_at_iso "
                     "FROM api_tokens WHERE username = %s",
                     (username,),
                 )
@@ -372,6 +420,7 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
                             "expires_iso": r["expires_iso"],
                             "label": r.get("label") or "",
                             "created_at_iso": r.get("created_at_iso") or "",
+                            "last_used_at_iso": r.get("last_used_at_iso") or "",
                         }
                     )
             return out

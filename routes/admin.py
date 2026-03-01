@@ -15,7 +15,7 @@ from ..constants import (
 )
 from ..utils.json_utils import load_json_file, save_json_file
 from ..utils.admin_logic import patch_user_group, delete_user_record
-from ..utils.bootstrap import load_default_groups
+from ..utils.bootstrap import load_default_groups, _apply_owner_max_merge
 from ..utils.api_token_store import reset_api_token_store
 from ..utils.user_console_log import (
     get_lines as get_user_console_lines,
@@ -44,6 +44,26 @@ def is_admin(request):
         return u.get("admin", False) or "admin" in groups or "owner" in groups
     except Exception:
         return False
+
+
+def _get_caller_username_and_groups(request):
+    """Return (username, groups) for the authenticated caller, or (None, [])."""
+    token = jwt_auth.get_token_from_request(request)
+    if not token:
+        return None, []
+    try:
+        p = jwt_auth.decode_access_token(token)
+        _, u = users_db.get_user(p["username"])
+        groups = [g.lower() for g in (u.get("groups") or [])]
+        return u.get("username"), groups
+    except Exception:
+        return None, []
+
+
+def is_owner(request):
+    """Return True if the authenticated user has 'owner' in their groups."""
+    _username, groups = _get_caller_username_and_groups(request)
+    return "owner" in groups
 
 
 @routes.get("/mss-login/api/settings/guest-jwt")
@@ -186,6 +206,7 @@ async def api_update_groups(request):
                 current[g_lower] = {}
             for k, v in perms.items():
                 current[g_lower][k] = bool(v)
+        _apply_owner_max_merge(current)
         save_json_file(GROUPS_CONFIG_FILE, current)
         return web.json_response({"status": "ok"})
     except Exception as e:
@@ -215,12 +236,46 @@ async def api_update_user_route(request):
 
     target = request.match_info["target_user"]
     data = await request.json()
+    caller_username, caller_groups = _get_caller_username_and_groups(request)
+    owner_username = users_db.get_owner_username()
+    target_uid, target_user = users_db.get_user(username=target)
+    if not target_uid or not target_user:
+        return web.Response(status=404)
+    target_current_groups = [g.lower() for g in target_user.get("groups", [])]
+    target_is_owner = "owner" in target_current_groups
 
     groups = [g.lower() for g in data.get("groups", [])]
+    wants_owner = "owner" in groups
     is_admin_flag = "admin" in groups
-
-    # NEW: optional SFW flag
     sfw_check = data.get("sfw_check", None)
+
+    # Owner cannot be demoted via this API
+    if target_is_owner and not wants_owner:
+        return web.json_response(
+            {"error": "Owner's role cannot be changed. Only transfer of ownership is allowed."},
+            status=403,
+        )
+
+    # Assigning owner: only current owner can assign (transfer); max one owner
+    if wants_owner and not target_is_owner:
+        if owner_username is None:
+            # No owner yet: _ensure_owner_assigned will run on next load; allow this assign
+            # only if caller is admin (e.g. first setup). Prefer: only owner can assign.
+            # Per plan: only owner can assign; if no owner, rely on _ensure_owner_assigned.
+            return web.json_response(
+                {"error": "Only the current owner can assign the owner role. If there is no owner, restart the server so the first admin is promoted to owner."},
+                status=403,
+            )
+        if caller_username != owner_username:
+            return web.json_response(
+                {"error": "Only the current owner can assign the owner role (transfer)."},
+                status=403,
+            )
+        # Transfer: target becomes owner, caller (current owner) becomes admin
+        success = patch_user_group(target, ["owner", "admin"] if is_admin_flag else ["owner"], True, sfw_check)
+        if success and caller_username:
+            patch_user_group(caller_username, ["admin"], True, None)
+        return web.json_response({"status": "ok"}) if success else web.Response(status=404)
 
     success = patch_user_group(target, groups, is_admin_flag, sfw_check)
     if success:

@@ -912,12 +912,13 @@ renderUsers(list, container) {
         const uname = u.username || "unknown";
         const isSelf = currentName && uname === currentName;
         const isGuest = uname.toLowerCase() === "guest";
+        const isOwner = grp === "owner";
 
         // NEW: per-user SFW flag; default ON if undefined
         const sfwEnabled = (u.sfw_check !== false);
 
         let actionsHtml = `
-            <button class="mss-login-btn btn-save" data-user="${uname}">
+            <button class="mss-login-btn btn-save" data-user="${uname}" data-is-owner="${isOwner}">
                 Save Changes
             </button>
         `;
@@ -931,11 +932,9 @@ renderUsers(list, container) {
             `;
         }
 
-        html += `
-            <tr>
-                <td><strong>${uname}</strong></td>
-                <td>
-                    <select
+        const groupCell = isOwner
+            ? `<span class="mss-login-owner-locked" title="Owner role cannot be changed">Owner (locked)</span>`
+            : `<select
                         class="mss-login-role-select"
                         data-user="${uname}"
                         style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; width: 150px;"
@@ -945,7 +944,13 @@ renderUsers(list, container) {
                                 ${g.toUpperCase()}
                             </option>
                         `).join("")}
-                    </select>
+                    </select>`;
+
+        html += `
+            <tr>
+                <td><strong>${uname}</strong></td>
+                <td>
+                    ${groupCell}
                 </td>
                 <td style="text-align:center">
                     <input
@@ -969,7 +974,10 @@ renderUsers(list, container) {
     container.querySelectorAll(".btn-save").forEach(btn => {
         btn.onclick = async () => {
             const u = btn.dataset.user;
-            const g = container.querySelector(`select[data-user="${u}"]`).value;
+            const isOwnerUser = btn.dataset.isOwner === "true";
+            const g = isOwnerUser
+                ? ["owner"]
+                : [container.querySelector(`select[data-user="${u}"]`)?.value || "user"];
 
             const sfwCheckbox = container.querySelector(`.mss-login-sfw-toggle[data-user="${u}"]`);
             const sfw = sfwCheckbox ? sfwCheckbox.checked : true;
@@ -979,7 +987,7 @@ renderUsers(list, container) {
                 await api.fetchApi(`/mss-login/api/users/${u}`, {
                     method: "PUT",
                     body: JSON.stringify({
-                        groups: [g],
+                        groups: g,
                         sfw_check: sfw,
                     }),
                 });
@@ -2264,8 +2272,10 @@ async renderModelDownload(container) {
                 
                 // Admin is always true/enabled/visible
                 if (g === "admin") val = true;
+                // Owner column is immutable (same as admin)
+                if (g === "owner") val = true;
 
-                row += `<td class="mss-login-check-cell"><input type="checkbox" class="perm-chk" data-group="${g}" data-key="${id}" ${val?"checked":""} ${g==="admin"?"disabled":""}></td>`;
+                row += `<td class="mss-login-check-cell"><input type="checkbox" class="perm-chk" data-group="${g}" data-key="${id}" ${val?"checked":""} ${(g==="admin"||g==="owner")?"disabled":""}></td>`;
             });
             return row + `</tr>`;
         };
@@ -3364,7 +3374,7 @@ app.ui.settings.addSetting({
         jwtHeading.textContent = "My JWT Tokens";
         jwtSection.appendChild(jwtHeading);
         const jwtTableWrap = document.createElement("div");
-        jwtTableWrap.innerHTML = "<table class='mss-login-sessions-table'><thead><tr><th>Token</th><th>Created</th><th>Actions</th></tr></thead><tbody id='mss-login-sessions-tbody'></tbody></table>";
+        jwtTableWrap.innerHTML = "<table class='mss-login-sessions-table'><thead><tr><th>Token</th><th>Created</th><th>Last used</th><th>Actions</th></tr></thead><tbody id='mss-login-sessions-tbody'></tbody></table>";
         jwtSection.appendChild(jwtTableWrap);
         wrapper.appendChild(jwtSection);
         (async () => {
@@ -3388,6 +3398,9 @@ app.ui.settings.addSetting({
                     const tdCreated = document.createElement("td");
                     tdCreated.textContent = s.created_at_iso ? new Date(s.created_at_iso).toLocaleString() : "";
                     tr.appendChild(tdCreated);
+                    const tdLastUsed = document.createElement("td");
+                    tdLastUsed.textContent = s.last_used_at_iso ? new Date(s.last_used_at_iso).toLocaleString() : "—";
+                    tr.appendChild(tdLastUsed);
                     const tdActions = document.createElement("td");
                     if (s.is_current) {
                         const eyeBtn = document.createElement("button");

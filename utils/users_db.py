@@ -648,6 +648,15 @@ class UsersDB:
             )
         return out
 
+    def get_owner_username(self) -> Optional[str]:
+        """Return the username of the user who has 'owner' in groups, or None if no owner."""
+        self.load_users()
+        for _uid, u in self.users.items():
+            groups = [g.lower() for g in u.get("groups", [])]
+            if "owner" in groups:
+                return u.get("username")
+        return None
+
     def update_user(
         self,
         username: str,

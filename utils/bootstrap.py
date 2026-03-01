@@ -52,23 +52,54 @@ def load_default_groups():
 	return cfg
 
 
+def _apply_owner_max_merge(current: dict) -> None:
+	"""Set owner's permissions to the max of all roles (true if any role has true). Immutable owner."""
+	if "owner" not in current:
+		return
+	all_keys = set()
+	for perms in current.values():
+		if isinstance(perms, dict):
+			all_keys.update(perms.keys())
+	for key in all_keys:
+		owner_has = any(
+			bool(perms.get(key)) for perms in current.values() if isinstance(perms, dict)
+		)
+		current.setdefault("owner", {})[key] = owner_has
+
+
 def ensure_groups_config():
 	default_cfg = load_default_groups()
 	current = load_json_file(GROUPS_CONFIG_FILE, {})
 	changed = False
 
+	# Ensure owner exists in default fallback (default_group_config.json already has it)
+	if "owner" not in default_cfg and "admin" in default_cfg:
+		default_cfg = dict(default_cfg)
+		default_cfg["owner"] = dict(default_cfg["admin"])
+
 	# Add missing groups
 	for role, perms in default_cfg.items():
 		if role not in current:
-			current[role] = perms
+			current[role] = dict(perms) if isinstance(perms, dict) else {}
 			changed = True
 
 	# Add missing permission keys
 	for role, perms in default_cfg.items():
+		if not isinstance(perms, dict):
+			continue
 		for key, value in perms.items():
+			if role not in current:
+				current[role] = {}
 			if key not in current[role]:
 				current[role][key] = value
 				changed = True
+
+	# Owner always gets max of all roles (immutable additive permissions)
+	owner_before = dict(current.get("owner", {})) if current.get("owner") else {}
+	_apply_owner_max_merge(current)
+	owner_after = current.get("owner", {})
+	if owner_before != owner_after:
+		changed = True
 
 	if changed:
 		save_json_file(GROUPS_CONFIG_FILE, current)

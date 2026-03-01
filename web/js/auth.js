@@ -706,11 +706,13 @@ async function loadMyTokens() {
     html += '<th style="text-align:left; padding:6px;">Label</th>';
     html += '<th style="text-align:left; padding:6px;">Hash Prefix</th>';
     html += '<th style="text-align:left; padding:6px;">Created</th>';
+    html += '<th style="text-align:left; padding:6px;">Last used</th>';
     html += '<th style="text-align:left; padding:6px;">Expires</th>';
     html += '<th style="text-align:center; padding:6px;">Revoke</th>';
     html += '</tr></thead><tbody>';
     for (const t of tokens) {
       const created = t.created_at_iso ? new Date(t.created_at_iso).toLocaleString() : "N/A";
+      const lastUsed = t.last_used_at_iso ? new Date(t.last_used_at_iso).toLocaleString() : "Never";
       const neverExpires = t.expires_iso === "9999-12-31T23:59:59+00:00";
       const expires = neverExpires ? "Never" : (t.expires_iso ? new Date(t.expires_iso).toLocaleString() : "N/A");
       const label = t.label || '<span style="color:#666;">Unlabeled</span>';
@@ -719,6 +721,7 @@ async function loadMyTokens() {
       html += `<td style="padding:6px;">${label}</td>`;
       html += `<td style="padding:6px; font-family:monospace; font-size:0.8rem;">${prefix}</td>`;
       html += `<td style="padding:6px;">${created}</td>`;
+      html += `<td style="padding:6px;">${lastUsed}</td>`;
       html += `<td style="padding:6px;">${expires}</td>`;
       html += `<td style="padding:6px; text-align:center;"><button class="btn" style="padding:2px 10px; font-size:0.8rem;" onclick="revokeToken('${prefix}')">Revoke</button></td>`;
       html += '</tr>';
