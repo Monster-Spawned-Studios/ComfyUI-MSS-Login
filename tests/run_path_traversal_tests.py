@@ -94,6 +94,27 @@ def run_tests():
         finally:
             os.rmdir(other)
 
+    # --- CI-oriented: path traversal attack vectors ---
+    print("TestPathTraversalAttackVectors")
+    ok(not is_safe_filename("....//....//....//etc/passwd"), "rejects encoded-style traversal")
+    ok(not is_safe_filename("..%2F..%2Fetc%2Fpasswd"), "rejects percent-encoded slash in name")
+    ok(not is_safe_folder_segment("checkpoints/../loras"), "rejects folder with traversal")
+    ok(not is_safe_folder_segment("."), "rejects current dir (.)")
+    ok(safe_basename("C:\\Windows\\System32\\file.txt") == "file.txt", "safe_basename strips Windows path")
+    ok(safe_basename("file.txt") == "file.txt", "safe_basename keeps safe name")
+    with tempfile.TemporaryDirectory() as base:
+        ok(resolve_path_under(base, "sub/..") is None, "rejects sub/..")
+        ok(resolve_path_under(base, "....//....//....") is None, "rejects dot-dot-slash variant")
+
+    # --- Edge cases: unicode, whitespace, length ---
+    print("TestEdgeCases")
+    ok(is_safe_filename("image_é.png"), "allows unicode in filename")
+    ok(not is_safe_filename("  "), "rejects whitespace-only")
+    ok(not is_safe_filename("\t"), "rejects tab-only")
+    ok(is_safe_filename("a" * 200), "allows long single segment")
+    ok(not is_safe_filename("a" * 200 + "/x"), "rejects long path with slash")
+    ok(is_safe_folder_segment("model_v2"), "allows alphanumeric and underscore")
+
     print()
     if failed:
         print(f"Result: {failed} failed, {run - failed} passed, {run} total")

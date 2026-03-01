@@ -155,3 +155,14 @@ known-first-party = ["utils", "utils.sfw_intercept", "routes"]
 [tool.ruff.format]
 indent-style = "tab"
 line-ending = "lf"
+
+# Pytest: for when running with full ComfyUI env. Prefer standalone runners for CI (see tests/README.md).
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "run_*.py"]
+python_functions = ["test_*"]
+markers = [
+	"path_traversal: path traversal / path_safety tests (no ComfyUI deps).",
+	"requires_comfyui: tests that need ComfyUI (folder_paths, server) installed.",
+]
+addopts = "-v --tb=short"

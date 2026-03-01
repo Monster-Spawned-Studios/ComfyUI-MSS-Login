@@ -24,7 +24,7 @@ def is_safe_folder_segment(folder: str) -> bool:
         return False
     if ".." in folder or "/" in folder or "\\" in folder:
         return False
-    if os.path.isabs(folder):
+    if folder in (".", "..") or os.path.isabs(folder):
         return False
     return True
 
