@@ -30,6 +30,7 @@ from .constants import (
     S3_MOUNT_CONFIG,
     S3_WORKFLOW_SYNC_CONFIG,
     DATA_DIR,
+    clear_host_base_url_cache,
 )
 from .globals import (
     app,
@@ -78,6 +79,17 @@ except ImportError:
     __all__ = ["NODE_CLASS_MAPPINGS", "WEB_DIRECTORY"]
 
 ensure_groups_config()
+
+# If HOST_BASE_URL is set, persist to app_settings so DB and env stay in sync
+_host_env = (os.getenv("HOST_BASE_URL") or "").strip().rstrip("/")
+if _host_env and _host_env.startswith(("http://", "https://")):
+    try:
+        from .utils.app_settings_store import get_app_settings_store
+
+        get_app_settings_store(USERS_DB_CONFIG).set("host_base_url", _host_env)
+        clear_host_base_url_cache()
+    except Exception:
+        pass
 
 # Schedule background update check (notify or auto according to config)
 _config_for_updater = load_json_file(CONFIG_FILE_PATH, {})

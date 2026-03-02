@@ -12,7 +12,7 @@ from email.utils import format_datetime
 
 from aiohttp import web
 
-from ..constants import EXPERIMENTAL_FEATURES
+from ..constants import EXPERIMENTAL_FEATURES, get_host_base_url
 from ..globals import routes
 from ..utils.data_dir import get_data_dir
 
@@ -112,7 +112,7 @@ async def get_news_feed(request: web.Request) -> web.Response:
     if not items:
         return web.Response(status=404)
 
-    base_url = request.url.origin if request.url else ""
+    base_url = get_host_base_url() or (request.url.origin if request.url else "") or ""
     rss_xml = _build_rss(items, base_url)
     return web.Response(
         text=rss_xml,

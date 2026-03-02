@@ -140,6 +140,7 @@ async def check_for_update(
                 (data.get("version") or data.get("tag_name") or "").lstrip("v").strip()
             )
             release_url = (data.get("html_url") or "").strip()
+            _CACHE["release_body"] = (data.get("body") or "").strip()
         else:
             latest = ""
 
@@ -154,6 +155,64 @@ async def check_for_update(
         return False, ""
 
 
+def _parse_version_from_content(body: str, content_type: str = "") -> str:
+    """
+    Extract version from response body: JSON with "version" key, or pyproject.toml-style
+    (version = "x.y.z" or version = 'x.y.z'). Returns empty string if not found.
+    """
+    body = (body or "").strip()
+    if not body:
+        return ""
+    if "json" in (content_type or "").lower() or body.startswith("{"):
+        try:
+            data = json.loads(body)
+            v = (data.get("version") or "").strip().lstrip("v")
+            return v if v else ""
+        except Exception:
+            pass
+    import re
+    for pattern in (
+        r'version\s*=\s*["\']([^"\']+)["\']',
+        r'"version"\s*:\s*["\']([^"\']+)["\']',
+    ):
+        m = re.search(pattern, body)
+        if m:
+            return m.group(1).strip().lstrip("v") or ""
+    return ""
+
+
+async def check_for_update_branch(
+    check_url: str,
+    local_version: str | None = None,
+    timeout_sec: float = 10.0,
+) -> tuple[bool, str]:
+    """
+    Fetch version from a branch URL (e.g. raw pyproject.toml or version.json).
+    Returns (update_available, latest_version_str). On any error returns (False, "").
+    """
+    local = local_version or get_local_version()
+    latest = ""
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)
+            ) as resp:
+                if resp.status != 200:
+                    return False, ""
+                body = await resp.text()
+                ct = resp.headers.get("Content-Type") or ""
+        latest = _parse_version_from_content(body, ct)
+        if not latest:
+            return False, ""
+        _CACHE["latest_version"] = latest
+        _CACHE["current_version"] = local
+        return _version_gt(local, latest), latest
+    except Exception:
+        return False, ""
+
+
 def get_cached_status() -> dict[str, Any]:
     """Return last cached update check result for API route."""
     return {
@@ -163,7 +222,61 @@ def get_cached_status() -> dict[str, Any]:
         "mode": _CACHE.get("mode", "notify"),
         "changelog_url": _CACHE.get("changelog_url", ""),
         "release_url": _CACHE.get("release_url", ""),
+        "changelog_body": _CACHE.get("changelog_body", ""),
     }
+
+
+def _extract_github_repo_from_url(check_url: str) -> tuple[str | None, str | None]:
+    """Extract (owner, repo) from GitHub API URL like .../repos/OWNER/REPO/..."""
+    if not check_url or "github.com" not in check_url:
+        return None, None
+    try:
+        if "api.github.com/repos/" in check_url:
+            parts = check_url.split("api.github.com/repos/", 1)[-1].strip("/").split("/")
+            if len(parts) >= 2:
+                return parts[0], parts[1]
+        if "raw.githubusercontent.com/" in check_url:
+            parts = check_url.split("raw.githubusercontent.com/", 1)[-1].strip("/").split("/")
+            if len(parts) >= 2:
+                return parts[0], parts[1]
+    except Exception:
+        pass
+    return None, None
+
+
+async def _fetch_changelog_markdown(
+    version: str,
+    check_url: str,
+    check_mode: str,
+    branch: str,
+    timeout_sec: float = 8.0,
+) -> str:
+    """
+    Try to load changelog from readme/changelogs/X.X.X.md (raw GitHub/Gitea/GitLab),
+    then fall back to release body already in _CACHE (releases mode).
+    """
+    version = (version or "").strip().lstrip("v")
+    if not version:
+        return _CACHE.get("release_body", "")
+    owner, repo = _extract_github_repo_from_url(check_url)
+    if not owner or not repo:
+        return _CACHE.get("release_body", "")
+    ref = version if (check_mode or "releases").strip().lower() != "branch" else (branch or "main")
+    raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/readme/changelogs/{version}.md"
+    try:
+        import aiohttp
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                raw_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)
+            ) as resp:
+                if resp.status == 200:
+                    body = await resp.text()
+                    if body and body.strip():
+                        return body.strip()
+    except Exception:
+        pass
+    return _CACHE.get("release_body", "")
 
 
 def backup_before_update(data_dir: str) -> str | None:
@@ -323,12 +436,23 @@ async def run_update_check(
             f.write(str(time()))
     except Exception:
         pass
+    check_mode = (au.get("check_mode") or "releases").strip().lower()
     # Run check (non-blocking)
     try:
-        available, latest = await check_for_update(check_url)
+        if check_mode == "branch":
+            available, latest = await check_for_update_branch(check_url)
+        else:
+            available, latest = await check_for_update(check_url)
         _CACHE["update_available"] = available
         _CACHE["mode"] = mode
         _CACHE["changelog_url"] = (au.get("changelog_url") or "").strip()
+        branch = (au.get("branch") or "main").strip()
+        if latest:
+            _CACHE["changelog_body"] = await _fetch_changelog_markdown(
+                latest, check_url, check_mode, branch
+            )
+        else:
+            _CACHE["changelog_body"] = _CACHE.get("release_body", "")
         # release_url is set inside check_for_update when GitHub API returns html_url
         if available and latest:
             logger.info(

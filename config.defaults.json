@@ -2,7 +2,7 @@
 	"secret_key_env": "SECRET_KEY",
 	"users_db": {
 		"backend": "sqlite",
-		"sqlite_path": "data/users.db",
+		"sqlite_path": "data/mss_login_data.db",
 		"postgres_host": "localhost",
 		"postgres_port": 5432,
 		"postgres_database": "mss_login",
@@ -31,7 +31,7 @@
 	"api_token_store": {
 		"backend": "sqlite",
 		"json_path": "data/api_tokens.json",
-		"sqlite_path": "data/users.db"
+		"sqlite_path": "data/mss_login_data.db"
 	},
 	"require_auth_for_remote_api": true,
 	"local_network_cidrs": [],
@@ -45,9 +45,10 @@
 	"auto_update": {
 		"enabled": true,
 		"mode": "notify",
+		"check_mode": "releases",
 		"check_url": "https://api.github.com/repos/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases/latest",
 		"check_interval_hours": 24,
-		"branch": "production",
+		"branch": "main",
 		"changelog_url": "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases"
 	},
 	"token_algorithm": "HS256",

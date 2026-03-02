@@ -1818,7 +1818,7 @@ renderNsfwManagement(container) {
 }
 
 async renderTokenStorage(container) {
-    let cfg = { backend: "sqlite", json_path: "users/api_tokens.json", sqlite_path: "users/api_tokens.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss-login", postgres_user: "mss-login" };
+    let cfg = { backend: "sqlite", json_path: "data/api_tokens.json", sqlite_path: "data/mss_login_data.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss_login", postgres_user: "mss_login" };
     try {
         const res = await api.fetchApi("/mss-login/api/token-storage-config", { method: "GET" });
         if (res.ok) {
@@ -1846,7 +1846,7 @@ async renderTokenStorage(container) {
             </div>
             <div id="mss-login-token-sqlite-fields" class="mss-login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "sqlite" ? "display:none;" : ""}">
                 <label class="mss-login-field-label">SQLite path</label>
-                <input type="text" id="mss-login-token-sqlite-path" class="mss-login-input" value="${(cfg.sqlite_path || "users/api_tokens.db").replace(/"/g, "&quot;")}" style="min-width:240px;">
+                <input type="text" id="mss-login-token-sqlite-path" class="mss-login-input" value="${(cfg.sqlite_path || "data/mss_login_data.db").replace(/"/g, "&quot;")}" style="min-width:240px;">
             </div>
             <div id="mss-login-token-postgres-fields" style="margin-top:8px; ${backend !== "postgresql" ? "display:none;" : ""}">
                 <div class="mss-login-row" style="gap:8px; align-items:center; margin-bottom:6px;">
@@ -1886,7 +1886,7 @@ async renderTokenStorage(container) {
         const body = {
             backend: b,
             json_path: container.querySelector("#mss-login-token-json-path").value.trim() || "users/api_tokens.json",
-            sqlite_path: container.querySelector("#mss-login-token-sqlite-path").value.trim() || "users/api_tokens.db",
+            sqlite_path: container.querySelector("#mss-login-token-sqlite-path").value.trim() || "data/mss_login_data.db",
             postgres_host: container.querySelector("#mss-login-token-pg-host").value.trim() || "localhost",
             postgres_port: parseInt(container.querySelector("#mss-login-token-pg-port").value, 10) || 5432,
             postgres_database: container.querySelector("#mss-login-token-pg-database").value.trim() || "mss-login",
@@ -1908,7 +1908,7 @@ async renderTokenStorage(container) {
 }
 
 async renderUsersDbConfig(container) {
-    let cfg = { backend: "sqlite", sqlite_path: "users/users.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss-login", postgres_user: "mss-login" };
+    let cfg = { backend: "sqlite", sqlite_path: "data/mss_login_data.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss_login", postgres_user: "mss_login" };
     try {
         const res = await api.fetchApi("/mss-login/api/users-db-config", { method: "GET" });
         if (res.ok) cfg = await res.json();
@@ -1929,7 +1929,7 @@ async renderUsersDbConfig(container) {
             </div>
             <div id="mss-login-usersdb-sqlite-fields" class="mss-login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "sqlite" ? "display:none;" : ""}">
                 <label class="mss-login-field-label">SQLite path</label>
-                <input type="text" id="mss-login-usersdb-sqlite-path" class="mss-login-input" value="${escapeHtml(cfg.sqlite_path || "users/users.db")}" style="min-width:240px;">
+                <input type="text" id="mss-login-usersdb-sqlite-path" class="mss-login-input" value="${escapeHtml(cfg.sqlite_path || "data/mss_login_data.db")}" style="min-width:240px;">
             </div>
             <div id="mss-login-usersdb-postgres-fields" style="margin-top:8px; ${backend !== "postgresql" ? "display:none;" : ""}">
                 <div class="mss-login-row" style="gap:8px; align-items:center; margin-bottom:6px;">
@@ -1966,7 +1966,7 @@ async renderUsersDbConfig(container) {
         const b = (backendSelect.value || "sqlite").toLowerCase();
         const body = {
             backend: b,
-            sqlite_path: container.querySelector("#mss-login-usersdb-sqlite-path").value.trim() || "users/users.db",
+            sqlite_path: container.querySelector("#mss-login-usersdb-sqlite-path").value.trim() || "data/mss_login_data.db",
             postgres_host: container.querySelector("#mss-login-usersdb-pg-host").value.trim() || "localhost",
             postgres_port: parseInt(container.querySelector("#mss-login-usersdb-pg-port").value, 10) || 5432,
             postgres_database: container.querySelector("#mss-login-usersdb-pg-database").value.trim() || "mss-login",

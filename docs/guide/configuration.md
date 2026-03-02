@@ -20,7 +20,8 @@ Copy `.env.example` to `.env` and set:
 | Variable                 | Purpose                                                                                           |
 | ------------------------ | ------------------------------------------------------------------------------------------------- |
 | `SECRET_KEY`             | JWT signing and session stability; also used for SQLite encryption key when encryption is enabled |
-| `USERS_DB_SQLITE_PATH`   | Optional; default SQLite path for users/API tokens/shared items                                   |
+| `USERS_DB_SQLITE_PATH`   | Optional; default SQLite path for users/API tokens/shared items (default: `data/mss_login_data.db`) |
+| `HOST_BASE_URL`          | Optional; **primary** base URL of this instance (e.g. `https://comfy.example.com`). If unset, detected from first admin/owner connection and stored in the database. HTTPS vs HTTP is taken from this URL (or the detected one); the node enforces HTTPS when it needs a secure URL. Used for RSS, links, and domain resolution. |
 | `POSTGRES_*`             | Optional; PostgreSQL host, port, database, user, password                                         |
 | `EXPERIMENTAL_FEATURES`  | Enable experimental features (MFA, S3 storage/mount/workflow sync). Set to `true` or `1` to enable. Default: false. |
 | `RECOVERY_MODE`          | Enable recovery endpoint for MFA reset (e.g. `true` or `1`)                                       |
@@ -55,7 +56,7 @@ Permissions control workflow save/delete, extension access, and whether a user c
 If lockout is enabled (`blacklist_after_attempts` in config), too many failed logins blacklist the IP and can lock the device. To **unlock** (e.g. if the owner is locked out):
 
 - **security.json** in the MSS-Login data directory: create or edit `security.json` with a `lockout` section. Add your IP to `unlock_ips` or your device ID to `unlock_devices` to allow access again. Optional: `disable_lockout_until` (Unix timestamp) to temporarily disable lockout checks.
-- **users.db**: If using SQLite, you can remove rows from the `ip_blacklist` or `locked_devices` table in the same database as users to clear a lock.
+- **mss_login_data.db** (or the configured SQLite file): If using SQLite, you can remove rows from the `ip_blacklist` or `locked_devices` table in the same database as users to clear a lock.
 
 Example `security.json`:
 
@@ -75,6 +76,13 @@ Example `security.json`:
 - **Encrypted SQLite**: Set `encryption_level` in `config.json` under `users_db` to `low`, `standard`, or `secure`. Requires `argon2-cffi` and, for encryption at rest, `sqlcipher3` with a system SQLCipher build.
 
 See the README in the project root for detailed troubleshooting (SECRET_KEY, recovery mode, API tokens).
+
+## Auto-update
+
+Under `config.json` → `auto_update` you can set:
+
+- **check_mode**: `"releases"` (default) uses the release-tag API (e.g. GitHub `releases/latest`); `"branch"` uses an interval-based check against a branch. For branch mode, set `check_url` to a URL that returns a version (e.g. raw `pyproject.toml` or `version.json` from that branch).
+- **check_url**, **check_interval_hours**, **branch**, **changelog_url**: See `config.defaults.json`. Changelog text is loaded first from `readme/changelogs/X.X.X.md` (by version); if missing, the release body from the provider API is used.
 
 ## S3 model storage
 

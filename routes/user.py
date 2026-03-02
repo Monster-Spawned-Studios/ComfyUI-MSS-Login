@@ -90,6 +90,17 @@ def _debug_log_me(path: str, is_admin: bool, username) -> None:
 # #endregion
 
 
+def _request_origin(request: web.Request) -> str:
+    """Build request origin (scheme + host), respecting X-Forwarded-* behind reverse proxy."""
+    proto = (request.headers.get("X-Forwarded-Proto") or "").strip().lower()
+    if not proto and request.url:
+        proto = request.url.scheme or "https"
+    host = (request.headers.get("X-Forwarded-Host") or "").strip()
+    if not host and request.url:
+        host = request.host or ""
+    return (proto or "https") + "://" + (host or "localhost")
+
+
 @routes.get("/mss-login/api/me")
 async def api_me(request: web.Request) -> web.Response:
     """
@@ -99,6 +110,27 @@ async def api_me(request: web.Request) -> web.Response:
 
     is_admin, username, groups = _get_caller_admin_info(request)
     _debug_log_me(request.path, is_admin, username)
+
+    # Capture host base URL from first admin/owner connection when not set by env or DB
+    if username and (is_admin or "owner" in groups):
+        try:
+            from ..constants import (
+                clear_host_base_url_cache,
+                USERS_DB_CONFIG,
+                _is_safe_base_url,
+            )
+            from ..utils.app_settings_store import get_app_settings_store
+
+            if not (os.getenv("HOST_BASE_URL") or "").strip():
+                store = get_app_settings_store(USERS_DB_CONFIG)
+                if not (store.get("host_base_url") or "").strip():
+                    origin = _request_origin(request).rstrip("/")
+                    if _is_safe_base_url(origin):
+                        store.set("host_base_url", origin)
+                        clear_host_base_url_cache()
+        except Exception:
+            pass
+
     if username is None:
         # no / invalid token → guest
         return web.json_response(

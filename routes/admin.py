@@ -1,40 +1,51 @@
 # --- START OF FILE routes/admin.py ---
+"""Routes for the admin API.
+
+This module contains the routes for the admin API.
+"""
 
 from aiohttp import web
-from ..globals import routes, jwt_auth, users_db, ip_filter
+
 from ..constants import (
-    GROUPS_CONFIG_FILE,
-    DEFAULT_GROUP_CONFIG_PATH,
-    WHITELIST_FILE,
     BLACKLIST_FILE,
     CONFIG_FILE_PATH,
-    reload_api_token_store_config,
-    reload_allow_guest_jwt,
-    reload_users_db_config,
+    DEFAULT_GROUP_CONFIG_PATH,
+    GROUPS_CONFIG_FILE,
     USERS_DB_CONFIG,
+    WHITELIST_FILE,
+    get_domain,
+    reload_allow_guest_jwt,
+    reload_api_token_store_config,
+    reload_users_db_config,
 )
-from ..utils.json_utils import load_json_file, save_json_file
-from ..utils.admin_logic import patch_user_group, delete_user_record
-from ..utils.bootstrap import load_default_groups, _apply_owner_max_merge
+from ..globals import ip_filter, jwt_auth, routes, users_db
+from ..utils.admin_logic import delete_user_record, patch_user_group
 from ..utils.api_token_store import reset_api_token_store
-from ..utils.user_console_log import (
-    get_lines as get_user_console_lines,
-    list_users as list_console_users,
-)
+from ..utils.bootstrap import _apply_owner_max_merge, load_default_groups
+from ..utils.json_utils import load_json_file, save_json_file
+from ..utils.model_cache import get_model_cache
 from ..utils.ntfy_notifier import (
+    EVENT_KEYS,
     get_ntfy_config,
     save_ntfy_config,
     send_notification,
-    EVENT_KEYS,
 )
+from ..utils.path_safety import is_safe_filename, is_safe_folder_segment
 from ..utils.shared_items_store import get_shared_items_store
-from ..utils.path_safety import is_safe_folder_segment, is_safe_filename
-from ..utils.model_cache import get_model_cache
 from ..utils.updater import get_cached_status
-from ..constants import USERS_DB_CONFIG, get_domain
+from ..utils.user_console_log import get_lines as get_user_console_lines
+from ..utils.user_console_log import list_users as list_console_users
 
 
 def is_admin(request):
+    """Check if the user is an admin.
+
+    Args:
+        request (web.Request): The request object.
+
+    Returns:
+        bool: True if the user is an admin, False otherwise.
+    """
     token = jwt_auth.get_token_from_request(request)
     if not token:
         return False
@@ -253,7 +264,9 @@ async def api_update_user_route(request):
     # Owner cannot be demoted via this API
     if target_is_owner and not wants_owner:
         return web.json_response(
-            {"error": "Owner's role cannot be changed. Only transfer of ownership is allowed."},
+            {
+                "error": "Owner's role cannot be changed. Only transfer of ownership is allowed."
+            },
             status=403,
         )
 
@@ -264,19 +277,27 @@ async def api_update_user_route(request):
             # only if caller is admin (e.g. first setup). Prefer: only owner can assign.
             # Per plan: only owner can assign; if no owner, rely on _ensure_owner_assigned.
             return web.json_response(
-                {"error": "Only the current owner can assign the owner role. If there is no owner, restart the server so the first admin is promoted to owner."},
+                {
+                    "error": "Only the current owner can assign the owner role. If there is no owner, restart the server so the first admin is promoted to owner."
+                },
                 status=403,
             )
         if caller_username != owner_username:
             return web.json_response(
-                {"error": "Only the current owner can assign the owner role (transfer)."},
+                {
+                    "error": "Only the current owner can assign the owner role (transfer)."
+                },
                 status=403,
             )
         # Transfer: target becomes owner, caller (current owner) becomes admin
-        success = patch_user_group(target, ["owner", "admin"] if is_admin_flag else ["owner"], True, sfw_check)
+        success = patch_user_group(
+            target, ["owner", "admin"] if is_admin_flag else ["owner"], True, sfw_check
+        )
         if success and caller_username:
             patch_user_group(caller_username, ["admin"], True, None)
-        return web.json_response({"status": "ok"}) if success else web.Response(status=404)
+        return (
+            web.json_response({"status": "ok"}) if success else web.Response(status=404)
+        )
 
     success = patch_user_group(target, groups, is_admin_flag, sfw_check)
     if success:
@@ -315,7 +336,7 @@ async def api_get_users_db_config(request):
         return web.json_response({"error": "Admin only"}, status=403)
     out = {
         "backend": USERS_DB_CONFIG.get("backend", "sqlite"),
-        "sqlite_path": USERS_DB_CONFIG.get("sqlite_path", "users/users.db"),
+        "sqlite_path": USERS_DB_CONFIG.get("sqlite_path", "data/mss_login_data.db"),
         "postgres_host": USERS_DB_CONFIG.get("postgres_host", "localhost"),
         "postgres_port": USERS_DB_CONFIG.get("postgres_port", 5432),
         "postgres_database": USERS_DB_CONFIG.get("postgres_database", "mss_login"),
@@ -349,7 +370,7 @@ async def api_put_users_db_config(request):
             udb = {}
         udb["backend"] = backend
         udb["sqlite_path"] = data.get(
-            "sqlite_path", udb.get("sqlite_path", "users/users.db")
+            "sqlite_path", udb.get("sqlite_path", "data/mss_login_data.db")
         )
         udb["postgres_host"] = data.get(
             "postgres_host", udb.get("postgres_host", "localhost")
@@ -477,7 +498,7 @@ async def api_update_ip_lists(request):
         import ipaddress
 
         # Write whitelist
-        with open(WHITELIST_FILE, "w") as f:
+        with open(WHITELIST_FILE, "w", encoding="utf-8") as f:
             for ip_entry in whitelist:
                 ip_entry = ip_entry.strip()
                 if ip_entry:
@@ -493,7 +514,7 @@ async def api_update_ip_lists(request):
                         continue
 
         # Write blacklist
-        with open(BLACKLIST_FILE, "w") as f:
+        with open(BLACKLIST_FILE, "w", encoding="utf-8") as f:
             for ip_entry in blacklist:
                 ip_entry = ip_entry.strip()
                 if ip_entry:
@@ -757,14 +778,14 @@ async def api_nsfw_management(request):
 
         print(f"[mss_login] NSFW management action: {action}")
 
-        from ..utils.sfw_intercept.nsfw_guard import (
-            scan_all_images_in_output_directory,
-            fix_incorrectly_cached_tags,
-            clear_all_nsfw_tags,
-        )
-
         # Run blocking operations in executor to avoid blocking the event loop
         import asyncio
+
+        from ..utils.sfw_intercept.nsfw_guard import (
+            clear_all_nsfw_tags,
+            fix_incorrectly_cached_tags,
+            scan_all_images_in_output_directory,
+        )
 
         loop = asyncio.get_event_loop()
 
@@ -786,9 +807,9 @@ async def api_nsfw_management(request):
             )
 
         elif action == "fix_incorrect":
-            print(f"[mss_login] Starting fix_incorrect in executor...")
+            print("[mss_login] Starting fix_incorrect in executor...")
             fixed_count = await loop.run_in_executor(None, fix_incorrectly_cached_tags)
-            print(f"[mss_login] fix_incorrect completed: {fixed_count} fixed")
+            print("[mss_login] fix_incorrect completed: {fixed_count} fixed")
             return web.json_response(
                 {
                     "status": "ok",
@@ -798,7 +819,7 @@ async def api_nsfw_management(request):
             )
 
         elif action == "clear_all_tags":
-            print(f"[mss_login] Starting clear_all_tags in executor...")
+            print("[mss_login] Starting clear_all_tags in executor...")
             cleared_count = await loop.run_in_executor(None, clear_all_nsfw_tags)
             print(f"[mss_login] clear_all_tags completed: {cleared_count} cleared")
             return web.json_response(

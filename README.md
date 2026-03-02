@@ -124,7 +124,7 @@ A new middleware that detects:
 
 - Forbidden workflow saves
 - Forbidden deletes
-And triggers UI-side toast popups through a custom fetch wrapper.
+  And triggers UI-side toast popups through a custom fetch wrapper.
 
 ### 🛡️ **NSFW Guard API**
 
@@ -156,15 +156,15 @@ if is_sfw_enforced_for_user():
 
 ```javascript
 // Mark an image as NSFW from gallery UI
-fetch('/mss-login-gallery/mark-nsfw', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-        filename: 'image.png',
-        is_nsfw: true,
-        score: 1.0,
-        label: 'manual'
-    })
+fetch("/mss-login-gallery/mark-nsfw", {
+	method: "POST",
+	headers: { "Content-Type": "application/json" },
+	body: JSON.stringify({
+		filename: "image.png",
+		is_nsfw: true,
+		score: 1.0,
+		label: "manual",
+	}),
 });
 ```
 
@@ -294,12 +294,12 @@ mss_login/
 
 ## RBAC Roles
 
-|Role|Description|
-|------|-------------|
-|**Admin**|Full access to all ComfyUI and mss_login features.|
-|**Power**|Elevated user with additional permissions but no admin panel access.|
-|**User**|Standard user who can run workflows but cannot modify system behavior.|
-|**Guest**|Fully restricted by default—cannot run, upload, save, or manage.|
+| Role      | Description                                                            |
+| --------- | ---------------------------------------------------------------------- |
+| **Admin** | Full access to all ComfyUI and mss_login features.                     |
+| **Power** | Elevated user with additional permissions but no admin panel access.   |
+| **User**  | Standard user who can run workflows but cannot modify system behavior. |
+| **Guest** | Fully restricted by default—cannot run, upload, save, or manage.       |
 
 Permissions are stored in:
 
@@ -398,14 +398,14 @@ Other ComfyUI extensions can register custom tabs in the mss_login admin panel t
 
 ```javascript
 window.mss_loginAdminTabs.register({
-    id: "myextension",
-    label: "My Extension",
-    order: 50,
-    render: async (container, context) => {
-        const { usersList, groupsConfig, currentUser } = context;
-        container.innerHTML = `<h3>My Extension Settings</h3>`;
-        // Render your content here
-    }
+	id: "myextension",
+	label: "My Extension",
+	order: 50,
+	render: async (container, context) => {
+		const { usersList, groupsConfig, currentUser } = context;
+		container.innerHTML = `<h3>My Extension Settings</h3>`;
+		// Render your content here
+	},
 });
 ```
 
@@ -442,10 +442,10 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 
 ```json
 {
-    "filename": "image.png",
-    "is_nsfw": true,
-    "score": 1.0,      // optional, default 1.0
-    "label": "manual"  // optional, default "manual"
+	"filename": "image.png",
+	"is_nsfw": true,
+	"score": 1.0, // optional, default 1.0
+	"label": "manual" // optional, default "manual"
 }
 ```
 
@@ -453,10 +453,10 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 
 ```json
 {
-    "status": "ok",
-    "message": "Image marked as NSFW",
-    "filename": "image.png",
-    "is_nsfw": true
+	"status": "ok",
+	"message": "Image marked as NSFW",
+	"filename": "image.png",
+	"is_nsfw": true
 }
 ```
 
@@ -631,14 +631,16 @@ If the client sends a Bearer token but the server returns "API token not found o
 
 ### Unified database and encrypted SQLite
 
-- **Single database:** Users, API tokens, and shared items use one SQLite file or one PostgreSQL database (config: `users_db` in `config.json`). Token storage no longer uses a separate DB; set token storage backend to "database" in Settings.
+- **Single database:** Users, API tokens, and shared items use one SQLite file or one PostgreSQL database (config: `users_db` in `config.json`). The default SQLite path is `data/mss_login_data.db` under the data directory. Token storage uses the same DB; set token storage backend to "database" in Settings. If you had an existing `data/users.db`, the first run migrates it to `data/mss_login_data.db` and updates config automatically.
 - **Encrypted SQLite:** To encrypt the SQLite file with a key derived from `SECRET_KEY`, set `encryption_level` in `users_db` to `low`, `standard`, or `secure` (Settings → Users DB). Requires **argon2-cffi** (`pip install argon2-cffi`) and, for encryption at rest, **sqlcipher3** with a system SQLCipher build (`pip install sqlcipher3`; see [SQLCipher](https://www.zetetic.net/sqlcipher/) for your OS). If `encryption_level` is set but sqlcipher3 is not installed, startup fails with a clear message.
+
+- **Base URL:** Set `HOST_BASE_URL` (e.g. `https://comfy.example.com`) when behind a reverse proxy so RSS and links use the correct host. If unset, the URL is detected from the first admin or owner connection and stored in the database.
 
 ### SECRET_KEY and recovery
 
 - **Unset SECRET_KEY:** If the `SECRET_KEY` environment variable is not set, a random key is used and persisted to `users/.ephemeral_secret_key` (do not commit this file). Sessions and MFA data use this key until restart.
 - **Setting a permanent SECRET_KEY:** When you later set `SECRET_KEY` in the environment and restart, the extension will automatically migrate TOTP secrets from the ephemeral key to the new key and then remove the ephemeral file. No manual action needed if the file is still present.
-- **Recovery mode:** If the ephemeral file was deleted or migration failed, users with MFA may be unable to log in. Enable recovery mode: set `RECOVERY_MODE=1`, then from an allowed host (default: localhost only), send `POST /api/mss-login/recovery/reset-mfa`. This clears MFA for all users so they can log in with password and re-enroll MFA. Override allowed hosts with `RECOVERY_MODE_HOST` or `RECOVRY_MODE_HOST` (comma-separated IPs). Recovery is only accessible when `RECOVERY_MODE` is enabled and the client IP is in the allowed list.
+- **Recovery mode:** If the ephemeral file was deleted or migration failed, users with MFA may be unable to log in. Enable recovery mode: set `RECOVERY_MODE=1`, then from an allowed host (default: localhost only), send `POST /api/mss-login/recovery/reset-mfa`. This clears MFA for all users so they can log in with password and re-enroll MFA. Override allowed hosts with `RECOVERY_MODE_HOST` or `RECOVERY_MODE_HOST` (comma-separated IPs). Recovery is only accessible when `RECOVERY_MODE` is enabled and the client IP is in the allowed list.
 
 ---
 
@@ -650,8 +652,12 @@ Please refer to the license file found under the [readme](./readme/) folder, her
 
 ## Changelog — MSS-Login
 
-All notable changes to the **MSS-Login** projext are documented here.
+All notable changes to the **MSS-Login** project are documented here.
 This project follows a semantic-style versioning flow adapted for active development.
+
+## 0.0.2 - **Security updates/enhancements**
+
+- Changelog can be viewed here: [v0.0.2 Changelog](./readme/changelogs/0.0.2.md)
 
 ## 0.0.1 - **Initial release**
 
