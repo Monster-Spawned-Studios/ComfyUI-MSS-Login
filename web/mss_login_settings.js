@@ -1049,6 +1049,7 @@ renderUsers(list, container) {
                 <p>
                     Configure IP-based access rules. Whitelisted IPs are always allowed,
                     blacklisted IPs are always denied (before other checks).
+                    Blacklist entries can be permanent or temporary (e.g. 24h); auto-bans from failed logins expire by default.
                 </p>
                 <div class="mss-login-row">
                     <div>
@@ -1057,11 +1058,20 @@ renderUsers(list, container) {
                         </label>
                         <textarea class="mss-login-textarea" id="mss-login-ip-whitelist"></textarea>
                     </div>
-                    <div>
-                        <label class="mss-login-field-label">
-                            Blacklist (one IP or CIDR per line)
-                        </label>
-                        <textarea class="mss-login-textarea" id="mss-login-ip-blacklist"></textarea>
+                    <div style="flex:1;">
+                        <label class="mss-login-field-label">Blacklist</label>
+                        <div id="mss-login-ip-blacklist-entries" class="mss-login-ip-list"></div>
+                        <div class="mss-login-row" style="margin-top:8px; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <input type="text" id="mss-login-ip-blacklist-add" class="mss-login-input" placeholder="IP or CIDR" style="min-width:140px;">
+                            <label class="mss-login-field-label" style="margin:0;">Type</label>
+                            <select id="mss-login-ip-blacklist-type" class="mss-login-select" style="width:auto;">
+                                <option value="permanent">Permanent ban</option>
+                                <option value="24">Temporary (24h)</option>
+                                <option value="1">Temporary (1h)</option>
+                                <option value="168">Temporary (7 days)</option>
+                            </select>
+                            <button type="button" class="mss-login-btn secondary" id="mss-login-ip-blacklist-add-btn">Add</button>
+                        </div>
                     </div>
                 </div>
                 <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
@@ -1072,31 +1082,96 @@ renderUsers(list, container) {
         `;
 
         const wlEl = container.querySelector("#mss-login-ip-whitelist");
-        const blEl = container.querySelector("#mss-login-ip-blacklist");
+        const blEntriesEl = container.querySelector("#mss-login-ip-blacklist-entries");
+        const blAddEl = container.querySelector("#mss-login-ip-blacklist-add");
+        const blTypeEl = container.querySelector("#mss-login-ip-blacklist-type");
+        const blAddBtn = container.querySelector("#mss-login-ip-blacklist-add-btn");
         const refreshBtn = container.querySelector("#mss-login-ip-refresh");
         const saveBtn = container.querySelector("#mss-login-ip-save");
 
+        let blacklistEntries = [];
+
+        function formatExpiresAt(entry) {
+            if (entry.permanent) return "Permanent";
+            if (entry.expires_at != null) {
+                const ts = typeof entry.expires_at === "number" ? entry.expires_at : (new Date(entry.expires_at).getTime() / 1000);
+                const d = new Date(ts * 1000);
+                return "Expires at " + d.toLocaleString();
+            }
+            if (entry.expires_in_hours != null)
+                return "Temporary (" + entry.expires_in_hours + "h)";
+            return "Temporary";
+        }
+
+        function renderBlacklistEntries() {
+            blEntriesEl.innerHTML = blacklistEntries.map((entry, idx) => {
+                const label = formatExpiresAt(entry);
+                return `<div class="mss-login-row" style="align-items:center; gap:8px; margin-bottom:4px;">
+                    <span class="mss-login-ip-entry" data-idx="${idx}" style="flex:1; font-family:monospace;">${escapeHtml(entry.ip)}</span>
+                    <span class="mss-login-badge" style="font-size:11px; padding:2px 6px; border-radius:4px; background:var(--input-bg, #333); color:var(--input-text, #eee);">${escapeHtml(label)}</span>
+                    <button type="button" class="mss-login-btn secondary" data-idx="${idx}" data-action="remove" style="padding:2px 8px;">Remove</button>
+                </div>`;
+            }).join("") || "<p class=\"mss-login-note\">No blacklist entries. Add an IP above and click Save.</p>";
+            blEntriesEl.querySelectorAll("[data-action=remove]").forEach(btn => {
+                btn.onclick = () => {
+                    const idx = parseInt(btn.getAttribute("data-idx"), 10);
+                    blacklistEntries.splice(idx, 1);
+                    renderBlacklistEntries();
+                };
+            });
+        }
+
         async function loadIpConfig() {
             const data = await getData(IP_API_ENDPOINT);
-            const whitelist = (data?.whitelist || []).join("\n");
-            const blacklist = (data?.blacklist || []).join("\n");
-            wlEl.value = whitelist;
-            blEl.value = blacklist;
+            const whitelist = (data?.whitelist || []);
+            wlEl.value = Array.isArray(whitelist) ? whitelist.join("\n") : String(whitelist);
+            const bl = (data?.blacklist || []);
+            blacklistEntries = bl.map(item => {
+                if (typeof item === "string") return { ip: item, permanent: true };
+                return {
+                    ip: item.ip || "",
+                    permanent: item.permanent !== false && item.expires_at == null,
+                    expires_at: item.expires_at ?? null,
+                };
+            }).filter(e => e.ip);
+            renderBlacklistEntries();
         }
 
         await loadIpConfig();
 
         refreshBtn.onclick = () => loadIpConfig();
 
+        blAddBtn.onclick = () => {
+            const ip = (blAddEl.value || "").trim();
+            if (!ip) return;
+            const typeVal = blTypeEl.value;
+            const permanent = typeVal === "permanent";
+            const expiresInHours = permanent ? null : parseFloat(typeVal, 10);
+            blacklistEntries.push({
+                ip,
+                permanent,
+                expires_in_hours: expiresInHours,
+            });
+            blAddEl.value = "";
+            renderBlacklistEntries();
+        };
+
         saveBtn.onclick = async () => {
             const whitelist = wlEl.value
                 .split(/\r?\n/)
                 .map(l => l.trim())
                 .filter(l => l.length > 0);
-            const blacklist = blEl.value
-                .split(/\r?\n/)
-                .map(l => l.trim())
-                .filter(l => l.length > 0);
+            const nowHours = Date.now() / 3600000;
+            const blacklist = blacklistEntries.map(e => {
+                if (e.permanent || (e.expires_in_hours == null && e.expires_at == null))
+                    return { ip: e.ip, permanent: true };
+                let hours = e.expires_in_hours;
+                if (hours == null && e.expires_at != null) {
+                    const ts = typeof e.expires_at === "number" ? e.expires_at : (new Date(e.expires_at).getTime() / 1000);
+                    hours = Math.max(0, (ts - Date.now() / 1000) / 3600);
+                }
+                return { ip: e.ip, permanent: false, expires_in_hours: hours };
+            });
 
             saveBtn.disabled = true;
             saveBtn.textContent = "Saving...";
@@ -1107,6 +1182,7 @@ renderUsers(list, container) {
                 });
                 saveBtn.textContent = "Saved";
                 setTimeout(() => (saveBtn.textContent = "Save Rules"), 1200);
+                await loadIpConfig();
             } catch (e) {
                 console.error("[mss-login] Failed to save IP rules:", e);
                 saveBtn.textContent = "Error";
@@ -1818,7 +1894,7 @@ renderNsfwManagement(container) {
 }
 
 async renderTokenStorage(container) {
-    let cfg = { backend: "sqlite", json_path: "data/api_tokens.json", sqlite_path: "data/mss_login_data.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss_login", postgres_user: "mss_login" };
+    let cfg = { backend: "sqlite", json_path: "data/api_tokens.json", sqlite_path: "data/mss_login_data.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss_login", postgres_user: "mss_login", mysql_host: "localhost", mysql_port: 3306, mysql_database: "mss_login", mysql_user: "mss_login" };
     try {
         const res = await api.fetchApi("/mss-login/api/token-storage-config", { method: "GET" });
         if (res.ok) {
@@ -1831,13 +1907,14 @@ async renderTokenStorage(container) {
     container.innerHTML = `
         <div class="mss-login-section">
             <h3>API Token Storage</h3>
-            <p>Configure where long-lived API tokens are stored (JSON file, SQLite, or PostgreSQL). Changes take effect immediately. PostgreSQL password is read from environment variable <code>API_TOKEN_DB_PASSWORD</code> only.</p>
+            <p>Configure where long-lived API tokens are stored (JSON file, SQLite, PostgreSQL, or MySQL). When using a database, same config as Users Database. Passwords: <code>API_TOKEN_DB_PASSWORD</code>, <code>USERS_DB_PASSWORD</code>, <code>POSTGRES_PASSWORD</code>, or <code>MYSQL_PASSWORD</code> in environment only.</p>
             <div class="mss-login-row" style="margin-top:12px; gap:8px; flex-wrap:wrap; align-items:center;">
                 <label class="mss-login-field-label">Backend</label>
                 <select id="mss-login-token-backend" class="mss-login-select">
                     <option value="json" ${backend === "json" ? "selected" : ""}>JSON file</option>
                     <option value="sqlite" ${backend === "sqlite" ? "selected" : ""}>SQLite</option>
                     <option value="postgresql" ${backend === "postgresql" ? "selected" : ""}>PostgreSQL</option>
+                    <option value="mysql" ${backend === "mysql" ? "selected" : ""}>MySQL</option>
                 </select>
             </div>
             <div id="mss-login-token-json-fields" class="mss-login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "json" ? "display:none;" : ""}">
@@ -1861,7 +1938,22 @@ async renderTokenStorage(container) {
                     <label class="mss-login-field-label">User</label>
                     <input type="text" id="mss-login-token-pg-user" class="mss-login-input" value="${(cfg.postgres_user || "mss-login").replace(/"/g, "&quot;")}" placeholder="mss-login">
                 </div>
-                <p class="mss-login-note" style="margin-top:6px;">Password: set environment variable <code>API_TOKEN_DB_PASSWORD</code> (not stored in config).</p>
+                <p class="mss-login-note" style="margin-top:6px;">Password: set <code>API_TOKEN_DB_PASSWORD</code> or <code>POSTGRES_PASSWORD</code> in environment (not stored in config).</p>
+            </div>
+            <div id="mss-login-token-mysql-fields" style="margin-top:8px; ${backend !== "mysql" ? "display:none;" : ""}">
+                <div class="mss-login-row" style="gap:8px; align-items:center; margin-bottom:6px;">
+                    <label class="mss-login-field-label">Host</label>
+                    <input type="text" id="mss-login-token-mysql-host" class="mss-login-input" value="${(cfg.mysql_host || "localhost").replace(/"/g, "&quot;")}" placeholder="localhost">
+                    <label class="mss-login-field-label">Port</label>
+                    <input type="number" id="mss-login-token-mysql-port" class="mss-login-input" value="${cfg.mysql_port ?? 3306}" placeholder="3306" style="width:80px;">
+                </div>
+                <div class="mss-login-row" style="gap:8px; align-items:center;">
+                    <label class="mss-login-field-label">Database</label>
+                    <input type="text" id="mss-login-token-mysql-database" class="mss-login-input" value="${(cfg.mysql_database || "mss_login").replace(/"/g, "&quot;")}" placeholder="mss_login">
+                    <label class="mss-login-field-label">User</label>
+                    <input type="text" id="mss-login-token-mysql-user" class="mss-login-input" value="${(cfg.mysql_user || "mss_login").replace(/"/g, "&quot;")}" placeholder="mss_login">
+                </div>
+                <p class="mss-login-note" style="margin-top:6px;">Password: set <code>MYSQL_PASSWORD</code> or <code>USERS_DB_PASSWORD</code> in environment (not stored in config).</p>
             </div>
             <div class="mss-login-row" style="margin-top:16px; gap:8px;">
                 <button class="mss-login-btn" id="mss-login-token-save">Save</button>
@@ -1873,12 +1965,14 @@ async renderTokenStorage(container) {
     const jsonFields = container.querySelector("#mss-login-token-json-fields");
     const sqliteFields = container.querySelector("#mss-login-token-sqlite-fields");
     const postgresFields = container.querySelector("#mss-login-token-postgres-fields");
+    const mysqlFields = container.querySelector("#mss-login-token-mysql-fields");
     const statusEl = container.querySelector("#mss-login-token-status");
     function showFields() {
         const b = (backendSelect.value || "sqlite").toLowerCase();
         jsonFields.style.display = b === "json" ? "" : "none";
         sqliteFields.style.display = b === "sqlite" ? "" : "none";
         postgresFields.style.display = b === "postgresql" ? "" : "none";
+        if (mysqlFields) mysqlFields.style.display = b === "mysql" ? "" : "none";
     }
     backendSelect.onchange = showFields;
     container.querySelector("#mss-login-token-save").onclick = async () => {
@@ -1891,6 +1985,10 @@ async renderTokenStorage(container) {
             postgres_port: parseInt(container.querySelector("#mss-login-token-pg-port").value, 10) || 5432,
             postgres_database: container.querySelector("#mss-login-token-pg-database").value.trim() || "mss-login",
             postgres_user: container.querySelector("#mss-login-token-pg-user").value.trim() || "mss-login",
+            mysql_host: container.querySelector("#mss-login-token-mysql-host")?.value.trim() || "localhost",
+            mysql_port: parseInt(container.querySelector("#mss-login-token-mysql-port")?.value, 10) || 3306,
+            mysql_database: container.querySelector("#mss-login-token-mysql-database")?.value.trim() || "mss_login",
+            mysql_user: container.querySelector("#mss-login-token-mysql-user")?.value.trim() || "mss_login",
         };
         statusEl.textContent = "Saving...";
         try {
@@ -1908,7 +2006,7 @@ async renderTokenStorage(container) {
 }
 
 async renderUsersDbConfig(container) {
-    let cfg = { backend: "sqlite", sqlite_path: "data/mss_login_data.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss_login", postgres_user: "mss_login" };
+    let cfg = { backend: "sqlite", sqlite_path: "data/mss_login_data.db", postgres_host: "localhost", postgres_port: 5432, postgres_database: "mss_login", postgres_user: "mss_login", mysql_host: "localhost", mysql_port: 3306, mysql_database: "mss_login", mysql_user: "mss_login" };
     try {
         const res = await api.fetchApi("/mss-login/api/users-db-config", { method: "GET" });
         if (res.ok) cfg = await res.json();
@@ -1919,12 +2017,13 @@ async renderUsersDbConfig(container) {
     container.innerHTML = `
         <div class="mss-login-section">
             <h3>Users Database (Credentials)</h3>
-            <p>Configure where user accounts are stored (SQLite or PostgreSQL). No plain-text JSON. Restart required for new backend to take effect. PostgreSQL password: environment variable <code>USERS_DB_PASSWORD</code> or <code>POSTGRES_PASSWORD</code> only.</p>
+            <p>Configure where user accounts are stored (SQLite, PostgreSQL, or MySQL). No plain-text JSON. Restart required for new backend to take effect. Passwords: <code>USERS_DB_PASSWORD</code>, <code>POSTGRES_PASSWORD</code> (PostgreSQL), or <code>MYSQL_PASSWORD</code> (MySQL) in environment only.</p>
             <div class="mss-login-row" style="margin-top:12px; gap:8px; align-items:center;">
                 <label class="mss-login-field-label">Backend</label>
                 <select id="mss-login-usersdb-backend" class="mss-login-select">
                     <option value="sqlite" ${backend === "sqlite" ? "selected" : ""}>SQLite</option>
                     <option value="postgresql" ${backend === "postgresql" ? "selected" : ""}>PostgreSQL</option>
+                    <option value="mysql" ${backend === "mysql" ? "selected" : ""}>MySQL</option>
                 </select>
             </div>
             <div id="mss-login-usersdb-sqlite-fields" class="mss-login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "sqlite" ? "display:none;" : ""}">
@@ -1946,6 +2045,21 @@ async renderUsersDbConfig(container) {
                 </div>
                 <p class="mss-login-note" style="margin-top:6px;">Password: set <code>USERS_DB_PASSWORD</code> or <code>POSTGRES_PASSWORD</code> in environment (never stored in config).</p>
             </div>
+            <div id="mss-login-usersdb-mysql-fields" style="margin-top:8px; ${backend !== "mysql" ? "display:none;" : ""}">
+                <div class="mss-login-row" style="gap:8px; align-items:center; margin-bottom:6px;">
+                    <label class="mss-login-field-label">Host</label>
+                    <input type="text" id="mss-login-usersdb-mysql-host" class="mss-login-input" value="${escapeHtml(cfg.mysql_host || "localhost")}" placeholder="localhost">
+                    <label class="mss-login-field-label">Port</label>
+                    <input type="number" id="mss-login-usersdb-mysql-port" class="mss-login-input" value="${cfg.mysql_port ?? 3306}" placeholder="3306" style="width:80px;">
+                </div>
+                <div class="mss-login-row" style="gap:8px; align-items:center;">
+                    <label class="mss-login-field-label">Database</label>
+                    <input type="text" id="mss-login-usersdb-mysql-database" class="mss-login-input" value="${escapeHtml(cfg.mysql_database || "mss_login")}" placeholder="mss_login">
+                    <label class="mss-login-field-label">User</label>
+                    <input type="text" id="mss-login-usersdb-mysql-user" class="mss-login-input" value="${escapeHtml(cfg.mysql_user || "mss_login")}" placeholder="mss_login">
+                </div>
+                <p class="mss-login-note" style="margin-top:6px;">Password: set <code>MYSQL_PASSWORD</code> or <code>USERS_DB_PASSWORD</code> in environment (never stored in config).</p>
+            </div>
             <div class="mss-login-row" style="margin-top:16px; gap:8px;">
                 <button class="mss-login-btn" id="mss-login-usersdb-save">Save</button>
             </div>
@@ -1955,11 +2069,13 @@ async renderUsersDbConfig(container) {
     const backendSelect = container.querySelector("#mss-login-usersdb-backend");
     const sqliteFields = container.querySelector("#mss-login-usersdb-sqlite-fields");
     const postgresFields = container.querySelector("#mss-login-usersdb-postgres-fields");
+    const mysqlFields = container.querySelector("#mss-login-usersdb-mysql-fields");
     const statusEl = container.querySelector("#mss-login-usersdb-status");
     function showFields() {
         const b = (backendSelect.value || "sqlite").toLowerCase();
         sqliteFields.style.display = b === "sqlite" ? "" : "none";
         postgresFields.style.display = b === "postgresql" ? "" : "none";
+        mysqlFields.style.display = b === "mysql" ? "" : "none";
     }
     backendSelect.onchange = showFields;
     container.querySelector("#mss-login-usersdb-save").onclick = async () => {
@@ -1971,6 +2087,10 @@ async renderUsersDbConfig(container) {
             postgres_port: parseInt(container.querySelector("#mss-login-usersdb-pg-port").value, 10) || 5432,
             postgres_database: container.querySelector("#mss-login-usersdb-pg-database").value.trim() || "mss-login",
             postgres_user: container.querySelector("#mss-login-usersdb-pg-user").value.trim() || "mss-login",
+            mysql_host: container.querySelector("#mss-login-usersdb-mysql-host").value.trim() || "localhost",
+            mysql_port: parseInt(container.querySelector("#mss-login-usersdb-mysql-port").value, 10) || 3306,
+            mysql_database: container.querySelector("#mss-login-usersdb-mysql-database").value.trim() || "mss_login",
+            mysql_user: container.querySelector("#mss-login-usersdb-mysql-user").value.trim() || "mss_login",
         };
         statusEl.textContent = "Saving...";
         try {

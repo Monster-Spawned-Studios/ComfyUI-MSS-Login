@@ -23,6 +23,7 @@ Copy `.env.example` to `.env` and set:
 | `USERS_DB_SQLITE_PATH`   | Optional; default SQLite path for users/API tokens/shared items (default: `data/mss_login_data.db`) |
 | `HOST_BASE_URL`          | Optional; **primary** base URL of this instance (e.g. `https://comfy.example.com`). If unset, detected from first admin/owner connection and stored in the database. HTTPS vs HTTP is taken from this URL (or the detected one); the node enforces HTTPS when it needs a secure URL. Used for RSS, links, and domain resolution. |
 | `POSTGRES_*`             | Optional; PostgreSQL host, port, database, user, password                                         |
+| `MYSQL_*` / `USERS_DB_PASSWORD` | Optional; when backend is MySQL, set `MYSQL_PASSWORD` or `USERS_DB_PASSWORD` in environment (password never stored in config). |
 | `EXPERIMENTAL_FEATURES`  | Enable experimental features (MFA, S3 storage/mount/workflow sync). Set to `true` or `1` to enable. Default: false. |
 | `RECOVERY_MODE`          | Enable recovery endpoint for MFA reset (e.g. `true` or `1`)                                       |
 | `RECOVERY_MODE_HOST`     | Comma-separated IPs allowed to call recovery (default: 127.0.0.1, ::1)                            |
@@ -56,7 +57,7 @@ Permissions control workflow save/delete, extension access, and whether a user c
 If lockout is enabled (`blacklist_after_attempts` in config), too many failed logins blacklist the IP and can lock the device. To **unlock** (e.g. if the owner is locked out):
 
 - **security.json** in the MSS-Login data directory: create or edit `security.json` with a `lockout` section. Add your IP to `unlock_ips` or your device ID to `unlock_devices` to allow access again. Optional: `disable_lockout_until` (Unix timestamp) to temporarily disable lockout checks.
-- **mss_login_data.db** (or the configured SQLite file): If using SQLite, you can remove rows from the `ip_blacklist` or `locked_devices` table in the same database as users to clear a lock.
+- **Database (SQLite/PostgreSQL/MySQL):** IP whitelist and blacklist are stored in the same database as users (`ip_whitelist`, `ip_blacklist` tables). Auto-bans from failed logins expire after a configurable period (default 24 hours; set `blacklist_expiry_hours` in config). Permanent bans are database-only (no JSON file); add them via the ComfyUI admin IP Rules tab. To clear a lock, remove rows from `ip_blacklist` or `locked_devices` in that database.
 
 Example `security.json`:
 
@@ -72,8 +73,8 @@ Example `security.json`:
 
 ## Users database
 
-- **Unified database**: One SQLite file or one PostgreSQL database holds users, API tokens, and shared items.
-- **Encrypted SQLite**: Set `encryption_level` in `config.json` under `users_db` to `low`, `standard`, or `secure`. Requires `argon2-cffi` and, for encryption at rest, `sqlcipher3` with a system SQLCipher build.
+- **Unified database**: One SQLite file, one PostgreSQL database, or one MySQL database holds users, API tokens, sessions, lockout, IP whitelist/blacklist, and shared items. Choose the backend in Settings → Users Database (or Token Storage when using the same DB). Passwords for PostgreSQL and MySQL are read from environment only (`USERS_DB_PASSWORD`, `POSTGRES_PASSWORD`, or `MYSQL_PASSWORD`); never stored in config.
+- **Encrypted SQLite**: Encryption at rest (SQLCipher) applies **only to SQLite**. Set `encryption_level` in `config.json` under `users_db` to `low`, `standard`, or `secure`. Requires `argon2-cffi` and, for encryption at rest, `sqlcipher3` with a system SQLCipher build.
 
 See the README in the project root for detailed troubleshooting (SECRET_KEY, recovery mode, API tokens).
 

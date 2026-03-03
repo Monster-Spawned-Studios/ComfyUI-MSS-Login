@@ -181,6 +181,11 @@ if TOKEN_ALGORITHM not in ("HS256", "RS256", "ES256", "PS256"):
     TOKEN_ALGORITHM = "HS256"
 
 BLACKLIST_AFTER_ATTEMPTS = config_data.get("blacklist_after_attempts", 5)
+# Hours after which auto-bans (from failed login attempts) expire; manual permabans use expires_at NULL
+try:
+    BLACKLIST_EXPIRY_HOURS = int(config_data.get("blacklist_expiry_hours", 24))
+except (TypeError, ValueError):
+    BLACKLIST_EXPIRY_HOURS = 24
 FREE_MEMORY_ON_LOGOUT = config_data.get("free_memory_on_logout", True)
 FORCE_HTTPS = config_data.get("force_https", False)
 SEPERATE_USERS = config_data.get("seperate_users", True)
@@ -212,6 +217,19 @@ USERS_DB_CONFIG = {
     "postgres_user": _env_or_config(
         "USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "mss_login")
     ),
+    "mysql_host": _env_or_config(
+        "USERS_DB_MYSQL_HOST", _users_db_cfg.get("mysql_host", "localhost")
+    ),
+    "mysql_port": _env_or_config(
+        "USERS_DB_MYSQL_PORT", str(_users_db_cfg.get("mysql_port", 3306))
+    ),
+    "mysql_database": _env_or_config(
+        "USERS_DB_MYSQL_DATABASE",
+        _users_db_cfg.get("mysql_database", "mss_login"),
+    ),
+    "mysql_user": _env_or_config(
+        "USERS_DB_MYSQL_USER", _users_db_cfg.get("mysql_user", "mss_login")
+    ),
     "encryption_level": _normalize_encryption_level(
         _users_db_cfg.get("encryption_level", "")
     ),
@@ -219,6 +237,9 @@ USERS_DB_CONFIG = {
 # DB password never in config; env only (unified for users, api_tokens, shared_items)
 USERS_DB_CONFIG["postgres_password"] = (
     os.getenv("USERS_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or ""
+).strip()
+USERS_DB_CONFIG["mysql_password"] = (
+    os.getenv("USERS_DB_PASSWORD") or os.getenv("MYSQL_PASSWORD") or ""
 ).strip()
 
 # API token store: "json" = legacy file; otherwise use same DB as users (backend, sqlite_path, postgres from USERS_DB_CONFIG).
@@ -243,6 +264,11 @@ API_TOKEN_STORE_CONFIG = {
     "postgres_database": USERS_DB_CONFIG["postgres_database"],
     "postgres_user": USERS_DB_CONFIG["postgres_user"],
     "postgres_password": USERS_DB_CONFIG["postgres_password"],
+    "mysql_host": USERS_DB_CONFIG["mysql_host"],
+    "mysql_port": USERS_DB_CONFIG["mysql_port"],
+    "mysql_database": USERS_DB_CONFIG["mysql_database"],
+    "mysql_user": USERS_DB_CONFIG["mysql_user"],
+    "mysql_password": USERS_DB_CONFIG["mysql_password"],
     "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
 }
 
@@ -359,12 +385,28 @@ def reload_users_db_config() -> dict:
         "postgres_user": _env_or_config(
             "USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "mss_login")
         ),
+        "mysql_host": _env_or_config(
+            "USERS_DB_MYSQL_HOST", _users_db_cfg.get("mysql_host", "localhost")
+        ),
+        "mysql_port": _env_or_config(
+            "USERS_DB_MYSQL_PORT", str(_users_db_cfg.get("mysql_port", 3306))
+        ),
+        "mysql_database": _env_or_config(
+            "USERS_DB_MYSQL_DATABASE",
+            _users_db_cfg.get("mysql_database", "mss_login"),
+        ),
+        "mysql_user": _env_or_config(
+            "USERS_DB_MYSQL_USER", _users_db_cfg.get("mysql_user", "mss_login")
+        ),
         "encryption_level": _normalize_encryption_level(
             _users_db_cfg.get("encryption_level", "")
         ),
     }
     USERS_DB_CONFIG["postgres_password"] = (
         os.getenv("USERS_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or ""
+    ).strip()
+    USERS_DB_CONFIG["mysql_password"] = (
+        os.getenv("USERS_DB_PASSWORD") or os.getenv("MYSQL_PASSWORD") or ""
     ).strip()
     # Keep API token store in sync (same DB unless backend is "json")
     _api_cfg = config_data.get("api_token_store") or {}
@@ -385,6 +427,11 @@ def reload_users_db_config() -> dict:
         "postgres_database": USERS_DB_CONFIG["postgres_database"],
         "postgres_user": USERS_DB_CONFIG["postgres_user"],
         "postgres_password": USERS_DB_CONFIG["postgres_password"],
+        "mysql_host": USERS_DB_CONFIG["mysql_host"],
+        "mysql_port": USERS_DB_CONFIG["mysql_port"],
+        "mysql_database": USERS_DB_CONFIG["mysql_database"],
+        "mysql_user": USERS_DB_CONFIG["mysql_user"],
+        "mysql_password": USERS_DB_CONFIG["mysql_password"],
         "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
     }
     # Keep session token store in sync with users_db backend
@@ -398,6 +445,11 @@ def reload_users_db_config() -> dict:
         "postgres_database": USERS_DB_CONFIG["postgres_database"],
         "postgres_user": USERS_DB_CONFIG["postgres_user"],
         "postgres_password": USERS_DB_CONFIG["postgres_password"],
+        "mysql_host": USERS_DB_CONFIG["mysql_host"],
+        "mysql_port": USERS_DB_CONFIG["mysql_port"],
+        "mysql_database": USERS_DB_CONFIG["mysql_database"],
+        "mysql_user": USERS_DB_CONFIG["mysql_user"],
+        "mysql_password": USERS_DB_CONFIG["mysql_password"],
         "legacy_json_path": "",
     }
     return USERS_DB_CONFIG
@@ -419,6 +471,11 @@ SESSION_TOKEN_STORE_CONFIG = {
     "postgres_database": USERS_DB_CONFIG["postgres_database"],
     "postgres_user": USERS_DB_CONFIG["postgres_user"],
     "postgres_password": USERS_DB_CONFIG["postgres_password"],
+    "mysql_host": USERS_DB_CONFIG["mysql_host"],
+    "mysql_port": USERS_DB_CONFIG["mysql_port"],
+    "mysql_database": USERS_DB_CONFIG["mysql_database"],
+    "mysql_user": USERS_DB_CONFIG["mysql_user"],
+    "mysql_password": USERS_DB_CONFIG["mysql_password"],
     "legacy_json_path": (
         _session_legacy_json if os.path.isfile(_session_legacy_json) else ""
     ),

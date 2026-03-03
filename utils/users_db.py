@@ -422,6 +422,177 @@ class _PostgresUsersBackend:
 
 
 # ---------------------------------------------------------------------------
+# MySQL backend
+# ---------------------------------------------------------------------------
+
+
+class _MySQLUsersBackend:
+    """MySQL backend for the users database."""
+
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        database: str,
+        user: str,
+        password: str,
+    ):
+        try:
+            import pymysql
+            from pymysql.cursors import DictCursor
+        except ImportError as e:
+            logger.error(f"MySQL backend requires pymysql; pip install pymysql: {e}")
+            raise RuntimeError(
+                "MySQL backend requires pymysql; pip install pymysql"
+            ) from e
+        self._conn = pymysql.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            database=database,
+            charset="utf8mb4",
+        )
+        self._dict_cursor = DictCursor
+        self._ensure_schema()
+
+    def _ensure_schema(self) -> None:
+        cur = self._conn.cursor()
+        cur.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {USERS_TABLE} (
+                user_id VARCHAR(255) PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                admin INT NOT NULL DEFAULT 0,
+                groups TEXT NOT NULL,
+                sfw_check INT NOT NULL DEFAULT 1,
+                mfa_enabled INT NOT NULL DEFAULT 0,
+                totp_secret_encrypted TEXT,
+                backup_code_hash TEXT,
+                backup_code_used INT NOT NULL DEFAULT 0
+            )
+            """
+        )
+        self._conn.commit()
+        cur.close()
+
+    def migrate_from_json(self, legacy_path: str) -> bool:
+        if not os.path.exists(legacy_path):
+            return False
+        try:
+            with open(legacy_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return False
+        users_data = data.get("users", data) if isinstance(data, dict) else data
+        if isinstance(users_data, dict):
+            items = list(users_data.items())
+        else:
+            items = [
+                (str(i), u) for i, u in enumerate(users_data) if isinstance(u, dict)
+            ]
+        cur = self._conn.cursor()
+        for uid, u in items:
+            uid = str(uid)
+            username = u.get("username") or u.get("user", "")
+            if not username:
+                continue
+            password = u.get("password", "")
+            admin = 1 if u.get("admin") else 0
+            groups = _groups_to_json(u.get("groups", ["admin"] if admin else ["user"]))
+            sfw = 1 if u.get("sfw_check", True) else 0
+            cur.execute(
+                f"""
+                INSERT INTO {USERS_TABLE}
+                (user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used)
+                VALUES (%s, %s, %s, %s, %s, %s, 0, NULL, NULL, 0)
+                ON DUPLICATE KEY UPDATE
+                    username = VALUES(username), password_hash = VALUES(password_hash),
+                    admin = VALUES(admin), groups = VALUES(groups), sfw_check = VALUES(sfw_check)
+                """,
+                (uid, username, password, admin, groups, sfw),
+            )
+        self._conn.commit()
+        cur.close()
+        try:
+            os.rename(legacy_path, legacy_path + ".migrated")
+        except Exception:
+            pass
+        return True
+
+    def get_all(self, secret_key: str) -> dict:
+        cur = self._conn.cursor(self._dict_cursor)
+        cur.execute(
+            f"SELECT user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used FROM {USERS_TABLE}"
+        )
+        rows = cur.fetchall()
+        cur.close()
+        out = {}
+        for r in rows:
+            uid = r.pop("user_id")
+            out[uid] = _row_to_user(dict(r), secret_key)
+        return out
+
+    def insert(self, user_id: str, user: dict, secret_key: str) -> None:
+        row = _user_to_row(user, secret_key)
+        cur = self._conn.cursor()
+        cur.execute(
+            f"""
+            INSERT INTO {USERS_TABLE}
+            (user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                user_id,
+                row["username"],
+                row["password_hash"],
+                row["admin"],
+                row["groups"],
+                row["sfw_check"],
+                row["mfa_enabled"],
+                row["totp_secret_encrypted"] or None,
+                row["backup_code_hash"] or None,
+                row["backup_code_used"],
+            ),
+        )
+        self._conn.commit()
+        cur.close()
+
+    def update(self, user_id: str, user: dict, secret_key: str) -> None:
+        row = _user_to_row(user, secret_key)
+        cur = self._conn.cursor()
+        cur.execute(
+            f"""
+            UPDATE {USERS_TABLE} SET
+                username = %s, password_hash = %s, admin = %s, groups = %s, sfw_check = %s,
+                mfa_enabled = %s, totp_secret_encrypted = %s, backup_code_hash = %s, backup_code_used = %s
+            WHERE user_id = %s
+            """,
+            (
+                row["username"],
+                row["password_hash"],
+                row["admin"],
+                row["groups"],
+                row["sfw_check"],
+                row["mfa_enabled"],
+                row["totp_secret_encrypted"] or None,
+                row["backup_code_hash"] or None,
+                row["backup_code_used"],
+                user_id,
+            ),
+        )
+        self._conn.commit()
+        cur.close()
+
+    def delete(self, user_id: str) -> None:
+        cur = self._conn.cursor()
+        cur.execute(f"DELETE FROM {USERS_TABLE} WHERE user_id = %s", (user_id,))
+        self._conn.commit()
+        cur.close()
+
+
+# ---------------------------------------------------------------------------
 # SECRET_KEY migration: re-encrypt TOTP secrets from old key to new key
 # ---------------------------------------------------------------------------
 
@@ -448,6 +619,14 @@ def migrate_totp_to_new_key(config: dict, old_key: str, new_key: str) -> bool:
             config.get("postgres_database", "mss-login"),
             config.get("postgres_user", "mss-login"),
             config.get("postgres_password", ""),
+        )
+    elif backend_type == "mysql":
+        backend = _MySQLUsersBackend(
+            config.get("mysql_host", "localhost"),
+            int(config.get("mysql_port", 3306)),
+            config.get("mysql_database", "mss_login"),
+            config.get("mysql_user", "mss_login"),
+            config.get("mysql_password", ""),
         )
     else:
         backend = _SqliteUsersBackend(
@@ -493,6 +672,14 @@ class UsersDB:
                 config.get("postgres_database", "mss-login"),
                 config.get("postgres_user", "mss-login"),
                 config.get("postgres_password", ""),
+            )
+        elif backend == "mysql":
+            self._backend = _MySQLUsersBackend(
+                config.get("mysql_host", "localhost"),
+                int(config.get("mysql_port", 3306)),
+                config.get("mysql_database", "mss_login"),
+                config.get("mysql_user", "mss_login"),
+                config.get("mysql_password", ""),
             )
         else:
             self._backend = _SqliteUsersBackend(

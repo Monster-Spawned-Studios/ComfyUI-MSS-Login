@@ -102,6 +102,41 @@ def _get_postgres_store(
     return _PostgresModelCache(conn)
 
 
+def _get_mysql_store(
+    host: str, port: int, database: str, user: str, password: str
+) -> "_MySQLModelCache":
+    try:
+        import pymysql
+    except ImportError:
+        raise RuntimeError("MySQL requires pymysql; pip install pymysql")
+    conn = pymysql.connect(
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        database=database,
+        charset="utf8mb4",
+    )
+    cur = conn.cursor()
+    cur.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {TABLE} (
+            folder VARCHAR(255) NOT NULL,
+            item_name VARCHAR(255) NOT NULL,
+            updated_at DOUBLE NOT NULL,
+            PRIMARY KEY (folder, item_name)
+        )
+        """
+    )
+    try:
+        cur.execute(f"CREATE INDEX idx_{TABLE}_folder ON {TABLE} (folder)")
+    except Exception:
+        pass  # Index may already exist; MySQL has no IF NOT EXISTS for indexes
+    conn.commit()
+    cur.close()
+    return _MySQLModelCache(conn)
+
+
 class _SqliteModelCache:
     def __init__(self, conn):
         self._conn = conn
@@ -251,11 +286,86 @@ class _PostgresModelCache:
         return row is None
 
 
-_store: Optional[_SqliteModelCache | _PostgresModelCache] = None
+class _MySQLModelCache:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def refresh_from_folder_paths(self) -> tuple[list[str], int]:
+        try:
+            import folder_paths
+            folder_names = list(folder_paths.folder_names_and_paths.keys())
+        except Exception:
+            folder_names = list(ASSET_FOLDERS_FALLBACK)
+        now = time.time()
+        total = 0
+        for folder in folder_names:
+            try:
+                import folder_paths
+                names = folder_paths.get_filename_list(folder)
+            except Exception:
+                names = []
+            for item_name in names:
+                item_name = (item_name or "").strip()
+                if not item_name:
+                    continue
+                try:
+                    cur = self._conn.cursor()
+                    cur.execute(
+                        "INSERT INTO {} (folder, item_name, updated_at) VALUES (%s, %s, %s) "
+                        "ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)".format(
+                            TABLE
+                        ),
+                        (folder, item_name, now),
+                    )
+                    total += 1
+                    cur.close()
+                except Exception:
+                    self._conn.rollback()
+                    raise
+        self._conn.commit()
+        if folder_names:
+            cur = self._conn.cursor()
+            placeholders = ",".join("%s" for _ in folder_names)
+            cur.execute(
+                f"DELETE FROM {TABLE} WHERE folder NOT IN ({placeholders})",
+                tuple(folder_names),
+            )
+            cur.close()
+            self._conn.commit()
+        return (folder_names, total)
+
+    def list_folders(self) -> list[str]:
+        cur = self._conn.cursor()
+        cur.execute(f"SELECT DISTINCT folder FROM {TABLE} ORDER BY folder")
+        rows = cur.fetchall()
+        cur.close()
+        return [r[0] for r in rows]
+
+    def list_items(self, folder: str) -> list[str]:
+        cur = self._conn.cursor()
+        cur.execute(
+            f"SELECT item_name FROM {TABLE} WHERE folder = %s ORDER BY item_name",
+            (folder,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        return [r[0] for r in rows]
+
+    def is_empty(self) -> bool:
+        cur = self._conn.cursor()
+        cur.execute(f"SELECT 1 FROM {TABLE} LIMIT 1")
+        row = cur.fetchone()
+        cur.close()
+        return row is None
+
+
+_store: Optional[
+    _SqliteModelCache | _PostgresModelCache | _MySQLModelCache
+] = None
 
 
 def get_model_cache(config: dict):
-    """Get singleton model cache using same config as users_db (backend, sqlite_path, postgres_*, encryption_level)."""
+    """Get singleton model cache using same config as users_db (backend, sqlite_path, postgres_*, mysql_*, encryption_level)."""
     global _store
     if _store is not None:
         return _store
@@ -267,6 +377,14 @@ def get_model_cache(config: dict):
             config.get("postgres_database", "mss-login"),
             config.get("postgres_user", "mss-login"),
             config.get("postgres_password", ""),
+        )
+    elif backend == "mysql":
+        _store = _get_mysql_store(
+            config.get("mysql_host", "localhost"),
+            int(config.get("mysql_port", 3306)),
+            config.get("mysql_database", "mss_login"),
+            config.get("mysql_user", "mss_login"),
+            config.get("mysql_password", ""),
         )
     else:
         try:

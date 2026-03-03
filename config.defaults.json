@@ -7,6 +7,10 @@
 		"postgres_port": 5432,
 		"postgres_database": "mss_login",
 		"postgres_user": "mss_login",
+		"mysql_host": "localhost",
+		"mysql_port": 3306,
+		"mysql_database": "mss_login",
+		"mysql_user": "mss_login",
 		"encryption_level": "secure"
 	},
 	"legacy_users_json_path": "data/users.json",
@@ -19,11 +23,12 @@
 	"log_rotation": {
 		"max_bytes": 2097152,
 		"interval_hours": 24,
-		"archive_dir": ""
+		"archive_dir": "logs"
 	},
 	"whitelist": "data/whitelist.txt",
 	"blacklist": "data/blacklist.txt",
 	"blacklist_after_attempts": 10,
+	"blacklist_expiry_hours": 24,
 	"free_memory_on_logout": true,
 	"force_https": false,
 	"seperate_users": true,

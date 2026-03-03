@@ -157,14 +157,14 @@ if is_sfw_enforced_for_user():
 ```javascript
 // Mark an image as NSFW from gallery UI
 fetch("/mss-login-gallery/mark-nsfw", {
-	method: "POST",
-	headers: { "Content-Type": "application/json" },
-	body: JSON.stringify({
-		filename: "image.png",
-		is_nsfw: true,
-		score: 1.0,
-		label: "manual",
-	}),
+ method: "POST",
+ headers: { "Content-Type": "application/json" },
+ body: JSON.stringify({
+  filename: "image.png",
+  is_nsfw: true,
+  score: 1.0,
+  label: "manual",
+ }),
 });
 ```
 
@@ -353,8 +353,11 @@ utils/ip_filter.py
 ### Features
 
 - Whitelist mode: Only listed IPs allowed
-- Blacklist mode: Block specific IPs
+- Blacklist mode: Block specific IPs (permanent or temporary)
 - Configurable through new “IP Rules” tab in settings
+- **Temporary bans:** Auto-bans from failed logins expire after a configurable period (default 24 hours; `blacklist_expiry_hours` in config). Manual temporary bans can be set in the admin IP Rules tab.
+- **Permanent bans:** Database-only (no JSON file); add or remove via the ComfyUI admin IP Rules tab.
+- IP lists are stored in the same database as users (SQLite, PostgreSQL, or MySQL).
 - Changes applied instantly to middleware
 
 ---
@@ -398,14 +401,14 @@ Other ComfyUI extensions can register custom tabs in the mss_login admin panel t
 
 ```javascript
 window.mss_loginAdminTabs.register({
-	id: "myextension",
-	label: "My Extension",
-	order: 50,
-	render: async (container, context) => {
-		const { usersList, groupsConfig, currentUser } = context;
-		container.innerHTML = `<h3>My Extension Settings</h3>`;
-		// Render your content here
-	},
+ id: "myextension",
+ label: "My Extension",
+ order: 50,
+ render: async (container, context) => {
+  const { usersList, groupsConfig, currentUser } = context;
+  container.innerHTML = `<h3>My Extension Settings</h3>`;
+  // Render your content here
+ },
 });
 ```
 
@@ -442,10 +445,10 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 
 ```json
 {
-	"filename": "image.png",
-	"is_nsfw": true,
-	"score": 1.0, // optional, default 1.0
-	"label": "manual" // optional, default "manual"
+ "filename": "image.png",
+ "is_nsfw": true,
+ "score": 1.0, // optional, default 1.0
+ "label": "manual" // optional, default "manual"
 }
 ```
 
@@ -453,10 +456,10 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 
 ```json
 {
-	"status": "ok",
-	"message": "Image marked as NSFW",
-	"filename": "image.png",
-	"is_nsfw": true
+ "status": "ok",
+ "message": "Image marked as NSFW",
+ "filename": "image.png",
+ "is_nsfw": true
 }
 ```
 
@@ -627,12 +630,12 @@ When using API tokens (e.g. Comfy Portal iOS) and seeing "Unable to connect to s
 
 ### API token "not found or expired"
 
-If the client sends a Bearer token but the server returns "API token not found or expired", the token is not in this server's token store. **Generate the token on the same ComfyUI instance (and same container/host) that the client connects to.** In Docker, ensure the database (unified SQLite file or PostgreSQL) is on a **persisted volume** so tokens survive restarts and are the same instance the client hits.
+If the client sends a Bearer token but the server returns "API token not found or expired", the token is not in this server's token store. **Generate the token on the same ComfyUI instance (and same container/host) that the client connects to.** In Docker, ensure the database (unified SQLite file, PostgreSQL, or MySQL) is on a **persisted volume** so tokens survive restarts and are the same instance the client hits.
 
 ### Unified database and encrypted SQLite
 
-- **Single database:** Users, API tokens, and shared items use one SQLite file or one PostgreSQL database (config: `users_db` in `config.json`). The default SQLite path is `data/mss_login_data.db` under the data directory. Token storage uses the same DB; set token storage backend to "database" in Settings. If you had an existing `data/users.db`, the first run migrates it to `data/mss_login_data.db` and updates config automatically.
-- **Encrypted SQLite:** To encrypt the SQLite file with a key derived from `SECRET_KEY`, set `encryption_level` in `users_db` to `low`, `standard`, or `secure` (Settings → Users DB). Requires **argon2-cffi** (`pip install argon2-cffi`) and, for encryption at rest, **sqlcipher3** with a system SQLCipher build (`pip install sqlcipher3`; see [SQLCipher](https://www.zetetic.net/sqlcipher/) for your OS). If `encryption_level` is set but sqlcipher3 is not installed, startup fails with a clear message.
+- **Single database:** Users, API tokens, sessions, lockout, IP whitelist/blacklist, and shared items use one SQLite file, one PostgreSQL database, or one MySQL database (config: `users_db` in `config.json`). The default SQLite path is `data/mss_login_data.db` under the data directory. Token storage uses the same DB; set token storage backend to SQLite, PostgreSQL, or MySQL in Settings. Passwords for PostgreSQL and MySQL are read from environment only (`USERS_DB_PASSWORD`, `POSTGRES_PASSWORD`, or `MYSQL_PASSWORD`). If you had an existing `data/users.db`, the first run migrates it to `data/mss_login_data.db` and updates config automatically.
+- **Encrypted SQLite:** Encryption at rest (SQLCipher) applies **only to SQLite**. To encrypt the SQLite file with a key derived from `SECRET_KEY`, set `encryption_level` in `users_db` to `low`, `standard`, or `secure` (Settings → Users DB). Requires **argon2-cffi** (`pip install argon2-cffi`) and, for encryption at rest, **sqlcipher3** with a system SQLCipher build (`pip install sqlcipher3`; see [SQLCipher](https://www.zetetic.net/sqlcipher/) for your OS). If `encryption_level` is set but sqlcipher3 is not installed, startup fails with a clear message.
 
 - **Base URL:** Set `HOST_BASE_URL` (e.g. `https://comfy.example.com`) when behind a reverse proxy so RSS and links use the correct host. If unset, the URL is detected from the first admin or owner connection and stored in the database.
 

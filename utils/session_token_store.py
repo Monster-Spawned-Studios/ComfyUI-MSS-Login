@@ -312,6 +312,162 @@ def _get_postgres_session_store(
     return _PostgresSessionStore(conn, idle_revoke_minutes)
 
 
+def _get_mysql_session_store(
+    host: str,
+    port: int,
+    database: str,
+    user: str,
+    password: str,
+    idle_revoke_minutes: int = DEFAULT_IDLE_REVOKE_MINUTES,
+):
+    try:
+        import pymysql
+        from pymysql.cursors import DictCursor
+    except ImportError:
+        raise RuntimeError("MySQL session store requires pymysql; pip install pymysql")
+    conn = pymysql.connect(
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        database=database,
+        charset="utf8mb4",
+    )
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS session_tokens (
+            jti VARCHAR(255) PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            username VARCHAR(255) NOT NULL,
+            created_at_iso VARCHAR(64) NOT NULL,
+            last_used_at_iso VARCHAR(64) NOT NULL,
+            exp_at_iso VARCHAR(64),
+            revoked INT NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.commit()
+    cur.close()
+
+    class _MySQLSessionStore:
+        def __init__(self, conn, idle_revoke_minutes: int):
+            self._conn = conn
+            self._idle_revoke_minutes = idle_revoke_minutes
+
+        def _cursor(self):
+            return self._conn.cursor(DictCursor)
+
+        def register_session(
+            self,
+            jti: str,
+            user_id: str,
+            username: str,
+            exp_at_iso: Optional[str] = None,
+        ) -> None:
+            now = _iso_now()
+            cur = self._conn.cursor()
+            cur.execute(
+                "INSERT INTO session_tokens "
+                "(jti, user_id, username, created_at_iso, last_used_at_iso, exp_at_iso, revoked) "
+                "VALUES (%s, %s, %s, %s, %s, %s, 0) "
+                "ON DUPLICATE KEY UPDATE "
+                "user_id = VALUES(user_id), username = VALUES(username), "
+                "created_at_iso = VALUES(created_at_iso), last_used_at_iso = VALUES(last_used_at_iso), "
+                "exp_at_iso = VALUES(exp_at_iso), revoked = 0",
+                (jti, user_id, username, now, now, exp_at_iso),
+            )
+            self._conn.commit()
+            cur.close()
+
+        def update_last_used(self, jti: str) -> bool:
+            now = _iso_now()
+            cur = self._conn.cursor()
+            cur.execute(
+                "UPDATE session_tokens SET last_used_at_iso = %s WHERE jti = %s AND revoked = 0",
+                (now, jti),
+            )
+            self._conn.commit()
+            n = cur.rowcount
+            cur.close()
+            return n > 0
+
+        def is_revoked(self, jti: str) -> bool:
+            cur = self._cursor()
+            cur.execute("SELECT revoked FROM session_tokens WHERE jti = %s", (jti,))
+            row = cur.fetchone()
+            cur.close()
+            if row is None:
+                return False
+            return bool(row["revoked"])
+
+        def revoke_idle_sessions(self, idle_minutes: Optional[int] = None) -> int:
+            minutes = (
+                idle_minutes if idle_minutes is not None else self._idle_revoke_minutes
+            )
+            cutoff = (
+                datetime.now(timezone.utc) - timedelta(minutes=minutes)
+            ).isoformat()
+            cur = self._conn.cursor()
+            cur.execute(
+                "UPDATE session_tokens SET revoked = 1 "
+                "WHERE revoked = 0 AND last_used_at_iso < %s",
+                (cutoff,),
+            )
+            self._conn.commit()
+            n = cur.rowcount
+            cur.close()
+            return n
+
+        def prune_old_sessions(self) -> int:
+            now_iso = _iso_now()
+            cur = self._conn.cursor()
+            cur.execute(
+                "DELETE FROM session_tokens WHERE revoked = 1 "
+                "OR (exp_at_iso IS NOT NULL AND exp_at_iso != '' AND exp_at_iso < %s)",
+                (now_iso,),
+            )
+            self._conn.commit()
+            n = cur.rowcount
+            cur.close()
+            return n
+
+        def list_sessions_for_user(self, username: str) -> List[dict]:
+            cur = self._cursor()
+            cur.execute(
+                "SELECT jti, created_at_iso, last_used_at_iso, exp_at_iso "
+                "FROM session_tokens WHERE username = %s AND revoked = 0",
+                (username,),
+            )
+            rows = cur.fetchall()
+            cur.close()
+            out = []
+            for r in rows:
+                if _is_expired(r["exp_at_iso"]):
+                    continue
+                out.append(
+                    {
+                        "jti": r["jti"],
+                        "created_at_iso": r["created_at_iso"],
+                        "last_used_at_iso": r["last_used_at_iso"],
+                        "exp_at_iso": r["exp_at_iso"],
+                    }
+                )
+            return out
+
+        def revoke_session(self, jti: str) -> bool:
+            cur = self._conn.cursor()
+            cur.execute(
+                "UPDATE session_tokens SET revoked = 1 WHERE jti = %s", (jti,)
+            )
+            self._conn.commit()
+            n = cur.rowcount
+            cur.close()
+            return n > 0
+
+    return _MySQLSessionStore(conn, idle_revoke_minutes)
+
+
 # ---------------------------------------------------------------------------
 # Legacy JSON migration helper
 # ---------------------------------------------------------------------------
@@ -398,6 +554,15 @@ def get_session_token_store(
             database=config.get("postgres_database", "mss_login"),
             user=config.get("postgres_user", "mss_login"),
             password=config.get("postgres_password", ""),
+            idle_revoke_minutes=idle_revoke_minutes,
+        )
+    elif backend == "mysql":
+        _session_store = _get_mysql_session_store(
+            host=config.get("mysql_host", "localhost"),
+            port=int(config.get("mysql_port", 3306)),
+            database=config.get("mysql_database", "mss_login"),
+            user=config.get("mysql_user", "mss_login"),
+            password=config.get("mysql_password", ""),
             idle_revoke_minutes=idle_revoke_minutes,
         )
     else:

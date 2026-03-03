@@ -64,6 +64,37 @@ def _get_postgres_store(
     return _PostgresSharedStore(conn)
 
 
+def _get_mysql_store(
+    host: str, port: int, database: str, user: str, password: str
+) -> "_MySQLSharedStore":
+    try:
+        import pymysql
+    except ImportError:
+        raise RuntimeError("MySQL requires pymysql; pip install pymysql")
+    conn = pymysql.connect(
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        database=database,
+        charset="utf8mb4",
+    )
+    cur = conn.cursor()
+    cur.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {TABLE} (
+            user_id VARCHAR(255) NOT NULL,
+            folder VARCHAR(255) NOT NULL,
+            item_name VARCHAR(255) NOT NULL,
+            PRIMARY KEY (user_id, folder, item_name)
+        )
+        """
+    )
+    conn.commit()
+    cur.close()
+    return _MySQLSharedStore(conn)
+
+
 class _SqliteSharedStore:
     def __init__(self, conn):
         self._conn = conn
@@ -152,11 +183,62 @@ class _PostgresSharedStore:
         return [{"folder": r[0], "item_name": r[1]} for r in rows]
 
 
-_store: Optional[_SqliteSharedStore | _PostgresSharedStore] = None
+class _MySQLSharedStore:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def get_all_for_user(self, user_id: str) -> set[tuple[str, str]]:
+        cur = self._conn.cursor()
+        cur.execute(
+            f"SELECT folder, item_name FROM {TABLE} WHERE user_id = %s", (user_id,)
+        )
+        rows = cur.fetchall()
+        cur.close()
+        return {(r[0], r[1]) for r in rows}
+
+    def add(self, user_id: str, folder: str, item_name: str) -> bool:
+        try:
+            cur = self._conn.cursor()
+            cur.execute(
+                f"INSERT INTO {TABLE} (user_id, folder, item_name) VALUES (%s, %s, %s)",
+                (user_id, folder, item_name.strip()),
+            )
+            self._conn.commit()
+            cur.close()
+            return True
+        except Exception:
+            self._conn.rollback()
+            return False
+
+    def remove(self, user_id: str, folder: str, item_name: str) -> bool:
+        cur = self._conn.cursor()
+        cur.execute(
+            f"DELETE FROM {TABLE} WHERE user_id = %s AND folder = %s AND item_name = %s",
+            (user_id, folder, item_name.strip()),
+        )
+        self._conn.commit()
+        n = cur.rowcount
+        cur.close()
+        return n > 0
+
+    def list_for_user(self, user_id: str) -> list[dict]:
+        cur = self._conn.cursor()
+        cur.execute(
+            f"SELECT folder, item_name FROM {TABLE} WHERE user_id = %s ORDER BY folder, item_name",
+            (user_id,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        return [{"folder": r[0], "item_name": r[1]} for r in rows]
+
+
+_store: Optional[
+    _SqliteSharedStore | _PostgresSharedStore | _MySQLSharedStore
+] = None
 
 
 def get_shared_items_store(config: dict):
-    """Get singleton store using same config as users_db (backend, sqlite_path, postgres_*, encryption_level)."""
+    """Get singleton store using same config as users_db (backend, sqlite_path, postgres_*, mysql_*, encryption_level)."""
     global _store
     if _store is not None:
         return _store
@@ -168,6 +250,14 @@ def get_shared_items_store(config: dict):
             config.get("postgres_database", "mss-login"),
             config.get("postgres_user", "mss-login"),
             config.get("postgres_password", ""),
+        )
+    elif backend == "mysql":
+        _store = _get_mysql_store(
+            config.get("mysql_host", "localhost"),
+            int(config.get("mysql_port", 3306)),
+            config.get("mysql_database", "mss_login"),
+            config.get("mysql_user", "mss_login"),
+            config.get("mysql_password", ""),
         )
     else:
         try:

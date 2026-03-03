@@ -58,6 +58,35 @@ def _get_postgres_store(
     return _PostgresAppSettingsStore(conn)
 
 
+def _get_mysql_store(
+    host: str, port: int, database: str, user: str, password: str
+) -> "_MySQLAppSettingsStore":
+    try:
+        import pymysql
+    except ImportError:
+        raise RuntimeError("MySQL requires pymysql; pip install pymysql")
+    conn = pymysql.connect(
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        database=database,
+        charset="utf8mb4",
+    )
+    cur = conn.cursor()
+    cur.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {TABLE} (
+            `key` VARCHAR(255) PRIMARY KEY,
+            value TEXT
+        )
+        """
+    )
+    conn.commit()
+    cur.close()
+    return _MySQLAppSettingsStore(conn)
+
+
 class _SqliteAppSettingsStore:
     def __init__(self, conn):
         self._conn = conn
@@ -97,7 +126,30 @@ class _PostgresAppSettingsStore:
         cur.close()
 
 
-_store: Optional[_SqliteAppSettingsStore | _PostgresAppSettingsStore] = None
+class _MySQLAppSettingsStore:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def get(self, key: str) -> Optional[str]:
+        cur = self._conn.cursor()
+        cur.execute(f"SELECT value FROM {TABLE} WHERE `key` = %s", (key,))
+        row = cur.fetchone()
+        cur.close()
+        return row[0] if row else None
+
+    def set(self, key: str, value: str) -> None:
+        cur = self._conn.cursor()
+        cur.execute(
+            f"INSERT INTO {TABLE} (`key`, value) VALUES (%s, %s) ON DUPLICATE KEY UPDATE value = VALUES(value)",
+            (key, value),
+        )
+        self._conn.commit()
+        cur.close()
+
+
+_store: Optional[
+    _SqliteAppSettingsStore | _PostgresAppSettingsStore | _MySQLAppSettingsStore
+] = None
 
 
 def get_app_settings_store(config: dict):
@@ -113,6 +165,14 @@ def get_app_settings_store(config: dict):
             config.get("postgres_database", "mss_login"),
             config.get("postgres_user", "mss_login"),
             config.get("postgres_password", ""),
+        )
+    elif backend == "mysql":
+        _store = _get_mysql_store(
+            config.get("mysql_host", "localhost"),
+            int(config.get("mysql_port", 3306)),
+            config.get("mysql_database", "mss_login"),
+            config.get("mysql_user", "mss_login"),
+            config.get("mysql_password", ""),
         )
     else:
         try:

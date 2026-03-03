@@ -7,12 +7,10 @@ This module contains the routes for the admin API.
 from aiohttp import web
 
 from ..constants import (
-    BLACKLIST_FILE,
     CONFIG_FILE_PATH,
     DEFAULT_GROUP_CONFIG_PATH,
     GROUPS_CONFIG_FILE,
     USERS_DB_CONFIG,
-    WHITELIST_FILE,
     get_domain,
     reload_allow_guest_jwt,
     reload_api_token_store_config,
@@ -341,6 +339,10 @@ async def api_get_users_db_config(request):
         "postgres_port": USERS_DB_CONFIG.get("postgres_port", 5432),
         "postgres_database": USERS_DB_CONFIG.get("postgres_database", "mss_login"),
         "postgres_user": USERS_DB_CONFIG.get("postgres_user", "mss_login"),
+        "mysql_host": USERS_DB_CONFIG.get("mysql_host", "localhost"),
+        "mysql_port": USERS_DB_CONFIG.get("mysql_port", 3306),
+        "mysql_database": USERS_DB_CONFIG.get("mysql_database", "mss_login"),
+        "mysql_user": USERS_DB_CONFIG.get("mysql_user", "mss_login"),
         "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
     }
     return web.json_response(out)
@@ -358,9 +360,10 @@ async def api_put_users_db_config(request):
     try:
         data = await request.json()
         backend = (data.get("backend") or "sqlite").lower()
-        if backend not in ("sqlite", "postgresql"):
+        if backend not in ("sqlite", "postgresql", "mysql"):
             return web.json_response(
-                {"error": "Invalid backend; use sqlite or postgresql"}, status=400
+                {"error": "Invalid backend; use sqlite, postgresql, or mysql"},
+                status=400,
             )
         cfg = load_json_file(CONFIG_FILE_PATH, {})
         if not isinstance(cfg, dict):
@@ -381,6 +384,14 @@ async def api_put_users_db_config(request):
         )
         udb["postgres_user"] = data.get(
             "postgres_user", udb.get("postgres_user", "mss_login")
+        )
+        udb["mysql_host"] = data.get("mysql_host", udb.get("mysql_host", "localhost"))
+        udb["mysql_port"] = data.get("mysql_port", udb.get("mysql_port", 3306))
+        udb["mysql_database"] = data.get(
+            "mysql_database", udb.get("mysql_database", "mss_login")
+        )
+        udb["mysql_user"] = data.get(
+            "mysql_user", udb.get("mysql_user", "mss_login")
         )
         udb["encryption_level"] = (
             data.get("encryption_level") or udb.get("encryption_level") or ""
@@ -404,7 +415,7 @@ routes.put("/api/mss-login/api/users-db-config")(api_put_users_db_config)
 
 @routes.get("/mss-login/api/token-storage-config")
 async def api_get_token_storage_config(request):
-    """Return token storage config (admin only). Uses same DB as users unless backend is json. Postgres password is env-only."""
+    """Return token storage config (admin only). Uses same DB as users unless backend is json. Passwords are env-only."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     cfg = load_json_file(CONFIG_FILE_PATH, {})
@@ -415,6 +426,16 @@ async def api_get_token_storage_config(request):
         "json_path": store_cfg.get("json_path", "users/api_tokens.json"),
         "use_same_db_as_users": use_same_db,
     }
+    if use_same_db:
+        out["sqlite_path"] = USERS_DB_CONFIG.get("sqlite_path", "data/mss_login_data.db")
+        out["postgres_host"] = USERS_DB_CONFIG.get("postgres_host", "localhost")
+        out["postgres_port"] = USERS_DB_CONFIG.get("postgres_port", 5432)
+        out["postgres_database"] = USERS_DB_CONFIG.get("postgres_database", "mss_login")
+        out["postgres_user"] = USERS_DB_CONFIG.get("postgres_user", "mss_login")
+        out["mysql_host"] = USERS_DB_CONFIG.get("mysql_host", "localhost")
+        out["mysql_port"] = USERS_DB_CONFIG.get("mysql_port", 3306)
+        out["mysql_database"] = USERS_DB_CONFIG.get("mysql_database", "mss_login")
+        out["mysql_user"] = USERS_DB_CONFIG.get("mysql_user", "mss_login")
     return web.json_response(out)
 
 
@@ -424,28 +445,46 @@ routes.get("/api/mss-login/api/token-storage-config")(api_get_token_storage_conf
 
 @routes.put("/mss-login/api/token-storage-config")
 async def api_put_token_storage_config(request):
-    """Update token storage config (admin only). Backend: 'json' = legacy file; else use same DB as users. Postgres password is env-only."""
+    """Update token storage config (admin only). Backend: 'json' = legacy file; else use same DB as users. Passwords are env-only."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     try:
         data = await request.json()
         backend = (data.get("backend") or "database").strip().lower()
-        if backend not in ("json", "database", "sqlite", "postgresql"):
+        if backend not in ("json", "database", "sqlite", "postgresql", "mysql"):
             return web.json_response(
                 {"error": "Invalid backend; use json or database (same DB as users)"},
                 status=400,
             )
-        if backend in ("sqlite", "postgresql"):
+        use_db = backend != "json"
+        if backend in ("sqlite", "postgresql", "mysql"):
             backend = "database"
         cfg = load_json_file(CONFIG_FILE_PATH, {})
         if not isinstance(cfg, dict):
             cfg = {}
         api_cfg = cfg.get("api_token_store") or {}
-        api_cfg["backend"] = backend
+        api_cfg["backend"] = "json" if not use_db else "database"
         api_cfg["json_path"] = data.get(
             "json_path", api_cfg.get("json_path", "users/api_tokens.json")
         )
         cfg["api_token_store"] = api_cfg
+        if use_db:
+            udb = cfg.get("users_db") or {}
+            if isinstance(udb, str):
+                udb = {}
+            db_backend = (data.get("backend") or "sqlite").strip().lower()
+            udb["backend"] = db_backend if db_backend in ("sqlite", "postgresql", "mysql") else "sqlite"
+            udb["sqlite_path"] = data.get("sqlite_path", udb.get("sqlite_path", "data/mss_login_data.db"))
+            udb["postgres_host"] = data.get("postgres_host", udb.get("postgres_host", "localhost"))
+            udb["postgres_port"] = data.get("postgres_port", udb.get("postgres_port", 5432))
+            udb["postgres_database"] = data.get("postgres_database", udb.get("postgres_database", "mss_login"))
+            udb["postgres_user"] = data.get("postgres_user", udb.get("postgres_user", "mss_login"))
+            udb["mysql_host"] = data.get("mysql_host", udb.get("mysql_host", "localhost"))
+            udb["mysql_port"] = data.get("mysql_port", udb.get("mysql_port", 3306))
+            udb["mysql_database"] = data.get("mysql_database", udb.get("mysql_database", "mss_login"))
+            udb["mysql_user"] = data.get("mysql_user", udb.get("mysql_user", "mss_login"))
+            cfg["users_db"] = udb
+            reload_users_db_config()
         save_json_file(CONFIG_FILE_PATH, cfg)
         reload_api_token_store_config()
         reset_api_token_store()
@@ -476,12 +515,19 @@ routes.get("/api/mss-login/api/update-status")(api_get_update_status)
 
 @routes.get("/mss-login/api/ip-lists")
 async def api_ip_lists(request):
-    whitelist, blacklist = ip_filter.load_filter_list()
+    store = ip_filter.lockout_store
+    whitelist = store.get_whitelist()
+    blacklist_with_expiry = store.get_blacklist_with_expiry()
+    blacklist = []
+    for ip, expires_at in blacklist_with_expiry:
+        if expires_at is None:
+            blacklist.append({"ip": ip, "permanent": True})
+        else:
+            blacklist.append(
+                {"ip": ip, "permanent": False, "expires_at": expires_at}
+            )
     return web.json_response(
-        {
-            "whitelist": [str(ip) for ip in (whitelist or [])],
-            "blacklist": [str(ip) for ip in (blacklist or [])],
-        }
+        {"whitelist": whitelist, "blacklist": blacklist}
     )
 
 
@@ -490,46 +536,56 @@ async def api_update_ip_lists(request):
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     try:
-        data = await request.json()
-        whitelist = data.get("whitelist", [])
-        blacklist = data.get("blacklist", [])
-
-        # Validate and write whitelist
         import ipaddress
+        import time
 
-        # Write whitelist
-        with open(WHITELIST_FILE, "w", encoding="utf-8") as f:
-            for ip_entry in whitelist:
-                ip_entry = ip_entry.strip()
-                if ip_entry:
-                    try:
-                        # Validate IP or CIDR
-                        try:
-                            ipaddress.ip_address(ip_entry)
-                        except ValueError:
-                            ipaddress.ip_network(ip_entry, strict=False)
-                        f.write(ip_entry + "\n")
-                    except ValueError:
-                        # Skip invalid entries
-                        continue
+        data = await request.json()
+        whitelist_raw = data.get("whitelist", [])
+        blacklist_raw = data.get("blacklist", [])
 
-        # Write blacklist
-        with open(BLACKLIST_FILE, "w", encoding="utf-8") as f:
-            for ip_entry in blacklist:
-                ip_entry = ip_entry.strip()
-                if ip_entry:
-                    try:
-                        # Validate IP or CIDR
-                        try:
-                            ipaddress.ip_address(ip_entry)
-                        except ValueError:
-                            ipaddress.ip_network(ip_entry, strict=False)
-                        f.write(ip_entry + "\n")
-                    except ValueError:
-                        # Skip invalid entries
-                        continue
+        whitelist = []
+        for entry in whitelist_raw:
+            entry = (entry if isinstance(entry, str) else entry.get("entry", "")).strip()
+            if not entry:
+                continue
+            try:
+                try:
+                    ipaddress.ip_address(entry)
+                except ValueError:
+                    ipaddress.ip_network(entry, strict=False)
+                whitelist.append(entry)
+            except ValueError:
+                continue
 
-        # Reload the filter lists to update in-memory cache
+        blacklist_entries = []
+        for item in blacklist_raw:
+            if isinstance(item, str):
+                ip = item.strip()
+                permanent = True
+                expires_in_hours = None
+            else:
+                ip = (item.get("ip") or "").strip()
+                permanent = item.get("permanent", True)
+                expires_in_hours = item.get("expires_in_hours")
+            if not ip:
+                continue
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                continue
+            if permanent or expires_in_hours is None:
+                blacklist_entries.append((ip, None))
+            else:
+                try:
+                    h = float(expires_in_hours)
+                    expires_at = int(time.time()) + int(h * 3600)
+                    blacklist_entries.append((ip, expires_at))
+                except (TypeError, ValueError):
+                    blacklist_entries.append((ip, None))
+
+        store = ip_filter.lockout_store
+        store.set_whitelist(whitelist)
+        store.set_blacklist(blacklist_entries)
         ip_filter.load_filter_list()
 
         return web.json_response({"status": "ok"})

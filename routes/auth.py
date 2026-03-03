@@ -11,6 +11,7 @@ from .. import constants as constants_module
 from ..constants import (
     API_TOKEN_STORE_CONFIG,
     BLACKLIST_AFTER_ATTEMPTS,
+    BLACKLIST_EXPIRY_HOURS,
     DEBUG_MODE,
     HTML_DIR,
     MAX_TOKEN_EXPIRE_MINUTES,
@@ -280,7 +281,9 @@ async def post_login(request: web.Request) -> web.Response:
 
     timeout.add_failed_attempt(ip)
     if timeout.get_failed_attempts(ip) >= BLACKLIST_AFTER_ATTEMPTS:
-        get_lockout_store(USERS_DB_CONFIG).add_lockout(ip, get_device_id(request))
+        get_lockout_store(USERS_DB_CONFIG).add_lockout(
+            ip, get_device_id(request), expiry_hours=BLACKLIST_EXPIRY_HOURS
+        )
     logger.login_failed(ip, username or "")
     try:
         send_notification(

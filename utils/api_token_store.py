@@ -428,6 +428,141 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
     return _PostgresTokenStore(conn)
 
 
+def _get_mysql_store(host: str, port: int, database: str, user: str, password: str):
+    try:
+        import pymysql
+        from pymysql.cursors import DictCursor
+    except ImportError:
+        raise RuntimeError("MySQL API token store requires pymysql; pip install pymysql")
+    conn = pymysql.connect(
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        database=database,
+        charset="utf8mb4",
+    )
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS api_tokens (
+            token_hash VARCHAR(64) PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            username VARCHAR(255) NOT NULL,
+            expires_iso VARCHAR(64) NOT NULL,
+            label VARCHAR(255) DEFAULT '',
+            created_at_iso VARCHAR(64) DEFAULT '',
+            last_used_at_iso VARCHAR(64) DEFAULT ''
+        )
+        """
+    )
+    conn.commit()
+    cur.close()
+
+    class _MySQLTokenStore:
+        def __init__(self, conn):
+            self._conn = conn
+
+        def _cursor(self):
+            return self._conn.cursor(DictCursor)
+
+        def get_user_for_token(self, token: str):
+            h = _hash_token(_normalize_lookup_token(token))
+            cur = self._cursor()
+            cur.execute(
+                "SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = %s",
+                (h,),
+            )
+            row = cur.fetchone()
+            cur.close()
+            if not row:
+                return None
+            if _is_expired(row["expires_iso"]):
+                cur = self._conn.cursor()
+                cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
+                self._conn.commit()
+                cur.close()
+                return None
+            self.update_last_used(token)
+            return (row["user_id"], row["username"])
+
+        def update_last_used(self, token: str) -> bool:
+            h = _hash_token(_normalize_lookup_token(token))
+            now = _iso_now()
+            cur = self._conn.cursor()
+            cur.execute(
+                "UPDATE api_tokens SET last_used_at_iso = %s WHERE token_hash = %s",
+                (now, h),
+            )
+            self._conn.commit()
+            n = cur.rowcount
+            cur.close()
+            return n > 0
+
+        def create_token(
+            self, user_id: str, username: str, expire_hours: float, label: str = ""
+        ) -> str:
+            raw = secrets.token_urlsafe(32)
+            h = _hash_token(raw)
+            exp = _iso_expires(expire_hours)
+            now = _iso_now()
+            cur = self._conn.cursor()
+            cur.execute(
+                "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso, last_used_at_iso) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (h, user_id, username, exp, label, now, ""),
+            )
+            self._conn.commit()
+            cur.close()
+            return raw
+
+        def revoke_token(self, token: str) -> bool:
+            h = _hash_token(_normalize_lookup_token(token))
+            cur = self._conn.cursor()
+            cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
+            self._conn.commit()
+            n = cur.rowcount
+            cur.close()
+            return n > 0
+
+        def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
+            prefix = (prefix or "").strip().rstrip(".")
+            cur = self._conn.cursor()
+            cur.execute(
+                "DELETE FROM api_tokens WHERE token_hash LIKE %s AND username = %s",
+                (prefix + "%", username),
+            )
+            self._conn.commit()
+            n = cur.rowcount
+            cur.close()
+            return n > 0
+
+        def list_tokens_for_user(self, username: str) -> list:
+            cur = self._cursor()
+            cur.execute(
+                "SELECT token_hash, expires_iso, label, created_at_iso, last_used_at_iso "
+                "FROM api_tokens WHERE username = %s",
+                (username,),
+            )
+            rows = cur.fetchall()
+            cur.close()
+            out = []
+            for r in rows:
+                if not _is_expired(r["expires_iso"]):
+                    out.append(
+                        {
+                            "token_hash_prefix": r["token_hash"][:8] + "...",
+                            "expires_iso": r["expires_iso"],
+                            "label": r.get("label") or "",
+                            "created_at_iso": r.get("created_at_iso") or "",
+                            "last_used_at_iso": r.get("last_used_at_iso") or "",
+                        }
+                    )
+            return out
+
+    return _MySQLTokenStore(conn)
+
+
 # ---------------------------------------------------------------------------
 # Factory and singleton
 # ---------------------------------------------------------------------------
@@ -483,6 +618,17 @@ def get_api_token_store(config: Optional[dict] = None):
             store_cfg.get("postgres_password") or os.getenv("POSTGRES_PASSWORD") or ""
         ).strip()
         _api_token_store_instance = _get_postgres_store(
+            host, port, database, user, password
+        )
+    elif backend == "mysql":
+        host = store_cfg.get("mysql_host", "localhost")
+        port = int(store_cfg.get("mysql_port", 3306))
+        database = store_cfg.get("mysql_database", "mss_login")
+        user = store_cfg.get("mysql_user", "mss_login")
+        password = (
+            store_cfg.get("mysql_password") or os.getenv("MYSQL_PASSWORD") or ""
+        ).strip()
+        _api_token_store_instance = _get_mysql_store(
             host, port, database, user, password
         )
     else:
