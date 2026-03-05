@@ -16,7 +16,7 @@ from ..constants import (
     reload_api_token_store_config,
     reload_users_db_config,
 )
-from ..globals import ip_filter, jwt_auth, routes, users_db
+from ..globals import ip_filter, jwt_auth, logger, routes, users_db
 from ..utils.admin_logic import delete_user_record, patch_user_group
 from ..utils.api_token_store import reset_api_token_store
 from ..utils.bootstrap import _apply_owner_max_merge, load_default_groups
@@ -182,7 +182,8 @@ routes.get("/api/mss-login/api/admin/consoles/{username}")(api_admin_consoles_us
 
 
 @routes.get("/mss-login/api/groups")
-async def api_groups(request):
+async def api_groups(request: web.Request) -> web.Response:
+    """Return groups (admin only)."""
     default_cfg = load_default_groups()
     current = load_json_file(GROUPS_CONFIG_FILE, default_cfg)
     if not isinstance(current, dict):
@@ -203,7 +204,8 @@ routes.get("/api/mss-login/api/groups")(api_groups)
 
 
 @routes.put("/mss-login/api/groups")
-async def api_update_groups(request):
+async def api_update_groups(request: web.Request) -> web.Response:
+    """Update groups (admin only)."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     try:
@@ -228,7 +230,8 @@ routes.put("/api/mss-login/api/groups")(api_update_groups)
 
 
 @routes.get("/mss-login/api/users")
-async def api_users(request):
+async def api_users(request: web.Request) -> web.Response:
+    """Return users (admin only)."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     users_list = users_db.list_users_for_admin()
@@ -240,7 +243,8 @@ routes.get("/api/mss-login/api/users")(api_users)
 
 
 @routes.put("/mss-login/api/users/{target_user}")
-async def api_update_user_route(request):
+async def api_update_user_route(request: web.Request) -> web.Response:
+    """Update user (admin only)."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
 
@@ -308,7 +312,8 @@ routes.put("/api/mss-login/api/users/{target_user}")(api_update_user_route)
 
 
 @routes.delete("/mss-login/api/users/{target_user}")
-async def api_delete_user_route(request):
+async def api_delete_user_route(request: web.Request) -> web.Response:
+    """Delete user (admin only)."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     target = request.match_info["target_user"]
@@ -390,9 +395,7 @@ async def api_put_users_db_config(request):
         udb["mysql_database"] = data.get(
             "mysql_database", udb.get("mysql_database", "mss_login")
         )
-        udb["mysql_user"] = data.get(
-            "mysql_user", udb.get("mysql_user", "mss_login")
-        )
+        udb["mysql_user"] = data.get("mysql_user", udb.get("mysql_user", "mss_login"))
         udb["encryption_level"] = (
             data.get("encryption_level") or udb.get("encryption_level") or ""
         ).strip()
@@ -406,7 +409,10 @@ async def api_put_users_db_config(request):
             }
         )
     except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+        logger.error(f"[admin.py] api_put_users_db_config: {str(e)}")
+        return web.json_response(
+            {"error": f"[admin.py] api_put_users_db_config: {str(e)}"}, status=500
+        )
 
 
 routes.put("/mss-login/api/users-db-config")(api_put_users_db_config)
@@ -427,7 +433,9 @@ async def api_get_token_storage_config(request):
         "use_same_db_as_users": use_same_db,
     }
     if use_same_db:
-        out["sqlite_path"] = USERS_DB_CONFIG.get("sqlite_path", "data/mss_login_data.db")
+        out["sqlite_path"] = USERS_DB_CONFIG.get(
+            "sqlite_path", "data/mss_login_data.db"
+        )
         out["postgres_host"] = USERS_DB_CONFIG.get("postgres_host", "localhost")
         out["postgres_port"] = USERS_DB_CONFIG.get("postgres_port", 5432)
         out["postgres_database"] = USERS_DB_CONFIG.get("postgres_database", "mss_login")
@@ -473,16 +481,36 @@ async def api_put_token_storage_config(request):
             if isinstance(udb, str):
                 udb = {}
             db_backend = (data.get("backend") or "sqlite").strip().lower()
-            udb["backend"] = db_backend if db_backend in ("sqlite", "postgresql", "mysql") else "sqlite"
-            udb["sqlite_path"] = data.get("sqlite_path", udb.get("sqlite_path", "data/mss_login_data.db"))
-            udb["postgres_host"] = data.get("postgres_host", udb.get("postgres_host", "localhost"))
-            udb["postgres_port"] = data.get("postgres_port", udb.get("postgres_port", 5432))
-            udb["postgres_database"] = data.get("postgres_database", udb.get("postgres_database", "mss_login"))
-            udb["postgres_user"] = data.get("postgres_user", udb.get("postgres_user", "mss_login"))
-            udb["mysql_host"] = data.get("mysql_host", udb.get("mysql_host", "localhost"))
+            udb["backend"] = (
+                db_backend
+                if db_backend in ("sqlite", "postgresql", "mysql")
+                else "sqlite"
+            )
+            udb["sqlite_path"] = data.get(
+                "sqlite_path", udb.get("sqlite_path", "data/mss_login_data.db")
+            )
+            udb["postgres_host"] = data.get(
+                "postgres_host", udb.get("postgres_host", "localhost")
+            )
+            udb["postgres_port"] = data.get(
+                "postgres_port", udb.get("postgres_port", 5432)
+            )
+            udb["postgres_database"] = data.get(
+                "postgres_database", udb.get("postgres_database", "mss_login")
+            )
+            udb["postgres_user"] = data.get(
+                "postgres_user", udb.get("postgres_user", "mss_login")
+            )
+            udb["mysql_host"] = data.get(
+                "mysql_host", udb.get("mysql_host", "localhost")
+            )
             udb["mysql_port"] = data.get("mysql_port", udb.get("mysql_port", 3306))
-            udb["mysql_database"] = data.get("mysql_database", udb.get("mysql_database", "mss_login"))
-            udb["mysql_user"] = data.get("mysql_user", udb.get("mysql_user", "mss_login"))
+            udb["mysql_database"] = data.get(
+                "mysql_database", udb.get("mysql_database", "mss_login")
+            )
+            udb["mysql_user"] = data.get(
+                "mysql_user", udb.get("mysql_user", "mss_login")
+            )
             cfg["users_db"] = udb
             reload_users_db_config()
         save_json_file(CONFIG_FILE_PATH, cfg)
@@ -514,7 +542,10 @@ routes.get("/api/mss-login/api/update-status")(api_get_update_status)
 
 
 @routes.get("/mss-login/api/ip-lists")
-async def api_ip_lists(request):
+async def api_ip_lists(request: web.Request) -> web.Response:
+    """Return IP lists (admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
     store = ip_filter.lockout_store
     whitelist = store.get_whitelist()
     blacklist_with_expiry = store.get_blacklist_with_expiry()
@@ -523,16 +554,13 @@ async def api_ip_lists(request):
         if expires_at is None:
             blacklist.append({"ip": ip, "permanent": True})
         else:
-            blacklist.append(
-                {"ip": ip, "permanent": False, "expires_at": expires_at}
-            )
-    return web.json_response(
-        {"whitelist": whitelist, "blacklist": blacklist}
-    )
+            blacklist.append({"ip": ip, "permanent": False, "expires_at": expires_at})
+    return web.json_response({"whitelist": whitelist, "blacklist": blacklist})
 
 
 @routes.put("/mss-login/api/ip-lists")
 async def api_update_ip_lists(request):
+    """Update IP lists (admin only)."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     try:
@@ -545,7 +573,9 @@ async def api_update_ip_lists(request):
 
         whitelist = []
         for entry in whitelist_raw:
-            entry = (entry if isinstance(entry, str) else entry.get("entry", "")).strip()
+            entry = (
+                entry if isinstance(entry, str) else entry.get("entry", "")
+            ).strip()
             if not entry:
                 continue
             try:
@@ -608,7 +638,8 @@ async def api_available_model_folders(request):
         import folder_paths  # type: ignore[import-untyped]  # ComfyUI core module; resolves at runtime
 
         folders = list(folder_paths.folder_names_and_paths.keys())
-    except Exception:
+    except ImportError as e:
+        logger.error(f"[MSS-Login] Error importing folder_paths: {e}")
         folders = [
             "checkpoints",
             "loras",
@@ -642,8 +673,10 @@ async def api_available_models_in_folder(request):
         import folder_paths  # type: ignore[import-untyped]  # ComfyUI core module; resolves at runtime
 
         names = folder_paths.get_filename_list(folder)
-    except Exception:
+    except ImportError as e:
+        logger.error(f"[MSS-Login] api_available_models_in_folder: {e}")
         names = []
+        return web.json_response({"error": str(e)}, status=500)
     return web.json_response({"folder": folder, "items": names})
 
 

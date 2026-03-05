@@ -8,31 +8,22 @@ import jwt
 from aiohttp import web
 
 from .. import constants as constants_module
-from ..constants import (
-    API_TOKEN_STORE_CONFIG,
-    BLACKLIST_AFTER_ATTEMPTS,
-    BLACKLIST_EXPIRY_HOURS,
-    DEBUG_MODE,
-    HTML_DIR,
-    MAX_TOKEN_EXPIRE_MINUTES,
-    SESSION_TOKEN_STORE_CONFIG,
-    USERS_DB_CONFIG,
-)
-from ..globals import access_control, jwt_auth, logger, routes, timeout, users_db
+from ..constants import (API_TOKEN_STORE_CONFIG, BLACKLIST_AFTER_ATTEMPTS,
+                         BLACKLIST_EXPIRY_HOURS, DEBUG_MODE, HTML_DIR,
+                         MAX_TOKEN_EXPIRE_MINUTES, SESSION_TOKEN_STORE_CONFIG,
+                         USERS_DB_CONFIG)
+from ..globals import (access_control, jwt_auth, logger, routes, timeout,
+                       users_db)
 from ..utils import user_env
 from ..utils.api_token_store import get_api_token_store
 from ..utils.bootstrap import ensure_groups_config, ensure_guest_user
+from ..utils.input_sanitizer import (sanitize_backup_code_input,
+                                     sanitize_label, sanitize_password_input,
+                                     sanitize_token_hash_prefix,
+                                     sanitize_totp_code, sanitize_username)
 from ..utils.ip_filter import get_device_id, get_ip
 from ..utils.lockout_store import get_lockout_store
 from ..utils.mfa_temp_store import create_mfa_temp_token
-from ..utils.input_sanitizer import (
-    sanitize_backup_code_input,
-    sanitize_label,
-    sanitize_password_input,
-    sanitize_token_hash_prefix,
-    sanitize_totp_code,
-    sanitize_username,
-)
 from ..utils.ntfy_notifier import send_notification
 from ..utils.session_token_store import get_session_token_store
 from ..utils.user_console_log import append as user_console_append
@@ -41,9 +32,10 @@ from ..utils.validate import validate_password, validate_username
 
 @routes.get("/register")
 async def get_register(request: web.Request) -> web.Response:
+    """Serve the register page."""
     path = os.path.join(HTML_DIR, "register.html")
     if not os.path.exists(path):
-        return web.Response(tet="register.html not found", status=404)
+        return web.Response(text="register.html not found", status=404)
     with open(path, "r", encoding="utf-8") as f:
         html_content = f.read()
     if not users_db.load_users():
@@ -55,6 +47,7 @@ async def get_register(request: web.Request) -> web.Response:
 
 @routes.post("/register")
 async def post_register(request: web.Request) -> web.Response:
+    """Register a new user."""
     sanitized_data = request.get("_sanitized_data", {})
     ip = get_ip(request)
     new_username = sanitize_username(sanitized_data.get("new_user_username"))
@@ -98,16 +91,19 @@ async def post_register(request: web.Request) -> web.Response:
             "MSS-Login: User created",
             f"New user: {new_username} (registered by {username if not is_first_admin else 'first admin'}) from IP: {ip}",
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"[auth.py] post_register: send_notification: {e}")
     timeout.remove_failed_attempts(ip)
     return web.json_response({"message": "User registered"})
 
 
 @routes.get("/loading")
 async def get_loading(request: web.Request) -> web.Response:
-    """Serve the loading page (between login and ComfyUI). Requires valid JWT; unauthenticated users are redirected by JWT middleware.
-    Browser-only: headless/API clients that use JWT (e.g. ComfyUI API image generation) never request this route; they use the token from POST /login and call /prompt etc. directly."""
+    """Serve the loading page (between login and ComfyUI). Requires valid JWT; unauthenticated users
+    are redirected by JWT middleware. Browser-only: headless/API clients that use JWT (e.g. ComfyUI
+    API image generation) never request this route; they use the token from POST /login and call
+    /prompt etc. directly.
+    """
     path = os.path.join(HTML_DIR, "loading.html")
     if not os.path.exists(path):
         return web.Response(text="loading.html not found", status=404)
@@ -116,6 +112,7 @@ async def get_loading(request: web.Request) -> web.Response:
 
 @routes.get("/login")
 async def get_login(request: web.Request) -> web.Response:
+    """Serve the login page."""
     if not users_db.load_users():
         return web.HTTPFound("/register")
     if jwt_auth.get_token_from_request(request):
@@ -133,7 +130,9 @@ async def get_mfa(request: web.Request) -> web.Response:
     """Serve the MFA page (verify or setup). Token and mode are in sessionStorage set by login."""
     if not constants_module.EXPERIMENTAL_FEATURES:
         return web.json_response(
-            {"error": "MFA is an experimental feature. Enable EXPERIMENTAL_FEATURES to use it."},
+            {
+                "error": "MFA is an experimental feature. Enable EXPERIMENTAL_FEATURES to use it."
+            },
             status=403,
         )
     path = os.path.join(HTML_DIR, "mfa.html")
@@ -258,8 +257,8 @@ async def post_login(request: web.Request) -> web.Response:
                 get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
                     jti, user_id, username, exp_at_iso
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"[auth.py] post_login: register_session: {e}")
         if DEBUG_MODE:
             logger.log_jwt_if_debug(token, username)
         else:
@@ -271,8 +270,8 @@ async def post_login(request: web.Request) -> web.Response:
                 "mss-login: User login",
                 f"User {username} logged in from IP: {ip}",
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"[auth.py] post_login: send_notification: {e}")
         resp = web.json_response({"message": "Login successful", "jwt_token": token})
         resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
         logger.login_success(ip, username)
@@ -291,8 +290,8 @@ async def post_login(request: web.Request) -> web.Response:
             "mss-login: Login failure",
             f"Failed login attempt for username '{username}' from IP: {ip}",
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"[auth.py] post_login: send_notification: {str(e)}")
     return web.json_response({"error": "Invalid credentials"}, status=401)
 
 
@@ -312,8 +311,8 @@ async def get_logout(request: web.Request) -> web.Response:
                     f"User {username} logged out from IP: {ip}",
                 )
                 logger.logout(ip, username)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error(f"[auth.py] get_logout: send_notification: {str(e)}")
     resp = web.HTTPFound("/login")
     resp.del_cookie("jwt_token", path="/")
     return resp
@@ -656,4 +655,6 @@ async def delete_user_token(request: web.Request) -> web.Response:
     if revoked:
         user_console_append(username, f"API token revoked (prefix: {prefix}...)")
         return web.json_response({"message": "Token revoked."})
+    return web.json_response({"error": "Token not found."}, status=404)
+    return web.json_response({"error": "Token not found."}, status=404)
     return web.json_response({"error": "Token not found."}, status=404)

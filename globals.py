@@ -2,46 +2,49 @@
 Global variables for the MSS-Login server.
 """
 
+import contextvars
+
 # --- START OF FILE globals.py ---
-from .constants import WHITELIST_FILE, BLACKLIST_FILE
-from .utils.lockout_store import get_lockout_store
-from .utils.data_dir import MIGRATION_PERFORMED
 import ipaddress
 import os
+
 from server import PromptServer  # pyright: ignore[reportMissingImports]
+
 from .constants import (
-    SECRET_KEY,
-    USERS_DB_CONFIG,
+    API_TOKEN_STORE_CONFIG,
+    BLACKLIST_AFTER_ATTEMPTS,
+    BLACKLIST_EXPIRY_HOURS,
+    BLACKLIST_FILE,
     CONFIG_FILE_PATH,
+    EPHEMERAL_SECRET_KEY_PATH,
+    EXPERIMENTAL_FEATURES,
+    GROUPS_CONFIG_FILE,
     LEGACY_USERS_JSON_PATH,
     LOG_FILE,
     LOG_LEVELS,
     LOG_ROTATION_ARCHIVE_DIR,
     LOG_ROTATION_INTERVAL_HOURS,
     LOG_ROTATION_MAX_BYTES,
+    SECRET_KEY,
     SECURITY_JSON_PATH,
-    GROUPS_CONFIG_FILE,
-    API_TOKEN_STORE_CONFIG,
-    TOKEN_EXPIRE_MINUTES,
     TOKEN_ALGORITHM,
-    BLACKLIST_AFTER_ATTEMPTS,
-    BLACKLIST_EXPIRY_HOURS,
-    EPHEMERAL_SECRET_KEY_PATH,
-    EXPERIMENTAL_FEATURES,
-    _load_ephemeral_key,
+    TOKEN_EXPIRE_MINUTES,
+    USERS_DB_CONFIG,
+    WHITELIST_FILE,
     _load_config,
+    _load_ephemeral_key,
 )
 
 # Import Utils
 from .utils.access_control import AccessControl
-from .utils.users_db import UsersDB, migrate_totp_to_new_key
-from .utils.jwt_auth import JWTAuth
+from .utils.data_dir import MIGRATION_PERFORMED
 from .utils.ip_filter import IPFilter
-from .utils.timeout import Timeout
+from .utils.jwt_auth import JWTAuth
+from .utils.lockout_store import get_lockout_store
 from .utils.logger import Logger
 from .utils.sanitizer import Sanitizer
-
-import contextvars
+from .utils.timeout import Timeout
+from .utils.users_db import UsersDB, migrate_totp_to_new_key
 
 current_username_var = contextvars.ContextVar("mss_login_current_user", default=None)
 
