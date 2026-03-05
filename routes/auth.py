@@ -8,19 +8,28 @@ import jwt
 from aiohttp import web
 
 from .. import constants as constants_module
-from ..constants import (API_TOKEN_STORE_CONFIG, BLACKLIST_AFTER_ATTEMPTS,
-                         BLACKLIST_EXPIRY_HOURS, DEBUG_MODE, HTML_DIR,
-                         MAX_TOKEN_EXPIRE_MINUTES, SESSION_TOKEN_STORE_CONFIG,
-                         USERS_DB_CONFIG)
-from ..globals import (access_control, jwt_auth, logger, routes, timeout,
-                       users_db)
+from ..constants import (
+    API_TOKEN_STORE_CONFIG,
+    BLACKLIST_AFTER_ATTEMPTS,
+    BLACKLIST_EXPIRY_HOURS,
+    DEBUG_MODE,
+    HTML_DIR,
+    MAX_TOKEN_EXPIRE_MINUTES,
+    SESSION_TOKEN_STORE_CONFIG,
+    USERS_DB_CONFIG,
+)
+from ..globals import access_control, jwt_auth, logger, routes, timeout, users_db
 from ..utils import user_env
 from ..utils.api_token_store import get_api_token_store
 from ..utils.bootstrap import ensure_groups_config, ensure_guest_user
-from ..utils.input_sanitizer import (sanitize_backup_code_input,
-                                     sanitize_label, sanitize_password_input,
-                                     sanitize_token_hash_prefix,
-                                     sanitize_totp_code, sanitize_username)
+from ..utils.input_sanitizer import (
+    sanitize_backup_code_input,
+    sanitize_label,
+    sanitize_password_input,
+    sanitize_token_hash_prefix,
+    sanitize_totp_code,
+    sanitize_username,
+)
 from ..utils.ip_filter import get_device_id, get_ip
 from ..utils.lockout_store import get_lockout_store
 from ..utils.mfa_temp_store import create_mfa_temp_token
@@ -655,6 +664,4 @@ async def delete_user_token(request: web.Request) -> web.Response:
     if revoked:
         user_console_append(username, f"API token revoked (prefix: {prefix}...)")
         return web.json_response({"message": "Token revoked."})
-    return web.json_response({"error": "Token not found."}, status=404)
-    return web.json_response({"error": "Token not found."}, status=404)
     return web.json_response({"error": "Token not found."}, status=404)

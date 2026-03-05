@@ -1,4 +1,5 @@
 *.log
 *.lock
 *.db
-.env
+.env*
+!.env.example
