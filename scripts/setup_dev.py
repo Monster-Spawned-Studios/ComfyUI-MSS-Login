@@ -16,52 +16,47 @@ parser = ArgumentParser(
     description="Setup the local development environment for the ComfyUI-MSS-Login extension."
 )
 parser.add_argument(
-    "--python",
+    "-p","--python",
     type=str,
     default="3.13",
     help="The version of Python to use for the virtual environment.",
 )
 parser.add_argument(
-    "--dev-group",
+    "-g","--dependency-groups",
     type=str,
-    default="dev",
-    help="The group to use for the development dependencies.",
+    default=["dev"],
+    help="The groups to use for the development dependencies.",
+    choices=["dev", "comfyui", "documentation", "production"],
 )
+parser.add_argument("-D","--debug", action="store_true", help="Enable debug logging.")
 parser.add_argument(
-    "--comfyui-group",
-    type=str,
-    default="comfyui",
-    help="The group to use for the ComfyUI dependencies.",
-)
-parser.add_argument("--debug", action="store_true", help="Enable debug logging.")
-parser.add_argument(
-    "--install-comfyui",
+    "-i","--install-comfyui",
     action="store_true",
     help="Install ComfyUI  and its dependencies.",
 )
 parser.add_argument(
-    "--comfyui-dir",
+    "-d","--comfyui-dir",
     type=str,
     default="ComfyUI",
     help="The directory to install ComfyUI to.",
 )
 parser.add_argument(
-    "--m-series",
+    "-m","--m-series",
     action="store_true",
     help="Install ComfyUI and its dependencies for Apple M-Series.",
 )
 parser.add_argument(
-    "--cuda",
+    "-nv","--cuda",
     action="store_true",
     help="Install ComfyUI and its dependencies for NVIDIA CUDA GPUs.",
 )
 parser.add_argument(
-    "--rocm",
+    "-r","--rocm",
     action="store_true",
     help="Install ComfyUI and its dependencies for AMD ROCm GPUs.",
 )
 parser.add_argument(
-    "--cpu",
+    "-c","--cpu",
     action="store_true",
     help="Install ComfyUI and its dependencies for use with a CPU only.",
 )
@@ -73,8 +68,7 @@ logger.info("The application has started and will now begin its task.")
 
 arg_values = {
     "python_version": args.python,
-    "dev_group": args.dev_group,
-    "comfyui_group": args.comfyui_group,
+    "dependency_groups": args.dependency_groups,
     "debug_mode": args.debug,
     "install_comfyui": args.install_comfyui,
     "comfyui_dir": args.comfyui_dir,
@@ -292,16 +286,25 @@ if __name__ == "__main__":
         install_comfyui: Whether to install ComfyUI and its dependencies.
     """
     try:
+        try:
+            result = subprocess.run(["uv", "--help"], check=True, capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.error("Failed to check the uv version: %s", result.stderr)
+                sleep(3)
+                exit(1)
+        except subprocess.CalledProcessError as e:
+            logger.error("Failed to check the uv version: %s\nPlease install uv manually using the `pip install -U uv` command.", e)
+            sleep(3)
+            exit(1)
         if setup_dev(
             arg_values["python_version"],
-            arg_values["dev_group"],
-            arg_values["comfyui_group"],
+            arg_values["dependency_groups"],
         ):
             logger.info("Local development environment setup complete.")
             if arg_values.get("install_comfyui", False):
                 if install_comfyui(
                     arg_values["python_version"],
-                    arg_values["comfyui_group"],
+                    arg_values["dependency_groups"],
                     arg_values["comfyui_dir"],
                 ):
                     logger.info("ComfyUI and its dependencies installed successfully.")
