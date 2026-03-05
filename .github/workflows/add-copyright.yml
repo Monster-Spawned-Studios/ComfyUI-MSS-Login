@@ -14,7 +14,7 @@ permissions:
 jobs:
   add-copyright-dry-run:
     name: Add copyright headers
-    runs-on: [self-hosted, win11]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -29,7 +29,7 @@ jobs:
 
   add-copyright:
     name: Add copyright headers
-    runs-on: [self-hosted, win11]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6

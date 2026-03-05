@@ -1,39 +1,49 @@
 # --- START OF FILE routes/admin.py ---
+"""Routes for the admin API.
+
+This module contains the routes for the admin API.
+"""
 
 from aiohttp import web
-from ..globals import routes, jwt_auth, users_db, ip_filter
+
 from ..constants import (
-    GROUPS_CONFIG_FILE,
-    DEFAULT_GROUP_CONFIG_PATH,
-    WHITELIST_FILE,
-    BLACKLIST_FILE,
     CONFIG_FILE_PATH,
-    reload_api_token_store_config,
-    reload_allow_guest_jwt,
-    reload_users_db_config,
+    DEFAULT_GROUP_CONFIG_PATH,
+    GROUPS_CONFIG_FILE,
     USERS_DB_CONFIG,
+    get_domain,
+    reload_allow_guest_jwt,
+    reload_api_token_store_config,
+    reload_users_db_config,
 )
-from ..utils.json_utils import load_json_file, save_json_file
-from ..utils.admin_logic import patch_user_group, delete_user_record
-from ..utils.bootstrap import load_default_groups
+from ..globals import ip_filter, jwt_auth, logger, routes, users_db
+from ..utils.admin_logic import delete_user_record, patch_user_group
 from ..utils.api_token_store import reset_api_token_store
-from ..utils.user_console_log import (
-    get_lines as get_user_console_lines,
-    list_users as list_console_users,
-)
+from ..utils.bootstrap import _apply_owner_max_merge, load_default_groups
+from ..utils.json_utils import load_json_file, save_json_file
+from ..utils.model_cache import get_model_cache
 from ..utils.ntfy_notifier import (
+    EVENT_KEYS,
     get_ntfy_config,
     save_ntfy_config,
     send_notification,
-    EVENT_KEYS,
 )
+from ..utils.path_safety import is_safe_filename, is_safe_folder_segment
 from ..utils.shared_items_store import get_shared_items_store
-from ..utils.model_cache import get_model_cache
 from ..utils.updater import get_cached_status
-from ..constants import USERS_DB_CONFIG, get_domain
+from ..utils.user_console_log import get_lines as get_user_console_lines
+from ..utils.user_console_log import list_users as list_console_users
 
 
 def is_admin(request):
+    """Check if the user is an admin.
+
+    Args:
+        request (web.Request): The request object.
+
+    Returns:
+        bool: True if the user is an admin, False otherwise.
+    """
     token = jwt_auth.get_token_from_request(request)
     if not token:
         return False
@@ -44,6 +54,26 @@ def is_admin(request):
         return u.get("admin", False) or "admin" in groups or "owner" in groups
     except Exception:
         return False
+
+
+def _get_caller_username_and_groups(request):
+    """Return (username, groups) for the authenticated caller, or (None, [])."""
+    token = jwt_auth.get_token_from_request(request)
+    if not token:
+        return None, []
+    try:
+        p = jwt_auth.decode_access_token(token)
+        _, u = users_db.get_user(p["username"])
+        groups = [g.lower() for g in (u.get("groups") or [])]
+        return u.get("username"), groups
+    except Exception:
+        return None, []
+
+
+def is_owner(request):
+    """Return True if the authenticated user has 'owner' in their groups."""
+    _username, groups = _get_caller_username_and_groups(request)
+    return "owner" in groups
 
 
 @routes.get("/mss-login/api/settings/guest-jwt")
@@ -152,7 +182,8 @@ routes.get("/api/mss-login/api/admin/consoles/{username}")(api_admin_consoles_us
 
 
 @routes.get("/mss-login/api/groups")
-async def api_groups(request):
+async def api_groups(request: web.Request) -> web.Response:
+    """Return groups (admin only)."""
     default_cfg = load_default_groups()
     current = load_json_file(GROUPS_CONFIG_FILE, default_cfg)
     if not isinstance(current, dict):
@@ -173,7 +204,8 @@ routes.get("/api/mss-login/api/groups")(api_groups)
 
 
 @routes.put("/mss-login/api/groups")
-async def api_update_groups(request):
+async def api_update_groups(request: web.Request) -> web.Response:
+    """Update groups (admin only)."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     try:
@@ -186,6 +218,7 @@ async def api_update_groups(request):
                 current[g_lower] = {}
             for k, v in perms.items():
                 current[g_lower][k] = bool(v)
+        _apply_owner_max_merge(current)
         save_json_file(GROUPS_CONFIG_FILE, current)
         return web.json_response({"status": "ok"})
     except Exception as e:
@@ -197,7 +230,8 @@ routes.put("/api/mss-login/api/groups")(api_update_groups)
 
 
 @routes.get("/mss-login/api/users")
-async def api_users(request):
+async def api_users(request: web.Request) -> web.Response:
+    """Return users (admin only)."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     users_list = users_db.list_users_for_admin()
@@ -209,18 +243,63 @@ routes.get("/api/mss-login/api/users")(api_users)
 
 
 @routes.put("/mss-login/api/users/{target_user}")
-async def api_update_user_route(request):
+async def api_update_user_route(request: web.Request) -> web.Response:
+    """Update user (admin only)."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
 
     target = request.match_info["target_user"]
     data = await request.json()
+    caller_username, caller_groups = _get_caller_username_and_groups(request)
+    owner_username = users_db.get_owner_username()
+    target_uid, target_user = users_db.get_user(username=target)
+    if not target_uid or not target_user:
+        return web.Response(status=404)
+    target_current_groups = [g.lower() for g in target_user.get("groups", [])]
+    target_is_owner = "owner" in target_current_groups
 
     groups = [g.lower() for g in data.get("groups", [])]
+    wants_owner = "owner" in groups
     is_admin_flag = "admin" in groups
-
-    # NEW: optional SFW flag
     sfw_check = data.get("sfw_check", None)
+
+    # Owner cannot be demoted via this API
+    if target_is_owner and not wants_owner:
+        return web.json_response(
+            {
+                "error": "Owner's role cannot be changed. Only transfer of ownership is allowed."
+            },
+            status=403,
+        )
+
+    # Assigning owner: only current owner can assign (transfer); max one owner
+    if wants_owner and not target_is_owner:
+        if owner_username is None:
+            # No owner yet: _ensure_owner_assigned will run on next load; allow this assign
+            # only if caller is admin (e.g. first setup). Prefer: only owner can assign.
+            # Per plan: only owner can assign; if no owner, rely on _ensure_owner_assigned.
+            return web.json_response(
+                {
+                    "error": "Only the current owner can assign the owner role. If there is no owner, restart the server so the first admin is promoted to owner."
+                },
+                status=403,
+            )
+        if caller_username != owner_username:
+            return web.json_response(
+                {
+                    "error": "Only the current owner can assign the owner role (transfer)."
+                },
+                status=403,
+            )
+        # Transfer: target becomes owner, caller (current owner) becomes admin
+        success = patch_user_group(
+            target, ["owner", "admin"] if is_admin_flag else ["owner"], True, sfw_check
+        )
+        if success and caller_username:
+            patch_user_group(caller_username, ["admin"], True, None)
+        return (
+            web.json_response({"status": "ok"}) if success else web.Response(status=404)
+        )
 
     success = patch_user_group(target, groups, is_admin_flag, sfw_check)
     if success:
@@ -233,7 +312,8 @@ routes.put("/api/mss-login/api/users/{target_user}")(api_update_user_route)
 
 
 @routes.delete("/mss-login/api/users/{target_user}")
-async def api_delete_user_route(request):
+async def api_delete_user_route(request: web.Request) -> web.Response:
+    """Delete user (admin only)."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     target = request.match_info["target_user"]
@@ -259,11 +339,15 @@ async def api_get_users_db_config(request):
         return web.json_response({"error": "Admin only"}, status=403)
     out = {
         "backend": USERS_DB_CONFIG.get("backend", "sqlite"),
-        "sqlite_path": USERS_DB_CONFIG.get("sqlite_path", "users/users.db"),
+        "sqlite_path": USERS_DB_CONFIG.get("sqlite_path", "data/mss_login_data.db"),
         "postgres_host": USERS_DB_CONFIG.get("postgres_host", "localhost"),
         "postgres_port": USERS_DB_CONFIG.get("postgres_port", 5432),
         "postgres_database": USERS_DB_CONFIG.get("postgres_database", "mss_login"),
         "postgres_user": USERS_DB_CONFIG.get("postgres_user", "mss_login"),
+        "mysql_host": USERS_DB_CONFIG.get("mysql_host", "localhost"),
+        "mysql_port": USERS_DB_CONFIG.get("mysql_port", 3306),
+        "mysql_database": USERS_DB_CONFIG.get("mysql_database", "mss_login"),
+        "mysql_user": USERS_DB_CONFIG.get("mysql_user", "mss_login"),
         "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
     }
     return web.json_response(out)
@@ -281,9 +365,10 @@ async def api_put_users_db_config(request):
     try:
         data = await request.json()
         backend = (data.get("backend") or "sqlite").lower()
-        if backend not in ("sqlite", "postgresql"):
+        if backend not in ("sqlite", "postgresql", "mysql"):
             return web.json_response(
-                {"error": "Invalid backend; use sqlite or postgresql"}, status=400
+                {"error": "Invalid backend; use sqlite, postgresql, or mysql"},
+                status=400,
             )
         cfg = load_json_file(CONFIG_FILE_PATH, {})
         if not isinstance(cfg, dict):
@@ -293,7 +378,7 @@ async def api_put_users_db_config(request):
             udb = {}
         udb["backend"] = backend
         udb["sqlite_path"] = data.get(
-            "sqlite_path", udb.get("sqlite_path", "users/users.db")
+            "sqlite_path", udb.get("sqlite_path", "data/mss_login_data.db")
         )
         udb["postgres_host"] = data.get(
             "postgres_host", udb.get("postgres_host", "localhost")
@@ -305,6 +390,12 @@ async def api_put_users_db_config(request):
         udb["postgres_user"] = data.get(
             "postgres_user", udb.get("postgres_user", "mss_login")
         )
+        udb["mysql_host"] = data.get("mysql_host", udb.get("mysql_host", "localhost"))
+        udb["mysql_port"] = data.get("mysql_port", udb.get("mysql_port", 3306))
+        udb["mysql_database"] = data.get(
+            "mysql_database", udb.get("mysql_database", "mss_login")
+        )
+        udb["mysql_user"] = data.get("mysql_user", udb.get("mysql_user", "mss_login"))
         udb["encryption_level"] = (
             data.get("encryption_level") or udb.get("encryption_level") or ""
         ).strip()
@@ -318,7 +409,10 @@ async def api_put_users_db_config(request):
             }
         )
     except Exception as e:
-        return web.json_response({"error": str(e)}, status=500)
+        logger.error(f"[admin.py] api_put_users_db_config: {str(e)}")
+        return web.json_response(
+            {"error": f"[admin.py] api_put_users_db_config: {str(e)}"}, status=500
+        )
 
 
 routes.put("/mss-login/api/users-db-config")(api_put_users_db_config)
@@ -327,7 +421,7 @@ routes.put("/api/mss-login/api/users-db-config")(api_put_users_db_config)
 
 @routes.get("/mss-login/api/token-storage-config")
 async def api_get_token_storage_config(request):
-    """Return token storage config (admin only). Uses same DB as users unless backend is json. Postgres password is env-only."""
+    """Return token storage config (admin only). Uses same DB as users unless backend is json. Passwords are env-only."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     cfg = load_json_file(CONFIG_FILE_PATH, {})
@@ -338,6 +432,18 @@ async def api_get_token_storage_config(request):
         "json_path": store_cfg.get("json_path", "users/api_tokens.json"),
         "use_same_db_as_users": use_same_db,
     }
+    if use_same_db:
+        out["sqlite_path"] = USERS_DB_CONFIG.get(
+            "sqlite_path", "data/mss_login_data.db"
+        )
+        out["postgres_host"] = USERS_DB_CONFIG.get("postgres_host", "localhost")
+        out["postgres_port"] = USERS_DB_CONFIG.get("postgres_port", 5432)
+        out["postgres_database"] = USERS_DB_CONFIG.get("postgres_database", "mss_login")
+        out["postgres_user"] = USERS_DB_CONFIG.get("postgres_user", "mss_login")
+        out["mysql_host"] = USERS_DB_CONFIG.get("mysql_host", "localhost")
+        out["mysql_port"] = USERS_DB_CONFIG.get("mysql_port", 3306)
+        out["mysql_database"] = USERS_DB_CONFIG.get("mysql_database", "mss_login")
+        out["mysql_user"] = USERS_DB_CONFIG.get("mysql_user", "mss_login")
     return web.json_response(out)
 
 
@@ -347,28 +453,66 @@ routes.get("/api/mss-login/api/token-storage-config")(api_get_token_storage_conf
 
 @routes.put("/mss-login/api/token-storage-config")
 async def api_put_token_storage_config(request):
-    """Update token storage config (admin only). Backend: 'json' = legacy file; else use same DB as users. Postgres password is env-only."""
+    """Update token storage config (admin only). Backend: 'json' = legacy file; else use same DB as users. Passwords are env-only."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     try:
         data = await request.json()
         backend = (data.get("backend") or "database").strip().lower()
-        if backend not in ("json", "database", "sqlite", "postgresql"):
+        if backend not in ("json", "database", "sqlite", "postgresql", "mysql"):
             return web.json_response(
                 {"error": "Invalid backend; use json or database (same DB as users)"},
                 status=400,
             )
-        if backend in ("sqlite", "postgresql"):
+        use_db = backend != "json"
+        if backend in ("sqlite", "postgresql", "mysql"):
             backend = "database"
         cfg = load_json_file(CONFIG_FILE_PATH, {})
         if not isinstance(cfg, dict):
             cfg = {}
         api_cfg = cfg.get("api_token_store") or {}
-        api_cfg["backend"] = backend
+        api_cfg["backend"] = "json" if not use_db else "database"
         api_cfg["json_path"] = data.get(
             "json_path", api_cfg.get("json_path", "users/api_tokens.json")
         )
         cfg["api_token_store"] = api_cfg
+        if use_db:
+            udb = cfg.get("users_db") or {}
+            if isinstance(udb, str):
+                udb = {}
+            db_backend = (data.get("backend") or "sqlite").strip().lower()
+            udb["backend"] = (
+                db_backend
+                if db_backend in ("sqlite", "postgresql", "mysql")
+                else "sqlite"
+            )
+            udb["sqlite_path"] = data.get(
+                "sqlite_path", udb.get("sqlite_path", "data/mss_login_data.db")
+            )
+            udb["postgres_host"] = data.get(
+                "postgres_host", udb.get("postgres_host", "localhost")
+            )
+            udb["postgres_port"] = data.get(
+                "postgres_port", udb.get("postgres_port", 5432)
+            )
+            udb["postgres_database"] = data.get(
+                "postgres_database", udb.get("postgres_database", "mss_login")
+            )
+            udb["postgres_user"] = data.get(
+                "postgres_user", udb.get("postgres_user", "mss_login")
+            )
+            udb["mysql_host"] = data.get(
+                "mysql_host", udb.get("mysql_host", "localhost")
+            )
+            udb["mysql_port"] = data.get("mysql_port", udb.get("mysql_port", 3306))
+            udb["mysql_database"] = data.get(
+                "mysql_database", udb.get("mysql_database", "mss_login")
+            )
+            udb["mysql_user"] = data.get(
+                "mysql_user", udb.get("mysql_user", "mss_login")
+            )
+            cfg["users_db"] = udb
+            reload_users_db_config()
         save_json_file(CONFIG_FILE_PATH, cfg)
         reload_api_token_store_config()
         reset_api_token_store()
@@ -398,61 +542,80 @@ routes.get("/api/mss-login/api/update-status")(api_get_update_status)
 
 
 @routes.get("/mss-login/api/ip-lists")
-async def api_ip_lists(request):
-    whitelist, blacklist = ip_filter.load_filter_list()
-    return web.json_response(
-        {
-            "whitelist": [str(ip) for ip in (whitelist or [])],
-            "blacklist": [str(ip) for ip in (blacklist or [])],
-        }
-    )
+async def api_ip_lists(request: web.Request) -> web.Response:
+    """Return IP lists (admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    store = ip_filter.lockout_store
+    whitelist = store.get_whitelist()
+    blacklist_with_expiry = store.get_blacklist_with_expiry()
+    blacklist = []
+    for ip, expires_at in blacklist_with_expiry:
+        if expires_at is None:
+            blacklist.append({"ip": ip, "permanent": True})
+        else:
+            blacklist.append({"ip": ip, "permanent": False, "expires_at": expires_at})
+    return web.json_response({"whitelist": whitelist, "blacklist": blacklist})
 
 
 @routes.put("/mss-login/api/ip-lists")
 async def api_update_ip_lists(request):
+    """Update IP lists (admin only)."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     try:
-        data = await request.json()
-        whitelist = data.get("whitelist", [])
-        blacklist = data.get("blacklist", [])
-
-        # Validate and write whitelist
         import ipaddress
+        import time
 
-        # Write whitelist
-        with open(WHITELIST_FILE, "w") as f:
-            for ip_entry in whitelist:
-                ip_entry = ip_entry.strip()
-                if ip_entry:
-                    try:
-                        # Validate IP or CIDR
-                        try:
-                            ipaddress.ip_address(ip_entry)
-                        except ValueError:
-                            ipaddress.ip_network(ip_entry, strict=False)
-                        f.write(ip_entry + "\n")
-                    except ValueError:
-                        # Skip invalid entries
-                        continue
+        data = await request.json()
+        whitelist_raw = data.get("whitelist", [])
+        blacklist_raw = data.get("blacklist", [])
 
-        # Write blacklist
-        with open(BLACKLIST_FILE, "w") as f:
-            for ip_entry in blacklist:
-                ip_entry = ip_entry.strip()
-                if ip_entry:
-                    try:
-                        # Validate IP or CIDR
-                        try:
-                            ipaddress.ip_address(ip_entry)
-                        except ValueError:
-                            ipaddress.ip_network(ip_entry, strict=False)
-                        f.write(ip_entry + "\n")
-                    except ValueError:
-                        # Skip invalid entries
-                        continue
+        whitelist = []
+        for entry in whitelist_raw:
+            entry = (
+                entry if isinstance(entry, str) else entry.get("entry", "")
+            ).strip()
+            if not entry:
+                continue
+            try:
+                try:
+                    ipaddress.ip_address(entry)
+                except ValueError:
+                    ipaddress.ip_network(entry, strict=False)
+                whitelist.append(entry)
+            except ValueError:
+                continue
 
-        # Reload the filter lists to update in-memory cache
+        blacklist_entries = []
+        for item in blacklist_raw:
+            if isinstance(item, str):
+                ip = item.strip()
+                permanent = True
+                expires_in_hours = None
+            else:
+                ip = (item.get("ip") or "").strip()
+                permanent = item.get("permanent", True)
+                expires_in_hours = item.get("expires_in_hours")
+            if not ip:
+                continue
+            try:
+                ipaddress.ip_address(ip)
+            except ValueError:
+                continue
+            if permanent or expires_in_hours is None:
+                blacklist_entries.append((ip, None))
+            else:
+                try:
+                    h = float(expires_in_hours)
+                    expires_at = int(time.time()) + int(h * 3600)
+                    blacklist_entries.append((ip, expires_at))
+                except (TypeError, ValueError):
+                    blacklist_entries.append((ip, None))
+
+        store = ip_filter.lockout_store
+        store.set_whitelist(whitelist)
+        store.set_blacklist(blacklist_entries)
         ip_filter.load_filter_list()
 
         return web.json_response({"status": "ok"})
@@ -475,7 +638,8 @@ async def api_available_model_folders(request):
         import folder_paths  # type: ignore[import-untyped]  # ComfyUI core module; resolves at runtime
 
         folders = list(folder_paths.folder_names_and_paths.keys())
-    except Exception:
+    except ImportError as e:
+        logger.error(f"[MSS-Login] Error importing folder_paths: {e}")
         folders = [
             "checkpoints",
             "loras",
@@ -494,9 +658,7 @@ routes.get("/api/mss-login/api/available-model-folders")(api_available_model_fol
 
 def _safe_folder_segment(folder: str) -> bool:
     """Return True if folder is a single path segment (no path traversal)."""
-    if not folder or ".." in folder or "/" in folder or "\\" in folder:
-        return False
-    return True
+    return is_safe_folder_segment(folder)
 
 
 @routes.get("/mss-login/api/available-models/{folder}")
@@ -511,8 +673,10 @@ async def api_available_models_in_folder(request):
         import folder_paths  # type: ignore[import-untyped]  # ComfyUI core module; resolves at runtime
 
         names = folder_paths.get_filename_list(folder)
-    except Exception:
+    except ImportError as e:
+        logger.error(f"[MSS-Login] api_available_models_in_folder: {e}")
         names = []
+        return web.json_response({"error": str(e)}, status=500)
     return web.json_response({"folder": folder, "items": names})
 
 
@@ -622,6 +786,11 @@ async def api_add_shared_item(request):
             return web.json_response(
                 {"error": "folder and item_name required"}, status=400
             )
+        if not is_safe_folder_segment(folder) or not is_safe_filename(item_name):
+            return web.json_response(
+                {"error": "Invalid folder or item_name (path traversal not allowed)"},
+                status=400,
+            )
         store = get_shared_items_store(USERS_DB_CONFIG)
         if store.add(user_id, folder, item_name):
             send_notification(
@@ -661,6 +830,11 @@ async def api_remove_shared_item(request):
             return web.json_response(
                 {"error": "folder and item_name required"}, status=400
             )
+        if not is_safe_folder_segment(folder) or not is_safe_filename(item_name):
+            return web.json_response(
+                {"error": "Invalid folder or item_name (path traversal not allowed)"},
+                status=400,
+            )
         store = get_shared_items_store(USERS_DB_CONFIG)
         if store.remove(user_id, folder, item_name):
             send_notification(
@@ -693,14 +867,14 @@ async def api_nsfw_management(request):
 
         print(f"[mss_login] NSFW management action: {action}")
 
-        from ..utils.sfw_intercept.nsfw_guard import (
-            scan_all_images_in_output_directory,
-            fix_incorrectly_cached_tags,
-            clear_all_nsfw_tags,
-        )
-
         # Run blocking operations in executor to avoid blocking the event loop
         import asyncio
+
+        from ..utils.sfw_intercept.nsfw_guard import (
+            clear_all_nsfw_tags,
+            fix_incorrectly_cached_tags,
+            scan_all_images_in_output_directory,
+        )
 
         loop = asyncio.get_event_loop()
 
@@ -722,9 +896,9 @@ async def api_nsfw_management(request):
             )
 
         elif action == "fix_incorrect":
-            print(f"[mss_login] Starting fix_incorrect in executor...")
+            print("[mss_login] Starting fix_incorrect in executor...")
             fixed_count = await loop.run_in_executor(None, fix_incorrectly_cached_tags)
-            print(f"[mss_login] fix_incorrect completed: {fixed_count} fixed")
+            print("[mss_login] fix_incorrect completed: {fixed_count} fixed")
             return web.json_response(
                 {
                     "status": "ok",
@@ -734,7 +908,7 @@ async def api_nsfw_management(request):
             )
 
         elif action == "clear_all_tags":
-            print(f"[mss_login] Starting clear_all_tags in executor...")
+            print("[mss_login] Starting clear_all_tags in executor...")
             cleared_count = await loop.run_in_executor(None, clear_all_nsfw_tags)
             print(f"[mss_login] clear_all_tags completed: {cleared_count} cleared")
             return web.json_response(

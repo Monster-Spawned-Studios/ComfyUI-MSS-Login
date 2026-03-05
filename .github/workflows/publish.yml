@@ -13,7 +13,7 @@ permissions:
 jobs:
     publish-node:
         name: Publish Custom Node to registry
-        runs-on: [self-hosted, win11]
+        runs-on: ubuntu-latest
         if: ${{ github.repository_owner == 'Monster-Spawned-Studios' }}
         steps:
             - name: Check out code

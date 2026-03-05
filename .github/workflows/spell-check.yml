@@ -11,7 +11,7 @@ on:
 jobs:
     codespell:
         name: Codespell
-        runs-on: [self-hosted, win11]
+        runs-on: ubuntu-latest
         steps:
             - name: Checkout
               uses: actions/checkout@v6

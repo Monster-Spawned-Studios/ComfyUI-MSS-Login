@@ -1,58 +1,59 @@
 # Labels applied to PRs based on changed files.
-# Used by .github/workflows/pull-request.yml (actions/labeler).
+# Used by .github/workflows/pull-request.yml (actions/labeler@v6).
 # https://github.com/actions/labeler
+# v5/v6 config: use any-glob-to-any-file (not "any") under changed-files.
 
 documentation:
     - changed-files:
-          - any: ["**/*.md", "**/README*", "**/docs/**", "**/readme/**"]
+          - any-glob-to-any-file: ["**/*.md", "**/README*", "**/docs/**", "**/readme/**"]
 
 python:
     - changed-files:
-          - any: ["**/*.py", "pyproject.toml", "**/requirements*.txt"]
+          - any-glob-to-any-file: ["**/*.py", "pyproject.toml", "**/requirements*.txt"]
 
 frontend:
     - changed-files:
-          - any: ["web/**/*.js", "web/**/*.css", "web/**/*.html"]
+          - any-glob-to-any-file: ["web/**/*.js", "web/**/*.css", "web/**/*.html"]
 
 config:
     - changed-files:
-          - any: ["config.json", ".env.example", "**/defaults/**"]
+          - any-glob-to-any-file: ["config.json", ".env.example", "**/defaults/**"]
 
 ci:
     - changed-files:
-          - any: [".github/**", ".gitlab/**", ".gitea/**", "scripts/**"]
+          - any-glob-to-any-file: [".github/**", ".gitlab/**", ".gitea/**", "scripts/**"]
 
 agent:
     - changed-files:
-          - any: [".agent/**", ".gemini/**", ".cursor/**", ".claude/**"]
+          - any-glob-to-any-file: [".agent/**", ".gemini/**", ".cursor/**", ".claude/**"]
 
 vscode:
     - changed-files:
-          - any: [".vscode/**"]
+          - any-glob-to-any-file: [".vscode/**"]
 
 docker:
     - changed-files:
-          - any: ["docker/**"]
+          - any-glob-to-any-file: ["docker/**"]
 
 docker-compose:
     - changed-files:
-          - any: ["docker-compose.yml"]
+          - any-glob-to-any-file: ["docker-compose.yml"]
 
 web:
     - changed-files:
-          - any: ["web/**"]
+          - any-glob-to-any-file: ["web/**"]
 
 gitignore:
     - changed-files:
-          - any: [".gitignore"]
+          - any-glob-to-any-file: [".gitignore"]
 
 license:
     - changed-files:
-          - any: ["**/LICENSE*", "**/license*"]
+          - any-glob-to-any-file: ["**/LICENSE*", "**/license*"]
 
 security:
     - changed-files:
-          - any:
+          - any-glob-to-any-file:
                 [
                     "**/security/**",
                     "**/auth*.py",
@@ -78,27 +79,27 @@ security:
 
 docs:
     - changed-files:
-          - any: ["docs/**"]
+          - any-glob-to-any-file: ["docs/**"]
 
 workflows:
     - changed-files:
-          - any: [".github/workflows/**"]
+          - any-glob-to-any-file: [".github/workflows/**"]
 
 issue-template:
     - changed-files:
-          - any: [".github/ISSUE_TEMPLATE/**"]
+          - any-glob-to-any-file: [".github/ISSUE_TEMPLATE/**"]
 
 pull-request-template:
     - changed-files:
-          - any: [".github/PULL_REQUEST_TEMPLATE/**"]
+          - any-glob-to-any-file: [".github/PULL_REQUEST_TEMPLATE/**"]
 
 changelog:
     - changed-files:
-          - any: ["readme/changelogs/*.md"]
+          - any-glob-to-any-file: ["readme/changelogs/*.md"]
 
 contributor-addition:
     - changed-files:
-          - any:
+          - any-glob-to-any-file:
                 [
                     ".github/CODEOWNERS",
                     ".github/funding.yml",

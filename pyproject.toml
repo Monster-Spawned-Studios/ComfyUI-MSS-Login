@@ -1,9 +1,9 @@
 [project]
+license-files = ["readme/LICENSE.md"]
 name = "ComfyUI-MSS-Login"
 description = "A ComfyUI node to enhance the security of the overall ComfyUI experience, for both private and public-facing servers, adding more features, while still allowing ComfyUI to be usable."
 version = "0.0.1"
 requires-python = ">=3.13"
-license = { file = "readme/LICENSE.md" }
 # classifiers = [
 #     # For OS-independent nodes (works on all operating systems)
 #     "Operating System :: OS Independent",
@@ -31,6 +31,7 @@ dependencies = [
 	"python-dotenvx>=0.3.0",
 	"cryptography",
 	"psycopg2-binary",
+	"pymysql",
 	"sqlcipher3",
 	"argon2-cffi",
 	"pillow",
@@ -63,6 +64,7 @@ production = [
 	"python-dotenvx>=0.3.0",
 	"cryptography",
 	"psycopg2-binary",
+	"pymysql",
 	"sqlcipher3",
 	"argon2-cffi",
 	"pillow",
@@ -125,7 +127,20 @@ includes = []
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-exclude = [".git", ".venv", "__pycache__", "build", "site", "ComfyUI"]
+exclude = [
+	".git",
+	".agent",
+	".vscode",
+	"scripts",
+	"users",
+	"docs",
+	"readme",
+	".venv",
+	"__pycache__",
+	"build",
+	"site",
+	"ComfyUI",
+]
 # Lint: use defaults (E, F, W, I, UP, B, C4, etc.); ignore a few noisy rules.
 [tool.ruff.lint]
 extend-ignore = [
@@ -142,3 +157,14 @@ known-first-party = ["utils", "utils.sfw_intercept", "routes"]
 [tool.ruff.format]
 indent-style = "tab"
 line-ending = "lf"
+
+# Pytest: for when running with full ComfyUI env. Prefer standalone runners for CI (see tests/README.md).
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "run_*.py"]
+python_functions = ["test_*"]
+markers = [
+	"path_traversal: path traversal / path_safety tests (no ComfyUI deps).",
+	"requires_comfyui: tests that need ComfyUI (folder_paths, server) installed.",
+]
+addopts = "-v --tb=short"

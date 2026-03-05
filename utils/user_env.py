@@ -148,7 +148,11 @@ def get_groups_config_path(filename: str = "mss_login_groups.json") -> str:
 
     If you want to rename sentinel_groups.json to mss_login_groups.json and keep
     it in the extension root, this gives you a single place to reference it.
+    Filename is restricted to a single segment to prevent path traversal.
     """
+    from .path_safety import is_safe_filename
+    if not filename or not is_safe_filename(filename):
+        filename = "mss_login_groups.json"
     return os.path.join(get_extension_root(), filename)
 
 

@@ -1,3 +1,10 @@
+"""
+Constants for the MSS-Login server.
+"""
+
+# External data directory (~/.comfyui-mss-login or MSS_LOGIN_DATA_DIR); untouched by git pull.
+from .utils.data_dir import ensure_data_dir, get_data_dir
+
 # --- START OF FILE constants.py ---
 import json
 import os
@@ -9,20 +16,22 @@ from .utils.install_deps import install_dependencies
 # --- Base Directories ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# External data directory (~/.comfyui-mss-login or MSS_LOGIN_DATA_DIR); untouched by git pull.
-from .utils.data_dir import ensure_data_dir, get_data_dir
-
 ensure_data_dir(CURRENT_DIR)
 DATA_DIR = get_data_dir()
 
 
 def _resolve_data_path(rel_or_abs: str) -> str:
-    """If path is absolute return as-is; otherwise resolve relative to external data directory."""
+    """If path is absolute return as-is; otherwise resolve relative to external data directory.
+    Relative paths are contained under DATA_DIR to prevent path traversal (e.g. from config).
+    """
     if not rel_or_abs:
         return rel_or_abs
     if os.path.isabs(rel_or_abs):
         return rel_or_abs
-    return os.path.join(DATA_DIR, rel_or_abs)
+    from .utils.path_safety import resolve_path_under
+
+    resolved = resolve_path_under(DATA_DIR, rel_or_abs)
+    return resolved if resolved is not None else DATA_DIR
 
 
 # --- Load .env: data dir first, then repo (so data dir secrets take precedence) ---
@@ -67,7 +76,7 @@ DEFAULTS_CONFIG_PATH = os.path.join(CURRENT_DIR, "config.defaults.json")
 def _load_config(path):
     if os.path.exists(path):
         try:
-            with open(path, "r") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
@@ -172,6 +181,11 @@ if TOKEN_ALGORITHM not in ("HS256", "RS256", "ES256", "PS256"):
     TOKEN_ALGORITHM = "HS256"
 
 BLACKLIST_AFTER_ATTEMPTS = config_data.get("blacklist_after_attempts", 5)
+# Hours after which auto-bans (from failed login attempts) expire; manual permabans use expires_at NULL
+try:
+    BLACKLIST_EXPIRY_HOURS = int(config_data.get("blacklist_expiry_hours", 24))
+except (TypeError, ValueError):
+    BLACKLIST_EXPIRY_HOURS = 24
 FREE_MEMORY_ON_LOGOUT = config_data.get("free_memory_on_logout", True)
 FORCE_HTTPS = config_data.get("force_https", False)
 SEPERATE_USERS = config_data.get("seperate_users", True)
@@ -184,7 +198,7 @@ _users_db_cfg = config_data.get("users_db") or {}
 if isinstance(_users_db_cfg, str):
     _users_db_cfg = {"backend": "sqlite", "sqlite_path": _users_db_cfg}
 _users_sqlite_path = _env_or_config(
-    "USERS_DB_SQLITE_PATH", _users_db_cfg.get("sqlite_path", "data/users.db")
+    "USERS_DB_SQLITE_PATH", _users_db_cfg.get("sqlite_path", "data/mss_login_data.db")
 )
 _users_sqlite_path = _resolve_data_path(_users_sqlite_path)
 USERS_DB_CONFIG = {
@@ -203,6 +217,19 @@ USERS_DB_CONFIG = {
     "postgres_user": _env_or_config(
         "USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "mss_login")
     ),
+    "mysql_host": _env_or_config(
+        "USERS_DB_MYSQL_HOST", _users_db_cfg.get("mysql_host", "localhost")
+    ),
+    "mysql_port": _env_or_config(
+        "USERS_DB_MYSQL_PORT", str(_users_db_cfg.get("mysql_port", 3306))
+    ),
+    "mysql_database": _env_or_config(
+        "USERS_DB_MYSQL_DATABASE",
+        _users_db_cfg.get("mysql_database", "mss_login"),
+    ),
+    "mysql_user": _env_or_config(
+        "USERS_DB_MYSQL_USER", _users_db_cfg.get("mysql_user", "mss_login")
+    ),
     "encryption_level": _normalize_encryption_level(
         _users_db_cfg.get("encryption_level", "")
     ),
@@ -210,6 +237,9 @@ USERS_DB_CONFIG = {
 # DB password never in config; env only (unified for users, api_tokens, shared_items)
 USERS_DB_CONFIG["postgres_password"] = (
     os.getenv("USERS_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or ""
+).strip()
+USERS_DB_CONFIG["mysql_password"] = (
+    os.getenv("USERS_DB_PASSWORD") or os.getenv("MYSQL_PASSWORD") or ""
 ).strip()
 
 # API token store: "json" = legacy file; otherwise use same DB as users (backend, sqlite_path, postgres from USERS_DB_CONFIG).
@@ -234,31 +264,96 @@ API_TOKEN_STORE_CONFIG = {
     "postgres_database": USERS_DB_CONFIG["postgres_database"],
     "postgres_user": USERS_DB_CONFIG["postgres_user"],
     "postgres_password": USERS_DB_CONFIG["postgres_password"],
+    "mysql_host": USERS_DB_CONFIG["mysql_host"],
+    "mysql_port": USERS_DB_CONFIG["mysql_port"],
+    "mysql_database": USERS_DB_CONFIG["mysql_database"],
+    "mysql_user": USERS_DB_CONFIG["mysql_user"],
+    "mysql_password": USERS_DB_CONFIG["mysql_password"],
     "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
 }
 
 
-def get_domain(use_https: bool = True, use_port: bool = False, port: int = 8188) -> str:
-    """Get the domain name of the server."""
-    try:
-        domain = os.getenv("COMFYUI_DOMAIN").strip().lower()
-        if not domain:
-            return (
-                f"{('https' if use_https else 'http')}://localhost:{port}"
-                if use_port
-                else f"{('https' if use_https else 'http')}://localhost"
-            )
-        if use_https and domain.startswith("https"):
-            domain = domain.split("://")[1]
-        if use_port and port:
-            domain = f"{domain}:{port}"
-        return domain
-    except Exception:
+def _localhost_fallback(use_https: bool = True, use_port: bool = False, port: int = 8188) -> str:
+    """Build localhost base URL when HOST_BASE_URL and DB have no value."""
+    scheme = "https" if use_https else "http"
+    if use_port and port:
+        return f"{scheme}://localhost:{port}"
+    return f"{scheme}://localhost"
+
+
+_host_base_url_cache = None
+
+
+def clear_host_base_url_cache() -> None:
+    """Invalidate in-memory host base URL cache so next get_host_base_url() re-reads from DB."""
+    global _host_base_url_cache
+    _host_base_url_cache = None
+
+
+def _is_safe_base_url(url: str) -> bool:
+    """Allow only http/https to avoid open redirects."""
+    u = (url or "").strip().lower()
+    return u.startswith("https://") or u.startswith("http://")
+
+
+def get_host_base_url(
+    use_https: bool = True, use_port: bool = False, port: int = 8188
+) -> str:
+    """
+    Get the base URL for this host. Single source of truth. Resolution order:
+    1. HOST_BASE_URL environment variable (if set, this always wins over auto-detected)
+    2. Value stored in app_settings (from first admin connection or startup)
+    3. Localhost fallback (scheme and port from arguments)
+    The returned URL's scheme (HTTP/HTTPS) is taken from the configured or detected URL;
+    use_https only affects the localhost fallback.
+    """
+    global _host_base_url_cache
+    # HOST_BASE_URL takes priority over any auto-detected or stored URL when set
+    env_url = (os.getenv("HOST_BASE_URL") or "").strip().rstrip("/")
+    if env_url and _is_safe_base_url(env_url):
+        return env_url
+    if _host_base_url_cache is not None:
         return (
-            f"{('https' if use_https else 'http')}://localhost:{port}"
-            if use_port
-            else f"{('https' if use_https else 'http')}://localhost"
+            _host_base_url_cache
+            if _host_base_url_cache
+            else _localhost_fallback(use_https=use_https, use_port=use_port, port=port)
         )
+    from .utils.app_settings_store import get_app_settings_store
+
+    store = get_app_settings_store(USERS_DB_CONFIG)
+    val = (store.get("host_base_url") or "").strip().rstrip("/")
+    if val and _is_safe_base_url(val):
+        _host_base_url_cache = val
+    else:
+        _host_base_url_cache = ""
+    return (
+        _host_base_url_cache
+        if _host_base_url_cache
+        else _localhost_fallback(use_https=use_https, use_port=use_port, port=port)
+    )
+
+
+def get_domain(use_https: bool = True, use_port: bool = False, port: int = 8188) -> str:
+    """
+    Get the domain/base URL for the server. Derived from get_host_base_url() (HOST_BASE_URL
+    or stored/detected URL). When the node needs a secure URL (use_https=True), the scheme
+    is enforced to https if the resolved URL was http.
+    """
+    from urllib.parse import urlparse, urlunparse
+
+    base = get_host_base_url(use_https=use_https, use_port=use_port, port=port)
+    try:
+        parsed = urlparse(base)
+        if not parsed.scheme or not parsed.netloc:
+            return base
+        if use_https and parsed.scheme == "http":
+            parsed = parsed._replace(scheme="https")
+        if use_port and port:
+            host = parsed.netloc.split(":")[0] if ":" in parsed.netloc else parsed.netloc
+            parsed = parsed._replace(netloc=f"{host}:{port}")
+        return urlunparse(parsed).rstrip("/") or base
+    except Exception:
+        return base
 
 
 def reload_users_db_config() -> dict:
@@ -271,7 +366,7 @@ def reload_users_db_config() -> dict:
     _users_sqlite_path = _resolve_data_path(
         _env_or_config(
             "USERS_DB_SQLITE_PATH",
-            _users_db_cfg.get("sqlite_path", "data/users.db"),
+            _users_db_cfg.get("sqlite_path", "data/mss_login_data.db"),
         )
     )
     USERS_DB_CONFIG = {
@@ -290,12 +385,28 @@ def reload_users_db_config() -> dict:
         "postgres_user": _env_or_config(
             "USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "mss_login")
         ),
+        "mysql_host": _env_or_config(
+            "USERS_DB_MYSQL_HOST", _users_db_cfg.get("mysql_host", "localhost")
+        ),
+        "mysql_port": _env_or_config(
+            "USERS_DB_MYSQL_PORT", str(_users_db_cfg.get("mysql_port", 3306))
+        ),
+        "mysql_database": _env_or_config(
+            "USERS_DB_MYSQL_DATABASE",
+            _users_db_cfg.get("mysql_database", "mss_login"),
+        ),
+        "mysql_user": _env_or_config(
+            "USERS_DB_MYSQL_USER", _users_db_cfg.get("mysql_user", "mss_login")
+        ),
         "encryption_level": _normalize_encryption_level(
             _users_db_cfg.get("encryption_level", "")
         ),
     }
     USERS_DB_CONFIG["postgres_password"] = (
         os.getenv("USERS_DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or ""
+    ).strip()
+    USERS_DB_CONFIG["mysql_password"] = (
+        os.getenv("USERS_DB_PASSWORD") or os.getenv("MYSQL_PASSWORD") or ""
     ).strip()
     # Keep API token store in sync (same DB unless backend is "json")
     _api_cfg = config_data.get("api_token_store") or {}
@@ -316,6 +427,11 @@ def reload_users_db_config() -> dict:
         "postgres_database": USERS_DB_CONFIG["postgres_database"],
         "postgres_user": USERS_DB_CONFIG["postgres_user"],
         "postgres_password": USERS_DB_CONFIG["postgres_password"],
+        "mysql_host": USERS_DB_CONFIG["mysql_host"],
+        "mysql_port": USERS_DB_CONFIG["mysql_port"],
+        "mysql_database": USERS_DB_CONFIG["mysql_database"],
+        "mysql_user": USERS_DB_CONFIG["mysql_user"],
+        "mysql_password": USERS_DB_CONFIG["mysql_password"],
         "encryption_level": USERS_DB_CONFIG.get("encryption_level", ""),
     }
     # Keep session token store in sync with users_db backend
@@ -329,6 +445,11 @@ def reload_users_db_config() -> dict:
         "postgres_database": USERS_DB_CONFIG["postgres_database"],
         "postgres_user": USERS_DB_CONFIG["postgres_user"],
         "postgres_password": USERS_DB_CONFIG["postgres_password"],
+        "mysql_host": USERS_DB_CONFIG["mysql_host"],
+        "mysql_port": USERS_DB_CONFIG["mysql_port"],
+        "mysql_database": USERS_DB_CONFIG["mysql_database"],
+        "mysql_user": USERS_DB_CONFIG["mysql_user"],
+        "mysql_password": USERS_DB_CONFIG["mysql_password"],
         "legacy_json_path": "",
     }
     return USERS_DB_CONFIG
@@ -350,6 +471,11 @@ SESSION_TOKEN_STORE_CONFIG = {
     "postgres_database": USERS_DB_CONFIG["postgres_database"],
     "postgres_user": USERS_DB_CONFIG["postgres_user"],
     "postgres_password": USERS_DB_CONFIG["postgres_password"],
+    "mysql_host": USERS_DB_CONFIG["mysql_host"],
+    "mysql_port": USERS_DB_CONFIG["mysql_port"],
+    "mysql_database": USERS_DB_CONFIG["mysql_database"],
+    "mysql_user": USERS_DB_CONFIG["mysql_user"],
+    "mysql_password": USERS_DB_CONFIG["mysql_password"],
     "legacy_json_path": (
         _session_legacy_json if os.path.isfile(_session_legacy_json) else ""
     ),

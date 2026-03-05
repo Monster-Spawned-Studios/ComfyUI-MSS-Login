@@ -11,7 +11,7 @@ on:
 jobs:
   ruff:
     name: Ruff (lint)
-    runs-on: [self-hosted, win11]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -24,7 +24,7 @@ jobs:
 
   ruff-format:
     name: Ruff (format check)
-    runs-on: [self-hosted, win11]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -37,7 +37,7 @@ jobs:
 
   ruff-fix:
     name: Ruff (fix)
-    runs-on: [self-hosted, win11]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6

@@ -12,12 +12,12 @@ permissions:
 jobs:
   labeler:
     name: Label PR
-    runs-on: [self-hosted, win11]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Label PR based on changed files
-        uses: actions/labeler@v5
+        uses: actions/labeler@v6
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
           configuration-path: .github/labeler.yml
@@ -25,7 +25,7 @@ jobs:
 
   pr-check:
     name: PR description check
-    runs-on: [self-hosted, win11]
+    runs-on: ubuntu-latest
     steps:
       - name: Check PR body
         run: |

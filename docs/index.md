@@ -11,6 +11,7 @@ ComfyUI-MSS-Login adds role-based access control (RBAC), UI enforcement, workflo
 - [Extending the node](guide/extending.md) — Use the HTTP API and Python extension API in your projects
 - [API Reference](api-reference/endpoints.md) — All custom HTTP endpoints (auth, admin, user, MFA, recovery)
 - [Workflow & intercepted endpoints](api-reference/workflow-endpoints.md) — Userdata workflows, `/view`, `/prompt`
+- [Headless JWT session](guide/headless-jwt-session.md) — WebSocket and REST only (no HTML); bypass loading page and full UI
 - [NSFW Guard API](extension-api/nsfw-guard-api.md) — Python API for other ComfyUI extensions
 
 ## Key features

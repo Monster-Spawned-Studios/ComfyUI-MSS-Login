@@ -57,6 +57,7 @@ async def get_me_sessions(request: web.Request) -> web.Response:
             {
                 "jti": jti,
                 "created_at_iso": s.get("created_at_iso"),
+                "last_used_at_iso": s.get("last_used_at_iso"),
                 "exp_at_iso": s.get("exp_at_iso"),
                 "is_current": jti == current_jti,
             }

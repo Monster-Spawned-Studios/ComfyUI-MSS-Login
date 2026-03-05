@@ -30,6 +30,7 @@ from .constants import (
     S3_MOUNT_CONFIG,
     S3_WORKFLOW_SYNC_CONFIG,
     DATA_DIR,
+    clear_host_base_url_cache,
 )
 from .globals import (
     app,
@@ -55,6 +56,8 @@ from .utils.sfw_intercept.nsfw_guard import (
 from .utils.sfw_intercept.node_interceptor import install_node_interceptor
 from .utils.remote_api_guard import create_remote_api_guard_middleware
 from .utils.model_filter_middleware import create_model_filter_middleware
+from .utils.csp import create_csp_middleware
+from .utils.path_safety import is_safe_filename, resolve_path_under
 from .utils.shared_items_store import get_shared_items_store
 from .utils.prompt_model_validator import validate_prompt_models
 from .utils.model_cache import get_model_cache
@@ -76,6 +79,17 @@ except ImportError:
     __all__ = ["NODE_CLASS_MAPPINGS", "WEB_DIRECTORY"]
 
 ensure_groups_config()
+
+# If HOST_BASE_URL is set, persist to app_settings so DB and env stay in sync
+_host_env = (os.getenv("HOST_BASE_URL") or "").strip().rstrip("/")
+if _host_env and _host_env.startswith(("http://", "https://")):
+    try:
+        from .utils.app_settings_store import get_app_settings_store
+
+        get_app_settings_store(USERS_DB_CONFIG).set("host_base_url", _host_env)
+        clear_host_base_url_cache()
+    except Exception:
+        pass
 
 # Schedule background update check (notify or auto according to config)
 _config_for_updater = load_json_file(CONFIG_FILE_PATH, {})
@@ -189,36 +203,27 @@ async def workflow_interceptor_middleware(request, handler):
         img_type = q.get("type", "output")
 
         if filename and (img_type == "output" or img_type == "temp"):
-            # Prevent path traversal: use basename only
-            safe_name = os.path.basename(filename)
-            if ".." in safe_name:
-                safe_name = None
-            if safe_name:
+            if not is_safe_filename(filename):
+                filename = None
+            if filename:
                 if img_type == "temp":
                     target_dir = folder_paths.get_temp_directory()
                 else:
                     target_dir = folder_paths.get_output_directory()
-                img_path = os.path.join(target_dir, safe_name)
-
-            if safe_name and os.path.isfile(img_path):
-                if should_block_image_for_current_user(img_path):
-                    return web.Response(status=403, text="NSFW Blocked")
+                img_path = resolve_path_under(target_dir, filename)
+                if img_path and os.path.isfile(img_path):
+                    if should_block_image_for_current_user(img_path):
+                        return web.Response(status=403, text="NSFW Blocked")
 
     # --- Case B: /static_gallery ---
     if path.startswith("/static_gallery/") and method == "GET":
         rel = path[len("/static_gallery/") :].lstrip("/\\")
-        if ".." in rel:
-            rel = None
         if rel:
             out_dir = folder_paths.get_output_directory()
-            out_abs = os.path.abspath(out_dir)
-            img_path = os.path.normpath(os.path.join(out_dir, rel))
-            img_abs = os.path.abspath(img_path)
-            if not img_abs.startswith(out_abs + os.sep) and img_abs != out_abs:
-                rel = None
-        if rel:
-            if os.path.isfile(img_path) and should_block_image_for_current_user(img_path):
-                return web.Response(status=403, text="NSFW Blocked")
+            img_path = resolve_path_under(out_dir, rel)
+            if img_path and os.path.isfile(img_path):
+                if should_block_image_for_current_user(img_path):
+                    return web.Response(status=403, text="NSFW Blocked")
 
     return await handler(request)
 
@@ -252,6 +257,8 @@ app.middlewares.append(
 )
 
 # IMPORTANT: run JWT auth BEFORE we try to read request.user in workflow_interceptor
+# Headless JWT sessions use only WebSocket (/ws?token=...) and REST (Bearer/cookie/query);
+# /ws, /history, /prompt, /queue, /view, /api/userdata are NOT in public, so they require a valid token.
 app.middlewares.append(
     jwt_auth.create_jwt_middleware(
         public=("/login", "/logout", "/register", "/generate_token", "/mfa"),
@@ -285,6 +292,7 @@ if SEPERATE_USERS:
     access_control.patch_prompt_queue()
 
 app.middlewares.append(access_control.create_mss_login_middleware())
+app.middlewares.append(create_csp_middleware())
 watcher.register(app)
 
 install_node_interceptor()

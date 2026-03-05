@@ -23,6 +23,50 @@ if (window.location.pathname === "/register") {
   });
 }
 
+if (window.location.pathname === "/login") {
+  document.addEventListener("DOMContentLoaded", () => {
+    const section = document.getElementById("login-news-section");
+    const feedEl = document.getElementById("login-news-feed");
+    if (!section || !feedEl) return;
+    fetch("/mss-login/api/news/feed.xml", { credentials: "same-origin" })
+      .then(function (r) {
+        if (!r.ok) return null;
+        return r.text();
+      })
+      .then(function (xmlText) {
+        if (!xmlText) return;
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlText, "text/xml");
+        const items = doc.querySelectorAll("channel > item");
+        if (!items.length) return;
+        feedEl.innerHTML = "";
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const title = (item.querySelector("title") && item.querySelector("title").textContent) || "";
+          const desc = (item.querySelector("description") && item.querySelector("description").textContent) || "";
+          const pubDate = (item.querySelector("pubDate") && item.querySelector("pubDate").textContent) || "";
+          const div = document.createElement("div");
+          div.className = "login-news-item";
+          const strong = document.createElement("strong");
+          strong.textContent = title;
+          const timeEl = document.createElement("time");
+          timeEl.textContent = pubDate ? " " + pubDate : "";
+          div.appendChild(strong);
+          div.appendChild(timeEl);
+          if (desc) {
+            const p = document.createElement("p");
+            p.style.margin = "0.25rem 0 0 0";
+            p.textContent = desc;
+            div.appendChild(p);
+          }
+          feedEl.appendChild(div);
+        }
+        section.style.display = "block";
+      })
+      .catch(function () {});
+  });
+}
+
 // Clear token display on load so refresh/navigation removes it entirely (generate token page only)
 document.addEventListener("DOMContentLoaded", () => {
   const container = document.getElementById("token-display-container");
@@ -706,11 +750,13 @@ async function loadMyTokens() {
     html += '<th style="text-align:left; padding:6px;">Label</th>';
     html += '<th style="text-align:left; padding:6px;">Hash Prefix</th>';
     html += '<th style="text-align:left; padding:6px;">Created</th>';
+    html += '<th style="text-align:left; padding:6px;">Last used</th>';
     html += '<th style="text-align:left; padding:6px;">Expires</th>';
     html += '<th style="text-align:center; padding:6px;">Revoke</th>';
     html += '</tr></thead><tbody>';
     for (const t of tokens) {
       const created = t.created_at_iso ? new Date(t.created_at_iso).toLocaleString() : "N/A";
+      const lastUsed = t.last_used_at_iso ? new Date(t.last_used_at_iso).toLocaleString() : "Never";
       const neverExpires = t.expires_iso === "9999-12-31T23:59:59+00:00";
       const expires = neverExpires ? "Never" : (t.expires_iso ? new Date(t.expires_iso).toLocaleString() : "N/A");
       const label = t.label || '<span style="color:#666;">Unlabeled</span>';
@@ -719,6 +765,7 @@ async function loadMyTokens() {
       html += `<td style="padding:6px;">${label}</td>`;
       html += `<td style="padding:6px; font-family:monospace; font-size:0.8rem;">${prefix}</td>`;
       html += `<td style="padding:6px;">${created}</td>`;
+      html += `<td style="padding:6px;">${lastUsed}</td>`;
       html += `<td style="padding:6px;">${expires}</td>`;
       html += `<td style="padding:6px; text-align:center;"><button class="btn" style="padding:2px 10px; font-size:0.8rem;" onclick="revokeToken('${prefix}')">Revoke</button></td>`;
       html += '</tr>';

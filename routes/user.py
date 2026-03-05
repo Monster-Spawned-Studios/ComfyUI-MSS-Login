@@ -3,6 +3,7 @@ from aiohttp import web
 from ..constants import EXPERIMENTAL_FEATURES
 from ..globals import routes, jwt_auth, users_db
 from ..utils import user_env
+from ..utils.path_safety import is_safe_filename, resolve_path_under
 import folder_paths
 import os
 import shutil
@@ -89,6 +90,17 @@ def _debug_log_me(path: str, is_admin: bool, username) -> None:
 # #endregion
 
 
+def _request_origin(request: web.Request) -> str:
+    """Build request origin (scheme + host), respecting X-Forwarded-* behind reverse proxy."""
+    proto = (request.headers.get("X-Forwarded-Proto") or "").strip().lower()
+    if not proto and request.url:
+        proto = request.url.scheme or "https"
+    host = (request.headers.get("X-Forwarded-Host") or "").strip()
+    if not host and request.url:
+        host = request.host or ""
+    return (proto or "https") + "://" + (host or "localhost")
+
+
 @routes.get("/mss-login/api/me")
 async def api_me(request: web.Request) -> web.Response:
     """
@@ -98,6 +110,27 @@ async def api_me(request: web.Request) -> web.Response:
 
     is_admin, username, groups = _get_caller_admin_info(request)
     _debug_log_me(request.path, is_admin, username)
+
+    # Capture host base URL from first admin/owner connection when not set by env or DB
+    if username and (is_admin or "owner" in groups):
+        try:
+            from ..constants import (
+                clear_host_base_url_cache,
+                USERS_DB_CONFIG,
+                _is_safe_base_url,
+            )
+            from ..utils.app_settings_store import get_app_settings_store
+
+            if not (os.getenv("HOST_BASE_URL") or "").strip():
+                store = get_app_settings_store(USERS_DB_CONFIG)
+                if not (store.get("host_base_url") or "").strip():
+                    origin = _request_origin(request).rstrip("/")
+                    if _is_safe_base_url(origin):
+                        store.set("host_base_url", origin)
+                        clear_host_base_url_cache()
+        except Exception:
+            pass
+
     if username is None:
         # no / invalid token → guest
         return web.json_response(
@@ -376,31 +409,25 @@ async def mark_nsfw(request: web.Request) -> web.Response:
     if not filename:
         return web.json_response({"error": "Missing 'filename'"}, status=400)
 
-    # Validate filename is safe (no path traversal)
-    if ".." in filename or "/" in filename or "\\" in filename:
+    if not is_safe_filename(filename):
         return web.json_response({"error": "Invalid filename"}, status=400)
 
-    # Get output directory and construct full path
     output_dir = folder_paths.get_output_directory()
-    image_path = os.path.join(output_dir, filename)
+    image_path = resolve_path_under(output_dir, filename)
 
     # If file not found at direct path, search recursively in output directory
-    if not os.path.exists(image_path):
-        found_path = None
-        for root, dirs, files in os.walk(output_dir):
+    if not image_path or not os.path.exists(image_path):
+        image_path = None
+        for root, _dirs, files in os.walk(output_dir):
             if filename in files:
-                found_path = os.path.join(root, filename)
-                # Ensure found file is within output directory (security check)
-                if os.path.abspath(found_path).startswith(os.path.abspath(output_dir)):
-                    image_path = found_path
+                candidate = os.path.join(root, filename)
+                resolved = resolve_path_under(output_dir, os.path.relpath(candidate, output_dir))
+                if resolved and os.path.isfile(resolved):
+                    image_path = resolved
                     break
 
-        if not os.path.exists(image_path):
-            return web.json_response({"error": "File not found"}, status=404)
-
-    # Final security check - ensure file is within output directory
-    if not os.path.abspath(image_path).startswith(os.path.abspath(output_dir)):
-        return web.json_response({"error": "Invalid file path"}, status=403)
+    if not image_path or not os.path.isfile(image_path):
+        return web.json_response({"error": "File not found"}, status=404)
 
     # Get NSFW flag (default to True if not provided)
     is_nsfw = bool(data.get("is_nsfw", True))

@@ -38,7 +38,7 @@ concurrency:
 jobs:
     build:
         name: Build docs
-        runs-on: [self-hosted, win11]
+        runs-on: ubuntu-latest
         steps:
             - name: Checkout
               uses: actions/checkout@v6
@@ -49,7 +49,7 @@ jobs:
                   python-version: "3.13"
 
             - name: Install MkDocs and Material theme
-              run: pip install mkdocs "mkdocs-material"
+              run: pip install -U mkdocs "mkdocs-material"
 
             - name: Generate API docs
               run: python scripts/build_docs.py
@@ -58,7 +58,7 @@ jobs:
               run: mkdocs build
 
             - name: Upload Pages artifact
-              uses: actions/upload-pages-artifact@v3
+              uses: actions/upload-pages-artifact@v4
               with:
                   path: site/
 
@@ -66,7 +66,7 @@ jobs:
         name: Deploy to GitHub Pages
         needs: build
         if: github.event_name == 'push' && github.ref == 'refs/heads/production'
-        runs-on: [self-hosted, win11]
+        runs-on: ubuntu-latest
         environment:
             name: github-pages
             url: ${{ steps.deploy.outputs.page_url }}

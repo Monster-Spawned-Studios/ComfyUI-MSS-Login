@@ -66,6 +66,43 @@ def _get_postgres_store(
     return _PostgresApiKeysStore(conn, secret_key)
 
 
+def _get_mysql_store(
+    host: str,
+    port: int,
+    database: str,
+    user: str,
+    password: str,
+    secret_key: str,
+) -> "_MySQLApiKeysStore":
+    try:
+        import pymysql
+    except ImportError:
+        raise RuntimeError("MySQL requires pymysql; pip install pymysql")
+    conn = pymysql.connect(
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        database=database,
+        charset="utf8mb4",
+    )
+    cur = conn.cursor()
+    cur.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS {TABLE} (
+            user_id VARCHAR(255) NOT NULL,
+            source VARCHAR(64) NOT NULL,
+            api_key_encrypted TEXT,
+            created_at DOUBLE NOT NULL,
+            PRIMARY KEY (user_id, source)
+        )
+        """
+    )
+    conn.commit()
+    cur.close()
+    return _MySQLApiKeysStore(conn, secret_key)
+
+
 class _SqliteApiKeysStore:
     def __init__(self, conn, secret_key: str):
         self._conn = conn
@@ -215,7 +252,87 @@ class _PostgresApiKeysStore:
         return [r[0] for r in rows]
 
 
-_store: Optional[_SqliteApiKeysStore | _PostgresApiKeysStore] = None
+class _MySQLApiKeysStore:
+    def __init__(self, conn, secret_key: str):
+        self._conn = conn
+        self._secret_key = secret_key
+
+    def get_key(self, user_id: str, source: str) -> Optional[str]:
+        if source not in SOURCES:
+            return None
+        cur = self._conn.cursor()
+        cur.execute(
+            f"SELECT api_key_encrypted FROM {TABLE} WHERE user_id = %s AND source = %s",
+            (user_id, source),
+        )
+        row = cur.fetchone()
+        cur.close()
+        if not row or not row[0]:
+            return None
+        from .encryption import decrypt_value
+        return decrypt_value(self._secret_key, row[0])
+
+    def set_key(self, user_id: str, source: str, api_key: str) -> bool:
+        if source not in SOURCES:
+            return False
+        from .encryption import encrypt_value
+        encrypted = encrypt_value(self._secret_key, (api_key or "").strip())
+        if not encrypted and (api_key or "").strip():
+            return False
+        now = time.time()
+        try:
+            cur = self._conn.cursor()
+            cur.execute(
+                "INSERT INTO {} (user_id, source, api_key_encrypted, created_at) "
+                "VALUES (%s, %s, %s, %s) ON DUPLICATE KEY UPDATE "
+                "api_key_encrypted = VALUES(api_key_encrypted), created_at = VALUES(created_at)".format(
+                    TABLE
+                ),
+                (user_id, source, encrypted or "", now),
+            )
+            self._conn.commit()
+            cur.close()
+            return True
+        except Exception:
+            self._conn.rollback()
+            return False
+
+    def has_key(self, user_id: str, source: str) -> bool:
+        if source not in SOURCES:
+            return False
+        cur = self._conn.cursor()
+        cur.execute(
+            f"SELECT 1 FROM {TABLE} WHERE user_id = %s AND source = %s AND api_key_encrypted != ''",
+            (user_id, source),
+        )
+        row = cur.fetchone()
+        cur.close()
+        return row is not None
+
+    def delete_key(self, user_id: str, source: str) -> bool:
+        if source not in SOURCES:
+            return False
+        cur = self._conn.cursor()
+        cur.execute(f"DELETE FROM {TABLE} WHERE user_id = %s AND source = %s", (user_id, source))
+        n = cur.rowcount
+        self._conn.commit()
+        cur.close()
+        return n > 0
+
+    def list_sources_with_keys(self, user_id: str) -> list[str]:
+        cur = self._conn.cursor()
+        cur.execute(
+            f"SELECT source FROM {TABLE} WHERE user_id = %s AND api_key_encrypted != ''",
+            (user_id,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        return [r[0] for r in rows]
+
+
+_store: Optional[
+    _SqliteApiKeysStore | _PostgresApiKeysStore | _MySQLApiKeysStore
+] = None
 
 
 def get_model_source_api_keys_store(config: dict, secret_key: str = ""):
@@ -236,6 +353,15 @@ def get_model_source_api_keys_store(config: dict, secret_key: str = ""):
             config.get("postgres_database", "mss-login"),
             config.get("postgres_user", "mss-login"),
             config.get("postgres_password", ""),
+            sk,
+        )
+    elif backend == "mysql":
+        _store = _get_mysql_store(
+            config.get("mysql_host", "localhost"),
+            int(config.get("mysql_port", 3306)),
+            config.get("mysql_database", "mss_login"),
+            config.get("mysql_user", "mss_login"),
+            config.get("mysql_password", ""),
             sk,
         )
     else:
