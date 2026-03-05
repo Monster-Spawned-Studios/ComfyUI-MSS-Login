@@ -15,7 +15,7 @@ classifiers = [
     # "Environment :: NPU :: Huawei Ascend",  # Huawei Ascend support
     "Environment :: GPU :: Apple Metal",    # Apple Metal support
 ]
-dynamic = ["dependencies"]
+# dynamic = ["dependencies"]
 
 dependencies = [
 	"uv",
