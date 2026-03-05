@@ -13,11 +13,21 @@ from typing import Any, Optional, Tuple
 
 import bcrypt
 
-from globals import logger
-
 from .encryption import (decrypt_value, encrypt_value, hash_backup_code,
                          verify_backup_code)
 from .input_sanitizer import sanitize_username as _sanitize_username
+
+
+def _get_logger():
+	"""Lazy accessor for the package-level logger, avoiding a circular import
+	(globals -> users_db -> globals) at module-load time."""
+	try:
+		from ..globals import logger as _logger
+	except (ImportError, ValueError):
+		import logging
+
+		_logger = logging.getLogger("mss-login")
+	return _logger
 
 # Schema: user_id, username, password_hash, admin, groups (JSON), sfw_check,
 #         mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used
@@ -261,7 +271,7 @@ class _PostgresUsersBackend:
             import psycopg2
             from psycopg2.extras import RealDictCursor
         except ImportError as e:
-            logger.error(
+            _get_logger().error(
                 f"PostgreSQL backend requires psycopg2; pip install psycopg2-binary: {e}"
             )
             raise RuntimeError(
@@ -441,7 +451,7 @@ class _MySQLUsersBackend:
             import pymysql
             from pymysql.cursors import DictCursor
         except ImportError as e:
-            logger.error(f"MySQL backend requires pymysql; pip install pymysql: {e}")
+            _get_logger().error(f"MySQL backend requires pymysql; pip install pymysql: {e}")
             raise RuntimeError(
                 "MySQL backend requires pymysql; pip install pymysql"
             ) from e
@@ -699,7 +709,7 @@ class UsersDB:
         try:
             return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")  # type: ignore
         except Exception as e:
-            logger.error(f"[MSS-Login] Failed to hash password: {password}: {e}")
+            _get_logger().error(f"[MSS-Login] Failed to hash password: {password}: {e}")
             return ""
 
     def load_users(self) -> dict:
@@ -730,7 +740,7 @@ class UsersDB:
             groups = [g.lower() for g in user.get("groups", [])]
             if "owner" in groups:
                 return
-        admin_uid, admin_user = self.get_admin_user()
+        admin_uid, admin_user = self._find_admin_in_loaded_users()
         if not admin_uid or not admin_user:
             return
         groups = list(admin_user.get("groups", ["admin"]))
@@ -740,6 +750,14 @@ class UsersDB:
             ]
             self._backend.update(admin_uid, admin_user, self._secret_key)
             self.users[admin_uid] = admin_user
+
+    def _find_admin_in_loaded_users(self) -> tuple[Optional[str], dict]:
+        """Find the first admin in the already-loaded self.users without reloading."""
+        for uid, user_data in self.users.items():
+            groups = [g.lower() for g in user_data.get("groups", [])]
+            if user_data.get("admin") or "admin" in groups:
+                return (uid, user_data)
+        return (None, {})
 
     def save_users(self, users: dict) -> None:
         """Persist entire users dict (used by code that expects legacy behavior). Prefer update_user/add_user/delete_user."""
@@ -782,7 +800,7 @@ class UsersDB:
             self._backend.insert(user_id, user, self._secret_key)
             self.users[user_id] = user
         except Exception as e:
-            logger.error(f"[MSS-Login] Failed to add user: {user_id}: {e}")
+            _get_logger().error(f"[MSS-Login] Failed to add user: {user_id}: {e}")
 
     def get_user(
         self, username: str = "", user_id: str = ""
