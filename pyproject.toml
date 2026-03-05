@@ -1,25 +1,21 @@
 [project]
-license-files = ["readme/LICENSE.md"]
-name = "ComfyUI-MSS-Login"
+license = { file = "readme/LICENSE.md" }
+name = "MSS-Login"
 description = "A ComfyUI node to enhance the security of the overall ComfyUI experience, for both private and public-facing servers, adding more features, while still allowing ComfyUI to be usable."
 version = "0.0.1"
 requires-python = ">=3.13"
-# classifiers = [
-#     # For OS-independent nodes (works on all operating systems)
-#     "Operating System :: OS Independent",
-#
-#     # OR for OS-specific nodes, specify the supported systems:
-#     "Operating System :: Microsoft :: Windows",  # Windows specific
-#     "Operating System :: POSIX :: Linux",  # Linux specific
-#     "Operating System :: MacOS",  # macOS specific
-#
-#     # GPU Accelerator support. Pick the ones that are supported by your extension.
-#     "Environment :: GPU :: NVIDIA CUDA",    # NVIDIA CUDA support
-#     "Environment :: GPU :: AMD ROCm",       # AMD ROCm support
-#     "Environment :: GPU :: Intel Arc",      # Intel Arc support
-#     "Environment :: NPU :: Huawei Ascend",  # Huawei Ascend support
-#     "Environment :: GPU :: Apple Metal",    # Apple Metal support
-# ]
+classifiers = [
+    # For OS-independent nodes (works on all operating systems)
+    "Operating System :: OS Independent",
+
+    # GPU Accelerator support. Pick the ones that are supported by your extension.
+    "Environment :: GPU :: NVIDIA CUDA",    # NVIDIA CUDA support
+    "Environment :: GPU :: AMD ROCm",       # AMD ROCm support (Can't test it currently... Support is planned and is being implemented)
+    # "Environment :: GPU :: Intel Arc",      # Intel Arc support
+    # "Environment :: NPU :: Huawei Ascend",  # Huawei Ascend support
+    "Environment :: GPU :: Apple Metal",    # Apple Metal support
+]
+dynamic = ["dependencies"]
 
 dependencies = [
 	"uv",
@@ -41,7 +37,12 @@ dependencies = [
 	"torchaudio",
 	"transformers",
 	"boto3",
+	"comfyui-frontend-package>=1.40.0"
 ]
+
+# ? FOR LATER TESTING:
+# [tool.setuptools.dynamic]
+# dependencies = {file = ["requirements.txt", "requirements_cuda.txt", "requirements_metal.txt"]}
 
 # Local-only groups (PEP 735): not published. Use `uv sync --group comfyui` or `uv sync --group dev`.
 [dependency-groups]
@@ -52,7 +53,7 @@ m-deps = []
 # CUDA computer/GPU dependencies are here:
 cuda-deps = []
 # Testing/development: add tools with `uv add --dev pytest` etc.
-dev = ["pytest", "mkdocs", "pip-audit"]
+dev = ["pytest", "pip-audit"]
 # Production dependency group:
 production = [
 	"uv",
@@ -118,11 +119,11 @@ Documentation = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/wi
 "Bug Tracker" = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/issues"
 
 [tool.comfy]
-PublisherId = "Monster Spawned Studios"
+PublisherId = "Monster-Spawned-Studios"
 DisplayName = "ComfyUI-MSS-Login"
 Icon = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/raw/production/web/assets/mss_logo.png"
 includes = []
-# "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
+requires-comfyui = ">=0.10.0"  # ComfyUI version compatibility
 
 [tool.ruff]
 target-version = "py313"
