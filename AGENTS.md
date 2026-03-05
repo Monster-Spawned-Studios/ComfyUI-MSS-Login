@@ -54,5 +54,9 @@ Note: the codebase has pre-existing ruff check errors (12 errors: F403, F405, F8
 
 - **`dotenvx` warning**: The extension tries to run `dotenvx` and `dotenvx-postinstall` at startup. These are optional; the warning is non-fatal. The `python-dotenvx` pip package is installed but the standalone binary install may fail in some environments.
 - **GPU-less VMs**: CUDA PyTorch wheels will fail to import `comfy.model_management` with "Torch not compiled with CUDA enabled" or "Found no NVIDIA driver". Install CPU-only PyTorch (see above).
-- **`from globals import logger`**: `utils/users_db.py` uses an absolute import for the extension's `globals.py` module. When ComfyUI loads the extension as a package, this import fails with `ModuleNotFoundError: No module named 'globals'` because ComfyUI does not add the extension directory to `sys.path`. This is a known import-path issue in the codebase.
+- **`install_deps.py` auto-install**: On Linux, the extension auto-installs CUDA PyTorch from `requirements_cuda.txt` on every startup (with captured output). This can be slow on first boot or when CPU-only torch is installed. Deps are already satisfied in Docker images with CUDA torch.
 - Always use the `.venv` Python (`.venv/bin/python`) per `.agent/rules/python-venv.mdc`.
+
+### Docker storage (`sombi/comfyui:base-torch2.8.0-cu128`)
+
+The default data directory is `~/.comfyui-mss-login/` (`/root/.comfyui-mss-login` in Docker). In the `sombi/comfyui` image, only `/workspace` is volume-mounted and persistent. **Set `MSS_LOGIN_DATA_DIR=/workspace/.comfyui-mss-login`** so data survives container recreation. See `utils/data_dir.py` for the full path logic.
