@@ -29,4 +29,7 @@ print('  DisplayName:', tool.get('DisplayName'))
     grep -q 'DisplayName' pyproject.toml || (echo "Missing [tool.comfy] DisplayName" && exit 1)
 fi
 
-echo "[publish-comfy-node] Validation passed. To publish: push to production with REGISTRY_ACCESS_TOKEN set in repo secrets, or run the Publish workflow manually."
+echo "[publish-comfy-node] Validation passed."
+
+echo "[publish-comfy-node] Publishing node to ComfyUI Registry..."
+comfy node publish
