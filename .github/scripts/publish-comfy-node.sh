@@ -34,11 +34,22 @@ else
     fi
 fi
 
-if [ "$VALID" = true ]; then
-    echo "[publish-comfy-node] Validation passed."
-    echo "[publish-comfy-node] Publishing node to ComfyUI Registry..."
-    comfy node publish
-else
+if [ "$VALID" != true ]; then
     echo "[publish-comfy-node] Validation failed. Skipping publish."
     exit 1
 fi
+
+echo "[publish-comfy-node] Validation passed."
+
+if [ -z "${REGISTRY_ACCESS_TOKEN:-}" ]; then
+    echo "[publish-comfy-node] Error: REGISTRY_ACCESS_TOKEN is not set. Skipping publish."
+    exit 1
+fi
+
+if [[ "$REGISTRY_ACCESS_TOKEN" != pat* ]]; then
+    echo "[publish-comfy-node] Error: REGISTRY_ACCESS_TOKEN does not start with 'pat'. Skipping publish."
+    exit 1
+fi
+
+echo "[publish-comfy-node] Publishing node to ComfyUI Registry..."
+comfy node publish
