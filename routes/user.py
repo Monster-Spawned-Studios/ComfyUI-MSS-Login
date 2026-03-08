@@ -169,8 +169,7 @@ async def api_me(request: web.Request) -> web.Response:
     )
 
 
-# Frontend calls /mss-login/api/me (underscore); ComfyUI may send /api/mss-login/api/me. Register aliases so both match.
-routes.get("/mss-login/api/me")(api_me)
+# Frontend calls /mss-login/api/me; ComfyUI may send /api/mss-login/api/me. Register alias so both match.
 routes.get("/api/mss-login/api/me")(api_me)
 
 
@@ -382,7 +381,6 @@ async def api_user_env(request: web.Request) -> web.Response:
     return web.json_response({"error": f"Unknown action '{action}'"}, status=400)
 
 
-routes.post("/mss-login/api/user-env")(api_user_env)
 routes.post("/api/mss-login/api/user-env")(api_user_env)
 
 

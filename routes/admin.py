@@ -109,9 +109,7 @@ async def api_put_guest_jwt(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.get("/mss-login/api/settings/guest-jwt")(api_get_guest_jwt)
 routes.get("/api/mss-login/api/settings/guest-jwt")(api_get_guest_jwt)
-routes.put("/mss-login/api/settings/guest-jwt")(api_put_guest_jwt)
 routes.put("/api/mss-login/api/settings/guest-jwt")(api_put_guest_jwt)
 
 
@@ -150,9 +148,7 @@ async def api_put_ntfy_settings(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.get("/mss-login/api/settings/ntfy")(api_get_ntfy_settings)
 routes.get("/api/mss-login/api/settings/ntfy")(api_get_ntfy_settings)
-routes.put("/mss-login/api/settings/ntfy")(api_put_ntfy_settings)
 routes.put("/api/mss-login/api/settings/ntfy")(api_put_ntfy_settings)
 
 
@@ -175,9 +171,7 @@ async def api_admin_consoles_user(request):
     return web.json_response({"username": username, "lines": lines})
 
 
-routes.get("/mss-login/api/admin/consoles")(api_admin_consoles_list)
 routes.get("/api/mss-login/api/admin/consoles")(api_admin_consoles_list)
-routes.get("/mss-login/api/admin/consoles/{username}")(api_admin_consoles_user)
 routes.get("/api/mss-login/api/admin/consoles/{username}")(api_admin_consoles_user)
 
 
@@ -199,7 +193,6 @@ async def api_groups(request: web.Request) -> web.Response:
     return web.json_response({"groups": current})
 
 
-routes.get("/mss-login/api/groups")(api_groups)
 routes.get("/api/mss-login/api/groups")(api_groups)
 
 
@@ -225,7 +218,6 @@ async def api_update_groups(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.put("/mss-login/api/groups")(api_update_groups)
 routes.put("/api/mss-login/api/groups")(api_update_groups)
 
 
@@ -238,7 +230,6 @@ async def api_users(request: web.Request) -> web.Response:
     return web.json_response({"users": users_list})
 
 
-routes.get("/mss-login/api/users")(api_users)
 routes.get("/api/mss-login/api/users")(api_users)
 
 
@@ -307,7 +298,6 @@ async def api_update_user_route(request: web.Request) -> web.Response:
     return web.Response(status=404)
 
 
-routes.put("/mss-login/api/users/{target_user}")(api_update_user_route)
 routes.put("/api/mss-login/api/users/{target_user}")(api_update_user_route)
 
 
@@ -328,7 +318,6 @@ async def api_delete_user_route(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
-routes.delete("/mss-login/api/users/{target_user}")(api_delete_user_route)
 routes.delete("/api/mss-login/api/users/{target_user}")(api_delete_user_route)
 
 
@@ -353,7 +342,6 @@ async def api_get_users_db_config(request):
     return web.json_response(out)
 
 
-routes.get("/mss-login/api/users-db-config")(api_get_users_db_config)
 routes.get("/api/mss-login/api/users-db-config")(api_get_users_db_config)
 
 
@@ -415,7 +403,6 @@ async def api_put_users_db_config(request):
         )
 
 
-routes.put("/mss-login/api/users-db-config")(api_put_users_db_config)
 routes.put("/api/mss-login/api/users-db-config")(api_put_users_db_config)
 
 
@@ -447,7 +434,6 @@ async def api_get_token_storage_config(request):
     return web.json_response(out)
 
 
-routes.get("/mss-login/api/token-storage-config")(api_get_token_storage_config)
 routes.get("/api/mss-login/api/token-storage-config")(api_get_token_storage_config)
 
 
@@ -521,7 +507,6 @@ async def api_put_token_storage_config(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.put("/mss-login/api/token-storage-config")(api_put_token_storage_config)
 routes.put("/api/mss-login/api/token-storage-config")(api_put_token_storage_config)
 
 
@@ -537,7 +522,6 @@ async def api_get_update_status(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.get("/mss-login/api/update-status")(api_get_update_status)
 routes.get("/api/mss-login/api/update-status")(api_get_update_status)
 
 
@@ -623,9 +607,7 @@ async def api_update_ip_lists(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.get("/mss-login/api/ip-lists")(api_ip_lists)
 routes.get("/api/mss-login/api/ip-lists")(api_ip_lists)
-routes.put("/mss-login/api/ip-lists")(api_update_ip_lists)
 routes.put("/api/mss-login/api/ip-lists")(api_update_ip_lists)
 
 
@@ -652,7 +634,6 @@ async def api_available_model_folders(request):
     return web.json_response({"folders": folders})
 
 
-routes.get("/mss-login/api/available-model-folders")(api_available_model_folders)
 routes.get("/api/mss-login/api/available-model-folders")(api_available_model_folders)
 
 
@@ -680,7 +661,6 @@ async def api_available_models_in_folder(request):
     return web.json_response({"folder": folder, "items": names})
 
 
-routes.get("/mss-login/api/available-models/{folder}")(api_available_models_in_folder)
 routes.get("/api/mss-login/api/available-models/{folder}")(
     api_available_models_in_folder
 )
@@ -699,7 +679,6 @@ async def api_model_cache_folders(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.get("/mss-login/api/model-cache/folders")(api_model_cache_folders)
 routes.get("/api/mss-login/api/model-cache/folders")(api_model_cache_folders)
 
 
@@ -719,9 +698,6 @@ async def api_model_cache_folder_items(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.get("/mss-login/api/model-cache/folders/{folder}/items")(
-    api_model_cache_folder_items
-)
 routes.get("/api/mss-login/api/model-cache/folders/{folder}/items")(
     api_model_cache_folder_items
 )
@@ -747,7 +723,6 @@ async def api_model_cache_refresh(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.post("/mss-login/api/model-cache/refresh")(api_model_cache_refresh)
 routes.post("/api/mss-login/api/model-cache/refresh")(api_model_cache_refresh)
 
 
@@ -765,7 +740,6 @@ async def api_get_shared_items(request):
     return web.json_response({"username": username, "items": items})
 
 
-routes.get("/mss-login/api/users/{username}/shared-items")(api_get_shared_items)
 routes.get("/api/mss-login/api/users/{username}/shared-items")(api_get_shared_items)
 
 
@@ -809,7 +783,6 @@ async def api_add_shared_item(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.post("/mss-login/api/users/{username}/shared-items")(api_add_shared_item)
 routes.post("/api/mss-login/api/users/{username}/shared-items")(api_add_shared_item)
 
 
@@ -849,7 +822,6 @@ async def api_remove_shared_item(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.delete("/mss-login/api/users/{username}/shared-items")(api_remove_shared_item)
 routes.delete("/api/mss-login/api/users/{username}/shared-items")(
     api_remove_shared_item
 )
@@ -930,5 +902,4 @@ async def api_nsfw_management(request):
         return web.json_response({"error": str(e)}, status=500)
 
 
-routes.post("/mss-login/api/nsfw-management")(api_nsfw_management)
 routes.post("/api/mss-login/api/nsfw-management")(api_nsfw_management)
