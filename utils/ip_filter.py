@@ -201,8 +201,10 @@ class IPFilter:
         async def handle_access_denied(
             request: web.Request, message: str
         ) -> web.Response:
-            accept_header = request.headers.get("Accept", "")
-            if "text/html" in accept_header:
+            """Redirect or 403 HTML for browsers; return JSON only for explicit API clients."""
+            accept_header = (request.headers.get("Accept") or "").strip().lower()
+            wants_html = "text/html" in accept_header or not accept_header or accept_header == "*/*"
+            if wants_html:
                 return web.HTTPForbidden(reason=message)
             return web.json_response({"error": message}, status=403)
 
