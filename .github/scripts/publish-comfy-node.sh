@@ -10,7 +10,8 @@ REPO_ROOT="${1:-.}"
 cd "$REPO_ROOT"
 
 echo "[publish-comfy-node] Validating pyproject.toml and [tool.comfy]..."
-if ! python3 -c "
+VALID=false
+if python3 -c "
 import tomllib
 with open('pyproject.toml', 'rb') as f:
     data = tomllib.load(f)
@@ -23,10 +24,32 @@ print('  name:', proj.get('name'))
 print('  PublisherId:', tool.get('PublisherId'))
 print('  DisplayName:', tool.get('DisplayName'))
 " 2>/dev/null; then
-    echo "[publish-comfy-node] Validation failed (tomllib needs Python 3.11+). Trying basic checks..."
-    grep -q '^name = ' pyproject.toml || (echo "Missing project.name" && exit 1)
-    grep -q 'PublisherId' pyproject.toml || (echo "Missing [tool.comfy] PublisherId" && exit 1)
-    grep -q 'DisplayName' pyproject.toml || (echo "Missing [tool.comfy] DisplayName" && exit 1)
+    VALID=true
+else
+    echo "[publish-comfy-node] tomllib check unavailable (needs Python 3.11+). Trying basic checks..."
+    if grep -q '^name = ' pyproject.toml &&
+       grep -q 'PublisherId' pyproject.toml &&
+       grep -q 'DisplayName' pyproject.toml; then
+        VALID=true
+    fi
 fi
 
-echo "[publish-comfy-node] Validation passed. To publish: push to production with REGISTRY_ACCESS_TOKEN set in repo secrets, or run the Publish workflow manually."
+if [ "$VALID" != true ]; then
+    echo "[publish-comfy-node] Validation failed. Skipping publish."
+    exit 1
+fi
+
+echo "[publish-comfy-node] Validation passed."
+
+if [ -z "${REGISTRY_ACCESS_TOKEN:-}" ]; then
+    echo "[publish-comfy-node] Error: REGISTRY_ACCESS_TOKEN is not set. Skipping publish."
+    exit 1
+fi
+
+if [[ "$REGISTRY_ACCESS_TOKEN" != pat* ]]; then
+    echo "[publish-comfy-node] Error: REGISTRY_ACCESS_TOKEN does not start with 'pat'. Skipping publish."
+    exit 1
+fi
+
+echo "[publish-comfy-node] Publishing node to ComfyUI Registry..."
+comfy node publish
