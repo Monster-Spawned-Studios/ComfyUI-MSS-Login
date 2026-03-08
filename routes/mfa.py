@@ -14,6 +14,19 @@ from ..utils.ntfy_notifier import send_notification
 from ..utils.ip_filter import get_ip
 
 
+def _is_browser_navigation(request: web.Request) -> bool:
+    """True if request is a full-page navigation (e.g. form POST), so we should redirect instead of returning JSON."""
+    sec_mode = (request.headers.get("Sec-Fetch-Mode") or "").strip().lower()
+    if sec_mode == "navigate":
+        return True
+    if not sec_mode:
+        accept = (request.headers.get("Accept") or "").strip().lower()
+        if "application/json" in accept:
+            return False
+        return True
+    return False
+
+
 async def _get_request_data(request: web.Request) -> dict:
     """Get POST body as dict (JSON or form)."""
     data = request.get("_sanitized_data") or {}
@@ -183,9 +196,13 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
     else:
         logger.log_jwt_created_console_only(username)
     user_console_append(username, f"JWT token created for user: {username} (after MFA)")
+    logger.login_success(get_ip(request), username)
+    if _is_browser_navigation(request):
+        resp = web.HTTPFound("/loading")
+        resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
+        return resp
     resp = web.json_response({"message": "Login successful", "jwt_token": token})
     resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
-    logger.login_success(get_ip(request), username)
     return resp
 
 
