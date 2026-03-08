@@ -39,6 +39,20 @@ from ..utils.user_console_log import append as user_console_append
 from ..utils.validate import validate_password, validate_username
 
 
+def _is_browser_navigation(request: web.Request) -> bool:
+    """True if request is a full-page navigation (e.g. form POST), so we should redirect instead of returning JSON."""
+    sec_mode = (request.headers.get("Sec-Fetch-Mode") or "").strip().lower()
+    if sec_mode == "navigate":
+        return True
+    # Older browsers may not send Sec-Fetch-Mode; if they didn't ask for JSON, assume form POST.
+    if not sec_mode:
+        accept = (request.headers.get("Accept") or "").strip().lower()
+        if "application/json" in accept:
+            return False
+        return True
+    return False
+
+
 @routes.get("/register")
 async def get_register(request: web.Request) -> web.Response:
     """Serve the register page."""
@@ -103,6 +117,8 @@ async def post_register(request: web.Request) -> web.Response:
     except Exception as e:
         logger.error(f"[auth.py] post_register: send_notification: {e}")
     timeout.remove_failed_attempts(ip)
+    if _is_browser_navigation(request):
+        return web.HTTPFound("/login?registered=1")
     return web.json_response({"message": "User registered"})
 
 
@@ -189,10 +205,14 @@ async def post_login(request: web.Request) -> web.Response:
         else:
             logger.log_jwt_created_console_only("guest")
         user_console_append("guest", "JWT token created for user: guest")
-        resp = web.json_response({"message": "Guest login", "jwt_token": token})
-        resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
         logger.login_success(ip, "guest")
         timeout.remove_failed_attempts(ip)
+        if _is_browser_navigation(request):
+            resp = web.HTTPFound("/loading")
+            resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
+            return resp
+        resp = web.json_response({"message": "Guest login", "jwt_token": token})
+        resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
         return resp
 
     username = sanitize_username(sanitized_data.get("username"))
@@ -281,10 +301,14 @@ async def post_login(request: web.Request) -> web.Response:
             )
         except Exception as e:
             logger.error(f"[auth.py] post_login: send_notification: {e}")
-        resp = web.json_response({"message": "Login successful", "jwt_token": token})
-        resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
         logger.login_success(ip, username)
         timeout.remove_failed_attempts(ip)
+        if _is_browser_navigation(request):
+            resp = web.HTTPFound("/loading")
+            resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
+            return resp
+        resp = web.json_response({"message": "Login successful", "jwt_token": token})
+        resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
         return resp
 
     timeout.add_failed_attempt(ip)
