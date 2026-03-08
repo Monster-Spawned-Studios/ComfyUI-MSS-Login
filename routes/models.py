@@ -24,7 +24,8 @@ def is_admin(request: web.Request) -> bool:
         _, u = users_db.get_user(username)
         if not u:
             return False
-        return u.get("admin", False) or "admin" in u.get("groups", [])
+        groups = [g.lower() for g in u.get("groups", [])]
+        return u.get("admin", False) or "admin" in groups or "owner" in groups
     except Exception as e:
         logger.error(f"[MSS-Login] is_admin error: {e}")
         return False

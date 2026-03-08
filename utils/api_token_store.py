@@ -574,25 +574,33 @@ def get_api_token_store(config: Optional[dict] = None):
     """Build or return the singleton API token store from config.
     Uses same DB as users (backend, sqlite_path, postgres_* from USERS_DB_CONFIG).
     config can be { "api_token_store": { ... } } or the inner { "backend", "json_path", ... }.
+    When config is None or empty, falls back to constants.API_TOKEN_STORE_CONFIG so named
+    tokens are always stored in the data directory (same DB as users).
     """
     global _api_token_store_instance
     if config is None:
         config = {}
     store_cfg = config.get("api_token_store") if "api_token_store" in config else config
     if not store_cfg:
-        store_cfg = {}
+        try:
+            from ..constants import API_TOKEN_STORE_CONFIG
+            store_cfg = API_TOKEN_STORE_CONFIG
+        except ImportError:
+            store_cfg = {}
     backend = (store_cfg.get("backend") or "sqlite").lower()
     if _api_token_store_instance is not None:
         return _api_token_store_instance
 
+    # Legacy "json" backend is no longer used; use same DB as users (one database).
     if backend == "json":
-        path = store_cfg.get("json_path") or os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "users",
-            "api_tokens.json",
-        )
-        _api_token_store_instance = _JsonTokenStore(path)
-    elif backend == "sqlite":
+        try:
+            from ..constants import API_TOKEN_STORE_CONFIG
+            store_cfg = API_TOKEN_STORE_CONFIG
+            backend = (store_cfg.get("backend") or "sqlite").lower()
+        except ImportError:
+            backend = "sqlite"
+
+    if backend == "sqlite":
         path = store_cfg.get("sqlite_path", "users/api_tokens.db")
         if not path:
             path = os.path.join(

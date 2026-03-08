@@ -47,7 +47,7 @@ def _get_caller_admin_info(request):
         username = payload.get("username")
         _, rec = users_db.get_user(username)
         groups = [g.lower() for g in rec.get("groups", [])] if rec else ["guest"]
-        is_admin = bool(rec and (rec.get("admin") or ("admin" in groups)))
+        is_admin = bool(rec and (rec.get("admin") or ("admin" in groups) or ("owner" in groups)))
         return is_admin, username, groups
     except Exception as e:
         print(f"[MSS-Login] admin check error: {e}")

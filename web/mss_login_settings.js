@@ -1907,19 +1907,14 @@ async renderTokenStorage(container) {
     container.innerHTML = `
         <div class="mss-login-section">
             <h3>API Token Storage</h3>
-            <p>Configure where long-lived API tokens are stored (JSON file, SQLite, PostgreSQL, or MySQL). When using a database, same config as Users Database. Passwords: <code>API_TOKEN_DB_PASSWORD</code>, <code>USERS_DB_PASSWORD</code>, <code>POSTGRES_PASSWORD</code>, or <code>MYSQL_PASSWORD</code> in environment only.</p>
+            <p>One database is used for both user accounts and API tokens (same as Users Database). Choose SQLite for a single local file, or PostgreSQL/MySQL for a shared server. Passwords: <code>USERS_DB_PASSWORD</code>, <code>POSTGRES_PASSWORD</code>, or <code>MYSQL_PASSWORD</code> in environment only.</p>
             <div class="mss-login-row" style="margin-top:12px; gap:8px; flex-wrap:wrap; align-items:center;">
                 <label class="mss-login-field-label">Backend</label>
                 <select id="mss-login-token-backend" class="mss-login-select">
-                    <option value="json" ${backend === "json" ? "selected" : ""}>JSON file</option>
                     <option value="sqlite" ${backend === "sqlite" ? "selected" : ""}>SQLite</option>
                     <option value="postgresql" ${backend === "postgresql" ? "selected" : ""}>PostgreSQL</option>
                     <option value="mysql" ${backend === "mysql" ? "selected" : ""}>MySQL</option>
                 </select>
-            </div>
-            <div id="mss-login-token-json-fields" class="mss-login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "json" ? "display:none;" : ""}">
-                <label class="mss-login-field-label">JSON path</label>
-                <input type="text" id="mss-login-token-json-path" class="mss-login-input" value="${(cfg.json_path || "users/api_tokens.json").replace(/"/g, "&quot;")}" style="min-width:240px;">
             </div>
             <div id="mss-login-token-sqlite-fields" class="mss-login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "sqlite" ? "display:none;" : ""}">
                 <label class="mss-login-field-label">SQLite path</label>
@@ -1962,14 +1957,12 @@ async renderTokenStorage(container) {
         </div>
     `;
     const backendSelect = container.querySelector("#mss-login-token-backend");
-    const jsonFields = container.querySelector("#mss-login-token-json-fields");
     const sqliteFields = container.querySelector("#mss-login-token-sqlite-fields");
     const postgresFields = container.querySelector("#mss-login-token-postgres-fields");
     const mysqlFields = container.querySelector("#mss-login-token-mysql-fields");
     const statusEl = container.querySelector("#mss-login-token-status");
     function showFields() {
         const b = (backendSelect.value || "sqlite").toLowerCase();
-        jsonFields.style.display = b === "json" ? "" : "none";
         sqliteFields.style.display = b === "sqlite" ? "" : "none";
         postgresFields.style.display = b === "postgresql" ? "" : "none";
         if (mysqlFields) mysqlFields.style.display = b === "mysql" ? "" : "none";
@@ -1979,7 +1972,6 @@ async renderTokenStorage(container) {
         const b = (backendSelect.value || "sqlite").toLowerCase();
         const body = {
             backend: b,
-            json_path: container.querySelector("#mss-login-token-json-path").value.trim() || "users/api_tokens.json",
             sqlite_path: container.querySelector("#mss-login-token-sqlite-path").value.trim() || "data/mss_login_data.db",
             postgres_host: container.querySelector("#mss-login-token-pg-host").value.trim() || "localhost",
             postgres_port: parseInt(container.querySelector("#mss-login-token-pg-port").value, 10) || 5432,

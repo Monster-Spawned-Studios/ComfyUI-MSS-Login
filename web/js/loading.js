@@ -1,8 +1,10 @@
 (function () {
     "use strict";
 
-    const TIPS_URL = "https://monsterspawned.studio/data/mss-login/loading.json";
+    // Same-origin tips (served by GET /mss-login/loading-tips.json; data dir or bundled)
+    const TIPS_URL = "/mss-login/loading-tips.json";
     const TIP_INTERVAL_MS = 10000;
+    const AUTO_REDIRECT_MS = 2000;
 
     const tipEl = document.getElementById("loading-tip");
     const bannerEl = document.getElementById("loading-update-banner");
@@ -11,6 +13,7 @@
     let tips = [];
     let tipIndex = 0;
     let tipTimer = null;
+    let autoRedirectTimer = null;
 
     function setTip(text) {
         if (tipEl) tipEl.textContent = text || "Preparing ComfyUI…";
@@ -93,6 +96,10 @@
     }
 
     function goToApp() {
+        if (autoRedirectTimer) {
+            clearTimeout(autoRedirectTimer);
+            autoRedirectTimer = null;
+        }
         window.location.href = "/";
     }
 
@@ -100,4 +107,7 @@
 
     fetchTips();
     checkAdminUpdateBanner();
+
+    // Auto-redirect to main ComfyUI after a short display time; Continue button still works for immediate navigation
+    autoRedirectTimer = setTimeout(goToApp, AUTO_REDIRECT_MS);
 })();

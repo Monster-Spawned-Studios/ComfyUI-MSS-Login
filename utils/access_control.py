@@ -10,6 +10,7 @@ from server import PromptServer
 from execution import PromptQueue, MAXIMUM_HISTORY_SIZE
 from .users_db import UsersDB
 from .api_token_store import get_api_token_store
+from .data_dir import get_data_subdir
 from .debug_log import debug_write
 
 # Map Permission Keys -> URL Paths to Block
@@ -268,19 +269,31 @@ class AccessControl:
     def get_current_user_id(self):
         return self._current_user.get() or self.__current_user_id
 
+    def _get_output_base(self):
+        """Base directory for user output under MSS_LOGIN_DATA_DIR."""
+        return get_data_subdir("output")
+
+    def _get_temp_base(self):
+        """Base directory for user temp under MSS_LOGIN_DATA_DIR."""
+        return get_data_subdir("temp")
+
+    def _get_input_base(self):
+        """Base directory for user input under MSS_LOGIN_DATA_DIR."""
+        return get_data_subdir("input")
+
     def get_user_output_directory(self):
         return os.path.join(
-            self.__get_output_directory(), self.get_current_user_id() or "public"
+            self._get_output_base(), self.get_current_user_id() or "public"
         )
 
     def get_user_temp_directory(self):
         return os.path.join(
-            self.__get_temp_directory(), self.get_current_user_id() or "public"
+            self._get_temp_base(), self.get_current_user_id() or "public"
         )
 
     def get_user_input_directory(self):
         directory = os.path.join(
-            self.__get_input_directory(), self.get_current_user_id() or "public"
+            self._get_input_base(), self.get_current_user_id() or "public"
         )
         os.makedirs(directory, exist_ok=True)
         return directory
@@ -299,6 +312,10 @@ class AccessControl:
         return json_data
 
     def patch_folder_paths(self):
+        """Point ComfyUI output/temp/input to per-user dirs under MSS_LOGIN_DATA_DIR."""
+        for base in (self._get_output_base(), self._get_temp_base(), self._get_input_base()):
+            os.makedirs(base, exist_ok=True)
+        folder_paths.get_output_directory = self.get_user_output_directory
         folder_paths.get_temp_directory = self.get_user_temp_directory
         folder_paths.get_input_directory = self.get_user_input_directory
         self.server.add_on_prompt_handler(self.add_user_specific_folder_paths)
@@ -306,9 +323,9 @@ class AccessControl:
     # --- MISSING METHOD RESTORED HERE ---
     def create_folder_access_control_middleware(self):
         folder_paths_check = (
-            self.__get_output_directory(),
-            self.__get_temp_directory(),
-            self.__get_input_directory(),
+            self._get_output_base(),
+            self._get_temp_base(),
+            self._get_input_base(),
         )
 
         @web.middleware
