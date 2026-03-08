@@ -394,9 +394,12 @@ class JWTAuth:
             redirect_path: str,
             message: str = "Authentication required",
         ) -> web.Response:
-            """Handle unauthorized access cases."""
-            accept_header = request.headers.get("Accept", "")
-            if "text/html" in accept_header:
+            """Handle unauthorized access: redirect browsers to login/logout, return JSON only for explicit API clients."""
+            accept_header = (request.headers.get("Accept") or "").strip().lower()
+            # Redirect when Accept asks for HTML, is empty, or is */* (browser navigation).
+            # Return JSON only when client explicitly asks for JSON (API/fetch).
+            wants_html = "text/html" in accept_header or not accept_header or accept_header == "*/*"
+            if wants_html:
                 return web.HTTPFound(redirect_path)
             body = {"error": message}
             try:
