@@ -242,13 +242,9 @@ USERS_DB_CONFIG["mysql_password"] = (
     os.getenv("USERS_DB_PASSWORD") or os.getenv("MYSQL_PASSWORD") or ""
 ).strip()
 
-# API token store: "json" = legacy file; otherwise use same DB as users (backend, sqlite_path, postgres from USERS_DB_CONFIG).
+# API token store: always use the same DB as users (one local database).
+# Legacy "json" backend is no longer used; tokens live in the same SQLite/Postgres/MySQL as user accounts.
 _api_token_cfg = config_data.get("api_token_store") or {}
-_token_backend = (_api_token_cfg.get("backend") or "").strip().lower()
-if _token_backend == "json":
-    _api_backend = "json"
-else:
-    _api_backend = USERS_DB_CONFIG["backend"]
 _json_path = _resolve_data_path(
     _env_or_config(
         "API_TOKEN_JSON_PATH",
@@ -256,7 +252,7 @@ _json_path = _resolve_data_path(
     )
 )
 API_TOKEN_STORE_CONFIG = {
-    "backend": _api_backend,
+    "backend": USERS_DB_CONFIG["backend"],
     "json_path": _json_path,
     "sqlite_path": USERS_DB_CONFIG["sqlite_path"],
     "postgres_host": USERS_DB_CONFIG["postgres_host"],
@@ -410,8 +406,6 @@ def reload_users_db_config() -> dict:
     ).strip()
     # Keep API token store in sync (same DB unless backend is "json")
     _api_cfg = config_data.get("api_token_store") or {}
-    _tb = (_api_cfg.get("backend") or "").strip().lower()
-    _api_backend = "json" if _tb == "json" else USERS_DB_CONFIG["backend"]
     _jp = _resolve_data_path(
         _env_or_config(
             "API_TOKEN_JSON_PATH",
@@ -419,7 +413,7 @@ def reload_users_db_config() -> dict:
         )
     )
     API_TOKEN_STORE_CONFIG = {
-        "backend": _api_backend,
+        "backend": USERS_DB_CONFIG["backend"],
         "json_path": _jp,
         "sqlite_path": USERS_DB_CONFIG["sqlite_path"],
         "postgres_host": USERS_DB_CONFIG["postgres_host"],

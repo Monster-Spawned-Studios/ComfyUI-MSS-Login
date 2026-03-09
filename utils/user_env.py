@@ -3,17 +3,19 @@ ComfyUI-MSS-Login per-user environment helpers.
 
 Responsible for:
 - Resolving the extension root
-- Managing the shared Users/ directory
+- Managing the shared Users/ directory (plugin) and data-dir Users/ (workflows)
 - Creating / locating per-user folders (Users/<username>/...)
 - Loading / saving per-user settings JSON
 - Centralizing paths for user_db.json and (renamed) mss_login_settings.js
+- Workflow storage under MSS_LOGIN_DATA_DIR (see get_user_workflow_dir)
 """
 
 import os
 import json
-from typing import Any, Dict
 import shutil
-from typing import List
+from typing import Any, Dict, List
+
+from .data_dir import get_data_dir, get_data_subdir
 
 # -----------------------
 # Path helpers
@@ -227,15 +229,60 @@ def purge_user_root(username: str) -> None:
     os.makedirs(root, exist_ok=True)
 
 
+def _sanitize_username_for_path(username: str) -> str:
+    """Normalize username for use as a path segment; prevent path traversal."""
+    name = (username or "guest").strip() or "guest"
+    if ".." in name or "/" in name or "\\" in name:
+        return "guest"
+    return name
+
+
+def _get_plugin_workflow_dir(username: str) -> str:
+    """Legacy plugin-root workflow dir (for migration source)."""
+    user_root = get_user_root(username)
+    return os.path.join(user_root, "workflows")
+
+
+def _migrate_user_workflows_to_data_dir(username: str, data_wf_dir: str) -> None:
+    """
+    One-time: copy workflows from plugin Users/<username>/workflows to data dir
+    if plugin has content and data dir is empty. Idempotent; skips if data dir has files.
+    """
+    plugin_wf = _get_plugin_workflow_dir(username)
+    if not os.path.isdir(plugin_wf):
+        return
+    try:
+        existing = os.listdir(data_wf_dir)
+        if existing:
+            return
+    except OSError:
+        pass
+    try:
+        for name in os.listdir(plugin_wf):
+            src = os.path.join(plugin_wf, name)
+            dst = os.path.join(data_wf_dir, name)
+            if os.path.isfile(src):
+                shutil.copy2(src, dst)
+            elif os.path.isdir(src):
+                shutil.copytree(src, dst, dirs_exist_ok=True)
+    except OSError:
+        pass
+
+
 def get_user_workflow_dir(username: str) -> str:
     """
-    Per-user workflow directory:
-      <ext_root>/Users/<username>/workflows/
+    Per-user workflow directory under MSS_LOGIN_DATA_DIR:
+      <data_dir>/Users/<username>/workflows/
+
+    Migrates existing workflows from plugin Users/<username>/workflows/ once if present.
     """
-    user_root = get_user_root(username)
-    wf_dir = os.path.join(user_root, "workflows")
-    os.makedirs(wf_dir, exist_ok=True)
-    return wf_dir
+    safe = _sanitize_username_for_path(username)
+    data_users = get_data_subdir("Users")
+    os.makedirs(data_users, exist_ok=True)
+    data_wf_dir = get_data_subdir("Users", safe, "workflows")
+    os.makedirs(data_wf_dir, exist_ok=True)
+    _migrate_user_workflows_to_data_dir(username, data_wf_dir)
+    return data_wf_dir
 
 
 def list_user_workflows(username: str) -> List[str]:

@@ -408,29 +408,27 @@ routes.put("/api/mss-login/api/users-db-config")(api_put_users_db_config)
 
 @routes.get("/mss-login/api/token-storage-config")
 async def api_get_token_storage_config(request):
-    """Return token storage config (admin only). Uses same DB as users unless backend is json. Passwords are env-only."""
+    """Return token storage config (admin only). Token store always uses same DB as users (one database). Passwords are env-only."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     cfg = load_json_file(CONFIG_FILE_PATH, {})
     store_cfg = cfg.get("api_token_store") or {}
-    use_same_db = (store_cfg.get("backend") or "").strip().lower() != "json"
     out = {
-        "backend": USERS_DB_CONFIG.get("backend", "sqlite") if use_same_db else "json",
-        "json_path": store_cfg.get("json_path", "users/api_tokens.json"),
-        "use_same_db_as_users": use_same_db,
+        "backend": USERS_DB_CONFIG.get("backend", "sqlite"),
+        "json_path": store_cfg.get("json_path", "data/api_tokens.json"),
+        "use_same_db_as_users": True,
     }
-    if use_same_db:
-        out["sqlite_path"] = USERS_DB_CONFIG.get(
-            "sqlite_path", "data/mss_login_data.db"
-        )
-        out["postgres_host"] = USERS_DB_CONFIG.get("postgres_host", "localhost")
-        out["postgres_port"] = USERS_DB_CONFIG.get("postgres_port", 5432)
-        out["postgres_database"] = USERS_DB_CONFIG.get("postgres_database", "mss_login")
-        out["postgres_user"] = USERS_DB_CONFIG.get("postgres_user", "mss_login")
-        out["mysql_host"] = USERS_DB_CONFIG.get("mysql_host", "localhost")
-        out["mysql_port"] = USERS_DB_CONFIG.get("mysql_port", 3306)
-        out["mysql_database"] = USERS_DB_CONFIG.get("mysql_database", "mss_login")
-        out["mysql_user"] = USERS_DB_CONFIG.get("mysql_user", "mss_login")
+    out["sqlite_path"] = USERS_DB_CONFIG.get(
+        "sqlite_path", "data/mss_login_data.db"
+    )
+    out["postgres_host"] = USERS_DB_CONFIG.get("postgres_host", "localhost")
+    out["postgres_port"] = USERS_DB_CONFIG.get("postgres_port", 5432)
+    out["postgres_database"] = USERS_DB_CONFIG.get("postgres_database", "mss_login")
+    out["postgres_user"] = USERS_DB_CONFIG.get("postgres_user", "mss_login")
+    out["mysql_host"] = USERS_DB_CONFIG.get("mysql_host", "localhost")
+    out["mysql_port"] = USERS_DB_CONFIG.get("mysql_port", 3306)
+    out["mysql_database"] = USERS_DB_CONFIG.get("mysql_database", "mss_login")
+    out["mysql_user"] = USERS_DB_CONFIG.get("mysql_user", "mss_login")
     return web.json_response(out)
 
 
@@ -439,67 +437,55 @@ routes.get("/api/mss-login/api/token-storage-config")(api_get_token_storage_conf
 
 @routes.put("/mss-login/api/token-storage-config")
 async def api_put_token_storage_config(request):
-    """Update token storage config (admin only). Backend: 'json' = legacy file; else use same DB as users. Passwords are env-only."""
+    """Update token storage config (admin only). Token store always uses same DB as users (one database). Only users_db backend/path are configurable."""
     if not is_admin(request):
         return web.json_response({"error": "Admin only"}, status=403)
     try:
         data = await request.json()
-        backend = (data.get("backend") or "database").strip().lower()
-        if backend not in ("json", "database", "sqlite", "postgresql", "mysql"):
+        backend = (data.get("backend") or "sqlite").strip().lower()
+        if backend not in ("sqlite", "postgresql", "mysql"):
             return web.json_response(
-                {"error": "Invalid backend; use json or database (same DB as users)"},
+                {"error": "Invalid backend; use sqlite, postgresql, or mysql (one database for users and API tokens)."},
                 status=400,
             )
-        use_db = backend != "json"
-        if backend in ("sqlite", "postgresql", "mysql"):
-            backend = "database"
         cfg = load_json_file(CONFIG_FILE_PATH, {})
         if not isinstance(cfg, dict):
             cfg = {}
-        api_cfg = cfg.get("api_token_store") or {}
-        api_cfg["backend"] = "json" if not use_db else "database"
-        api_cfg["json_path"] = data.get(
-            "json_path", api_cfg.get("json_path", "users/api_tokens.json")
+        udb = cfg.get("users_db") or {}
+        if isinstance(udb, str):
+            udb = {}
+        udb["backend"] = backend
+        udb["sqlite_path"] = data.get(
+            "sqlite_path", udb.get("sqlite_path", "data/mss_login_data.db")
         )
+        udb["postgres_host"] = data.get(
+            "postgres_host", udb.get("postgres_host", "localhost")
+        )
+        udb["postgres_port"] = data.get(
+            "postgres_port", udb.get("postgres_port", 5432)
+        )
+        udb["postgres_database"] = data.get(
+            "postgres_database", udb.get("postgres_database", "mss_login")
+        )
+        udb["postgres_user"] = data.get(
+            "postgres_user", udb.get("postgres_user", "mss_login")
+        )
+        udb["mysql_host"] = data.get(
+            "mysql_host", udb.get("mysql_host", "localhost")
+        )
+        udb["mysql_port"] = data.get("mysql_port", udb.get("mysql_port", 3306))
+        udb["mysql_database"] = data.get(
+            "mysql_database", udb.get("mysql_database", "mss_login")
+        )
+        udb["mysql_user"] = data.get(
+            "mysql_user", udb.get("mysql_user", "mss_login")
+        )
+        cfg["users_db"] = udb
+        api_cfg = cfg.get("api_token_store") or {}
+        api_cfg["backend"] = backend
         cfg["api_token_store"] = api_cfg
-        if use_db:
-            udb = cfg.get("users_db") or {}
-            if isinstance(udb, str):
-                udb = {}
-            db_backend = (data.get("backend") or "sqlite").strip().lower()
-            udb["backend"] = (
-                db_backend
-                if db_backend in ("sqlite", "postgresql", "mysql")
-                else "sqlite"
-            )
-            udb["sqlite_path"] = data.get(
-                "sqlite_path", udb.get("sqlite_path", "data/mss_login_data.db")
-            )
-            udb["postgres_host"] = data.get(
-                "postgres_host", udb.get("postgres_host", "localhost")
-            )
-            udb["postgres_port"] = data.get(
-                "postgres_port", udb.get("postgres_port", 5432)
-            )
-            udb["postgres_database"] = data.get(
-                "postgres_database", udb.get("postgres_database", "mss_login")
-            )
-            udb["postgres_user"] = data.get(
-                "postgres_user", udb.get("postgres_user", "mss_login")
-            )
-            udb["mysql_host"] = data.get(
-                "mysql_host", udb.get("mysql_host", "localhost")
-            )
-            udb["mysql_port"] = data.get("mysql_port", udb.get("mysql_port", 3306))
-            udb["mysql_database"] = data.get(
-                "mysql_database", udb.get("mysql_database", "mss_login")
-            )
-            udb["mysql_user"] = data.get(
-                "mysql_user", udb.get("mysql_user", "mss_login")
-            )
-            cfg["users_db"] = udb
-            reload_users_db_config()
         save_json_file(CONFIG_FILE_PATH, cfg)
+        reload_users_db_config()
         reload_api_token_store_config()
         reset_api_token_store()
         return web.json_response({"status": "ok"})
