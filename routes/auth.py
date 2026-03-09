@@ -1,4 +1,5 @@
 # --- START OF FILE routes/auth.py ---
+import json
 import os
 import sqlite3
 import uuid
@@ -12,11 +13,13 @@ from ..constants import (
     API_TOKEN_STORE_CONFIG,
     BLACKLIST_AFTER_ATTEMPTS,
     BLACKLIST_EXPIRY_HOURS,
+    DATA_DIR,
     DEBUG_MODE,
     HTML_DIR,
     MAX_TOKEN_EXPIRE_MINUTES,
     SESSION_TOKEN_STORE_CONFIG,
     USERS_DB_CONFIG,
+    WEB_DIR,
 )
 from ..globals import access_control, jwt_auth, logger, routes, timeout, users_db
 from ..utils import user_env
@@ -36,6 +39,7 @@ from ..utils.mfa_temp_store import create_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
 from ..utils.session_token_store import get_session_token_store
 from ..utils.user_console_log import append as user_console_append
+from ..utils.updater import get_local_version
 from ..utils.validate import validate_password, validate_username
 
 
@@ -122,6 +126,53 @@ async def post_register(request: web.Request) -> web.Response:
     return web.json_response({"message": "User registered"})
 
 
+# Content-Security-Policy for the loading page: same-origin only, no external fetches.
+LOADING_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "connect-src 'self'; "
+    "img-src 'self'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+
+
+def _parse_tips_file(path: str) -> list[str]:
+    """Read a loading-tips JSON file and return a list of non-empty tip strings.
+
+    Accepts either a plain JSON array of strings or an object with a
+    ``"messages"`` key containing such an array.  Returns ``[]`` on any
+    I/O or parse error so the caller can fall through to the next source.
+    """
+    if not os.path.isfile(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return [s for s in data if isinstance(s, str) and s.strip()]
+            if isinstance(data, dict) and isinstance(data.get("messages"), list):
+                return [
+                    s for s in data["messages"] if isinstance(s, str) and s.strip()
+                ]
+    except (json.JSONDecodeError, OSError):
+        pass
+    return []
+
+
+@routes.get("/mss-login/loading-tips.json")
+async def get_loading_tips(request: web.Request) -> web.Response:
+    """Serve loading tips JSON from same origin. Data dir override: DATA_DIR/loading-tips.json;
+    else bundled web/data/loading-tips.json. Returns array of strings or { \"messages\": [...] }.
+    """
+    tips_data = _parse_tips_file(os.path.join(DATA_DIR, "loading-tips.json"))
+    if not tips_data:
+        tips_data = _parse_tips_file(os.path.join(WEB_DIR, "data", "loading-tips.json"))
+    payload = tips_data if tips_data else ["Preparing ComfyUI…"]
+    return web.json_response(payload)
+
+
 @routes.get("/loading")
 async def get_loading(request: web.Request) -> web.Response:
     """Serve the loading page (between login and ComfyUI). Requires valid JWT; unauthenticated users
@@ -132,22 +183,29 @@ async def get_loading(request: web.Request) -> web.Response:
     path = os.path.join(HTML_DIR, "loading.html")
     if not os.path.exists(path):
         return web.Response(text="loading.html not found", status=404)
-    return web.FileResponse(path)
+    resp = web.FileResponse(path)
+    resp.headers["Content-Security-Policy"] = LOADING_CSP
+    return resp
 
 
 @routes.get("/login")
 async def get_login(request: web.Request) -> web.Response:
-    """Serve the login page."""
+    """Serve the login page with version injected from pyproject.toml."""
     if not users_db.load_users():
         return web.HTTPFound("/register")
     if jwt_auth.get_token_from_request(request):
         return web.HTTPFound("/logout")
     path = os.path.join(HTML_DIR, "login.html")
-    return (
-        web.FileResponse(path)
-        if os.path.exists(path)
-        else web.Response(text="login.html not found", status=404)
-    )
+    if not os.path.exists(path):
+        return web.Response(text="login.html not found", status=404)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            html = f.read()
+    except OSError:
+        return web.Response(text="login.html not found", status=404)
+    version = get_local_version()
+    html = html.replace("{{VERSION}}", version)
+    return web.Response(text=html, content_type="text/html")
 
 
 @routes.get("/mfa")
