@@ -12,8 +12,10 @@ from ..constants import (
     GROUPS_CONFIG_FILE,
     USERS_DB_CONFIG,
     get_domain,
+    get_experimental_flags,
     reload_allow_guest_jwt,
     reload_api_token_store_config,
+    reload_experimental_features,
     reload_users_db_config,
 )
 from ..globals import ip_filter, jwt_auth, logger, routes, users_db
@@ -150,6 +152,67 @@ async def api_put_ntfy_settings(request):
 
 routes.get("/api/mss-login/api/settings/ntfy")(api_get_ntfy_settings)
 routes.put("/api/mss-login/api/settings/ntfy")(api_put_ntfy_settings)
+
+
+@routes.get("/mss-login/api/settings/experimental")
+async def api_get_experimental(request):
+    """Return experimental_features (master) and experimental (per-feature flags). Authenticated; any user can read."""
+    token = jwt_auth.get_token_from_request(request)
+    if not token:
+        return web.json_response({"error": "Authentication required"}, status=401)
+    try:
+        cfg = load_json_file(CONFIG_FILE_PATH, {})
+        master = bool(cfg.get("experimental_features", False))
+        block = cfg.get("experimental")
+        if not isinstance(block, dict):
+            block = {}
+        experimental = {
+            "mfa": bool(block.get("mfa", False)),
+            "s3": bool(block.get("s3", False)),
+            "loading_screen": bool(block.get("loading_screen", False)),
+            "news": bool(block.get("news", False)),
+        }
+        return web.json_response({
+            "experimental_features": master,
+            "experimental": experimental,
+        })
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+@routes.put("/mss-login/api/settings/experimental")
+async def api_put_experimental(request):
+    """Update experimental per-feature flags (Admin only). Body: { experimental: { mfa?, s3?, loading_screen?, news? } }."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    try:
+        data = await request.json()
+        if not isinstance(data, dict):
+            return web.json_response({"error": "Invalid body"}, status=400)
+        cfg = load_json_file(CONFIG_FILE_PATH, {})
+        if not isinstance(cfg, dict):
+            cfg = {}
+        block = cfg.get("experimental")
+        if not isinstance(block, dict):
+            block = {}
+        incoming = data.get("experimental")
+        if isinstance(incoming, dict):
+            for key in ("mfa", "s3", "loading_screen", "news"):
+                if key in incoming:
+                    block[key] = bool(incoming[key])
+        cfg["experimental"] = block
+        save_json_file(CONFIG_FILE_PATH, cfg)
+        reload_experimental_features()
+        return web.json_response({
+            "status": "ok",
+            "experimental": get_experimental_flags(),
+        })
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/experimental")(api_get_experimental)
+routes.put("/api/mss-login/api/settings/experimental")(api_put_experimental)
 
 
 @routes.get("/mss-login/api/admin/consoles")

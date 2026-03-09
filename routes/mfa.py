@@ -3,7 +3,12 @@
 
 from aiohttp import web
 from ..globals import routes, users_db, jwt_auth, access_control
-from ..constants import EXPERIMENTAL_FEATURES, SESSION_TOKEN_STORE_CONFIG, MFA_DISABLED
+from ..constants import (
+    MFA_DISABLED,
+    SESSION_TOKEN_STORE_CONFIG,
+    experimental_loading_screen_enabled,
+    experimental_mfa_enabled,
+)
 from ..utils.session_token_store import get_session_token_store
 from ..utils.user_console_log import append as user_console_append
 from ..utils.mfa_temp_store import (
@@ -67,9 +72,9 @@ def _resolve_username_from_token_and_data(
 async def api_mfa_setup(request: web.Request) -> web.Response:
     """Start MFA setup. Requires JWT (logged-in user) or mfa_temp_token (from login when mfa_setup_required).
     Returns provisioning_uri (for QR) and backup_code (show once)."""
-    if not EXPERIMENTAL_FEATURES:
+    if not experimental_mfa_enabled():
         return web.json_response(
-            {"error": "MFA is an experimental feature. Enable EXPERIMENTAL_FEATURES to use it."},
+            {"error": "MFA is an experimental feature. Enable experimental_features and experimental.mfa to use it."},
             status=403,
         )
     if MFA_DISABLED:
@@ -98,9 +103,9 @@ async def api_mfa_setup(request: web.Request) -> web.Response:
 @routes.post("/mss-login/api/mfa/verify-setup")
 async def api_mfa_verify_setup(request: web.Request) -> web.Response:
     """Verify first TOTP code and enable MFA. Body: { code: "123456" } or { mfa_temp_token, code }."""
-    if not EXPERIMENTAL_FEATURES:
+    if not experimental_mfa_enabled():
         return web.json_response(
-            {"error": "MFA is an experimental feature. Enable EXPERIMENTAL_FEATURES to use it."},
+            {"error": "MFA is an experimental feature. Enable experimental_features and experimental.mfa to use it."},
             status=403,
         )
     if MFA_DISABLED:
@@ -132,9 +137,9 @@ async def api_mfa_verify_setup(request: web.Request) -> web.Response:
 @routes.post("/mss-login/api/mfa/verify")
 async def api_mfa_verify(request: web.Request) -> web.Response:
     """Complete login after password: verify TOTP or backup code, issue JWT. Body: mfa_temp_token, code OR backup_code."""
-    if not EXPERIMENTAL_FEATURES:
+    if not experimental_mfa_enabled():
         return web.json_response(
-            {"error": "MFA is an experimental feature. Enable EXPERIMENTAL_FEATURES to use it."},
+            {"error": "MFA is an experimental feature. Enable experimental_features and experimental.mfa to use it."},
             status=403,
         )
     if MFA_DISABLED:
@@ -197,11 +202,16 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
         logger.log_jwt_created_console_only(username)
     user_console_append(username, f"JWT token created for user: {username} (after MFA)")
     logger.login_success(get_ip(request), username)
+    redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
     if _is_browser_navigation(request):
-        resp = web.HTTPFound("/loading")
+        resp = web.HTTPFound(redirect_url)
         resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
         return resp
-    resp = web.json_response({"message": "Login successful", "jwt_token": token})
+    resp = web.json_response({
+        "message": "Login successful",
+        "jwt_token": token,
+        "redirect_url": redirect_url,
+    })
     resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
     return resp
 

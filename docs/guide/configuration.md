@@ -27,17 +27,23 @@ Copy `.env.example` to `.env` and set:
 | `EXPERIMENTAL_FEATURES`  | Enable experimental features (MFA, S3 storage/mount/workflow sync). Set to `true` or `1` to enable. Default: false. |
 | `RECOVERY_MODE`          | Enable recovery endpoint for MFA reset (e.g. `true` or `1`)                                       |
 | `RECOVERY_MODE_HOST`     | Comma-separated IPs allowed to call recovery (default: 127.0.0.1, ::1)                            |
+| `MSS_LOGIN_LOADING_TIMEOUT_SECONDS` | Loading page fail-safe redirect delay in seconds (default: 15; range 1–300). Only applies when experimental loading screen is enabled. |
+| `EXPERIMENTAL_MFA`, `EXPERIMENTAL_S3`, `EXPERIMENTAL_LOADING_SCREEN`, `EXPERIMENTAL_NEWS` | Per-feature experimental toggles when master `EXPERIMENTAL_FEATURES` is on. Set to `true` or `1` to enable. |
 
 ## Experimental features
 
-**MFA** (two-factor authentication) and **S3** (S3-compatible storage, mount, and workflow sync) are experimental. They are only available when `EXPERIMENTAL_FEATURES` is enabled:
+Experimental features use a **master switch** plus **per-feature toggles**. Enable the master, then enable each feature you want:
 
-- **Environment:** set `EXPERIMENTAL_FEATURES=true` (or `1`).
-- **Config:** set `"experimental_features": true` in `config.json`.
+- **Master:** set `EXPERIMENTAL_FEATURES=true` (env) or `"experimental_features": true` in `config.json`.
+- **Per-feature:** in `config.json` set `"experimental": { "mfa": true, "s3": true, "loading_screen": true, "news": true }` for the features you want. Or use env: `EXPERIMENTAL_MFA`, `EXPERIMENTAL_S3`, `EXPERIMENTAL_LOADING_SCREEN`, `EXPERIMENTAL_NEWS` (each `true`/`1` to enable). Admins can toggle these in **Settings → mss-login** when the master is on.
 
-When `EXPERIMENTAL_FEATURES` is false (default), login and token generation do not require MFA, MFA API endpoints and the `/mfa` page return 403, and S3 mount, workflow sync, and model-download to S3 are disabled. When experimental features are enabled, `MFA_DISABLED` (env or config) still disables MFA if you want S3 but not MFA.
+**MFA**, **S3**, **Loading screen** (post-login page at `/loading`), and **News** (RSS) are experimental. When the master is off, all are disabled. When the master is on, each is off until enabled in config or the settings UI. `MFA_DISABLED` (env or config) still disables MFA globally if you want S3 but not MFA.
 
-**Server news feed (experimental):** With experimental features enabled, admins can add a `news.md` file in the node’s data directory (`~/.comfyui-mss-login/` or `MSS_LOGIN_DATA_DIR`). The file is converted to an RSS feed and shown on the login page. See `readme/news_feed_template.md` for the format.
+**Server news feed (experimental):** With `experimental.news` enabled, admins can add a `news.md` file in the node’s data directory (`~/.comfyui-mss-login/` or `MSS_LOGIN_DATA_DIR`). The file is converted to an RSS feed and shown on the login page. See `readme/news_feed_template.md` for the format.
+
+### Loading page and ComfyUI frontend
+
+The **loading page** (`/loading`) is an MSS-Login intermediate page shown after login when `experimental.loading_screen` is enabled. It does **not** conflict with ComfyUI's in-app loading at `/`: ComfyUI's loading state runs at the root URL after the user leaves the loading page. Flow: Login then (optional) `/loading` then user clicks Continue or fail-safe fires then `/` (ComfyUI app). A **fail-safe** automatically redirects to `/` after a configurable delay (default 15 seconds). Set `MSS_LOGIN_LOADING_TIMEOUT_SECONDS` (env) or `loading_screen.timeout_seconds` in config (1 to 300). Tips from `web/data/loading-tips.json` rotate every 5 seconds.
 
 ## Roles and permissions
 

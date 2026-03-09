@@ -2188,7 +2188,7 @@ async renderModelDownload(container) {
     (async () => {
         try {
             const me = await getData("/mss-login/api/me");
-            if (me && !me.experimental_features) {
+            if (me && !me.experimental?.s3) {
                 const destSelect = container.querySelector("#mss-login-dl-dest");
                 const s3Opt = destSelect && destSelect.querySelector('option[value="s3"]');
                 if (s3Opt) s3Opt.remove();
@@ -3596,6 +3596,75 @@ app.ui.settings.addSetting({
             } catch (_) {}
         })();
 
+        // Experimental features (per-feature toggles) - Admin only, shown when master experimental_features is on
+        const experimentalSection = document.createElement("div");
+        experimentalSection.id = "mss-login-experimental-section";
+        experimentalSection.style.display = "none";
+        experimentalSection.style.marginTop = "12px";
+        experimentalSection.style.width = "min(100%, 560px)";
+        experimentalSection.style.textAlign = "left";
+        const experimentalHeading = document.createElement("h4");
+        experimentalHeading.style.margin = "0 0 8px 0";
+        experimentalHeading.textContent = "Experimental features";
+        experimentalSection.appendChild(experimentalHeading);
+        const experimentalSubtext = document.createElement("p");
+        experimentalSubtext.style.margin = "0 0 8px 0";
+        experimentalSubtext.style.fontSize = "0.9em";
+        experimentalSubtext.style.color = "#888";
+        experimentalSubtext.textContent = "Enable experimental features one by one. Master switch is in config (experimental_features).";
+        experimentalSection.appendChild(experimentalSubtext);
+        const experimentalChecks = document.createElement("div");
+        experimentalChecks.id = "mss-login-experimental-checks";
+        experimentalChecks.style.marginTop = "8px";
+        experimentalSection.appendChild(experimentalChecks);
+        const experimentalSaveBtn = document.createElement("button");
+        experimentalSaveBtn.className = "mss-login-launch-btn";
+        experimentalSaveBtn.textContent = "Save experimental settings";
+        experimentalSaveBtn.style.marginTop = "8px";
+        experimentalSaveBtn.onclick = async () => {
+            try {
+                const payload = { experimental: {} };
+                ["mfa", "s3", "loading_screen", "news"].forEach(k => {
+                    const cb = document.getElementById("mss-login-exp-" + k);
+                    if (cb) payload.experimental[k] = !!cb.checked;
+                });
+                const res = await api.fetchApi("/mss-login/api/settings/experimental", {
+                    method: "PUT",
+                    body: JSON.stringify(payload)
+                });
+                if (res && res.status === "ok") {
+                    if (window.showToast) window.showToast("Experimental settings saved.");
+                }
+            } catch (e) {
+                if (window.showToast) window.showToast("Save failed: " + (e.message || "Unknown error"));
+            }
+        };
+        experimentalSection.appendChild(experimentalSaveBtn);
+        wrapper.appendChild(experimentalSection);
+        (async () => {
+            try {
+                const me = await getData("/mss-login/api/me");
+                if (me && me.is_admin && me.experimental_features) {
+                    const cfg = await getData("/mss-login/api/settings/experimental");
+                    experimentalSection.style.display = "block";
+                    const labels = { mfa: "MFA (two-factor authentication)", s3: "S3 storage", loading_screen: "Loading screen (post-login)", news: "News / RSS feed" };
+                    experimentalChecks.innerHTML = "";
+                    ["mfa", "s3", "loading_screen", "news"].forEach(k => {
+                        const label = document.createElement("label");
+                        label.style.display = "block";
+                        label.style.marginBottom = "4px";
+                        const cb = document.createElement("input");
+                        cb.type = "checkbox";
+                        cb.id = "mss-login-exp-" + k;
+                        cb.checked = !!(cfg.experimental && cfg.experimental[k]);
+                        label.appendChild(cb);
+                        label.appendChild(document.createTextNode(" " + (labels[k] || k)));
+                        experimentalChecks.appendChild(label);
+                    });
+                }
+            } catch (_) {}
+        })();
+
         // MFA section (Two-Factor Authentication with Google Authenticator)
         const mfaSection = document.createElement("div");
         mfaSection.id = "mss-login-mfa-section";
@@ -3716,7 +3785,7 @@ app.ui.settings.addSetting({
         (async () => {
             try {
                 const me = await getData("/mss-login/api/me");
-                if (me && me.username && me.username.toLowerCase() !== "guest" && me.experimental_features) {
+                if (me && me.username && me.username.toLowerCase() !== "guest" && me.experimental?.mfa) {
                     mfaSection.style.display = "block";
                     if (me.mfa_enabled) {
                         mfaStatus.textContent = "MFA is enabled.";
