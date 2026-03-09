@@ -12,7 +12,7 @@ def load_default_groups():
 	if cfg is None:
 		logger.error("[MSS-Login] Missing default_group_config.json; using built-in fallback!")
 		return {
-			"admin": {
+			"owner": {
 				"can_run": True,
 				"can_upload": True,
 				"can_access_manager": True,
@@ -20,6 +20,17 @@ def load_default_groups():
 				"can_see_restricted_settings": True,
 				"can_have_api_tokens": True,
 				"can_have_non_expiring_jwt": True,
+				"can_view_console": True,
+			},
+			"admin": {
+				"can_run": True,
+				"can_upload": True,
+				"can_access_manager": True,
+				"can_access_api": True,
+				"can_see_restricted_settings": True,
+				"can_have_api_tokens": True,
+				"can_have_non_expiring_jwt": False,
+				"can_view_console": False,
 			},
 			"power": {
 				"can_run": True,

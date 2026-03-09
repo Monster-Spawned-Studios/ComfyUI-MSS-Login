@@ -146,7 +146,7 @@ async def api_me(request: web.Request) -> web.Response:
 
     # Choose primary role based on groups priority
     role = "guest"
-    for candidate in ["admin", "power", "user", "guest"]:
+    for candidate in ["owner", "admin", "power", "user", "guest"]:
         if candidate in groups:
             role = candidate
             break

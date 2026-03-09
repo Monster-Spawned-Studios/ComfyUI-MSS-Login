@@ -15,15 +15,11 @@ import folder_paths
 def _get_workflow_sync():
     """Lazy accessor for the S3 workflow sync singleton (None when disabled)."""
     try:
-        from ..constants import EXPERIMENTAL_FEATURES, S3_STORAGE_CONFIG, S3_WORKFLOW_SYNC_CONFIG
+        from ..constants import EXPERIMENTAL_FEATURES
 
-        if not (
-            EXPERIMENTAL_FEATURES
-            and S3_STORAGE_CONFIG.get("enabled")
-            and S3_WORKFLOW_SYNC_CONFIG.get("enabled")
-        ):
+        if not EXPERIMENTAL_FEATURES:
             return None
-        from ..utils.s3_workflow_sync import get_workflow_sync
+        from ..utils.s3_mounter import get_workflow_sync
 
         return get_workflow_sync()
     except Exception:

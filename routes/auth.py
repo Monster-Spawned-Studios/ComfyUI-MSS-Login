@@ -436,7 +436,7 @@ def _user_can_have_api_tokens(username: str) -> bool:
 
 
 def _user_can_have_non_expiring_jwt(username: str) -> bool:
-    """Return True if the user's role has can_have_non_expiring_jwt (admin/owner by default)."""
+    """Return True if the user's role has can_have_non_expiring_jwt."""
     user_id, user_rec = users_db.get_user(username)
     if not user_rec:
         return False
@@ -444,8 +444,6 @@ def _user_can_have_non_expiring_jwt(username: str) -> bool:
     role = groups[0] if groups else "user"
     cfg = access_control._load_group_config()
     perms = cfg.get(role, {})
-    if role in ("admin", "owner"):
-        return True
     return perms.get("can_have_non_expiring_jwt", False) is True
 
 
