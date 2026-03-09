@@ -1,8 +1,10 @@
 (function () {
     "use strict";
 
-    const TIPS_URL = "https://monsterspawned.studio/data/mss-login/loading.json";
+    // Same-origin tips (served by GET /mss-login/loading-tips.json; data dir or bundled)
+    const TIPS_URL = "/mss-login/loading-tips.json";
     const TIP_INTERVAL_MS = 10000;
+    const AUTO_REDIRECT_MS = 2000;
 
     const tipEl = document.getElementById("loading-tip");
     const bannerEl = document.getElementById("loading-update-banner");
@@ -11,6 +13,7 @@
     let tips = [];
     let tipIndex = 0;
     let tipTimer = null;
+    let autoRedirectTimer = null;
 
     function setTip(text) {
         if (tipEl) tipEl.textContent = text || "Preparing ComfyUI…";
@@ -55,6 +58,10 @@
 
     function showUpdateBanner(status) {
         if (!status || !status.update_available || !bannerEl) return;
+        if (autoRedirectTimer) {
+            clearTimeout(autoRedirectTimer);
+            autoRedirectTimer = null;
+        }
         var url = status.release_url || status.changelog_url || "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases";
         var ver = status.latest_version ? " (" + status.latest_version + ")" : "";
         var html = "An update is available" + ver + ". <a href=\"" + url + "\" target=\"_blank\" rel=\"noopener noreferrer\">View release</a>";
@@ -93,6 +100,10 @@
     }
 
     function goToApp() {
+        if (autoRedirectTimer) {
+            clearTimeout(autoRedirectTimer);
+            autoRedirectTimer = null;
+        }
         window.location.href = "/";
     }
 
@@ -100,4 +111,7 @@
 
     fetchTips();
     checkAdminUpdateBanner();
+
+    // Auto-redirect to main ComfyUI after a short display time; Continue button still works for immediate navigation
+    autoRedirectTimer = setTimeout(goToApp, AUTO_REDIRECT_MS);
 })();
