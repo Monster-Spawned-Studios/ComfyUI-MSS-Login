@@ -172,11 +172,13 @@ async def api_model_download_start(request: web.Request) -> web.Response:
             )
     else:
         try:
-            from ..utils.s3_mount import get_mount_manager
+            from ..utils.s3_mounter import get_mount_manager
 
             mgr = get_mount_manager()
-            dest_dir = os.path.join(mgr.local_root, folder_type)
-            base_dir = os.path.realpath(mgr.local_root)
+            if mgr is None or not mgr.is_mounted():
+                raise RuntimeError("S3 mount is not active")
+            dest_dir = mgr.get_models_folder_path(folder_type)
+            base_dir = os.path.realpath(mgr.models_root)
         except Exception as e:
             return web.json_response(
                 {"error": f"S3 mount not available: {e}"}, status=500

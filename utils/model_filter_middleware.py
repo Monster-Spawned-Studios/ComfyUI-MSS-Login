@@ -85,11 +85,11 @@ def create_model_filter_middleware(
     def _get_s3_mount_root() -> str | None:
         """Return the S3 mount local_root, or None if not mounted."""
         try:
-            from .s3_mount import get_mount_manager
+            from .s3_mounter import get_mount_manager
 
             mgr = get_mount_manager()
             if mgr is not None and mgr.is_mounted():
-                return mgr.local_root
+                return mgr.models_root
         except Exception:
             pass
         return None
@@ -102,7 +102,7 @@ def create_model_filter_middleware(
         if not os.path.isdir(s3_dir):
             return frozenset()
         names: set[str] = set()
-        for dirpath, _, filenames in os.walk(os.path.basename(s3_dir)):
+        for dirpath, _, filenames in os.walk(s3_dir):
             rel = os.path.relpath(dirpath, s3_dir)
             for fn in filenames:
                 if rel == ".":

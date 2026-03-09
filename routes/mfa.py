@@ -207,13 +207,11 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
 
 
 def _user_can_have_non_expiring_jwt(username: str) -> bool:
-    user_id, user_rec = users_db.get_user(username)
+    _user_id, user_rec = users_db.get_user(username)
     if not user_rec:
         return False
     groups = [g.lower() for g in user_rec.get("groups", [])]
     role = groups[0] if groups else "user"
     cfg = access_control._load_group_config()
     perms = cfg.get(role, {})
-    if role in ("admin", "owner"):
-        return True
     return perms.get("can_have_non_expiring_jwt", False) is True

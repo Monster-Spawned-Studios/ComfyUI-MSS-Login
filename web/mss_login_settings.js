@@ -752,16 +752,18 @@ class mss_loginDialog extends ComfyDialog {
         const extensionTabs = window.mss_loginAdminTabs.getAll();
         
         // Build tabs HTML (built-in tabs first, then extension tabs)
+        const isOwner = Array.isArray(currentUser?.groups) && currentUser.groups.map(g => String(g).toLowerCase()).includes("owner");
         const builtInTabs = [
             { id: "users", label: "Users & Roles", order: 0 },
             { id: "perms", label: "Permissions & UI", order: 1 },
             { id: "shared-models", label: "Shared Models", order: 2 },
             { id: "model-download", label: "Model download", order: 3 },
-            { id: "ip", label: "IP Rules", order: 4 },
-            { id: "env", label: "User Env", order: 5 },
-            { id: "nsfw", label: "NSFW Management", order: 6 },
-            { id: "token-storage", label: "Token Storage", order: 7 },
-            { id: "users-db", label: "Users DB", order: 8 }
+            ...(isOwner ? [{ id: "s3", label: "S3 Settings", order: 4 }] : []),
+            { id: "ip", label: "IP Rules", order: 5 },
+            { id: "env", label: "User Env", order: 6 },
+            { id: "nsfw", label: "NSFW Management", order: 7 },
+            { id: "token-storage", label: "Token Storage", order: 8 },
+            { id: "users-db", label: "Users DB", order: 9 }
         ];
         
         // Combine and sort all tabs
@@ -829,6 +831,9 @@ class mss_loginDialog extends ComfyDialog {
         await this.renderTokenStorage(this.element.querySelector("#mss-login-tab-token-storage"));
         await this.renderUsersDbConfig(this.element.querySelector("#mss-login-tab-users-db"));
         await this.renderModelDownload(this.element.querySelector("#mss-login-tab-model-download"));
+        if (this.element.querySelector("#mss-login-tab-s3")) {
+            await this.renderS3Settings(this.element.querySelector("#mss-login-tab-s3"));
+        }
         
         // Fill Data - Extension tabs
         const context = {
@@ -2329,9 +2334,257 @@ async renderModelDownload(container) {
     };
 }
 
+async renderS3Settings(container) {
+    const isOwner = Array.isArray(currentUser?.groups)
+        && currentUser.groups.map(g => String(g).toLowerCase()).includes("owner");
+    if (!isOwner) {
+        container.innerHTML = `
+            <div class="mss-login-section">
+                <h3>S3 Settings</h3>
+                <p>Only the owner account can view or modify S3 mount settings.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="mss-login-section">
+            <h3>S3 Mount Settings</h3>
+            <p>Configure the mounted S3 storage used for shared models and per-user workflow sync. Secrets are encrypted at rest and are never sent back to the browser after save.</p>
+            <div class="mss-login-row" style="margin-top:12px; gap:12px; flex-wrap:wrap;">
+                <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="mss-login-s3-enabled"> Enable S3 storage</label>
+                <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="mss-login-s3-mount-enabled"> Enable s3fs mount</label>
+                <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="mss-login-s3-workflow-enabled"> Enable workflow sync</label>
+            </div>
+            <div class="mss-login-row" style="margin-top:14px; gap:12px; flex-wrap:wrap;">
+                <div style="min-width:260px; flex:1;">
+                    <label class="mss-login-field-label">Bucket name</label>
+                    <input type="text" id="mss-login-s3-bucket" class="mss-login-input" placeholder="my-bucket">
+                </div>
+                <div style="min-width:320px; flex:2;">
+                    <label class="mss-login-field-label">Endpoint URL</label>
+                    <input type="text" id="mss-login-s3-endpoint" class="mss-login-input" placeholder="https://s3.amazonaws.com">
+                </div>
+            </div>
+            <div class="mss-login-row" style="margin-top:12px; gap:12px; flex-wrap:wrap;">
+                <div style="min-width:180px; flex:1;">
+                    <label class="mss-login-field-label">Region</label>
+                    <input type="text" id="mss-login-s3-region" class="mss-login-input" placeholder="us-east-1">
+                </div>
+                <div style="min-width:220px; flex:1;">
+                    <label class="mss-login-field-label">Prefix</label>
+                    <input type="text" id="mss-login-s3-prefix" class="mss-login-input" placeholder="comfyui">
+                </div>
+                <div style="min-width:260px; flex:2;">
+                    <label class="mss-login-field-label">Local mount path</label>
+                    <input type="text" id="mss-login-s3-mount-path" class="mss-login-input" placeholder="s3_mount">
+                </div>
+            </div>
+            <div class="mss-login-row" style="margin-top:12px; gap:12px; flex-wrap:wrap;">
+                <div style="min-width:260px; flex:1;">
+                    <label class="mss-login-field-label">Access key ID</label>
+                    <input type="password" id="mss-login-s3-access-key" class="mss-login-input" placeholder="Leave blank to keep stored key">
+                    <label style="display:flex; align-items:center; gap:8px; margin-top:6px;"><input type="checkbox" id="mss-login-s3-clear-access-key"> Clear stored access key</label>
+                </div>
+                <div style="min-width:260px; flex:1;">
+                    <label class="mss-login-field-label">Secret access key</label>
+                    <input type="password" id="mss-login-s3-secret-key" class="mss-login-input" placeholder="Leave blank to keep stored secret">
+                    <label style="display:flex; align-items:center; gap:8px; margin-top:6px;"><input type="checkbox" id="mss-login-s3-clear-secret-key"> Clear stored secret</label>
+                </div>
+            </div>
+            <div class="mss-login-row" style="margin-top:12px; gap:12px; flex-wrap:wrap;">
+                <div style="min-width:260px; flex:1;">
+                    <label class="mss-login-field-label">Model folders</label>
+                    <input type="text" id="mss-login-s3-model-folders" class="mss-login-input" placeholder="checkpoints, loras, vae">
+                </div>
+                <div style="min-width:180px; flex:1;">
+                    <label class="mss-login-field-label">Workflow sync interval (seconds)</label>
+                    <input type="number" id="mss-login-s3-workflow-interval" class="mss-login-input" min="10" step="10">
+                </div>
+                <div style="min-width:220px; flex:1;">
+                    <label class="mss-login-field-label">Workflow conflict strategy</label>
+                    <select id="mss-login-s3-conflict-strategy" class="mss-login-select">
+                        <option value="newer_wins">Newer wins</option>
+                        <option value="local_wins">Local wins</option>
+                        <option value="s3_wins">S3 wins</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mss-login-row" style="margin-top:12px; gap:12px; flex-wrap:wrap;">
+                <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="mss-login-s3-use-path-style"> Use path-style requests</label>
+                <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="mss-login-s3-allow-other"> Allow other users/processes</label>
+                <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="mss-login-s3-auto-install"> Auto-install s3fs when possible</label>
+                <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="mss-login-s3-read-only"> Mount read-only</label>
+                <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="mss-login-s3-mount-output"> Expose output folder</label>
+                <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="mss-login-s3-mount-input"> Expose input folder</label>
+                <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="mss-login-s3-sync-on-save"> Sync workflows on save</label>
+                <label style="display:flex; align-items:center; gap:8px;"><input type="checkbox" id="mss-login-s3-sync-on-delete"> Sync workflows on delete</label>
+            </div>
+            <div class="mss-login-row" style="margin-top:16px; gap:8px; flex-wrap:wrap;">
+                <button class="mss-login-btn" id="mss-login-s3-refresh">Refresh status</button>
+                <button class="mss-login-btn" id="mss-login-s3-save">Save settings</button>
+                <button class="mss-login-btn secondary" id="mss-login-s3-remount">Remount</button>
+                <button class="mss-login-btn danger" id="mss-login-s3-unmount">Unmount</button>
+            </div>
+            <p id="mss-login-s3-status-text" class="mss-login-note" style="margin-top:8px;"></p>
+            <label class="mss-login-field-label" style="margin-top:14px;">S3 runtime status</label>
+            <textarea id="mss-login-s3-status" class="mss-login-textarea" readonly style="min-height:180px;"></textarea>
+        </div>
+    `;
+
+    const getEl = (selector) => container.querySelector(selector);
+    const statusText = getEl("#mss-login-s3-status-text");
+    const statusBox = getEl("#mss-login-s3-status");
+
+    function renderStatus(data) {
+        const status = data?.status || data || {};
+        const workflowStatus = data?.workflow_status || {};
+        statusBox.value = JSON.stringify({
+            status,
+            workflow_status: workflowStatus,
+        }, null, 2);
+        const mounted = status?.mounted ? "mounted" : "not mounted";
+        const mode = status?.mode || "unknown";
+        statusText.textContent = `S3 runtime is ${mounted}. Mode: ${mode}. ${status?.last_error || ""}`.trim();
+    }
+
+    async function loadConfig() {
+        statusText.textContent = "Loading S3 settings...";
+        const res = await api.fetchApi("/mss-login/api/s3/config", { method: "GET" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            statusText.textContent = "Error: " + (data.error || res.status);
+            return;
+        }
+
+        getEl("#mss-login-s3-enabled").checked = !!data.enabled;
+        getEl("#mss-login-s3-mount-enabled").checked = !!data.mount_enabled;
+        getEl("#mss-login-s3-workflow-enabled").checked = !!data.workflow_sync_enabled;
+        getEl("#mss-login-s3-bucket").value = data.bucket_name || "";
+        getEl("#mss-login-s3-endpoint").value = data.endpoint_url || "";
+        getEl("#mss-login-s3-region").value = data.region || "";
+        getEl("#mss-login-s3-prefix").value = data.prefix || "";
+        getEl("#mss-login-s3-mount-path").value = data.mount_local_path || "";
+        getEl("#mss-login-s3-model-folders").value = (data.model_folders || []).join(", ");
+        getEl("#mss-login-s3-workflow-interval").value = data.workflow_sync_interval_seconds || 60;
+        getEl("#mss-login-s3-conflict-strategy").value = data.workflow_conflict_strategy || "newer_wins";
+        getEl("#mss-login-s3-use-path-style").checked = !!data.use_path_style;
+        getEl("#mss-login-s3-allow-other").checked = !!data.allow_other;
+        getEl("#mss-login-s3-auto-install").checked = !!data.auto_install;
+        getEl("#mss-login-s3-read-only").checked = !!data.read_only;
+        getEl("#mss-login-s3-mount-output").checked = !!data.mount_output;
+        getEl("#mss-login-s3-mount-input").checked = !!data.mount_input;
+        getEl("#mss-login-s3-sync-on-save").checked = !!data.workflow_sync_on_save;
+        getEl("#mss-login-s3-sync-on-delete").checked = !!data.workflow_sync_on_delete;
+        getEl("#mss-login-s3-access-key").placeholder = data.has_access_key ? "Stored securely. Leave blank to keep." : "Enter access key ID";
+        getEl("#mss-login-s3-secret-key").placeholder = data.has_secret_key ? "Stored securely. Leave blank to keep." : "Enter secret access key";
+        getEl("#mss-login-s3-clear-access-key").checked = false;
+        getEl("#mss-login-s3-clear-secret-key").checked = false;
+        renderStatus(data);
+    }
+
+    getEl("#mss-login-s3-refresh").onclick = async () => {
+        try {
+            await loadConfig();
+        } catch (e) {
+            statusText.textContent = "Error: " + (e.message || "Refresh failed");
+        }
+    };
+
+    getEl("#mss-login-s3-save").onclick = async () => {
+        statusText.textContent = "Saving S3 settings...";
+        const body = {
+            enabled: getEl("#mss-login-s3-enabled").checked,
+            mount_enabled: getEl("#mss-login-s3-mount-enabled").checked,
+            workflow_sync_enabled: getEl("#mss-login-s3-workflow-enabled").checked,
+            bucket_name: getEl("#mss-login-s3-bucket").value.trim(),
+            endpoint_url: getEl("#mss-login-s3-endpoint").value.trim(),
+            region: getEl("#mss-login-s3-region").value.trim(),
+            prefix: getEl("#mss-login-s3-prefix").value.trim(),
+            mount_local_path: getEl("#mss-login-s3-mount-path").value.trim(),
+            model_folders: getEl("#mss-login-s3-model-folders").value.trim(),
+            workflow_sync_interval_seconds: Number(getEl("#mss-login-s3-workflow-interval").value || 60),
+            workflow_conflict_strategy: getEl("#mss-login-s3-conflict-strategy").value,
+            use_path_style: getEl("#mss-login-s3-use-path-style").checked,
+            allow_other: getEl("#mss-login-s3-allow-other").checked,
+            auto_install: getEl("#mss-login-s3-auto-install").checked,
+            read_only: getEl("#mss-login-s3-read-only").checked,
+            mount_output: getEl("#mss-login-s3-mount-output").checked,
+            mount_input: getEl("#mss-login-s3-mount-input").checked,
+            workflow_sync_on_save: getEl("#mss-login-s3-sync-on-save").checked,
+            workflow_sync_on_delete: getEl("#mss-login-s3-sync-on-delete").checked,
+            clear_access_key: getEl("#mss-login-s3-clear-access-key").checked,
+            clear_secret_key: getEl("#mss-login-s3-clear-secret-key").checked,
+        };
+        const accessKey = getEl("#mss-login-s3-access-key").value.trim();
+        const secretKey = getEl("#mss-login-s3-secret-key").value.trim();
+        if (accessKey) body.access_key_id = accessKey;
+        if (secretKey) body.secret_access_key = secretKey;
+
+        try {
+            const res = await api.fetchApi("/mss-login/api/s3/config", {
+                method: "PUT",
+                body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                statusText.textContent = "Error: " + (data.error || res.status);
+                return;
+            }
+            getEl("#mss-login-s3-access-key").value = "";
+            getEl("#mss-login-s3-secret-key").value = "";
+            statusText.textContent = "S3 settings saved.";
+            renderStatus(data);
+            await loadConfig();
+        } catch (e) {
+            statusText.textContent = "Error: " + (e.message || "Save failed");
+        }
+    };
+
+    getEl("#mss-login-s3-remount").onclick = async () => {
+        statusText.textContent = "Remounting S3...";
+        try {
+            const res = await api.fetchApi("/mss-login/api/s3/mount/remount", { method: "POST" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                statusText.textContent = "Error: " + (data.error || res.status);
+                return;
+            }
+            statusText.textContent = data.remounted ? "S3 remounted." : "Remount failed.";
+            renderStatus(data.status || data);
+            await loadConfig();
+        } catch (e) {
+            statusText.textContent = "Error: " + (e.message || "Remount failed");
+        }
+    };
+
+    getEl("#mss-login-s3-unmount").onclick = async () => {
+        statusText.textContent = "Unmounting S3...";
+        try {
+            const res = await api.fetchApi("/mss-login/api/s3/mount/unmount", { method: "POST" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                statusText.textContent = "Error: " + (data.error || res.status);
+                return;
+            }
+            statusText.textContent = data.message || "Unmount attempted.";
+            renderStatus(data.mount_status || {});
+            await loadConfig();
+        } catch (e) {
+            statusText.textContent = "Error: " + (e.message || "Unmount failed");
+        }
+    };
+
+    await loadConfig();
+}
+
     renderPerms(container) {
         // --- SCANNER: Find all Settings Categories ---
         const categories = new Set();
+        const adminLockedFalseKeys = new Set([
+            "can_have_non_expiring_jwt",
+            "can_view_console",
+        ]);
         
         // 1. Scan app.extensions
         if (app.extensions) app.extensions.forEach(e => { if(e.name) categories.add(e.name); });
@@ -2379,11 +2632,11 @@ async renderModelDownload(container) {
                 // Guest: Block by default. 
                 // Others: Allow by default.
                 if (val === undefined) {
-                    val = (g !== "guest"); 
+                    val = (g === "admin" && adminLockedFalseKeys.has(id)) ? false : (g !== "guest"); 
                 }
                 
-                // Admin is always true/enabled/visible
-                if (g === "admin") val = true;
+                // Admin keeps broad access, except for privileges intentionally reserved for owner.
+                if (g === "admin" && !adminLockedFalseKeys.has(id)) val = true;
                 // Owner column is immutable (same as admin)
                 if (g === "owner") val = true;
 
@@ -3173,21 +3426,34 @@ app.registerExtension({
 
         // Register "Manage mss-login" Button in Settings
 app.ui.settings.addSetting({
-    id: "mss-login.Configuration",
-    name: "mss-login",
+    id: "MSS-Login.Configuration",
+    name: "",
     type: () => {
         const wrapper = document.createElement("div");
         wrapper.style.display = "flex";
         wrapper.style.flexDirection = "column";
-        wrapper.style.gap = "6px";
+        wrapper.style.alignItems = "center";
+        wrapper.style.justifyContent = "center";
+        wrapper.style.textAlign = "center";
+        wrapper.style.gap = "10px";
+        wrapper.style.padding = "16px 0";
+        wrapper.style.width = "100%";
+
+        const actionsWrap = document.createElement("div");
+        actionsWrap.style.display = "flex";
+        actionsWrap.style.flexDirection = "column";
+        actionsWrap.style.alignItems = "center";
+        actionsWrap.style.gap = "8px";
+        actionsWrap.style.width = "100%";
 
         // Logout button (above) - ALWAYS visible for all users including guests
         const logoutBtn = document.createElement("button");
-        logoutBtn.innerText = "Logout current user";
+        logoutBtn.innerText = "Logout Current User";
         logoutBtn.className = "mss-login-launch-btn";
         logoutBtn.style.background = "#7a2525";
         logoutBtn.style.borderColor = "#aa3a3a";
         logoutBtn.id = "mss-login-settings-logout-btn";
+        logoutBtn.style.minWidth = "260px";
         // Ensure logout button is never hidden by enforcement
         logoutBtn.setAttribute('data-mss-login-always-visible', 'true');
         logoutBtn.style.display = "block"; // Force display
@@ -3199,18 +3465,21 @@ app.ui.settings.addSetting({
 
         // Main management button
         const btn = document.createElement("button");
-        btn.innerText = "Manage mss-login Permissions";
+        btn.innerText = "Manage MSS-Login Permissions";
         btn.className = "mss-login-launch-btn";
+        btn.style.minWidth = "260px";
         btn.onclick = () => new mss_loginDialog().show();
 
-        wrapper.appendChild(logoutBtn);
-        wrapper.appendChild(btn);
+        actionsWrap.appendChild(btn);
+        actionsWrap.appendChild(logoutBtn);
+        wrapper.appendChild(actionsWrap);
 
         // Guest JWT toggle (Admin only)
         const guestJwtRow = document.createElement("div");
         guestJwtRow.id = "mss-login-guest-jwt-row";
         guestJwtRow.style.display = "none";
         guestJwtRow.style.alignItems = "center";
+        guestJwtRow.style.justifyContent = "center";
         guestJwtRow.style.gap = "8px";
         guestJwtRow.style.marginTop = "6px";
         const guestJwtLabel = document.createElement("label");
@@ -3256,6 +3525,8 @@ app.ui.settings.addSetting({
         ntfySection.id = "mss-login-ntfy-section";
         ntfySection.style.display = "none";
         ntfySection.style.marginTop = "12px";
+        ntfySection.style.width = "min(100%, 560px)";
+        ntfySection.style.textAlign = "left";
         const ntfyHeading = document.createElement("h4");
         ntfyHeading.style.margin = "0 0 8px 0";
         ntfyHeading.textContent = "Push notifications (ntfy)";
@@ -3325,32 +3596,13 @@ app.ui.settings.addSetting({
             } catch (_) {}
         })();
 
-        // View my console button (per-user console log)
-        const consoleBtn = document.createElement("button");
-        consoleBtn.className = "mss-login-launch-btn";
-        consoleBtn.textContent = "View my console";
-        consoleBtn.style.marginTop = "6px";
-        consoleBtn.onclick = async () => {
-            try {
-                const r = await getData("/mss-login/me/console");
-                const lines = (r && r.lines) ? r.lines : [];
-                const text = lines.length ? lines.join("\n") : "(No log entries yet.)";
-                const pre = document.createElement("pre");
-                pre.style.whiteSpace = "pre-wrap";
-                pre.style.maxHeight = "400px";
-                pre.style.overflow = "auto";
-                pre.textContent = text;
-                const dlg = new ComfyDialog();
-                dlg.show("My console", [pre]);
-            } catch (_) {}
-        };
-        wrapper.appendChild(consoleBtn);
-
         // MFA section (Two-Factor Authentication with Google Authenticator)
         const mfaSection = document.createElement("div");
         mfaSection.id = "mss-login-mfa-section";
         mfaSection.style.marginTop = "12px";
         mfaSection.style.display = "none";
+        mfaSection.style.width = "min(100%, 560px)";
+        mfaSection.style.textAlign = "left";
         const mfaHeading = document.createElement("h4");
         mfaHeading.style.margin = "0 0 8px 0";
         mfaHeading.textContent = "Two-Factor Authentication (MFA)";
