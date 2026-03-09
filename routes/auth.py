@@ -138,40 +138,37 @@ LOADING_CSP = (
 )
 
 
+def _parse_tips_file(path: str) -> list[str]:
+    """Read a loading-tips JSON file and return a list of non-empty tip strings.
+
+    Accepts either a plain JSON array of strings or an object with a
+    ``"messages"`` key containing such an array.  Returns ``[]`` on any
+    I/O or parse error so the caller can fall through to the next source.
+    """
+    if not os.path.isfile(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return [s for s in data if isinstance(s, str) and s.strip()]
+            if isinstance(data, dict) and isinstance(data.get("messages"), list):
+                return [
+                    s for s in data["messages"] if isinstance(s, str) and s.strip()
+                ]
+    except (json.JSONDecodeError, OSError):
+        pass
+    return []
+
+
 @routes.get("/mss-login/loading-tips.json")
 async def get_loading_tips(request: web.Request) -> web.Response:
     """Serve loading tips JSON from same origin. Data dir override: DATA_DIR/loading-tips.json;
     else bundled web/data/loading-tips.json. Returns array of strings or { \"messages\": [...] }.
     """
-    data_dir_file = os.path.join(DATA_DIR, "loading-tips.json")
-    bundled_file = os.path.join(WEB_DIR, "data", "loading-tips.json")
-    tips_data = []
-    if os.path.isfile(data_dir_file):
-        try:
-            with open(data_dir_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    tips_data = [s for s in data if isinstance(s, str) and s.strip()]
-                elif isinstance(data, dict) and isinstance(data.get("messages"), list):
-                    tips_data = [
-                        s for s in data["messages"]
-                        if isinstance(s, str) and s.strip()
-                    ]
-        except (json.JSONDecodeError, OSError):
-            pass
-    if not tips_data and os.path.isfile(bundled_file):
-        try:
-            with open(bundled_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    tips_data = [s for s in data if isinstance(s, str) and s.strip()]
-                elif isinstance(data, dict) and isinstance(data.get("messages"), list):
-                    tips_data = [
-                        s for s in data["messages"]
-                        if isinstance(s, str) and s.strip()
-                    ]
-        except (json.JSONDecodeError, OSError):
-            pass
+    tips_data = _parse_tips_file(os.path.join(DATA_DIR, "loading-tips.json"))
+    if not tips_data:
+        tips_data = _parse_tips_file(os.path.join(WEB_DIR, "data", "loading-tips.json"))
     payload = tips_data if tips_data else ["Preparing ComfyUI…"]
     return web.json_response(payload)
 
