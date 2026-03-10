@@ -12,6 +12,7 @@ mkdocs
 mss_login
 mss-login
 myextension
+mymodule
 noindex
 osascript
 pymdownx
