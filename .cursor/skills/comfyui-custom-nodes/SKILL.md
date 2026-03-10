@@ -1,7 +1,6 @@
 ---
+name: comfyui-custom-nodes
 description: ComfyUI custom node development — version-agnostic, frontend/Portal compatible, secure, and Git-safe
-globs: "**/*.py"
-alwaysApply: false
 ---
 
 # ComfyUI Custom Node Development
@@ -53,3 +52,12 @@ Use when developing or modifying ComfyUI custom nodes. Keep nodes compatible wit
 ## Before publishing
 
 - Check for **eval/exec**, **runtime pip**, **obfuscation**, **inline scripts/styles**, **plaintext secrets/PII**, and **path/query injection**. Fix and notify the user of any issues found.
+
+## Custom Web Data for Nodes
+
+When editing HTML, CSS, or JavaScript for a ComfyUI custom node (e.g. settings or admin UI), follow the same security and compatibility goals as the main [ComfyUI custom node rule](comfyui-custom-nodes.mdc).
+
+- **No inline JavaScript** in HTML: use external `.js` files and attach behavior via event listeners or script tags that reference `WEB_DIRECTORY` assets.
+- **No inline CSS** in HTML: use external `.css` files; keeps markup clean and supports CSP.
+- **No secrets or PII** in HTML/CSS/JS or in committed examples; use env/config (e.g. python-dotenvx) and placeholders like `https://example.com` or `user@example.com` in docs/samples only.
+- Prefer patterns that work with **ComfyUI_frontend** and **Comfy Portal** (standard APIs, no blocking of the main frontend).

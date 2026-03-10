@@ -12,7 +12,7 @@ When running or testing Python code (e.g., scripts, tests, or modules), **always
 
 ## Rules
 
-- **Prefer the venv interpreter**: Use `.venv\Scripts\python.exe` on Windows or `.venv/bin/python` on Unix when executing Python from the terminal or when suggesting run commands.
+- **Prefer the venv interpreter**: Use `.venv\Scripts\python.exe` on Windows or `.venv/bin/python` on Unix/macOS systems when executing Python from the terminal or when suggesting run commands.
 - **Run commands**: Prefer `".venv\Scripts\python" -m pytest` or `".venv\Scripts\python" script.py` (Windows) over `python script.py` or `pytest` so the correct environment is used.
 - **One-liner (Windows)**: `".venv\Scripts\python" -c "..."` for quick checks.
 - **One-liner (Unix/macOS)**: `.venv/bin/python -c "..."` or `.venv/bin/python script.py`.
