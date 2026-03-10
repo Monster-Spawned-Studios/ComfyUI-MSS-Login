@@ -47,6 +47,22 @@ Tests are documented in `tests/README.md`. Quick reference:
 
 Note: the codebase has pre-existing ruff check errors (12 errors: F403, F405, F811, E722, F541) and format drift (64 files). These are not introduced by setup.
 
+### Commit signing
+
+When committing and pushing, sign commits with SSH if credentials are available:
+
+- **`MSS_SSH_PRIV_KEY`**: SSH private key for commit signing (full key content).
+- **`MSS_SSH_PASS`**: Passphrase to decrypt the key. Never log this value.
+
+**If both variables are set and non-empty:**
+
+1. Write the key to a temporary file (e.g. `~/.ssh/mss_signing_key` or `$TMPDIR/mss_signing_key`).
+2. Set `GIT_SSH_COMMAND` or configure `git config gpg.format ssh` and `git config user.signingKey` to the key path.
+3. Use `git commit -S` (or `git config commit.gpgsign true`) when committing.
+4. Remove the temporary key file after pushing.
+
+**If either variable is unset, null, or invalid:** Commit and push normally without signing.
+
 ### Known caveats
 
 - Always use the `.venv` Python (`.venv/bin/python`) per `.agent/rules/python-venv.mdc`.

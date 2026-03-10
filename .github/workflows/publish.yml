@@ -1,11 +1,6 @@
 name: Publish to ComfyUI registry
 on:
   workflow_dispatch:
-    inputs:
-      comfy-node-name:
-        description: "The name of the ComfyUI node to publish"
-        default: "ComfyUI-MSS-Login"
-        required: true
   push:
     branches:
       - production
@@ -25,20 +20,20 @@ jobs:
   publish:
     name: Publish to ComfyUI registry
     runs-on: ubuntu-latest
+    env:
+      NODE_PATH: ${{ github.workspace }}
+      REGISTRY_ACCESS_TOKEN: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          path: ${{ github.workspace }}/${{ inputs.comfy-node-name }}
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: "pip"
-          cache-dependency-path: ${{ github.workspace }}/${{ inputs.comfy-node-name }}/requirements.txt
-      - run: cd ${{ github.workspace }}/${{ inputs.comfy-node-name }} && uv sync --group comfyui
+          cache-dependency-path: pyproject.toml
+      - run: uv sync --group comfyui
       - name: Publish ComfyUI Node
-        env:
-          REGISTRY_ACCESS_TOKEN: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
-        run: cd ${{ github.workspace }}/${{ inputs.comfy-node-name }} && uv run scripts/publish_comfy_node.py --registry-access-token ${{ secrets.REGISTRY_ACCESS_TOKEN }} --node-name ${{ inputs.comfy-node-name }} --node-path ${{ github.workspace }}/${{ inputs.comfy-node-name }}
+        run: uv run scripts/publish_comfy_node.py

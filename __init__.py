@@ -54,6 +54,7 @@ from .utils.sfw_intercept.nsfw_guard import (
     set_latest_prompt_user,
 )
 from .utils.sfw_intercept.node_interceptor import install_node_interceptor
+from .utils.api_browser_redirect import create_api_browser_redirect_middleware
 from .utils.remote_api_guard import create_remote_api_guard_middleware
 from .utils.model_filter_middleware import create_model_filter_middleware
 from .utils.csp import create_csp_middleware
@@ -236,6 +237,7 @@ if FORCE_HTTPS:
 
 app.middlewares.append(ip_filter.create_ip_filter_middleware())
 app.middlewares.append(sanitizer.create_sanitizer_middleware())
+app.middlewares.append(create_api_browser_redirect_middleware())
 app.middlewares.append(
     timeout.create_time_out_middleware(limited=("/login", "/register", "/mfa"))
 )

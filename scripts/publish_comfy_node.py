@@ -4,10 +4,15 @@ https://monsterspawned.studio/
 All Rights Reserved.
 """
 
+import os
+import re
 from argparse import ArgumentParser
 from os import getcwd
 from subprocess import CalledProcessError, run
 from sys import stderr, stdout
+
+# Safe node name: alphanumeric, dots, underscores, hyphens only (prevents injection)
+_SAFE_NODE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 parser = ArgumentParser(
     description="Publish a ComfyUI node to the ComfyUI registry"
@@ -16,23 +21,22 @@ parser.add_argument(
     "-t",
     "--registry-access-token",
     type=str,
-    required=True,
-    help="The access token for the ComfyUI registry",
+    default=None,
+    help="The access token for the ComfyUI registry (or set REGISTRY_ACCESS_TOKEN)",
 )
 parser.add_argument(
     "-n",
     "--node-name",
     type=str,
-    required=True,
-    help="The name of the ComfyUI node to publish",
+    default=None,
+    help="The name of the ComfyUI node to publish (or set COMFY_NODE_NAME, or use [project] name from pyproject.toml)",
 )
 parser.add_argument(
     "-p",
     "--node-path",
     type=str,
-    required=False,
-    default=getcwd(),  # Default to the current working directory
-    help="The path to the ComfyUI node to publish",
+    default=None,
+    help="The path to the ComfyUI node to publish (or set NODE_PATH or cwd)",
 )
 parser.add_argument(
     "-v",
@@ -61,29 +65,83 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-if (
-    args.debug
-    and args.registry_access_token is not None
-    and args.registry_access_token.startswith("pat")
-):
-    print(
-        f"Publishing ComfyUI node {args.node_name} from {args.node_path} with registry access token '{args.registry_access_token}'"
+
+def _get_project_name_from_pyproject(base_path: str) -> str | None:
+    """Read project name from pyproject.toml [project] section. Returns None on failure."""
+    try:
+        import tomllib
+    except ImportError:
+        return None
+    path = os.path.join(base_path, "pyproject.toml")
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+        project = data.get("project")
+        if isinstance(project, dict):
+            name = project.get("name")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def _is_safe_node_name(name: str) -> bool:
+    """Return True if name is safe (no injection risk)."""
+    return bool(name and _SAFE_NODE_NAME_RE.match(name))
+
+
+# Resolve from environment when not provided via CLI (e.g. GitHub Actions)
+if args.registry_access_token is None:
+    args.registry_access_token = os.environ.get("REGISTRY_ACCESS_TOKEN", "").strip() or None
+if args.node_path is None:
+    args.node_path = (
+        os.environ.get("NODE_PATH", "").strip()
+        or os.environ.get("GITHUB_WORKSPACE", "").strip()
+        or getcwd()
     )
-if (
-    args.verbose
-    and args.registry_access_token is not None
-    and args.registry_access_token.startswith("pat")
-):
+if args.node_name is None:
+    args.node_name = os.environ.get("COMFY_NODE_NAME", "").strip() or None
+if args.node_name is None:
+    args.node_name = _get_project_name_from_pyproject(args.node_path)
+
+if not args.registry_access_token:
+    print("Error: Registry access token required. Set REGISTRY_ACCESS_TOKEN or use --registry-access-token.", file=stderr)
+    exit(1)
+if not args.node_name:
+    print("Error: Node name required. Set COMFY_NODE_NAME, use --node-name, or add [project] name in pyproject.toml.", file=stderr)
+    exit(1)
+if not _is_safe_node_name(args.node_name):
+    print(
+        f"Error: Node name '{args.node_name}' contains invalid characters. Use only letters, numbers, dots, underscores, and hyphens.",
+        file=stderr,
+    )
+    exit(1)
+
+
+def _redact_token(token: str | None) -> str:
+    """Return a redacted token for diagnostic output (e.g. pat***abcd). Never logs the full secret."""
+    if not token or not isinstance(token, str):
+        return ""
+    token = token.strip()
+    if len(token) <= 7:
+        return "***"
+    return f"{token[:3]}***{token[-4:]}"
+
+
+if args.debug:
+    print(
+        f"Publishing ComfyUI node {args.node_name} from {args.node_path} with registry access token '{_redact_token(args.registry_access_token)}'"
+    )
+if args.verbose:
     print(
         f"Publishing ComfyUI node {args.node_name} from {args.node_path} with valid registry access token..."
     )
-if (
-    args.dry_run
-    and args.registry_access_token is not None
-    and args.registry_access_token.startswith("pat")
-):
+if args.dry_run:
     print(
-        f"Dry run enabled. No changes will be made to the ComfyUI node {args.node_name} from {args.node_path} with registry access token '{args.registry_access_token}'"
+        f"Dry run enabled. No changes will be made to the ComfyUI node {args.node_name} from {args.node_path} with registry access token '{_redact_token(args.registry_access_token)}'"
     )
 
 
@@ -145,7 +203,7 @@ if __name__ == "__main__":
         print("Node published successfully.", file=stdout)
     elif args.debug:  # Print success message to stdout if debug is enabled
         print(
-            f"Node published successfully using paramaters: --registry-access-token '{args.registry_access_token}' --node-name '{args.node_name}' --node-path '{args.node_path}' --verbose '{args.verbose}' --debug '{args.debug}' --quiet '{args.quiet}' --dry-run '{args.dry_run}'.", file=stdout
+            f"Node published successfully using parameters: --registry-access-token '{_redact_token(args.registry_access_token)}' --node-name '{args.node_name}' --node-path '{args.node_path}' --verbose '{args.verbose}' --debug '{args.debug}' --quiet '{args.quiet}' --dry-run '{args.dry_run}'.", file=stdout
         )
     elif args.dry_run:  # Print success message to stderr if dry run is not enabled
         print("Node publishing test executed successfully.", file=stderr)
