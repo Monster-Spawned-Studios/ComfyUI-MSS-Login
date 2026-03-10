@@ -12,8 +12,8 @@ The project requires **Python 3.13+** (`pyproject.toml` → `requires-python = "
 
 ### Dependency management
 
-- Package manager: **uv** (with `pyproject.toml` / `uv.lock`).
-- Dev dependencies: `uv sync --group dev` (includes `pytest`, `mkdocs`, `pip-audit`, `ruff`).
+- Package manager: **uv** (with `pyproject.toml`; `uv.lock` is not committed — uv generates it on first sync).
+- Dev dependencies: `uv sync --group dev` (includes `pytest`, `pip-audit`). **Note**: `ruff` is NOT in the dev group — install separately with `pip install ruff` after `uv sync`.
 - ComfyUI CLI: `uv sync --group comfyui` (installs `comfy-cli`). Note: syncing one group removes packages from the other. For a full dev setup, install dev group first, then use `pip install` for ComfyUI's own requirements on top.
 - PyTorch: `pyproject.toml` directs Linux/Windows to CUDA wheels (`cu128`). On GPU-less VMs, replace with CPU-only wheels: `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --force-reinstall`.
 - System dependency: `libsqlcipher-dev` is needed for the `sqlcipher3` Python package.
@@ -53,7 +53,7 @@ Note: the codebase has pre-existing ruff check errors (12 errors: F403, F405, F8
 ### Known caveats
 
 - **`dotenvx` warning**: The extension tries to run `dotenvx` and `dotenvx-postinstall` at startup. These are optional; the warning is non-fatal. The `python-dotenvx` pip package is installed but the standalone binary install may fail in some environments.
-- **GPU-less VMs**: CUDA PyTorch wheels will fail to import `comfy.model_management` with "Torch not compiled with CUDA enabled" or "Found no NVIDIA driver". Install CPU-only PyTorch (see above).
+- **GPU-less VMs**: CUDA PyTorch wheels will fail to import `comfy.model_management` with "Torch not compiled with CUDA enabled" or "Found no NVIDIA driver". Install CPU-only PyTorch (see above). **Important**: `uv sync` will always reinstall CUDA torch on Linux (per `pyproject.toml` sources). You must re-run the CPU pip install after every `uv sync`.
 - **`install_deps.py` auto-install**: On Linux, the extension auto-installs CUDA PyTorch from `requirements_cuda.txt` on every startup (with captured output). This can be slow on first boot or when CPU-only torch is installed. Deps are already satisfied in Docker images with CUDA torch.
 - Always use the `.venv` Python (`.venv/bin/python`) per `.agent/rules/python-venv.mdc`.
 
