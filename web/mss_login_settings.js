@@ -3499,7 +3499,7 @@ app.ui.settings.addSetting({
                     method: "PUT",
                     body: JSON.stringify({ allow_guest_jwt: guestJwtCheck.checked })
                 });
-                if (res && res.status === "ok") {
+                if (res && res.ok) {
                     if (window.showToast) window.showToast(guestJwtCheck.checked ? "Guest JWT enabled." : "Guest JWT disabled.");
                 } else {
                     guestJwtCheck.checked = !guestJwtCheck.checked;
@@ -3556,7 +3556,7 @@ app.ui.settings.addSetting({
                     method: "PUT",
                     body: JSON.stringify({ topic: ntfyTopicInput.value.trim(), enabled_events: enabled })
                 });
-                if (res && res.status === "ok") {
+                if (res && res.ok) {
                     if (window.showToast) window.showToast("ntfy settings saved.");
                 }
             } catch (_) {}
@@ -3632,7 +3632,7 @@ app.ui.settings.addSetting({
                     method: "PUT",
                     body: JSON.stringify(payload)
                 });
-                if (res && res.status === "ok") {
+                if (res && res.ok) {
                     if (window.showToast) window.showToast("Experimental settings saved.");
                 }
             } catch (e) {
