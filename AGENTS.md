@@ -13,7 +13,7 @@ The project requires **Python 3.13+** (`pyproject.toml` → `requires-python = "
 ### Dependency management
 
 - Package manager: **uv** (with `pyproject.toml` / `uv.lock`).
-- Dev dependencies: `uv sync --group dev` (includes `pytest`, `mkdocs`, `pip-audit`, `ruff`).
+- Dev dependencies: `uv sync --group dev` (includes `pytest`, `pip-audit`). `ruff` is not in the dev group; install it separately with `.venv/bin/pip install ruff` after sync.
 - ComfyUI CLI: `uv sync --group comfyui` (installs `comfy-cli`). Note: syncing one group removes packages from the other. For a full dev setup, install dev group first, then use `pip install` for ComfyUI's own requirements on top.
 - PyTorch: `pyproject.toml` directs Linux/Windows to CUDA wheels (`cu128`). On GPU-less VMs, replace with CPU-only wheels: `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --force-reinstall`.
 - System dependency: `libsqlcipher-dev` is needed for the `sqlcipher3` Python package.
