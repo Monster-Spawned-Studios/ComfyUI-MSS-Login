@@ -164,10 +164,12 @@ def _parse_tips_file(path: str) -> list[str]:
 async def get_loading_tips(request: web.Request) -> web.Response:
 	"""Serve loading tips JSON from same origin when loading screen is enabled (experimental).
 	Data dir override: DATA_DIR/loading-tips.json; else bundled web/data/loading-tips.json.
-	Returns 404 when loading screen feature is disabled.
+	When loading screen is disabled, returns 200 with minimal payload so consumers (e.g.
+	ComfyUI_frontend or extension scripts that reference this URL) do not see a failed
+	request and get stuck in a loading state.
 	"""
 	if not experimental_loading_screen_enabled():
-		return web.Response(status=404, text="Loading screen is disabled.")
+		return web.json_response(["Preparing ComfyUI…"])
 	tips_data = _parse_tips_file(os.path.join(DATA_DIR, "loading-tips.json"))
 	if not tips_data:
 		tips_data = _parse_tips_file(os.path.join(WEB_DIR, "data", "loading-tips.json"))
