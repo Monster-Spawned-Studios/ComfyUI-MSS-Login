@@ -54,6 +54,11 @@ When committing and pushing, sign commits with SSH if credentials are available:
 - **`MSS_SSH_PRIV_KEY`**: SSH private key for commit signing (full key content).
 - **`MSS_SSH_PASS`**: Passphrase to decrypt the key. Never log this value.
 
+- **`dotenvx` warning**: The extension tries to run `dotenvx` and `dotenvx-postinstall` at startup. These are optional; the warning is non-fatal. The `python-dotenvx` pip package is installed but the standalone binary install may fail in some environments.
+- **GPU-less VMs**: CUDA PyTorch wheels will fail to import `comfy.model_management` with "Torch not compiled with CUDA enabled" or "Found no NVIDIA driver". Install CPU-only PyTorch (see above). **Important**: `uv sync` will always reinstall CUDA torch on Linux (per `pyproject.toml` sources). You must re-run the CPU pip install after every `uv sync`.
+- **`install_deps.py` auto-install**: On Linux, the extension auto-installs CUDA PyTorch from `requirements_cuda.txt` on every startup (with captured output). This can be slow on first boot or when CPU-only torch is installed. Deps are already satisfied in Docker images with CUDA torch.
+- Always use the `.venv` Python (`.venv/bin/python`) per `.agent/rules/python-venv.mdc`.
+
 **If both variables are set and non-empty:**
 
 1. Write the key to a temporary file (e.g. `~/.ssh/mss_signing_key` or `$TMPDIR/mss_signing_key`).
