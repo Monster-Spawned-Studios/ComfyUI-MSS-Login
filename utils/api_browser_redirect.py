@@ -2,13 +2,21 @@
 
 When a user types the ComfyUI URL + /api in the address bar (browser navigation),
 redirect them to a joke/warning page. Programmatic API calls (fetch, axios, etc.)
-are not redirected.
+are not redirected. Certain API paths used by the frontend as data resources are
+excluded so they load normally.
 """
 
 from aiohttp import web
 
 # URL to redirect browser navigators who visit /api
 REDIRECT_URL = "https://monsterspawned.studio/secrets/nice-try"
+
+# API paths that must never be redirected (frontend data resources, etc.)
+_API_REDIRECT_EXCLUDED_PATHS = frozenset(
+	{
+		"/api/userdata/comfy.templates.json",
+	}
+)
 
 
 def _is_browser_navigation(request: web.Request) -> bool:
@@ -34,7 +42,7 @@ def create_api_browser_redirect_middleware() -> web.middleware:
 	async def middleware(request: web.Request, handler):
 		path = request.path
 		if path == "/api" or path.startswith("/api/"):
-			if request.method == "GET" and _is_browser_navigation(request):
+			if path not in _API_REDIRECT_EXCLUDED_PATHS and request.method == "GET" and _is_browser_navigation(request):
 				return web.HTTPFound(location=REDIRECT_URL)
 		return await handler(request)
 

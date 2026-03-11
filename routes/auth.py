@@ -127,12 +127,13 @@ async def post_register(request: web.Request) -> web.Response:
 	return web.json_response({"message": "User registered"})
 
 
-# Content-Security-Policy for the loading page: same-origin only, no external fetches.
+# Content-Security-Policy for the loading page. connect-src includes tunnel subdomains
+# so Cloudflare Tunnel (cloudflared) at e.g. comfyui-server.monsterspawned.studio works.
 LOADING_CSP = (
 	"default-src 'self'; "
 	"script-src 'self'; "
 	"style-src 'self' 'unsafe-inline'; "
-	"connect-src 'self'; "
+	"connect-src 'self' https://*.monsterspawned.studio wss://*.monsterspawned.studio; "
 	"img-src 'self'; "
 	"base-uri 'self'; "
 	"form-action 'self'"
