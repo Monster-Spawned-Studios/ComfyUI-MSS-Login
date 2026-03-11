@@ -41,9 +41,8 @@ jobs:
               uses: actions/setup-python@v6
               with:
                   python-version: "3.13"
-            - name: Install project and pip-audit
+            - name: Install pip-audit
               run: |
                   pip install pip-audit
-                  pip install -e .
             - name: Run pip-audit
-              run: pip-audit
+              run: pip-audit -r requirements.txt -r requirements_cuda.txt -r requirements_metal.txt

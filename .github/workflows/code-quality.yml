@@ -31,7 +31,7 @@ jobs:
       - name: Run Ruff format check
         uses: astral-sh/ruff-action@v3
         with:
-          args: "format check --diff --output-format=github"
+          args: "format --check --diff"
           src: "."
           version: "latest"
 
@@ -44,6 +44,6 @@ jobs:
       - name: Run Ruff fix
         uses: astral-sh/ruff-action@v3
         with:
-          args: "fix --output-format=github"
+          args: "check --fix --output-format=github"
           src: "."
           version: "latest"
