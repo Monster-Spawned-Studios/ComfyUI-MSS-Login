@@ -58,6 +58,12 @@
 	},
 	"token_algorithm": "HS256",
 	"experimental_features": false,
+	"experimental": {
+		"mfa": false,
+		"s3": false,
+		"loading_screen": false,
+		"news": false
+	},
 	"s3_storage": {
 		"enabled": false,
 		"endpoint_url": "",

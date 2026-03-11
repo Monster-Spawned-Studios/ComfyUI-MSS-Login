@@ -516,7 +516,7 @@ if AUTO_INSTALL_DEPS and AUTO_INSTALL_DEPS_FROM_ENV in ("1", "true", "yes"):
             )
 
 
-# Experimental features: opt-in flag for in-development functionality (S3 storage, etc.)
+# Experimental features: master switch + per-feature (one-by-one; env overrides: EXPERIMENTAL_*)
 def _get_experimental_features() -> bool:
     env_val = str(os.environ.get("EXPERIMENTAL_FEATURES", "")).strip().lower()
     if env_val in ("1", "true", "yes"):
@@ -527,7 +527,85 @@ def _get_experimental_features() -> bool:
     return bool(cfg.get("experimental_features", False))
 
 
+def _get_experimental_sub(key: str) -> bool:
+    """Read a single experimental feature: env EXPERIMENTAL_<KEY> (uppercased) or config experimental.<key>."""
+    env_key = "EXPERIMENTAL_" + key.upper()
+    env_val = str(os.environ.get(env_key, "")).strip().lower()
+    if env_val in ("1", "true", "yes"):
+        return True
+    if env_val in ("0", "false", "no"):
+        return False
+    cfg = _load_config(CONFIG_FILE_PATH)
+    block = cfg.get("experimental")
+    if isinstance(block, dict):
+        return bool(block.get(key, False))
+    return False
+
+
 EXPERIMENTAL_FEATURES = _get_experimental_features()
+
+
+def experimental_mfa_enabled() -> bool:
+    """True if master experimental is on and MFA feature is enabled.
+
+    Legacy upgrade path: when EXPERIMENTAL_FEATURES is on and experimental.mfa
+    is unset in config, treat MFA as enabled (prior behavior) to avoid auth bypass
+    for MFA-enrolled users after upgrade.
+    """
+    if not EXPERIMENTAL_FEATURES:
+        return False
+    env_val = str(os.environ.get("EXPERIMENTAL_MFA", "")).strip().lower()
+    if env_val in ("1", "true", "yes"):
+        return True
+    if env_val in ("0", "false", "no"):
+        return False
+    cfg = _load_config(CONFIG_FILE_PATH)
+    block = cfg.get("experimental")
+    if isinstance(block, dict) and "mfa" in block:
+        return bool(block.get("mfa", False))
+    return True
+
+
+def experimental_s3_enabled() -> bool:
+    """True if master experimental is on and S3 feature is enabled."""
+    return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("s3"))
+
+
+def experimental_loading_screen_enabled() -> bool:
+    """True if master experimental is on and loading_screen feature is enabled."""
+    return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("loading_screen"))
+
+
+def experimental_news_enabled() -> bool:
+    """True if master experimental is on and news feature is enabled."""
+    return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("news"))
+
+
+def get_experimental_flags() -> dict:
+    """Return dict of per-feature flags for /me and settings. Keys: mfa, s3, loading_screen, news."""
+    return {
+        "mfa": experimental_mfa_enabled(),
+        "s3": experimental_s3_enabled(),
+        "loading_screen": experimental_loading_screen_enabled(),
+        "news": experimental_news_enabled(),
+    }
+
+
+# Loading screen fail-safe timeout (seconds). Env: MSS_LOGIN_LOADING_TIMEOUT_SECONDS (default 15).
+def _get_loading_timeout_seconds() -> int:
+    env_val = os.environ.get("MSS_LOGIN_LOADING_TIMEOUT_SECONDS", "").strip()
+    if env_val.isdigit():
+        return max(1, min(300, int(env_val)))
+    cfg = _load_config(CONFIG_FILE_PATH)
+    screen = cfg.get("loading_screen")
+    if isinstance(screen, dict) and "timeout_seconds" in screen:
+        val = screen["timeout_seconds"]
+        if isinstance(val, int) and 1 <= val <= 300:
+            return val
+    return 15
+
+
+LOADING_TIMEOUT_SECONDS = _get_loading_timeout_seconds()
 
 
 def reload_experimental_features() -> bool:

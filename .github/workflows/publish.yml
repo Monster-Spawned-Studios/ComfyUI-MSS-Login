@@ -1,20 +1,43 @@
 name: Publish to ComfyUI registry
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - production
-    paths:
-      - "pyproject.toml"
+    workflow_dispatch:
+    push:
+        branches:
+            - production
+        paths:
+            - "pyproject.toml"
+
+permissions:
+    contents: read
+    packages: write
+    id-token: write
+
+concurrency:
+    group: "publish"
+    cancel-in-progress: true
 
 jobs:
-  publish-node:
-    name: Publish Custom Node to registry
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-      - name: Publish Custom Node
-        uses: Comfy-Org/publish-node-action@main
-        with:
-          personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }} ## Add your own personal access token to your Github Repository secrets and reference it here.
+    publish:
+        name: Publish to ComfyUI registry
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6
+              with:
+                  fetch-depth: 0
+                  path: ${{ github.workspace }}/ComfyUI-MSS-Login
+                  lfs: true
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.13"
+                  cache: "pip"
+                  cache-dependency-path: ComfyUI-MSS-Login/pyproject.toml
+            - run: uv sync --group comfyui
+              working-directory: ComfyUI-MSS-Login
+            - name: Publish ComfyUI Node
+              working-directory: ${{ github.workspace }}/ComfyUI-MSS-Login
+              env:
+                  NODE_PATH: ${{ github.workspace }}/ComfyUI-MSS-Login
+                  REGISTRY_ACCESS_TOKEN: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
+              run: uv run scripts/publish_comfy_node.py -D -v

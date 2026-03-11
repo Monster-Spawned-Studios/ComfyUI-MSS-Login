@@ -41,7 +41,7 @@ def _is_owner(user_rec: dict | None) -> bool:
 
 
 def _require_experimental_and_admin(request: web.Request) -> str | None:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return None
     username, user_rec = _user_record_from_request(request)
     if not username or not _is_admin_or_owner(user_rec):
@@ -50,7 +50,7 @@ def _require_experimental_and_admin(request: web.Request) -> str | None:
 
 
 def _require_experimental_and_owner(request: web.Request) -> str | None:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return None
     username, user_rec = _user_record_from_request(request)
     if not username or not _is_owner(user_rec):
@@ -59,7 +59,7 @@ def _require_experimental_and_owner(request: web.Request) -> str | None:
 
 
 def _require_experimental_and_auth(request: web.Request) -> tuple[str | None, bool]:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return None, False
     username, user_rec = _user_record_from_request(request)
     if not username or not user_rec:
@@ -96,7 +96,7 @@ def _manager_or_error() -> tuple[object | None, web.Response | None]:
 
 @routes.get("/mss-login/api/s3/config")
 async def s3_get_config(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_owner(request):
         return _error_json("Owner authentication required.", 403)
@@ -110,7 +110,7 @@ async def s3_get_config(request: web.Request) -> web.Response:
 
 @routes.put("/mss-login/api/s3/config")
 async def s3_put_config(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_owner(request):
         return _error_json("Owner authentication required.", 403)
@@ -132,7 +132,7 @@ async def s3_put_config(request: web.Request) -> web.Response:
 
 @routes.get("/mss-login/api/s3/status")
 async def s3_status(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_admin(request):
         return _error_json("Admin authentication required.", 403)
@@ -145,7 +145,7 @@ async def s3_status(request: web.Request) -> web.Response:
 
 @routes.get("/mss-login/api/s3/list")
 async def s3_list(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_admin(request):
         return _error_json("Admin authentication required.", 403)
@@ -170,7 +170,7 @@ def _safe_max_keys(raw) -> int:
 
 @routes.post("/mss-login/api/s3/upload")
 async def s3_upload(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_admin(request):
         return _error_json("Admin authentication required.", 403)
@@ -198,7 +198,7 @@ async def s3_upload(request: web.Request) -> web.Response:
 
 @routes.post("/mss-login/api/s3/download")
 async def s3_download(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_admin(request):
         return _error_json("Admin authentication required.", 403)
@@ -224,7 +224,7 @@ async def s3_download(request: web.Request) -> web.Response:
 
 @routes.delete("/mss-login/api/s3/delete")
 async def s3_delete(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_admin(request):
         return _error_json("Admin authentication required.", 403)
@@ -247,7 +247,7 @@ async def s3_delete(request: web.Request) -> web.Response:
 
 @routes.get("/mss-login/api/s3/mount/status")
 async def s3_mount_status(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_owner(request):
         return _error_json("Owner authentication required.", 403)
@@ -259,7 +259,7 @@ async def s3_mount_status(request: web.Request) -> web.Response:
 
 @routes.post("/mss-login/api/s3/mount/sync")
 async def s3_mount_sync(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_owner(request):
         return _error_json("Owner authentication required.", 403)
@@ -275,7 +275,7 @@ async def s3_mount_sync(request: web.Request) -> web.Response:
 
 @routes.post("/mss-login/api/s3/mount/remount")
 async def s3_mount_remount(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_owner(request):
         return _error_json("Owner authentication required.", 403)
@@ -291,7 +291,7 @@ async def s3_mount_remount(request: web.Request) -> web.Response:
 @routes.post("/mss-login/api/s3/mount/unmount")
 @routes.post("/s3_mounter/unmount")
 async def s3_mount_unmount(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_owner(request):
         return _error_json("Owner authentication required.", 403)
@@ -303,7 +303,7 @@ async def s3_mount_unmount(request: web.Request) -> web.Response:
 
 @routes.get("/mss-login/api/s3/workflows/status")
 async def s3_workflow_status(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_admin(request):
         return _error_json("Admin authentication required.", 403)
@@ -315,7 +315,7 @@ async def s3_workflow_status(request: web.Request) -> web.Response:
 
 @routes.post("/mss-login/api/s3/workflows/sync")
 async def s3_workflow_sync_user(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     username, is_admin = _require_experimental_and_auth(request)
     if not username:
@@ -337,7 +337,7 @@ async def s3_workflow_sync_user(request: web.Request) -> web.Response:
 
 @routes.post("/mss-login/api/s3/workflows/sync-all")
 async def s3_workflow_sync_all(request: web.Request) -> web.Response:
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not constants_module.experimental_s3_enabled():
         return _error_json("Experimental features are not enabled.", 403)
     if not _require_experimental_and_admin(request):
         return _error_json("Admin authentication required.", 403)

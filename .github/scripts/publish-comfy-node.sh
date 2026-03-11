@@ -51,5 +51,13 @@ if [[ "$REGISTRY_ACCESS_TOKEN" != pat* ]]; then
     exit 1
 fi
 
+echo "[publish-comfy-node] Validating node ussing ComfyUI CLI..."
+comfy node validate
+if [ $? -ne 0 ]; then
+    echo "[publish-comfy-node] Error: Node validation failed. Skipping publish."
+    exit 1
+fi
+echo "[publish-comfy-node] Node validation passed."
+
 echo "[publish-comfy-node] Publishing node to ComfyUI Registry..."
-comfy node publish
+comfy node publish --token "$REGISTRY_ACCESS_TOKEN"

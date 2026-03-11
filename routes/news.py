@@ -12,7 +12,7 @@ from email.utils import format_datetime
 
 from aiohttp import web
 
-from ..constants import EXPERIMENTAL_FEATURES, get_host_base_url
+from ..constants import get_host_base_url, experimental_news_enabled
 from ..globals import routes
 from ..utils.data_dir import get_data_dir
 
@@ -94,7 +94,7 @@ async def get_news_feed(request: web.Request) -> web.Response:
     Serve RSS feed generated from data-dir news.md (experimental).
     Returns 404 when experimental_features is off or news.md is missing.
     """
-    if not EXPERIMENTAL_FEATURES:
+    if not experimental_news_enabled():
         return web.Response(status=404)
 
     data_dir = get_data_dir()

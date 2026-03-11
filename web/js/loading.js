@@ -3,8 +3,10 @@
 
     // Same-origin tips (served by GET /mss-login/loading-tips.json; data dir or bundled)
     const TIPS_URL = "/mss-login/loading-tips.json";
-    const TIP_INTERVAL_MS = 10000;
-    const AUTO_REDIRECT_MS = 2000;
+    const TIP_INTERVAL_MS = 5000;
+    const AUTO_REDIRECT_MS = typeof window.MSS_LOGIN_LOADING_TIMEOUT_MS === "number"
+        ? window.MSS_LOGIN_LOADING_TIMEOUT_MS
+        : 15000;
 
     const tipEl = document.getElementById("loading-tip");
     const bannerEl = document.getElementById("loading-update-banner");

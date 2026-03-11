@@ -16,10 +16,13 @@ from ..constants import (
     DATA_DIR,
     DEBUG_MODE,
     HTML_DIR,
+    LOADING_TIMEOUT_SECONDS,
     MAX_TOKEN_EXPIRE_MINUTES,
     SESSION_TOKEN_STORE_CONFIG,
     USERS_DB_CONFIG,
     WEB_DIR,
+    experimental_loading_screen_enabled,
+experimental_mfa_enabled,
 )
 from ..globals import access_control, jwt_auth, logger, routes, timeout, users_db
 from ..utils import user_env
@@ -163,9 +166,12 @@ def _parse_tips_file(path: str) -> list[str]:
 
 @routes.get("/mss-login/loading-tips.json")
 async def get_loading_tips(request: web.Request) -> web.Response:
-    """Serve loading tips JSON from same origin. Data dir override: DATA_DIR/loading-tips.json;
-    else bundled web/data/loading-tips.json. Returns array of strings or { \"messages\": [...] }.
+    """Serve loading tips JSON from same origin when loading screen is enabled (experimental).
+    Data dir override: DATA_DIR/loading-tips.json; else bundled web/data/loading-tips.json.
+    Returns 404 when loading screen feature is disabled.
     """
+    if not experimental_loading_screen_enabled():
+        return web.Response(status=404, text="Loading screen is disabled.")
     tips_data = _parse_tips_file(os.path.join(DATA_DIR, "loading-tips.json"))
     if not tips_data:
         tips_data = _parse_tips_file(os.path.join(WEB_DIR, "data", "loading-tips.json"))
@@ -175,15 +181,23 @@ async def get_loading_tips(request: web.Request) -> web.Response:
 
 @routes.get("/loading")
 async def get_loading(request: web.Request) -> web.Response:
-    """Serve the loading page (between login and ComfyUI). Requires valid JWT; unauthenticated users
-    are redirected by JWT middleware. Browser-only: headless/API clients that use JWT (e.g. ComfyUI
-    API image generation) never request this route; they use the token from POST /login and call
-    /prompt etc. directly.
+    """Serve the loading page (between login and ComfyUI) when experimental loading_screen is enabled.
+    Otherwise redirect to /. Requires valid JWT; unauthenticated users are redirected by JWT middleware.
+    This is an MSS-Login intermediate page and does not conflict with ComfyUI's in-app loading at /.
     """
+    if not experimental_loading_screen_enabled():
+        return web.HTTPFound("/")
     path = os.path.join(HTML_DIR, "loading.html")
     if not os.path.exists(path):
         return web.Response(text="loading.html not found", status=404)
-    resp = web.FileResponse(path)
+    timeout_ms = LOADING_TIMEOUT_SECONDS * 1000
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            html = f.read()
+    except OSError:
+        return web.Response(text="loading.html not found", status=404)
+    html = html.replace("{{LOADING_TIMEOUT_MS}}", str(timeout_ms))
+    resp = web.Response(text=html, content_type="text/html")
     resp.headers["Content-Security-Policy"] = LOADING_CSP
     return resp
 
@@ -211,10 +225,10 @@ async def get_login(request: web.Request) -> web.Response:
 @routes.get("/mfa")
 async def get_mfa(request: web.Request) -> web.Response:
     """Serve the MFA page (verify or setup). Token and mode are in sessionStorage set by login."""
-    if not constants_module.EXPERIMENTAL_FEATURES:
+    if not experimental_mfa_enabled():
         return web.json_response(
             {
-                "error": "MFA is an experimental feature. Enable EXPERIMENTAL_FEATURES to use it."
+                "error": "MFA is an experimental feature. Enable experimental_features and experimental.mfa to use it."
             },
             status=403,
         )
@@ -265,11 +279,16 @@ async def post_login(request: web.Request) -> web.Response:
         user_console_append("guest", "JWT token created for user: guest")
         logger.login_success(ip, "guest")
         timeout.remove_failed_attempts(ip)
+        redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
         if _is_browser_navigation(request):
-            resp = web.HTTPFound("/loading")
+            resp = web.HTTPFound(redirect_url)
             resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
             return resp
-        resp = web.json_response({"message": "Guest login", "jwt_token": token})
+        resp = web.json_response({
+            "message": "Guest login",
+            "jwt_token": token,
+            "redirect_url": redirect_url,
+        })
         resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
         return resp
 
@@ -280,13 +299,26 @@ async def post_login(request: web.Request) -> web.Response:
         user_id, user_rec = users_db.get_user(username)
         user_env.get_user_workflow_dir(username)
 
-        # When experimental features or MFA is disabled, skip all MFA branches and issue JWT directly
-        if constants_module.EXPERIMENTAL_FEATURES and not constants_module.MFA_DISABLED:
-            # Admin must set up MFA on next login if not already enabled
+        mfa_enabled = users_db.get_mfa_enabled(username)
+
+        # CRITICAL: Fail closed. If user has MFA enrolled, ALWAYS require second factor.
+        if mfa_enabled and not constants_module.MFA_DISABLED:
+            mfa_temp = create_mfa_temp_token(username)
+            timeout.remove_failed_attempts(ip)
+            return web.json_response(
+                {
+                    "message": "MFA verification required",
+                    "mfa_required": True,
+                    "mfa_temp_token": mfa_temp,
+                },
+                status=200,
+            )
+
+        # When MFA feature or global MFA is disabled, skip MFA setup/role branches
+        if experimental_mfa_enabled() and not constants_module.MFA_DISABLED:
             is_admin = user_rec.get("admin") or "admin" in [
                 g.lower() for g in user_rec.get("groups", [])
             ]
-            mfa_enabled = users_db.get_mfa_enabled(username)
             role_requires_mfa = _role_requires_mfa(username)
 
             if is_admin and not mfa_enabled:
@@ -297,18 +329,6 @@ async def post_login(request: web.Request) -> web.Response:
                     {
                         "message": "MFA setup required for admin accounts",
                         "mfa_setup_required": True,
-                        "mfa_temp_token": mfa_temp,
-                    },
-                    status=200,
-                )
-            if mfa_enabled:
-                # User has MFA; require second factor
-                mfa_temp = create_mfa_temp_token(username)
-                timeout.remove_failed_attempts(ip)
-                return web.json_response(
-                    {
-                        "message": "MFA verification required",
-                        "mfa_required": True,
                         "mfa_temp_token": mfa_temp,
                     },
                     status=200,
@@ -361,11 +381,16 @@ async def post_login(request: web.Request) -> web.Response:
             logger.error(f"[auth.py] post_login: send_notification: {e}")
         logger.login_success(ip, username)
         timeout.remove_failed_attempts(ip)
+        redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
         if _is_browser_navigation(request):
-            resp = web.HTTPFound("/loading")
+            resp = web.HTTPFound(redirect_url)
             resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
             return resp
-        resp = web.json_response({"message": "Login successful", "jwt_token": token})
+        resp = web.json_response({
+            "message": "Login successful",
+            "jwt_token": token,
+            "redirect_url": redirect_url,
+        })
         resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
         return resp
 
@@ -647,12 +672,8 @@ async def post_generate_token(request: web.Request) -> web.Response:
             status=403,
         )
 
-    # User has MFA: require second factor before issuing API token (unless experimental/MFA is disabled)
-    if (
-        constants_module.EXPERIMENTAL_FEATURES
-        and not constants_module.MFA_DISABLED
-        and users_db.get_mfa_enabled(username)
-    ):
+    # CRITICAL: Fail closed. If user has MFA enrolled, ALWAYS require second factor.
+    if users_db.get_mfa_enabled(username) and not constants_module.MFA_DISABLED:
         mfa_temp = create_mfa_temp_token(username)
         return web.json_response(
             {

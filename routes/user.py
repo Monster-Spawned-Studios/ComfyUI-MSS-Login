@@ -1,6 +1,6 @@
 # --- START OF FILE routes/user.py ---
 from aiohttp import web
-from ..constants import EXPERIMENTAL_FEATURES
+from ..constants import EXPERIMENTAL_FEATURES, get_experimental_flags
 from ..globals import routes, jwt_auth, users_db
 from ..utils import user_env
 from ..utils.path_safety import is_safe_filename, resolve_path_under
@@ -141,6 +141,7 @@ async def api_me(request: web.Request) -> web.Response:
                 "is_admin": False,
                 "mfa_enabled": False,
                 "experimental_features": EXPERIMENTAL_FEATURES,
+                "experimental": get_experimental_flags(),
             }
         )
 
@@ -165,6 +166,7 @@ async def api_me(request: web.Request) -> web.Response:
             "is_admin": is_admin,
             "mfa_enabled": mfa_enabled,
             "experimental_features": EXPERIMENTAL_FEATURES,
+            "experimental": get_experimental_flags(),
         }
     )
 

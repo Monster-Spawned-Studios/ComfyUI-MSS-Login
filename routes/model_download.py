@@ -8,7 +8,7 @@ import time
 
 from aiohttp import web
 
-from ..constants import EXPERIMENTAL_FEATURES, USERS_DB_CONFIG
+from ..constants import USERS_DB_CONFIG, experimental_s3_enabled
 from ..globals import jwt_auth, logger, routes, users_db
 from ..utils.model_cache import get_model_cache
 from ..utils.model_download import download_civitai_async, download_huggingface
@@ -116,10 +116,10 @@ async def api_model_download_start(request: web.Request) -> web.Response:
     destination_type = (body.get("destination_type") or "local").strip().lower()
     if destination_type not in ("local", "s3"):
         return web.json_response({"error": "Invalid destination_type"}, status=400)
-    if destination_type == "s3" and not EXPERIMENTAL_FEATURES:
+    if destination_type == "s3" and not experimental_s3_enabled():
         return web.json_response(
             {
-                "error": "S3 is an experimental feature. Enable EXPERIMENTAL_FEATURES to use it."
+                "error": "S3 is an experimental feature. Enable experimental_features and experimental.s3 to use it."
             },
             status=403,
         )
