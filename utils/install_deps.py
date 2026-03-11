@@ -18,323 +18,319 @@ _install_deps_root = os.path.dirname(_install_deps_this_dir)
 
 
 def _read_config_json(path: str) -> dict:
-    """Read config.json at path; return {} if missing or invalid. Avoids importing utils.config (import path issues when loaded via importlib)."""
-    if os.path.isfile(path):
-        try:
-            with open(path, "r") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
-    return {}
+	"""Read config.json at path; return {} if missing or invalid. Avoids importing utils.config (import path issues when loaded via importlib)."""
+	if os.path.isfile(path):
+		try:
+			with open(path, "r") as f:
+				return json.load(f)
+		except (json.JSONDecodeError, OSError):
+			pass
+	return {}
 
 
 # DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
 DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in (
-    "1",
-    "true",
-    "yes",
+	"1",
+	"true",
+	"yes",
 )
-_config_for_deps = _read_config_json(
-    join(_install_deps_root, "config.json")
-) or _read_config_json(join(_install_deps_root, "config.defaults.json"))
+_config_for_deps = _read_config_json(join(_install_deps_root, "config.json")) or _read_config_json(
+	join(_install_deps_root, "config.defaults.json")
+)
 DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(_config_for_deps.get("debug_mode", False))
 
 
 def install_rclone() -> bool:
-    """Install rclone if it is not already on $PATH.
+	"""Install rclone if it is not already on $PATH.
 
-    Uses the native package manager for the detected platform:
-      - Linux (apt-get)  -- covers nvidia/cuda Ubuntu 24.04 Docker images
-      - macOS (Homebrew)
-      - Windows (winget, Windows 11+)
+	Uses the native package manager for the detected platform:
+	  - Linux (apt-get)  -- covers nvidia/cuda Ubuntu 24.04 Docker images
+	  - macOS (Homebrew)
+	  - Windows (winget, Windows 11+)
 
-    Returns True if rclone is available after this call, False otherwise.
-    """
-    if shutil.which("rclone"):
-        if DEBUG_MODE:
-            print("[mss-login] rclone is already installed.")
-        return True
+	Returns True if rclone is available after this call, False otherwise.
+	"""
+	if shutil.which("rclone"):
+		if DEBUG_MODE:
+			print("[mss-login] rclone is already installed.")
+		return True
 
-    system = platform.system()
+	system = platform.system()
 
-    install_cmds: dict[str, list[list[str]]] = {
-        "Linux": [
-            ["apt-get", "update", "-qq"],
-            ["apt-get", "install", "-y", "-qq", "rclone"],
-        ],
-        "Darwin": [
-            ["brew", "install", "rclone"],
-        ],
-        "Windows": [
-            [
-                "winget", "install", "Rclone.Rclone",
-                "--accept-source-agreements",
-                "--accept-package-agreements",
-            ],
-        ],
-    }
+	install_cmds: dict[str, list[list[str]]] = {
+		"Linux": [
+			["apt-get", "update", "-qq"],
+			["apt-get", "install", "-y", "-qq", "rclone"],
+		],
+		"Darwin": [
+			["brew", "install", "rclone"],
+		],
+		"Windows": [
+			[
+				"winget",
+				"install",
+				"Rclone.Rclone",
+				"--accept-source-agreements",
+				"--accept-package-agreements",
+			],
+		],
+	}
 
-    cmds = install_cmds.get(system)
-    if cmds is None:
-        print(
-            f"[mss-login] Unsupported platform '{system}' for automatic rclone install. "
-            "Please install rclone manually: https://rclone.org/install/",
-            file=sys.stderr,
-        )
-        return False
+	cmds = install_cmds.get(system)
+	if cmds is None:
+		print(
+			f"[mss-login] Unsupported platform '{system}' for automatic rclone install. "
+			"Please install rclone manually: https://rclone.org/install/",
+			file=sys.stderr,
+		)
+		return False
 
-    print(f"[mss-login] Installing rclone via {system} package manager...")
+	print(f"[mss-login] Installing rclone via {system} package manager...")
 
-    for cmd in cmds:
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                check=False,
-            )
-            if result.returncode != 0:
-                stderr = result.stderr.strip() if result.stderr else "(no output)"
-                print(
-                    f"[mss-login] rclone install step '{' '.join(cmd)}' failed: {stderr}",
-                    file=sys.stderr,
-                )
-                return False
-        except FileNotFoundError:
-            pkg_mgr = cmd[0]
-            print(
-                f"[mss-login] '{pkg_mgr}' not found. "
-                "Please install rclone manually: https://rclone.org/install/",
-                file=sys.stderr,
-            )
-            return False
-        except subprocess.TimeoutExpired:
-            print(
-                f"[mss-login] rclone install step '{' '.join(cmd)}' timed out.",
-                file=sys.stderr,
-            )
-            return False
-        except Exception as exc:
-            print(
-                f"[mss-login] rclone install step '{' '.join(cmd)}' error: {exc}",
-                file=sys.stderr,
-            )
-            return False
+	for cmd in cmds:
+		try:
+			result = subprocess.run(
+				cmd,
+				capture_output=True,
+				text=True,
+				timeout=300,
+				check=False,
+			)
+			if result.returncode != 0:
+				stderr = result.stderr.strip() if result.stderr else "(no output)"
+				print(
+					f"[mss-login] rclone install step '{' '.join(cmd)}' failed: {stderr}",
+					file=sys.stderr,
+				)
+				return False
+		except FileNotFoundError:
+			pkg_mgr = cmd[0]
+			print(
+				f"[mss-login] '{pkg_mgr}' not found. "
+				"Please install rclone manually: https://rclone.org/install/",
+				file=sys.stderr,
+			)
+			return False
+		except subprocess.TimeoutExpired:
+			print(
+				f"[mss-login] rclone install step '{' '.join(cmd)}' timed out.",
+				file=sys.stderr,
+			)
+			return False
+		except Exception as exc:
+			print(
+				f"[mss-login] rclone install step '{' '.join(cmd)}' error: {exc}",
+				file=sys.stderr,
+			)
+			return False
 
-    # Verify the binary is now reachable
-    try:
-        subprocess.run(
-            ["rclone", "--version"],
-            capture_output=True,
-            timeout=10,
-            check=True,
-        )
-    except Exception:
-        print(
-            "[mss-login] rclone was installed but could not be verified. "
-            "You may need to restart your shell or add it to $PATH.",
-            file=sys.stderr,
-        )
-        return False
+	# Verify the binary is now reachable
+	try:
+		subprocess.run(
+			["rclone", "--version"],
+			capture_output=True,
+			timeout=10,
+			check=True,
+		)
+	except Exception:
+		print(
+			"[mss-login] rclone was installed but could not be verified. "
+			"You may need to restart your shell or add it to $PATH.",
+			file=sys.stderr,
+		)
+		return False
 
-    print("[mss-login] rclone installed successfully.")
-    return True
+	print("[mss-login] rclone installed successfully.")
+	return True
 
 
 # Return True if successful, False otherwise
 def install_dependencies() -> bool:
-    """Install dependencies from requirements.txt then pyproject.toml. Safe to call at module load. Returns True if successful, False otherwise."""
-    root = _install_deps_root
+	"""Install dependencies from requirements.txt then pyproject.toml. Safe to call at module load. Returns True if successful, False otherwise."""
+	root = _install_deps_root
 
-    # Run a command inside the user's shell and return True if successful, False otherwise
-    def run_command(command: str) -> bool:
-        try:
-            result = subprocess.run(
-                command,
-                cwd=root,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                check=False,
-            )
-            if result.returncode != 0 and result.stderr:
-                print(
-                    f"[mss-login] {command} warning: {result.stderr.strip()}",
-                    file=sys.stderr,
-                )
-            return result.returncode == 0
-        except Exception as e:
-            print(f"[mss-login] {command} failed: {e}", file=sys.stderr)
-            return False
+	# Run a command inside the user's shell and return True if successful, False otherwise
+	def run_command(command: str) -> bool:
+		try:
+			result = subprocess.run(
+				command,
+				cwd=root,
+				capture_output=True,
+				text=True,
+				timeout=300,
+				check=False,
+			)
+			if result.returncode != 0 and result.stderr:
+				print(
+					f"[mss-login] {command} warning: {result.stderr.strip()}",
+					file=sys.stderr,
+				)
+			return result.returncode == 0
+		except Exception as e:
+			print(f"[mss-login] {command} failed: {e}", file=sys.stderr)
+			return False
 
-    # Run a uv command and return True if successful, False otherwise
-    def run_uv(
-        environment_variables: dict[str, str],
-        args: list[str],
-        timeout: int = 600,
-        cwd: str = root,
-    ) -> bool:
-        try:
-            result = subprocess.run(
-                [sys.executable, "-m", "uv"] + args,
-                env=environment_variables,
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                check=False,
-            )
-            if result.returncode != 0 and result.stderr:
-                print(
-                    f"[mss-login] uv {args} warning: {result.stderr.strip()}",
-                    file=sys.stderr,
-                )
-            return result.returncode == 0
-        except FileNotFoundError:
-            print(
-                "[mss-login] uv not available; skipping dependency install.",
-                file=sys.stderr,
-            )
-            return False
-        except subprocess.TimeoutExpired:
-            print(
-                "[mss-login] uv install timed out; dependencies may be incomplete.",
-                file=sys.stderr,
-            )
-            return False
-        except Exception as e:
-            print(f"[mss-login] uv install failed: {e}", file=sys.stderr)
-            return False
+	# Run a uv command and return True if successful, False otherwise
+	def run_uv(
+		environment_variables: dict[str, str],
+		args: list[str],
+		timeout: int = 600,
+		cwd: str = root,
+	) -> bool:
+		try:
+			result = subprocess.run(
+				[sys.executable, "-m", "uv"] + args,
+				env=environment_variables,
+				cwd=cwd,
+				capture_output=True,
+				text=True,
+				timeout=timeout,
+				check=False,
+			)
+			if result.returncode != 0 and result.stderr:
+				print(
+					f"[mss-login] uv {args} warning: {result.stderr.strip()}",
+					file=sys.stderr,
+				)
+			return result.returncode == 0
+		except FileNotFoundError:
+			print(
+				"[mss-login] uv not available; skipping dependency install.",
+				file=sys.stderr,
+			)
+			return False
+		except subprocess.TimeoutExpired:
+			print(
+				"[mss-login] uv install timed out; dependencies may be incomplete.",
+				file=sys.stderr,
+			)
+			return False
+		except Exception as e:
+			print(f"[mss-login] uv install failed: {e}", file=sys.stderr)
+			return False
 
-    # Run a pip command and return True if successful, False otherwise
-    def run_pip(args: list[str]) -> bool:
-        try:
-            result = subprocess.run(
-                [sys.executable, "-m", "pip", "install"] + args,
-                cwd=root,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                check=False,
-            )
-            if result.returncode != 0 and result.stderr:
-                print(
-                    f"[mss-login] pip install warning: {result.stderr.strip()}",
-                    file=sys.stderr,
-                )
-            return result.returncode == 0
-        except FileNotFoundError:
-            print(
-                "[mss-login] pip not available; skipping dependency install.",
-                file=sys.stderr,
-            )
-            return False
-        except subprocess.TimeoutExpired:
-            print(
-                "[mss-login] pip install timed out; dependencies may be incomplete.",
-                file=sys.stderr,
-            )
-            return False
-        except Exception as e:
-            print(f"[mss-login] Dependency install failed: {e}", file=sys.stderr)
-            return False
+	# Run a pip command and return True if successful, False otherwise
+	def run_pip(args: list[str]) -> bool:
+		try:
+			result = subprocess.run(
+				[sys.executable, "-m", "pip", "install"] + args,
+				cwd=root,
+				capture_output=True,
+				text=True,
+				timeout=300,
+				check=False,
+			)
+			if result.returncode != 0 and result.stderr:
+				print(
+					f"[mss-login] pip install warning: {result.stderr.strip()}",
+					file=sys.stderr,
+				)
+			return result.returncode == 0
+		except FileNotFoundError:
+			print(
+				"[mss-login] pip not available; skipping dependency install.",
+				file=sys.stderr,
+			)
+			return False
+		except subprocess.TimeoutExpired:
+			print(
+				"[mss-login] pip install timed out; dependencies may be incomplete.",
+				file=sys.stderr,
+			)
+			return False
+		except Exception as e:
+			print(f"[mss-login] Dependency install failed: {e}", file=sys.stderr)
+			return False
 
-    try:
-        req_txt_metal = os.path.join(root, "requirements_metal.txt")
-        req_txt_cuda = os.path.join(root, "requirements_cuda.txt")
-        # Check to see if the OS distribution is Windows or Linux, and if the USE_CUDA environment variable is set to 1
-        if (
-            os.path.isfile(req_txt_cuda)
-            and os.environ.get("USE_CUDA") == "1"
-            or os.path.isfile(req_txt_cuda)
-            and platform.system() in ["Windows", "Linux"]
-        ):
-            if DEBUG_MODE:
-                print(
-                    "[mss-login] Installing CUDA dependencies from requirements_cuda.txt..."
-                )
-            if not run_pip(
-                [
-                    "-r",
-                    "requirements_cuda.txt",
-                    "--extra-index-url",
-                    "https://download.pytorch.org/whl/cu128",
-                ]
-            ):
-                return False
-        elif os.path.isfile(req_txt_metal) and platform.system() in ["Darwin"]:
-            if DEBUG_MODE:
-                print(
-                    "[mss-login] Installing non-CUDA dependencies from requirements_metal.txt..."
-                )
-            if not run_pip(["-r", "requirements_metal.txt"]):
-                return False
-        else:
-            print(
-                "[mss-login] No requirements_metal.txt or requirements_cuda.txt file found and/or operating system is not supported, skipping requirements_metal.txt or requirements_cuda.txt dependency install.",
-                file=sys.stderr,
-            )
-            return False
-        # Install the dependencies from the pyproject.toml file
-        pyproject = os.path.join(root, "pyproject.toml")
-        if os.path.isfile(pyproject) and platform.system() in [
-            "Windows",
-            "Linux",
-            "Darwin",
-        ]:
-            if not run_uv(
-                {"UV_TORCH_BACKEND": "auto"},
-                ["pip", "install", "-r", f"{root}/pyproject.toml"],
-                timeout=1200,
-                cwd=root,
-            ):
-                return False
-        else:
-            print(
-                "[mss-login] No pyproject.toml file found or operating system is not supported, skipping pyproject.toml dependency install.",
-                file=sys.stderr,
-            )
-            return False
-    except Exception as e:
-        print(
-            f"[mss-login] Python dependencies installation failed: {e}", file=sys.stderr
-        )
-        return False
+	try:
+		req_txt_metal = os.path.join(root, "requirements_metal.txt")
+		req_txt_cuda = os.path.join(root, "requirements_cuda.txt")
+		# Check to see if the OS distribution is Windows or Linux, and if the USE_CUDA environment variable is set to 1
+		if (
+			os.path.isfile(req_txt_cuda)
+			and os.environ.get("USE_CUDA") == "1"
+			or os.path.isfile(req_txt_cuda)
+			and platform.system() in ["Windows", "Linux"]
+		):
+			if DEBUG_MODE:
+				print("[mss-login] Installing CUDA dependencies from requirements_cuda.txt...")
+			if not run_pip(
+				[
+					"-r",
+					"requirements_cuda.txt",
+					"--extra-index-url",
+					"https://download.pytorch.org/whl/cu128",
+				]
+			):
+				return False
+		elif os.path.isfile(req_txt_metal) and platform.system() in ["Darwin"]:
+			if DEBUG_MODE:
+				print("[mss-login] Installing non-CUDA dependencies from requirements_metal.txt...")
+			if not run_pip(["-r", "requirements_metal.txt"]):
+				return False
+		else:
+			print(
+				"[mss-login] No requirements_metal.txt or requirements_cuda.txt file found and/or operating system is not supported, skipping requirements_metal.txt or requirements_cuda.txt dependency install.",
+				file=sys.stderr,
+			)
+			return False
+		# Install the dependencies from the pyproject.toml file
+		pyproject = os.path.join(root, "pyproject.toml")
+		if os.path.isfile(pyproject) and platform.system() in [
+			"Windows",
+			"Linux",
+			"Darwin",
+		]:
+			if not run_uv(
+				{"UV_TORCH_BACKEND": "auto"},
+				["pip", "install", "-r", f"{root}/pyproject.toml"],
+				timeout=1200,
+				cwd=root,
+			):
+				return False
+		else:
+			print(
+				"[mss-login] No pyproject.toml file found or operating system is not supported, skipping pyproject.toml dependency install.",
+				file=sys.stderr,
+			)
+			return False
+	except Exception as e:
+		print(f"[mss-login] Python dependencies installation failed: {e}", file=sys.stderr)
+		return False
 
-    try:
-        # Check to see if the dotenvx binary is installed
-        if not run_command(["dotenvx", "--version"]):
-            print(
-                "[mss-login] Dotenvx binary not found. Please install it manually using `pip install python-dotenvx`.",
-                file=sys.stderr,
-            )
-            print(
-                "[mss-login] Running `dotenvx-postinstall` to install the dotenvx binary...",
-                file=sys.stderr,
-            )
-            if not run_command(["dotenvx-postinstall"]):
-                print(
-                    "[mss-login] Failed to install dotenvx binary. Please install it manually using `dotenvx-postinstall`.",
-                    file=sys.stderr,
-                )
-                return False
-            else:
-                print("[MSS-Login] Dotenvx binary installed successfully.")
-    except Exception as e:
-        print(f"[mss-login] Dotenvx binary installation failed: {e}", file=sys.stderr)
-        return False
+	try:
+		# Check to see if the dotenvx binary is installed
+		if not run_command(["dotenvx", "--version"]):
+			print(
+				"[mss-login] Dotenvx binary not found. Please install it manually using `pip install python-dotenvx`.",
+				file=sys.stderr,
+			)
+			print(
+				"[mss-login] Running `dotenvx-postinstall` to install the dotenvx binary...",
+				file=sys.stderr,
+			)
+			if not run_command(["dotenvx-postinstall"]):
+				print(
+					"[mss-login] Failed to install dotenvx binary. Please install it manually using `dotenvx-postinstall`.",
+					file=sys.stderr,
+				)
+				return False
+			else:
+				print("[MSS-Login] Dotenvx binary installed successfully.")
+	except Exception as e:
+		print(f"[mss-login] Dotenvx binary installation failed: {e}", file=sys.stderr)
+		return False
 
-    try:
-        if not install_rclone():
-            print(
-                "[mss-login] rclone installation failed; S3 mount features will be unavailable.",
-                file=sys.stderr,
-            )
-    except Exception as e:
-        print(f"[mss-login] rclone installation failed: {e}", file=sys.stderr)
+	try:
+		if not install_rclone():
+			print(
+				"[mss-login] rclone installation failed; S3 mount features will be unavailable.",
+				file=sys.stderr,
+			)
+	except Exception as e:
+		print(f"[mss-login] rclone installation failed: {e}", file=sys.stderr)
 
-    return True
+	return True
 
 
 # --- END OF FILE utils/install_deps.py ---
