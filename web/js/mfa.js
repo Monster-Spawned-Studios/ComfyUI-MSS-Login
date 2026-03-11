@@ -52,13 +52,13 @@
 		mode: null,
 
 		init: function () {
-			// Only run on the MFA page. If this script is loaded on main app or loading page, do nothing to avoid errors.
-			var pathname = typeof window !== "undefined" && window.location && window.location.pathname;
 			var verifySection = document.getElementById("mfa-verify-section");
 			var setupSection = document.getElementById("mfa-setup-section");
-			if (pathname !== "/mfa" && !verifySection && !setupSection) {
+			// Never run when MFA DOM is missing (main app, loading page, or before DOM ready). Prevents "Cannot read properties of null (reading 'style')" at line 57 in bundled/cached builds.
+			if (!verifySection && !setupSection) {
 				return;
 			}
+			var pathname = typeof window !== "undefined" && window.location && window.location.pathname;
 
 			// #region agent log
 			try {
