@@ -3842,7 +3842,9 @@ app.ui.settings.addSetting({
                         eyeBtn.style.marginRight = "6px";
                         eyeBtn.onclick = async () => {
                             try {
-                                const r = await api.fetchApi("/mss-login/me/current-token");
+                                const res = await api.fetchApi("/mss-login/me/current-token");
+                                if (!res.ok) return;
+                                const r = await res.json().catch(() => ({}));
                                 const isHttps = !!r.is_https;
                                 if (!isHttps) {
                                     const go = confirm("Connection is not secure. Revealing the token over HTTP may expose it. Please notify your administrator to enable HTTPS.\n\nReveal anyway?");
@@ -3868,8 +3870,10 @@ app.ui.settings.addSetting({
                     revokeBtn.textContent = "Revoke";
                     revokeBtn.onclick = async () => {
                         try {
-                            const r = await api.fetchApi("/mss-login/me/sessions/revoke", { method: "POST", body: JSON.stringify({ jti }) });
-                            if (r && r.status === "ok") {
+                            const res = await api.fetchApi("/mss-login/me/sessions/revoke", { method: "POST", body: JSON.stringify({ jti }) });
+                            if (!res.ok) return;
+                            const data = await res.json().catch(() => ({}));
+                            if (data && data.status === "ok") {
                                 tr.remove();
                                 if (s.is_current) window.location.href = "/logout";
                             }
