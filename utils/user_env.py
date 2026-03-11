@@ -23,73 +23,73 @@ from .data_dir import get_data_dir, get_data_subdir
 
 
 def get_extension_root() -> str:
-    """
-    Returns the root directory of the ComfyUI-mss-login extension.
-    Assumes this file lives in `<root>/utils/user_env.py`.
-    """
-    here = os.path.dirname(os.path.abspath(__file__))
-    return os.path.abspath(os.path.join(here, ".."))
+	"""
+	Returns the root directory of the ComfyUI-mss-login extension.
+	Assumes this file lives in `<root>/utils/user_env.py`.
+	"""
+	here = os.path.dirname(os.path.abspath(__file__))
+	return os.path.abspath(os.path.join(here, ".."))
 
 
 def get_users_root() -> str:
-    """
-    Root folder for all MSS-Login user-related files:
-      <ext_root>/Users/
-    """
-    root = os.path.join(get_extension_root(), "Users")
-    os.makedirs(root, exist_ok=True)
-    return root
+	"""
+	Root folder for all MSS-Login user-related files:
+	  <ext_root>/Users/
+	"""
+	root = os.path.join(get_extension_root(), "Users")
+	os.makedirs(root, exist_ok=True)
+	return root
 
 
 def get_user_db_path() -> str:
-    """
-    Global user database JSON.
-      <ext_root>/Users/user_db.json
-    """
-    return os.path.join(get_users_root(), "user_db.json")
+	"""
+	Global user database JSON.
+	  <ext_root>/Users/user_db.json
+	"""
+	return os.path.join(get_users_root(), "user_db.json")
 
 
 def get_frontend_settings_js_path() -> str:
-    """
-    Location of the frontend settings JS file (renamed from sentinel_settings.js):
-      <ext_root>/Users/mss_login_settings.js
+	"""
+	Location of the frontend settings JS file (renamed from sentinel_settings.js):
+	  <ext_root>/Users/mss_login_settings.js
 
-    This file is still served as a static asset by the backend, but physically
-    lives under Users/ so everything related to MSS-Login is in one place.
-    """
-    return os.path.join(get_users_root(), "mss_login_settings.js")
+	This file is still served as a static asset by the backend, but physically
+	lives under Users/ so everything related to MSS-Login is in one place.
+	"""
+	return os.path.join(get_users_root(), "mss_login_settings.js")
 
 
 def get_user_root(username: str) -> str:
-    """
-    Per-user root folder:
-      <ext_root>/Users/<username>/
-    """
-    username = (username or "guest").strip() or "guest"
-    # Prevent path traversal: username must be a single path segment
-    if ".." in username or "/" in username or "\\" in username:
-        username = "guest"
-    path = os.path.join(get_users_root(), username)
-    os.makedirs(path, exist_ok=True)
-    return path
+	"""
+	Per-user root folder:
+	  <ext_root>/Users/<username>/
+	"""
+	username = (username or "guest").strip() or "guest"
+	# Prevent path traversal: username must be a single path segment
+	if ".." in username or "/" in username or "\\" in username:
+		username = "guest"
+	path = os.path.join(get_users_root(), username)
+	os.makedirs(path, exist_ok=True)
+	return path
 
 
 def get_user_css_dir(username: str) -> str:
-    """
-    Per-user CSS directory:
-      <ext_root>/Users/<username>/css/
-    """
-    path = os.path.join(get_user_root(username), "css")
-    os.makedirs(path, exist_ok=True)
-    return path
+	"""
+	Per-user CSS directory:
+	  <ext_root>/Users/<username>/css/
+	"""
+	path = os.path.join(get_user_root(username), "css")
+	os.makedirs(path, exist_ok=True)
+	return path
 
 
 def get_user_settings_path(username: str) -> str:
-    """
-    Per-user settings JSON file:
-      <ext_root>/Users/<username>/settings.json
-    """
-    return os.path.join(get_user_root(username), "settings.json")
+	"""
+	Per-user settings JSON file:
+	  <ext_root>/Users/<username>/settings.json
+	"""
+	return os.path.join(get_user_root(username), "settings.json")
 
 
 # -----------------------
@@ -98,21 +98,21 @@ def get_user_settings_path(username: str) -> str:
 
 
 def _load_json_file(path: str, default: Any) -> Any:
-    if not os.path.exists(path):
-        return default
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        # Don't explode the whole app if someone corrupts a file.
-        return default
+	if not os.path.exists(path):
+		return default
+	try:
+		with open(path, "r", encoding="utf-8") as f:
+			return json.load(f)
+	except Exception:
+		# Don't explode the whole app if someone corrupts a file.
+		return default
 
 
 def _save_json_file(path: str, data: Any) -> None:
-    folder = os.path.dirname(path)
-    os.makedirs(folder, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
+	folder = os.path.dirname(path)
+	os.makedirs(folder, exist_ok=True)
+	with open(path, "w", encoding="utf-8") as f:
+		json.dump(data, f, indent=4)
 
 
 # -----------------------
@@ -121,22 +121,22 @@ def _save_json_file(path: str, data: Any) -> None:
 
 
 def load_user_settings(username: str) -> Dict[str, Any]:
-    """
-    Load per-user settings JSON. Returns {} if missing or invalid.
-    """
-    path = get_user_settings_path(username)
-    data = _load_json_file(path, {})
-    return data if isinstance(data, dict) else {}
+	"""
+	Load per-user settings JSON. Returns {} if missing or invalid.
+	"""
+	path = get_user_settings_path(username)
+	data = _load_json_file(path, {})
+	return data if isinstance(data, dict) else {}
 
 
 def save_user_settings(username: str, settings: Dict[str, Any]) -> None:
-    """
-    Save per-user settings JSON. Non-dicts are ignored.
-    """
-    if not isinstance(settings, dict):
-        return
-    path = get_user_settings_path(username)
-    _save_json_file(path, settings)
+	"""
+	Save per-user settings JSON. Non-dicts are ignored.
+	"""
+	if not isinstance(settings, dict):
+		return
+	path = get_user_settings_path(username)
+	_save_json_file(path, settings)
 
 
 # -----------------------
@@ -145,158 +145,159 @@ def save_user_settings(username: str, settings: Dict[str, Any]) -> None:
 
 
 def get_groups_config_path(filename: str = "mss_login_groups.json") -> str:
-    """
-    Path helper for the role/group config file.
+	"""
+	Path helper for the role/group config file.
 
-    If you want to rename sentinel_groups.json to mss_login_groups.json and keep
-    it in the extension root, this gives you a single place to reference it.
-    Filename is restricted to a single segment to prevent path traversal.
-    """
-    from .path_safety import is_safe_filename
-    if not filename or not is_safe_filename(filename):
-        filename = "mss_login_groups.json"
-    return os.path.join(get_extension_root(), filename)
+	If you want to rename sentinel_groups.json to mss_login_groups.json and keep
+	it in the extension root, this gives you a single place to reference it.
+	Filename is restricted to a single segment to prevent path traversal.
+	"""
+	from .path_safety import is_safe_filename
+
+	if not filename or not is_safe_filename(filename):
+		filename = "mss_login_groups.json"
+	return os.path.join(get_extension_root(), filename)
 
 
 def get_gallery_root_config_path() -> str:
-    """
-    Global config pointing at which user is used as Gallery root.
+	"""
+	Global config pointing at which user is used as Gallery root.
 
-      <ext_root>/Users/gallery_root.json
+	  <ext_root>/Users/gallery_root.json
 
-    Stored as: { "user": "<username>" }
-    """
-    return os.path.join(get_users_root(), "gallery_root.json")
+	Stored as: { "user": "<username>" }
+	"""
+	return os.path.join(get_users_root(), "gallery_root.json")
 
 
 def get_gallery_root_user() -> str | None:
-    """
-    Return the username currently configured as Gallery root, or None.
-    """
-    data = _load_json_file(get_gallery_root_config_path(), {})
-    user = data.get("user")
-    if isinstance(user, str) and user.strip():
-        return user.strip()
-    return None
+	"""
+	Return the username currently configured as Gallery root, or None.
+	"""
+	data = _load_json_file(get_gallery_root_config_path(), {})
+	user = data.get("user")
+	if isinstance(user, str) and user.strip():
+		return user.strip()
+	return None
 
 
 def set_gallery_root_user(username: str | None) -> None:
-    """
-    Set or clear the Gallery root user.
-    If username is None or empty, the gallery root is cleared.
-    """
-    path = get_gallery_root_config_path()
-    if not username:
-        _save_json_file(path, {})
-        return
+	"""
+	Set or clear the Gallery root user.
+	If username is None or empty, the gallery root is cleared.
+	"""
+	path = get_gallery_root_config_path()
+	if not username:
+		_save_json_file(path, {})
+		return
 
-    username = username.strip()
-    if not username:
-        _save_json_file(path, {})
-        return
+	username = username.strip()
+	if not username:
+		_save_json_file(path, {})
+		return
 
-    _save_json_file(path, {"user": username})
+	_save_json_file(path, {"user": username})
 
 
 def list_user_files(username: str, max_files: int = 500) -> List[str]:
-    """
-    Return a relative list of files under the user's root directory.
+	"""
+	Return a relative list of files under the user's root directory.
 
-      Users/<username>/...
+	  Users/<username>/...
 
-    Limited to max_files entries to avoid insane payloads.
-    """
-    root = get_user_root(username)
-    collected: List[str] = []
+	Limited to max_files entries to avoid insane payloads.
+	"""
+	root = get_user_root(username)
+	collected: List[str] = []
 
-    for dirpath, _, filenames in os.walk(root):
-        for fn in filenames:
-            full = os.path.join(dirpath, fn)
-            rel = os.path.relpath(full, root)
-            collected.append(rel)
-            if len(collected) >= max_files:
-                return collected
-    return collected
+	for dirpath, _, filenames in os.walk(root):
+		for fn in filenames:
+			full = os.path.join(dirpath, fn)
+			rel = os.path.relpath(full, root)
+			collected.append(rel)
+			if len(collected) >= max_files:
+				return collected
+	return collected
 
 
 def purge_user_root(username: str) -> None:
-    """
-    Delete the entire per-user folder under Users/<username>/ and recreate it.
-    """
-    root = get_user_root(username)
-    if os.path.exists(root):
-        shutil.rmtree(root, ignore_errors=True)
-    os.makedirs(root, exist_ok=True)
+	"""
+	Delete the entire per-user folder under Users/<username>/ and recreate it.
+	"""
+	root = get_user_root(username)
+	if os.path.exists(root):
+		shutil.rmtree(root, ignore_errors=True)
+	os.makedirs(root, exist_ok=True)
 
 
 def _sanitize_username_for_path(username: str) -> str:
-    """Normalize username for use as a path segment; prevent path traversal."""
-    name = (username or "guest").strip() or "guest"
-    if ".." in name or "/" in name or "\\" in name:
-        return "guest"
-    return name
+	"""Normalize username for use as a path segment; prevent path traversal."""
+	name = (username or "guest").strip() or "guest"
+	if ".." in name or "/" in name or "\\" in name:
+		return "guest"
+	return name
 
 
 def _get_plugin_workflow_dir(username: str) -> str:
-    """Legacy plugin-root workflow dir (for migration source)."""
-    user_root = get_user_root(username)
-    return os.path.join(user_root, "workflows")
+	"""Legacy plugin-root workflow dir (for migration source)."""
+	user_root = get_user_root(username)
+	return os.path.join(user_root, "workflows")
 
 
 def _migrate_user_workflows_to_data_dir(username: str, data_wf_dir: str) -> None:
-    """
-    One-time: copy workflows from plugin Users/<username>/workflows to data dir
-    if plugin has content and data dir is empty. Idempotent; skips if data dir has files.
-    """
-    plugin_wf = _get_plugin_workflow_dir(username)
-    if not os.path.isdir(plugin_wf):
-        return
-    try:
-        existing = os.listdir(data_wf_dir)
-        if existing:
-            return
-    except OSError:
-        pass
-    try:
-        for name in os.listdir(plugin_wf):
-            src = os.path.join(plugin_wf, name)
-            dst = os.path.join(data_wf_dir, name)
-            if os.path.isfile(src):
-                shutil.copy2(src, dst)
-            elif os.path.isdir(src):
-                shutil.copytree(src, dst, dirs_exist_ok=True)
-    except OSError:
-        pass
+	"""
+	One-time: copy workflows from plugin Users/<username>/workflows to data dir
+	if plugin has content and data dir is empty. Idempotent; skips if data dir has files.
+	"""
+	plugin_wf = _get_plugin_workflow_dir(username)
+	if not os.path.isdir(plugin_wf):
+		return
+	try:
+		existing = os.listdir(data_wf_dir)
+		if existing:
+			return
+	except OSError:
+		pass
+	try:
+		for name in os.listdir(plugin_wf):
+			src = os.path.join(plugin_wf, name)
+			dst = os.path.join(data_wf_dir, name)
+			if os.path.isfile(src):
+				shutil.copy2(src, dst)
+			elif os.path.isdir(src):
+				shutil.copytree(src, dst, dirs_exist_ok=True)
+	except OSError:
+		pass
 
 
 def get_user_workflow_dir(username: str) -> str:
-    """
-    Per-user workflow directory under MSS_LOGIN_DATA_DIR:
-      <data_dir>/Users/<username>/workflows/
+	"""
+	Per-user workflow directory under MSS_LOGIN_DATA_DIR:
+	  <data_dir>/Users/<username>/workflows/
 
-    Migrates existing workflows from plugin Users/<username>/workflows/ once if present.
-    """
-    safe = _sanitize_username_for_path(username)
-    data_users = get_data_subdir("Users")
-    os.makedirs(data_users, exist_ok=True)
-    data_wf_dir = get_data_subdir("Users", safe, "workflows")
-    os.makedirs(data_wf_dir, exist_ok=True)
-    _migrate_user_workflows_to_data_dir(username, data_wf_dir)
-    return data_wf_dir
+	Migrates existing workflows from plugin Users/<username>/workflows/ once if present.
+	"""
+	safe = _sanitize_username_for_path(username)
+	data_users = get_data_subdir("Users")
+	os.makedirs(data_users, exist_ok=True)
+	data_wf_dir = get_data_subdir("Users", safe, "workflows")
+	os.makedirs(data_wf_dir, exist_ok=True)
+	_migrate_user_workflows_to_data_dir(username, data_wf_dir)
+	return data_wf_dir
 
 
 def list_user_workflows(username: str) -> List[str]:
-    """
-    Returns a list of workflow filenames (relative paths) for the user.
-    """
-    wf_dir = get_user_workflow_dir(username)
-    workflows = []
-    if os.path.exists(wf_dir):
-        for root, _, files in os.walk(wf_dir):
-            for file in files:
-                if file.endswith(".json"):
-                    # We store them relative to the workflow folder
-                    full_path = os.path.join(root, file)
-                    rel_path = os.path.relpath(full_path, wf_dir)
-                    workflows.append(rel_path)
-    return workflows
+	"""
+	Returns a list of workflow filenames (relative paths) for the user.
+	"""
+	wf_dir = get_user_workflow_dir(username)
+	workflows = []
+	if os.path.exists(wf_dir):
+		for root, _, files in os.walk(wf_dir):
+			for file in files:
+				if file.endswith(".json"):
+					# We store them relative to the workflow folder
+					full_path = os.path.join(root, file)
+					rel_path = os.path.relpath(full_path, wf_dir)
+					workflows.append(rel_path)
+	return workflows
