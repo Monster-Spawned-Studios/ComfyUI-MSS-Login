@@ -42,10 +42,6 @@ jobs:
               with:
                   python-version: "3.13"
             - name: Install audit tooling
-              run: |
-                  pip install pip-audit
-                  pip install uv
-            - name: Export dependencies
-              run: uv export --group production --format requirements-txt -o requirements-ci.txt
+              run: pip install pip-audit
             - name: Run pip-audit
               run: pip-audit -r requirements-ci.txt --extra-index-url https://download.pytorch.org/whl/cu128
