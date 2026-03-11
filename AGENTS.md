@@ -63,6 +63,14 @@ When committing and pushing, sign commits with SSH if credentials are available:
 
 **If either variable is unset, null, or invalid:** Commit and push normally without signing.
 
+### ComfyUI and ecosystem compatibility
+
+When editing this extension, maintain compatibility with:
+
+- **ComfyUI**: Be version-agnostic where possible; prefer stable, documented APIs (`PromptServer` routes, `folder_paths`, node `INPUT_TYPES`/`RETURN_TYPES`). Avoid private attributes or nightly-only behavior. Target latest ComfyUI and the [ComfyUI_frontend](https://github.com/Comfy-Org/ComfyUI_frontend) package.
+- **Comfy Portal** ([comfy-portal](https://github.com/ShunL12324/comfy-portal)): iOS/Android app uses standard ComfyUI HTTP and WebSocket APIs (prompt, queue, history). Use standard APIs so workflows can be executed and synced from the app.
+- **comfy-portal-endpoint** ([comfy-portal-endpoint](https://github.com/ShunL12324/comfy-portal-endpoint)): Provides workflow list/get/save/convert; uses a headless browser that must load the real ComfyUI frontend. Avoid blocking the main ComfyUI page from loading; if auth is added, consider allowing unauthenticated access to minimal frontend assets required for conversion, or document that Portal workflow sync will not work when auth is enabled.
+
 ### Known caveats
 
 - Always use the `.venv` Python (`.venv/bin/python`) per `.agent/rules/python-venv.mdc`.

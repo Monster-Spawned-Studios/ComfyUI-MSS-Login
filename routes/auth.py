@@ -299,13 +299,26 @@ async def post_login(request: web.Request) -> web.Response:
         user_id, user_rec = users_db.get_user(username)
         user_env.get_user_workflow_dir(username)
 
-        # When MFA feature or global MFA is disabled, skip all MFA branches and issue JWT directly
+        mfa_enabled = users_db.get_mfa_enabled(username)
+
+        # CRITICAL: Fail closed. If user has MFA enrolled, ALWAYS require second factor.
+        if mfa_enabled and not constants_module.MFA_DISABLED:
+            mfa_temp = create_mfa_temp_token(username)
+            timeout.remove_failed_attempts(ip)
+            return web.json_response(
+                {
+                    "message": "MFA verification required",
+                    "mfa_required": True,
+                    "mfa_temp_token": mfa_temp,
+                },
+                status=200,
+            )
+
+        # When MFA feature or global MFA is disabled, skip MFA setup/role branches
         if experimental_mfa_enabled() and not constants_module.MFA_DISABLED:
-            # Admin must set up MFA on next login if not already enabled
             is_admin = user_rec.get("admin") or "admin" in [
                 g.lower() for g in user_rec.get("groups", [])
             ]
-            mfa_enabled = users_db.get_mfa_enabled(username)
             role_requires_mfa = _role_requires_mfa(username)
 
             if is_admin and not mfa_enabled:
@@ -316,18 +329,6 @@ async def post_login(request: web.Request) -> web.Response:
                     {
                         "message": "MFA setup required for admin accounts",
                         "mfa_setup_required": True,
-                        "mfa_temp_token": mfa_temp,
-                    },
-                    status=200,
-                )
-            if mfa_enabled:
-                # User has MFA; require second factor
-                mfa_temp = create_mfa_temp_token(username)
-                timeout.remove_failed_attempts(ip)
-                return web.json_response(
-                    {
-                        "message": "MFA verification required",
-                        "mfa_required": True,
                         "mfa_temp_token": mfa_temp,
                     },
                     status=200,
@@ -671,12 +672,8 @@ async def post_generate_token(request: web.Request) -> web.Response:
             status=403,
         )
 
-    # User has MFA: require second factor before issuing API token (unless MFA feature or global MFA is disabled)
-    if (
-        experimental_mfa_enabled()
-        and not constants_module.MFA_DISABLED
-        and users_db.get_mfa_enabled(username)
-    ):
+    # CRITICAL: Fail closed. If user has MFA enrolled, ALWAYS require second factor.
+    if users_db.get_mfa_enabled(username) and not constants_module.MFA_DISABLED:
         mfa_temp = create_mfa_temp_token(username)
         return web.json_response(
             {
