@@ -74,17 +74,31 @@ def _get_project_name_from_pyproject(base_path: str) -> str | None:
         return None
     path = os.path.join(base_path, "pyproject.toml")
     if not os.path.isfile(path):
+        if args.debug or args.verbose:
+            print(
+                f"Pyproject.toml file not found in {base_path}.", file=stdout
+            )
         return None
+    if args.debug or args.verbose:
+        print(
+            f"Pyproject.toml file found in {base_path}.", file=stdout
+        )
     try:
-        with open(path, "rb") as f:
+        with open(path, "rb", encoding="utf-8") as f:
             data = tomllib.load(f)
         project = data.get("project")
         if isinstance(project, dict):
             name = project.get("name")
             if isinstance(name, str) and name.strip():
+                if args.debug or args.verbose:
+                    print(
+                        f"Project name found in pyproject.toml: {name.strip()}.", file=stdout
+                    )
                 return name.strip()
-    except (OSError, ValueError):
-        pass
+    except (OSError, ValueError) as e:
+        print(
+            f"Error reading project name from pyproject.toml: {e}", file=stderr)
+        return None
     return None
 
 
@@ -95,7 +109,8 @@ def _is_safe_node_name(name: str) -> bool:
 
 # Resolve from environment when not provided via CLI (e.g. GitHub Actions)
 if args.registry_access_token is None:
-    args.registry_access_token = os.environ.get("REGISTRY_ACCESS_TOKEN", "").strip() or None
+    args.registry_access_token = os.environ.get(
+        "REGISTRY_ACCESS_TOKEN", "").strip() or None
 if args.node_path is None:
     args.node_path = (
         os.environ.get("NODE_PATH", "").strip()
@@ -111,7 +126,8 @@ if not args.registry_access_token:
     print("Error: Registry access token required. Set REGISTRY_ACCESS_TOKEN or use --registry-access-token.", file=stderr)
     exit(1)
 if not args.node_name:
-    print("Error: Node name required. Set COMFY_NODE_NAME, use --node-name, or add [project] name in pyproject.toml.", file=stderr)
+    print(
+        "Error: Node name required. Set COMFY_NODE_NAME, use --node-name, or add [project] name in pyproject.toml.", file=stderr)
     exit(1)
 if not _is_safe_node_name(args.node_name):
     print(
