@@ -181,15 +181,14 @@ def validate_node() -> bool:
 
 # Publish the node
 def publish_node() -> bool:
-    """Publish the node to the ComfyUI Registry"""
+    """Publish the node to the ComfyUI Registry."""
     if args.dry_run:
         print("Dry run enabled. No changes will be made.", file=stdout)
         return 0
     print("Publishing node...", file=stdout if args.verbose else stderr)
     try:
         return run(
-            ["comfy", "node", "publish", "--token",
-                f"{args.registry_access_token}"],
+            ["comfy", "node", "publish", "--token", args.registry_access_token],
             check=True,
             stdout=None if args.quiet else stdout,
             stderr=None if args.quiet else stderr,
