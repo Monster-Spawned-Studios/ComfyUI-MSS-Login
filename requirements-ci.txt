@@ -1,0 +1,21 @@
+# Merged from requirements.txt, requirements_cuda.txt, and requirements_metal.txt
+# for CI dependency audit (pip-audit). Use --extra-index-url https://download.pytorch.org/whl/cu128
+# when installing or auditing to resolve PyTorch CUDA wheels.
+aiohttp
+argon2-cffi
+bcrypt
+bleach
+cryptography
+numpy
+pillow
+psycopg2-binary
+pymysql
+pyotp
+PyJWT
+sqlcipher3
+torch
+torchaudio
+torchvision
+transformers
+uv
+python-dotenvx>=0.3.0
