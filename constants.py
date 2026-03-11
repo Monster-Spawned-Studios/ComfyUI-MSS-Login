@@ -546,8 +546,24 @@ EXPERIMENTAL_FEATURES = _get_experimental_features()
 
 
 def experimental_mfa_enabled() -> bool:
-    """True if master experimental is on and MFA feature is enabled."""
-    return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("mfa"))
+    """True if master experimental is on and MFA feature is enabled.
+
+    Legacy upgrade path: when EXPERIMENTAL_FEATURES is on and experimental.mfa
+    is unset in config, treat MFA as enabled (prior behavior) to avoid auth bypass
+    for MFA-enrolled users after upgrade.
+    """
+    if not EXPERIMENTAL_FEATURES:
+        return False
+    env_val = str(os.environ.get("EXPERIMENTAL_MFA", "")).strip().lower()
+    if env_val in ("1", "true", "yes"):
+        return True
+    if env_val in ("0", "false", "no"):
+        return False
+    cfg = _load_config(CONFIG_FILE_PATH)
+    block = cfg.get("experimental")
+    if isinstance(block, dict) and "mfa" in block:
+        return bool(block.get("mfa", False))
+    return True
 
 
 def experimental_s3_enabled() -> bool:

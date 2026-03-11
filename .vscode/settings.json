@@ -8,7 +8,7 @@
         "source.fixAll.ruff": "always"
     },
     "[python]": {
-        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.defaultFormatter": "ms-python.autopep8",
         "editor.formatOnSave": true,
         "editor.formatOnPaste": true
     },

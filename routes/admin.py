@@ -158,7 +158,7 @@ routes.put("/api/mss-login/api/settings/ntfy")(api_put_ntfy_settings)
 async def api_get_experimental(request):
     """Return experimental_features (master) and experimental (per-feature flags). Authenticated; any user can read."""
     token = jwt_auth.get_token_from_request(request)
-    if not token:
+    if not token or not jwt_auth.is_token_valid(token):
         return web.json_response({"error": "Authentication required"}, status=401)
     try:
         cfg = load_json_file(CONFIG_FILE_PATH, {})
