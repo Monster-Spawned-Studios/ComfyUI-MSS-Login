@@ -48,4 +48,4 @@ jobs:
             - name: Export dependencies
               run: uv export --group production --format requirements-txt -o requirements-ci.txt
             - name: Run pip-audit
-              run: pip-audit -r requirements-ci.txt
+              run: pip-audit -r requirements-ci.txt --extra-index-url https://download.pytorch.org/whl/cu128
