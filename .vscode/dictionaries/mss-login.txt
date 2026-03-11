@@ -5,6 +5,7 @@ donotpresent
 dotenv
 dotenvx
 ehthumbs
+gpgsign
 ipify
 itools
 loras

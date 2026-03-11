@@ -1,6 +1,18 @@
 (function () {
     "use strict";
 
+    // Only run on the loading page. If ComfyUI loads this script on the main app, do nothing to avoid redirect loop.
+    var pathname = typeof window !== "undefined" && window.location && window.location.pathname;
+    if (pathname !== "/loading") {
+        return;
+    }
+
+    // #region agent log
+    try {
+        fetch("http://127.0.0.1:7242/ingest/bdf8b85f-87b3-445e-aa3d-4ace3a22d3ae", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "9c3a72" }, body: JSON.stringify({ sessionId: "9c3a72", location: "loading.js:entry", message: "loading_script_run", data: { pathname: pathname }, hypothesisId: "A", timestamp: Date.now() }) }).catch(function () {});
+    } catch (e) {}
+    // #endregion
+
     // Same-origin tips (served by GET /mss-login/loading-tips.json; data dir or bundled)
     const TIPS_URL = "/mss-login/loading-tips.json";
     const TIP_INTERVAL_MS = 5000;
@@ -101,6 +113,11 @@
     }
 
     function goToApp() {
+        // #region agent log
+        try {
+            fetch("http://127.0.0.1:7242/ingest/bdf8b85f-87b3-445e-aa3d-4ace3a22d3ae", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "9c3a72" }, body: JSON.stringify({ sessionId: "9c3a72", location: "loading.js:goToApp", message: "goToApp_called", data: { pathname: pathname }, hypothesisId: "A", timestamp: Date.now() }) }).catch(function () {});
+        } catch (e) {}
+        // #endregion
         if (autoRedirectTimer) {
             clearTimeout(autoRedirectTimer);
             autoRedirectTimer = null;
