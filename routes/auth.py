@@ -22,7 +22,7 @@ from ..constants import (
     USERS_DB_CONFIG,
     WEB_DIR,
     experimental_loading_screen_enabled,
-experimental_mfa_enabled,
+    experimental_mfa_enabled,
 )
 from ..globals import access_control, jwt_auth, logger, routes, timeout, users_db
 from ..utils import user_env
