@@ -40,24 +40,11 @@ from ..utils.ip_filter import get_device_id, get_ip
 from ..utils.lockout_store import get_lockout_store
 from ..utils.mfa_temp_store import create_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
+from ..utils.request_navigation import is_browser_navigation
 from ..utils.session_token_store import get_session_token_store
 from ..utils.user_console_log import append as user_console_append
 from ..utils.updater import get_local_version
 from ..utils.validate import validate_password, validate_username
-
-
-def _is_browser_navigation(request: web.Request) -> bool:
-	"""True if request is a full-page navigation (e.g. form POST), so we should redirect instead of returning JSON."""
-	sec_mode = (request.headers.get("Sec-Fetch-Mode") or "").strip().lower()
-	if sec_mode == "navigate":
-		return True
-	# Older browsers may not send Sec-Fetch-Mode; if they didn't ask for JSON, assume form POST.
-	if not sec_mode:
-		accept = (request.headers.get("Accept") or "").strip().lower()
-		if "application/json" in accept:
-			return False
-		return True
-	return False
 
 
 @routes.get("/register")
@@ -122,7 +109,7 @@ async def post_register(request: web.Request) -> web.Response:
 	except Exception as e:
 		logger.error(f"[auth.py] post_register: send_notification: {e}")
 	timeout.remove_failed_attempts(ip)
-	if _is_browser_navigation(request):
+	if is_browser_navigation(request):
 		return web.HTTPFound("/login?registered=1")
 	return web.json_response({"message": "User registered"})
 
@@ -275,7 +262,7 @@ async def post_login(request: web.Request) -> web.Response:
 		logger.login_success(ip, "guest")
 		timeout.remove_failed_attempts(ip)
 		redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
-		if _is_browser_navigation(request):
+		if is_browser_navigation(request):
 			resp = web.HTTPFound(redirect_url)
 			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
 			return resp
@@ -375,7 +362,7 @@ async def post_login(request: web.Request) -> web.Response:
 		logger.login_success(ip, username)
 		timeout.remove_failed_attempts(ip)
 		redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
-		if _is_browser_navigation(request):
+		if is_browser_navigation(request):
 			resp = web.HTTPFound(redirect_url)
 			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
 			return resp
