@@ -392,19 +392,44 @@ class JWTAuth:
 			redirect_path: str,
 			message: str = "Authentication required",
 		) -> web.Response:
-			"""Handle unauthorized access: redirect browsers to login/logout, return JSON only for explicit API clients."""
+			"""Handle unauthorized access: redirect browsers to login/logout, return JSON for API/native clients.
+
+			Rules (in priority order):
+			1. API paths (/api/*, /ws) → always JSON 401 (Comfy Portal, programmatic clients).
+			2. Sec-Fetch-Mode: navigate → always HTML redirect (unambiguous browser navigation).
+			3. Accept contains text/html but not application/json → HTML redirect.
+			4. Everything else (Accept: */*, empty, application/json, etc.) → JSON 401.
+			   This ensures native apps (Comfy Portal, curl, etc.) get machine-readable errors.
+			"""
+			path = request.path
+			# Rule 1: API and WebSocket paths always return JSON — never redirect native clients.
+			if path.startswith("/api/") or path in ("/ws",) or path.startswith("/ws/"):
+				body = {"error": message}
+				try:
+					from ..constants import DEBUG_MODE
+					if DEBUG_MODE:
+						body["debug"] = "DEBUG_MODE=1: see logs/debug.log or server logs."
+				except Exception:
+					pass
+				return web.json_response(body, status=401)
+
 			accept_header = (request.headers.get("Accept") or "").strip().lower()
-			# Redirect when Accept asks for HTML, is empty, or is */* (browser navigation).
-			# Return JSON only when client explicitly asks for JSON (API/fetch).
-			wants_html = "text/html" in accept_header or not accept_header or accept_header == "*/*"
-			if wants_html:
+			sec_mode = (request.headers.get("Sec-Fetch-Mode") or "").lower()
+
+			# Rule 2: Sec-Fetch-Mode: navigate is the authoritative browser-navigation signal.
+			if sec_mode == "navigate":
 				return web.HTTPFound(redirect_path)
+
+			# Rule 3: Accept explicitly requests HTML but not JSON → browser page load.
+			if "text/html" in accept_header and "application/json" not in accept_header:
+				return web.HTTPFound(redirect_path)
+
+			# Rule 4: All other clients (Accept: */*, empty, JSON-first) → JSON 401.
 			body = {"error": message}
 			try:
 				from ..constants import DEBUG_MODE
-
 				if DEBUG_MODE:
-					body["debug"] = "DEBUG_MODE=1: see .cursor/debug.log or server logs."
+					body["debug"] = "DEBUG_MODE=1: see logs/debug.log or server logs."
 			except Exception:
 				pass
 			return web.json_response(body, status=401)
