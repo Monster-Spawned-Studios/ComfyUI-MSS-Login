@@ -59,8 +59,12 @@ async def download_civitai_async(
 				if content_disp and "filename=" in content_disp:
 					part = content_disp.split("filename=")[-1].strip().strip("\"'")
 					if part:
-						# Use basename only to prevent path traversal from server-provided filename
-						filename = Path(part).name or part
+						# Use basename only; if Path.name is empty (e.g. input was "/" or ".."),
+						# discard the server-provided name entirely rather than falling back
+						# to the raw value, which could contain path traversal sequences.
+						_basename = Path(part).name
+						if _basename:
+							filename = _basename
 				if not filename and dest_path.suffix:
 					filename = dest_path.name
 				if not filename:
@@ -95,17 +99,26 @@ async def download_civitai_async(
 					except (TypeError, ValueError):
 						pass
 				bytes_done = 0
-				with open(out, "wb") as f:
-					while True:
-						chunk = await resp.content.read(1024 * 1024)
-						if not chunk:
-							break
-						f.write(chunk)
-						bytes_done += len(chunk)
-						if progress_callback:
-							cb = progress_callback(bytes_done, total_bytes)
-							if asyncio.iscoroutine(cb):
-								await cb
+				try:
+					with open(out, "wb") as f:
+						while True:
+							chunk = await resp.content.read(1024 * 1024)
+							if not chunk:
+								break
+							f.write(chunk)
+							bytes_done += len(chunk)
+							if progress_callback:
+								cb = progress_callback(bytes_done, total_bytes)
+								if asyncio.iscoroutine(cb):
+									await cb
+				except Exception:
+					# Remove partial file so a failed download doesn't leave corrupt data
+					try:
+						if out.exists():
+							out.unlink()
+					except OSError:
+						pass
+					raise
 				return True, ""
 	except Exception as e:
 		return False, str(e)

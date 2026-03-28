@@ -216,6 +216,32 @@ def get_ntfy_config() -> dict:
 	return _load_ntfy_config()
 
 
+def _validate_ntfy_base_url(url: str) -> str:
+	"""
+	Validate and normalize a ntfy base URL. Requires HTTPS unless the host is
+	localhost or a loopback address (127.x.x.x / ::1) for local self-hosted use.
+
+	Raises ValueError if the URL scheme is HTTP for a non-local host.
+	Returns the normalised URL (trailing slash stripped).
+	"""
+	from urllib.parse import urlparse
+
+	url = (url or DEFAULT_BASE_URL).strip().rstrip("/")
+	parsed = urlparse(url)
+	scheme = (parsed.scheme or "").lower()
+	hostname = (parsed.hostname or "").lower()
+
+	_local_hosts = {"localhost", "127.0.0.1", "::1"}
+	is_local = hostname in _local_hosts or hostname.startswith("127.")
+
+	if scheme == "http" and not is_local:
+		raise ValueError(
+			f"ntfy base_url must use HTTPS for non-local hosts (got: {url!r}). "
+			"Use https:// to protect your API key and notification content in transit."
+		)
+	return url
+
+
 def save_ntfy_config(
 	topic: str,
 	enabled_events: List[str],
@@ -232,17 +258,24 @@ def save_ntfy_config(
 	    Which EVENT_KEYS should trigger a notification.
 	base_url : str, optional
 	    Custom ntfy server URL. Defaults to ``DEFAULT_BASE_URL``.
+	    Must use HTTPS for non-local hosts.
+
+	Raises
+	------
+	ValueError
+	    If ``base_url`` uses HTTP for a non-local hostname.
 	"""
 	from ..constants import CONFIG_FILE_PATH
 	from ..utils.json_utils import load_json_file, save_json_file
 
+	validated_url = _validate_ntfy_base_url(base_url)
 	cfg = load_json_file(CONFIG_FILE_PATH, {})
 	if not isinstance(cfg, dict):
 		cfg = {}
 	cfg["ntfy"] = {
 		"topic": (topic or "").strip(),
 		"enabled_events": (list(enabled_events) if isinstance(enabled_events, list) else []),
-		"base_url": (base_url or DEFAULT_BASE_URL).rstrip("/"),
+		"base_url": validated_url,
 	}
 	save_json_file(CONFIG_FILE_PATH, cfg)
 
