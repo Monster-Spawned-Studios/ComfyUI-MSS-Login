@@ -65,9 +65,14 @@ def _get_caller_username_and_groups(request):
 		return None, []
 	try:
 		p = jwt_auth.decode_access_token(token)
-		_, u = users_db.get_user(p["username"])
+		username = p.get("username")
+		if not username:
+			return None, []
+		_, u = users_db.get_user(username)
+		if not u:
+			return None, []
 		groups = [g.lower() for g in (u.get("groups") or [])]
-		return u.get("username"), groups
+		return username, groups
 	except Exception:
 		return None, []
 
@@ -453,9 +458,7 @@ async def api_put_users_db_config(request):
 		)
 	except Exception as e:
 		logger.error(f"[admin.py] api_put_users_db_config: {str(e)}")
-		return web.json_response(
-			{"error": f"[admin.py] api_put_users_db_config: {str(e)}"}, status=500
-		)
+		return web.json_response({"error": "Internal server error"}, status=500)
 
 
 routes.put("/api/mss-login/api/users-db-config")(api_put_users_db_config)

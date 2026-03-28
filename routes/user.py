@@ -54,41 +54,6 @@ def _get_caller_admin_info(request):
 		return False, None, ["guest"]
 
 
-# #region agent log
-def _debug_log_me(path: str, is_admin: bool, username) -> None:
-	try:
-		import json
-		import time
-
-		_log_path = os.path.join(
-			os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-			".cursor",
-			"debug.log",
-		)
-		os.makedirs(os.path.dirname(_log_path), exist_ok=True)
-		with open(_log_path, "a", encoding="utf-8") as f:
-			f.write(
-				json.dumps(
-					{
-						"location": "api_me",
-						"message": "handler_called",
-						"data": {
-							"path": path,
-							"is_admin": is_admin,
-							"username": username,
-						},
-						"hypothesisId": "A",
-						"timestamp": int(time.time() * 1000),
-					}
-				)
-				+ "\n"
-			)
-	except Exception:
-		pass
-
-
-# #endregion
-
 
 def _request_origin(request: web.Request) -> str:
 	"""Build request origin (scheme + host), respecting X-Forwarded-* behind reverse proxy."""
@@ -109,7 +74,6 @@ async def api_me(request: web.Request) -> web.Response:
 	from ..globals import users_db
 
 	is_admin, username, groups = _get_caller_admin_info(request)
-	_debug_log_me(request.path, is_admin, username)
 
 	# Capture host base URL from first admin/owner connection when not set by env or DB
 	if username and (is_admin or "owner" in groups):

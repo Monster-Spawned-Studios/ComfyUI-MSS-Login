@@ -38,6 +38,24 @@ def get_ip(request: web.Request) -> str:
 	return ip
 
 
+def is_https_request(request: web.Request) -> bool:
+	"""Return True if the client is connecting via HTTPS, inferred from proxy headers or request scheme.
+
+	Checks (in priority order):
+	1. request.scheme == "https" (set by force_https middleware when X-Forwarded-Proto matches).
+	2. X-Forwarded-Proto: https (nginx, Apache, most reverse proxies).
+	3. CF-Visitor: {"scheme":"https"} (Cloudflare Tunnel / cloudflared).
+	"""
+	if getattr(request, "scheme", "") == "https":
+		return True
+	if (request.headers.get("X-Forwarded-Proto") or "").lower() == "https":
+		return True
+	cf_visitor = request.headers.get("CF-Visitor") or ""
+	if '"scheme":"https"' in cf_visitor or '"scheme": "https"' in cf_visitor:
+		return True
+	return False
+
+
 def get_device_id(request: web.Request) -> Optional[str]:
 	"""Extract device identifier from request (X-Device-ID header or cookie). Used for lockout across IP changes."""
 	did = request.headers.get(DEVICE_ID_HEADER)

@@ -7,12 +7,6 @@
         return;
     }
 
-    // #region agent log
-    try {
-        fetch("http://127.0.0.1:7242/ingest/bdf8b85f-87b3-445e-aa3d-4ace3a22d3ae", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "9c3a72" }, body: JSON.stringify({ sessionId: "9c3a72", location: "loading.js:entry", message: "loading_script_run", data: { pathname: pathname }, hypothesisId: "A", timestamp: Date.now() }) }).catch(function () {});
-    } catch (e) {}
-    // #endregion
-
     // Same-origin tips (served by GET /mss-login/loading-tips.json; data dir or bundled)
     const TIPS_URL = "/mss-login/loading-tips.json";
     const TIP_INTERVAL_MS = 5000;
@@ -71,10 +65,8 @@
 
     function showUpdateBanner(status) {
         if (!status || !status.update_available || !bannerEl) return;
-        if (autoRedirectTimer) {
-            clearTimeout(autoRedirectTimer);
-            autoRedirectTimer = null;
-        }
+        // Do not cancel the auto-redirect: the banner is informational only.
+        // The user can still click Continue or wait for the normal timeout.
         var url = status.release_url || status.changelog_url || "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases";
         var ver = status.latest_version ? " (" + status.latest_version + ")" : "";
         var html = "An update is available" + ver + ". <a href=\"" + url + "\" target=\"_blank\" rel=\"noopener noreferrer\">View release</a>";
@@ -113,11 +105,6 @@
     }
 
     function goToApp() {
-        // #region agent log
-        try {
-            fetch("http://127.0.0.1:7242/ingest/bdf8b85f-87b3-445e-aa3d-4ace3a22d3ae", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "9c3a72" }, body: JSON.stringify({ sessionId: "9c3a72", location: "loading.js:goToApp", message: "goToApp_called", data: { pathname: pathname }, hypothesisId: "A", timestamp: Date.now() }) }).catch(function () {});
-        } catch (e) {}
-        // #endregion
         if (autoRedirectTimer) {
             clearTimeout(autoRedirectTimer);
             autoRedirectTimer = null;

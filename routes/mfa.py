@@ -16,7 +16,7 @@ from ..utils.mfa_temp_store import (
 	get_username_for_mfa_temp_token,
 )
 from ..utils.ntfy_notifier import send_notification
-from ..utils.ip_filter import get_ip
+from ..utils.ip_filter import get_ip, is_https_request
 from ..utils.request_navigation import is_browser_navigation
 
 
@@ -181,9 +181,10 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
 	user_console_append(username, f"JWT token created for user: {username} (after MFA)")
 	logger.login_success(get_ip(request), username)
 	redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+	_secure = is_https_request(request)
 	if is_browser_navigation(request):
 		resp = web.HTTPFound(redirect_url)
-		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
+		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 		return resp
 	resp = web.json_response(
 		{
@@ -192,7 +193,7 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
 			"redirect_url": redirect_url,
 		}
 	)
-	resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
+	resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 	return resp
 
 

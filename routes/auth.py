@@ -36,7 +36,7 @@ from ..utils.input_sanitizer import (
 	sanitize_totp_code,
 	sanitize_username,
 )
-from ..utils.ip_filter import get_device_id, get_ip
+from ..utils.ip_filter import get_device_id, get_ip, is_https_request
 from ..utils.lockout_store import get_lockout_store
 from ..utils.mfa_temp_store import create_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
@@ -262,9 +262,10 @@ async def post_login(request: web.Request) -> web.Response:
 		logger.login_success(ip, "guest")
 		timeout.remove_failed_attempts(ip)
 		redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+		_secure = is_https_request(request)
 		if is_browser_navigation(request):
 			resp = web.HTTPFound(redirect_url)
-			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
+			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 			return resp
 		resp = web.json_response(
 			{
@@ -273,7 +274,7 @@ async def post_login(request: web.Request) -> web.Response:
 				"redirect_url": redirect_url,
 			}
 		)
-		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
+		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 		return resp
 
 	username = sanitize_username(sanitized_data.get("username"))
@@ -362,9 +363,10 @@ async def post_login(request: web.Request) -> web.Response:
 		logger.login_success(ip, username)
 		timeout.remove_failed_attempts(ip)
 		redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+		_secure = is_https_request(request)
 		if is_browser_navigation(request):
 			resp = web.HTTPFound(redirect_url)
-			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
+			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 			return resp
 		resp = web.json_response(
 			{
@@ -373,7 +375,7 @@ async def post_login(request: web.Request) -> web.Response:
 				"redirect_url": redirect_url,
 			}
 		)
-		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict")
+		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 		return resp
 
 	timeout.add_failed_attempt(ip)
