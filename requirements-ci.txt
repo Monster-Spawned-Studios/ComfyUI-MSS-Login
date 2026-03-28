@@ -19,3 +19,7 @@ torchvision
 transformers
 uv
 python-dotenvx>=0.3.0
+ruff
+pytest
+pip-audit
+mkdocs

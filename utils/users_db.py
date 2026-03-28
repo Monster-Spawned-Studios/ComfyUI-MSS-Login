@@ -701,7 +701,7 @@ class UsersDB:
 		try:
 			return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")  # type: ignore
 		except Exception as e:
-			_get_logger().error(f"[MSS-Login] Failed to hash password: {password}: {e}")
+			_get_logger().error(f"[MSS-Login] Failed to hash password: [REDACTED]: {e}")
 			return ""
 
 	def load_users(self) -> dict:
@@ -908,7 +908,9 @@ class UsersDB:
 		if not user_id:
 			return None
 		secret = pyotp.random_base32()
-		backup_code = "-".join(secrets.token_hex(2).upper() for _ in range(2))  # e.g. ABCD-1234
+		# 64-bit backup code: 16 hex chars in 4 groups of 4, e.g. ABCD-1234-EFGH-5678
+		_raw = secrets.token_hex(8).upper()
+		backup_code = "-".join(_raw[i : i + 4] for i in range(0, 16, 4))
 		backup_hash = hash_backup_code(backup_code.replace("-", "").upper())
 		enc = encrypt_value(self._secret_key, secret)
 		if not enc:

@@ -1,6 +1,12 @@
 (function () {
     "use strict";
 
+    // Only run on the loading page. If ComfyUI loads this script on the main app, do nothing to avoid redirect loop.
+    var pathname = typeof window !== "undefined" && window.location && window.location.pathname;
+    if (pathname !== "/loading") {
+        return;
+    }
+
     // Same-origin tips (served by GET /mss-login/loading-tips.json; data dir or bundled)
     const TIPS_URL = "/mss-login/loading-tips.json";
     const TIP_INTERVAL_MS = 5000;
@@ -59,10 +65,8 @@
 
     function showUpdateBanner(status) {
         if (!status || !status.update_available || !bannerEl) return;
-        if (autoRedirectTimer) {
-            clearTimeout(autoRedirectTimer);
-            autoRedirectTimer = null;
-        }
+        // Do not cancel the auto-redirect: the banner is informational only.
+        // The user can still click Continue or wait for the normal timeout.
         var url = status.release_url || status.changelog_url || "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases";
         var ver = status.latest_version ? " (" + status.latest_version + ")" : "";
         var html = "An update is available" + ver + ". <a href=\"" + url + "\" target=\"_blank\" rel=\"noopener noreferrer\">View release</a>";

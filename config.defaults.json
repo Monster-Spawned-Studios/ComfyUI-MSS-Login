@@ -53,7 +53,7 @@
 		"check_mode": "releases",
 		"check_url": "https://api.github.com/repos/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases/latest",
 		"check_interval_hours": 24,
-		"branch": "main",
+		"branch": "release",
 		"changelog_url": "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases"
 	},
 	"token_algorithm": "HS256",

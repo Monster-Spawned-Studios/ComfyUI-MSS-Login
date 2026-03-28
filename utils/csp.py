@@ -16,13 +16,15 @@ _CSP_HTML_PATHS = frozenset(
 )
 
 # script-src: self + cdnjs (DOMPurify, qrcode). style-src: self + unsafe-inline for existing <style> blocks.
-# connect-src: self + loading tips URL. img-src: self + data:. frame-ancestors: self to mitigate clickjacking.
+# connect-src: self + tunnel/subdomain URLs so Cloudflare Tunnel (cloudflared) and same-site requests work
+# regardless of how the browser normalizes the origin (e.g. comfyui-server.monsterspawned.studio).
+# img-src: self + data:. frame-ancestors: self to mitigate clickjacking.
 _CSP_VALUE = (
 	"default-src 'self'; "
 	"script-src 'self' https://cdnjs.cloudflare.com; "
 	"style-src 'self' 'unsafe-inline'; "
 	"img-src 'self' data:; "
-	"connect-src 'self' https://monsterspawned.studio; "
+	"connect-src 'self' https://monsterspawned.studio https://*.monsterspawned.studio wss://*.monsterspawned.studio; "
 	"frame-ancestors 'self'"
 )
 

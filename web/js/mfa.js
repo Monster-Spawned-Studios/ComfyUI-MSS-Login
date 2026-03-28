@@ -52,11 +52,25 @@
 		mode: null,
 
 		init: function () {
+			var verifySection = document.getElementById("mfa-verify-section");
+			var setupSection = document.getElementById("mfa-setup-section");
+			// Never run when MFA DOM is missing (main app, loading page, or before DOM ready). Prevents "Cannot read properties of null (reading 'style')" at line 57 in bundled/cached builds.
+			if (!verifySection && !setupSection) {
+				return;
+			}
+			var pathname = typeof window !== "undefined" && window.location && window.location.pathname;
+
+			// #region agent log
+			try {
+				fetch("http://127.0.0.1:7242/ingest/bdf8b85f-87b3-445e-aa3d-4ace3a22d3ae", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "9c3a72" }, body: JSON.stringify({ sessionId: "9c3a72", location: "mfa.js:init", message: "mfa_init_run", data: { pathname: pathname, hasVerify: !!verifySection, hasSetup: !!setupSection }, hypothesisId: "B", timestamp: Date.now() }) }).catch(function () {});
+			} catch (e) {}
+			// #endregion
+
 			this.token = sessionStorage.getItem(STORAGE_KEY_TOKEN);
 			this.mode = sessionStorage.getItem(STORAGE_KEY_MODE);
 
-			document.getElementById("mfa-verify-section").style.display = "none";
-			document.getElementById("mfa-setup-section").style.display = "none";
+			if (verifySection) verifySection.style.display = "none";
+			if (setupSection) setupSection.style.display = "none";
 			const loadingEl = document.getElementById("mfa-loading");
 			if (loadingEl) loadingEl.style.display = "none";
 
@@ -79,7 +93,7 @@
 			bindBackLink("mfa-setup-back-link");
 
 			if (this.mode === "verify") {
-				document.getElementById("mfa-verify-section").style.display = "block";
+				if (verifySection) verifySection.style.display = "block";
 				var codeInput = document.getElementById("mfa-code");
 				if (codeInput) codeInput.focus();
 			} else if (this.mode === "setup") {
@@ -92,6 +106,7 @@
 
 		loadSetup: function () {
 			const section = document.getElementById("mfa-setup-section");
+			if (!section) return;
 			section.style.display = "block";
 			const qrContainer = document.getElementById("mfa-qr-container");
 			const backupDisplay = document.getElementById("mfa-backup-display");

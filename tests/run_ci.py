@@ -78,6 +78,9 @@ def main() -> int:
 	steps.append(("Path traversal", os.path.join(TESTS_DIR, "run_path_traversal_tests.py")))
 	if not args.path_only:
 		steps.append(("Sanitizer", os.path.join(TESTS_DIR, "run_sanitizer_tests.py")))
+		steps.append(
+			("Navigation detection", os.path.join(TESTS_DIR, "run_navigation_detection_tests.py"))
+		)
 	if not args.no_lint:
 		steps.append(("Ruff check", None))  # special
 		steps.append(("Ruff format", None))

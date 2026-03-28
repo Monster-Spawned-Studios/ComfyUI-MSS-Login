@@ -1,10 +1,12 @@
 agentic
 AKIA
+axios
 ckpt
 donotpresent
 dotenv
 dotenvx
 ehthumbs
+gpgsign
 ipify
 itools
 loras
