@@ -407,6 +407,7 @@ class JWTAuth:
 				body = {"error": message}
 				try:
 					from ..constants import DEBUG_MODE
+
 					if DEBUG_MODE:
 						body["debug"] = "DEBUG_MODE=1: see logs/debug.log or server logs."
 				except Exception:
@@ -428,6 +429,7 @@ class JWTAuth:
 			body = {"error": message}
 			try:
 				from ..constants import DEBUG_MODE
+
 				if DEBUG_MODE:
 					body["debug"] = "DEBUG_MODE=1: see logs/debug.log or server logs."
 			except Exception:

@@ -152,6 +152,7 @@ def install_node_interceptor():
 					print(f"[mss-login] BLOCKED {anim_cls_name}: Replacing with BLACK SQUARE.")
 					images = torch.zeros_like(images)
 				return orig_fn(self, images, *args, **kwargs)
+
 			return anim_patch
 
 		anim_cls.save_images = _make_anim_patch(_orig_anim)

@@ -54,7 +54,6 @@ def _get_caller_admin_info(request):
 		return False, None, ["guest"]
 
 
-
 def _request_origin(request: web.Request) -> str:
 	"""Build request origin (scheme + host), respecting X-Forwarded-* behind reverse proxy."""
 	proto = (request.headers.get("X-Forwarded-Proto") or "").strip().lower()

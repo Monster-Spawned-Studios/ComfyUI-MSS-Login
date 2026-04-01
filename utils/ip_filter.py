@@ -19,6 +19,7 @@ def _is_cloudflare_proxy_enabled() -> bool:
 	"""Check if cloudflare_proxy is enabled in config (lazy import to avoid circular deps)."""
 	try:
 		from ..constants import CLOUDFLARE_PROXY
+
 		return bool(CLOUDFLARE_PROXY)
 	except Exception:
 		return False

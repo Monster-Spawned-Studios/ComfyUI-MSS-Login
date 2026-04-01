@@ -8,10 +8,12 @@
         "source.fixAll.ruff": "always"
     },
     "[python]": {
-        "editor.defaultFormatter": "ms-python.autopep8",
+        "editor.defaultFormatter": "charliermarsh.ruff",
         "editor.formatOnSave": true,
         "editor.formatOnPaste": true
     },
+    "pylint.enabled": false,
+    "python.linting.pylintEnabled": false,
     "snyk.features.codeSecurity": true,
     "snyk.features.openSourceSecurity": true,
     "snyk.scanningMode": "manual",

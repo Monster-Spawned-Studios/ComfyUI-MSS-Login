@@ -503,9 +503,7 @@ class S3MountManager:
 					client.head_bucket(Bucket=self._cfg["bucket_name"])
 					self._active_mode = "boto3"
 					os.makedirs(self._mount_root, exist_ok=True)
-					logger.info(
-						"[mss-login] S3 operating in boto3 direct mode (FUSE unavailable)."
-					)
+					logger.info("[mss-login] S3 operating in boto3 direct mode (FUSE unavailable).")
 					self.start_background_sync()
 					return True
 				except Exception as exc:
@@ -633,17 +631,27 @@ class S3MountManager:
 		client = self._boto3_client()
 		if client is None:
 			raise RuntimeError("boto3 is not available.")
-		s3_prefix = self._s3_prefix_key(prefix) if prefix else (self._cfg.get("prefix") or "").strip("/") + "/"
+		s3_prefix = (
+			self._s3_prefix_key(prefix)
+			if prefix
+			else (self._cfg.get("prefix") or "").strip("/") + "/"
+		)
 		bucket = self._cfg["bucket_name"]
 		results: list[dict] = []
 		paginator = client.get_paginator("list_objects_v2")
-		for page in paginator.paginate(Bucket=bucket, Prefix=s3_prefix, PaginationConfig={"MaxItems": max_keys}):
+		for page in paginator.paginate(
+			Bucket=bucket, Prefix=s3_prefix, PaginationConfig={"MaxItems": max_keys}
+		):
 			for obj in page.get("Contents", []):
-				results.append({
-					"key": obj["Key"],
-					"size": obj.get("Size", 0),
-					"last_modified": obj["LastModified"].isoformat() if obj.get("LastModified") else "",
-				})
+				results.append(
+					{
+						"key": obj["Key"],
+						"size": obj.get("Size", 0),
+						"last_modified": obj["LastModified"].isoformat()
+						if obj.get("LastModified")
+						else "",
+					}
+				)
 		return results
 
 	def upload_file(self, local_path: str, s3_key: str) -> dict:
