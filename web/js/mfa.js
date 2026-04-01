@@ -166,7 +166,9 @@
 				addToast("Enter verification code or backup code", "error");
 				return;
 			}
-			var btn = document.querySelector("#mfa-verify-form button[type='submit']");
+			var btn = document.querySelector(
+				"#mfa-page-verify-form button[type='submit'], #mfa-verify-form button[type='submit']"
+			);
 			if (btn) {
 				btn.disabled = true;
 				btn.textContent = "Verifying...";
@@ -210,7 +212,9 @@
 				addToast("Enter a 6-digit code from your authenticator app", "error");
 				return;
 			}
-			var btn = document.querySelector("#mfa-setup-form button[type='submit']");
+			var btn = document.querySelector(
+				"#mfa-page-setup-form button[type='submit'], #mfa-setup-form button[type='submit']"
+			);
 			if (btn) {
 				btn.disabled = true;
 				btn.textContent = "Verifying...";

@@ -22,6 +22,7 @@
         media="(prefers-color-scheme: dark)">
 
     <link rel="stylesheet" type="text/css" href="/mss-login/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="/mss-login/dist/auth.css">
     <style>
         .login-news { margin-top: 1.5rem; border-top: 1px solid #3f3f46; padding-top: 1rem; }
         .login-news h2 { font-size: 0.95rem; margin-bottom: 0.5rem; color: #a1a1aa; }
@@ -34,7 +35,8 @@
 </head>
 
 <body>
-    <div class="container">
+    <div id="mss-login-auth-app"></div>
+    <div class="container mss-auth-shell">
         <picture>
             <!-- Dark mode logo -->
             <source srcset="/mss-login/assets/mss_logo.png"
@@ -46,28 +48,28 @@
                 src="/mss-login/assets/mss_logo.png"
                 alt="MSS-Login Logo">
         </picture>
-        <h1 class="title login">Login</h1>
+        <h1 class="title login mss-auth-title">Login</h1>
         <!-- method="post" and action prevent credentials from ever being sent in the URL (e.g. if JS is disabled). -->
-        <form id="login-form" method="post" action="/login" onsubmit="login(event)">
-            <div class="form-field">
-                <label for="username">Username:</label>
-                <input type="text" id="username" name="username" required>
+        <form id="login-form" method="post" action="/login">
+            <div class="form-field mss-auth-field">
+                <label class="mss-auth-label" for="username">Username:</label>
+                <input class="mss-auth-input" type="text" id="username" name="username" required>
+            </div>
+            <div class="form-field mss-auth-field">
+                <label class="mss-auth-label" for="password">Password:</label>
+                <input class="mss-auth-input" type="password" id="password" name="password" required>
             </div>
             <div class="form-field">
-                <label for="password">Password:</label>
-                <input type="password" id="password" name="password" required>
+                <a class="mss-auth-link" href="/mss-login/generate_token">Get API Token</a>
             </div>
             <div class="form-field">
-                <a href="/mss-login/generate_token">Get API Token</a>
-            </div>
-            <div class="form-field">
-                <a href="/register">Register a New User</a>
+                <a class="mss-auth-link" href="/register">Register a New User</a>
             </div>
 
             <!-- Main login + guest login -->
             <div class="form-field" style="display:flex; gap:0.5rem; flex-wrap:wrap;">
-                <button class="btn" type="submit">Login</button>
-                <button class="btn" type="button" onclick="guestLogin(event)">Guest Login</button>
+                <button class="btn mss-auth-btn" type="submit">Login</button>
+                <button class="btn mss-auth-btn" type="button" id="guest-login-btn">Guest Login</button>
             </div>
 
             <!-- hidden flag used for guest login -->
@@ -88,6 +90,7 @@
 </body>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js"></script>
 <script src="/mss-login/js/auth.js"></script>
+<script type="module" src="/mss-login/dist/auth-app.js"></script>
 </html>
 
 

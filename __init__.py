@@ -12,6 +12,18 @@ from .utils.shared_items_store import get_shared_items_store
 from .utils.path_safety import is_safe_filename, resolve_path_under
 from .utils.csp import create_csp_middleware
 from .utils.model_filter_middleware import create_model_filter_middleware
+from .utils.model_download_redirect import (
+	initialize_redirect_pattern_cache,
+	is_civicomfy_present,
+	rewrite_download_payload_for_user,
+	should_try_model_download_redirect,
+)
+from .utils.model_isolation import isolation_models_base
+from .utils.model_visibility_policy import (
+	allowed_set_from_grants,
+	get_effective_model_grants_for_user,
+	user_can_view_all_models,
+)
 from .utils.remote_api_guard import create_remote_api_guard_middleware
 from .utils.api_browser_redirect import create_api_browser_redirect_middleware
 from .utils.sfw_intercept.node_interceptor import install_node_interceptor
@@ -63,6 +75,7 @@ from .constants import (
 	DATA_DIR,
 	CURRENT_DIR,
 	clear_host_base_url_cache,
+	experimental_model_isolation_enabled,
 )
 from .nodes import NODE_CLASS_MAPPINGS
 import folder_paths  # pyright: ignore[reportMissingImports]
@@ -97,6 +110,7 @@ except ImportError:
 	__all__ = ["NODE_CLASS_MAPPINGS", "WEB_DIRECTORY"]
 
 ensure_groups_config()
+initialize_redirect_pattern_cache(logger=logger)
 
 # Verify config file integrity (SHA-256) on startup; log warnings for mismatches
 try:
@@ -173,6 +187,45 @@ async def workflow_interceptor_middleware(request, handler):
 		set_latest_prompt_user(username)
 		print(f"[MSS-Login::Middleware] PROMPT CAPTURE path={path} user={username!r}")
 
+	# --- Model download destination rewrite for Civicomfy / core model routes ---
+	if (
+		experimental_model_isolation_enabled()
+		and method in ("POST", "PUT", "PATCH")
+		and should_try_model_download_redirect(path)
+	):
+		current_user_id = access_control.get_current_user_id()
+		if current_user_id and (
+			is_civicomfy_present() or "/manager" in path.lower() or "model" in path.lower()
+		):
+			original_body = await request.read()
+			rewritten_body = original_body
+			content_type = (request.headers.get("Content-Type") or "").lower()
+			if "application/json" in content_type and original_body:
+				try:
+					payload = json.loads(original_body)
+					rewritten_payload, changed = rewrite_download_payload_for_user(
+						payload, current_user_id
+					)
+					if changed:
+						rewritten_body = json.dumps(rewritten_payload).encode("utf-8")
+						logger.info(
+							"[mss-login] Model isolation redirected model download path for user=%s path=%s target_base=%s",
+							current_user_id,
+							path,
+							isolation_models_base(),
+						)
+				except (json.JSONDecodeError, TypeError):
+					pass
+
+			async def _read_redirect():
+				return rewritten_body
+
+			async def _json_redirect():
+				return json.loads(rewritten_body) if rewritten_body else {}
+
+			request.read = _read_redirect
+			request.json = _json_redirect
+
 	# --- Prompt model validation (POST/PUT /prompt and /api/prompt) ---
 	if path in ("/prompt", "/api/prompt") and method in ("POST", "PUT"):
 		body_bytes = await request.read()
@@ -188,20 +241,17 @@ async def workflow_interceptor_middleware(request, handler):
 			pass
 		if prompt_to_validate is not None:
 			role, perms, username_for_perm = access_control._get_user_role_and_permissions(request)
-			can_view_all = perms.get("can_view_all_comfyui_items", False) is True or role in (
-				"admin",
-				"owner",
-			)
+			can_view_all = user_can_view_all_models(role, perms)
 			if not can_view_all:
-				user_id, _ = (
-					access_control.users_db.get_user(username=username_for_perm)
-					if username_for_perm
-					else (None, {})
+				grants = get_effective_model_grants_for_user(
+					role=role,
+					perms=perms,
+					username=username_for_perm,
+					users_db=access_control.users_db,
+					shared_items_store_getter=get_shared_items_store,
+					users_db_config=USERS_DB_CONFIG,
 				)
-				allowed_set = set()
-				if user_id:
-					store = get_shared_items_store(USERS_DB_CONFIG)
-					allowed_set = store.get_all_for_user(user_id)
+				allowed_set = allowed_set_from_grants(grants)
 				known_models = set()
 				try:
 					cache = get_model_cache(USERS_DB_CONFIG)

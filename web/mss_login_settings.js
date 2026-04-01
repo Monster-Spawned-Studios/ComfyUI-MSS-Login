@@ -416,6 +416,11 @@ const ADMIN_STYLES = `
     padding: 0 16px;
     border-bottom: 1px solid rgba(255,255,255,0.14);
     gap: 2px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    white-space: nowrap;
+    flex-wrap: nowrap;
 }
 .mss-login-tab {
     padding: 10px 20px;
@@ -427,6 +432,7 @@ const ADMIN_STYLES = `
     transition: 0.16s ease;
     text-transform: uppercase;
     letter-spacing: 0.08em;
+    flex: 0 0 auto;
 }
 .mss-login-tab:hover {
     color: #ffffff;
@@ -443,10 +449,31 @@ const ADMIN_STYLES = `
     flex: 1;
     padding: 10px 0 0;
     overflow-y: auto;
+    overflow-x: hidden;
     display: none;
 }
 .mss-login-content.active {
     display: block;
+}
+
+@media (max-width: 980px) {
+    .mss-login-modal {
+        width: 98vw;
+        height: 94vh;
+    }
+    .mss-login-modal-header {
+        padding: 10px 14px;
+    }
+    .mss-login-modal-title {
+        font-size: 15px;
+        letter-spacing: 0.04em;
+        text-transform: none;
+    }
+    .mss-login-tab {
+        padding: 9px 12px;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+    }
 }
 
 /* Tables */
@@ -2105,6 +2132,8 @@ async renderUsersDbConfig(container) {
 }
 
 async renderModelDownload(container) {
+    const isOwner = Array.isArray(currentUser?.groups)
+        && currentUser.groups.map(g => String(g).toLowerCase()).includes("owner");
     let sourcesWithKeys = [];
     try {
         const res = await api.fetchApi("/mss-login/api/model-download/sources", { method: "GET" });
@@ -2122,6 +2151,28 @@ async renderModelDownload(container) {
         if (fd.folders && fd.folders.length) folders = fd.folders;
     } catch (e) {}
     const folderOptions = folders.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
+    const ownerPatternSection = isOwner ? `
+        <div class="mss-login-section" style="margin-top:24px;">
+            <h3>Model isolation download redirect patterns</h3>
+            <p>Owner override patterns used to detect third-party/core model download routes that should be redirected to per-user model folders while <code>experimental.model_isolation</code> is enabled.</p>
+            <p class="mss-login-note">Defaults and launch-time auto-detected patterns (such as Civicomfy, when present) are always applied. Add one custom pattern per line below.</p>
+            <div class="mss-login-row" style="margin-top:12px; gap:12px; flex-wrap:wrap;">
+                <div style="min-width:360px; flex:2;">
+                    <label class="mss-login-field-label">Configured patterns (owner-defined)</label>
+                    <textarea id="mss-login-model-isolation-patterns" class="mss-login-input" style="min-height:120px; width:100%;" placeholder="/my/custom/route-pattern"></textarea>
+                </div>
+                <div style="min-width:360px; flex:2;">
+                    <label class="mss-login-field-label">Effective patterns (read-only)</label>
+                    <textarea id="mss-login-model-isolation-effective-patterns" class="mss-login-input" style="min-height:120px; width:100%;" readonly></textarea>
+                </div>
+            </div>
+            <div class="mss-login-row" style="margin-top:12px;">
+                <button class="mss-login-btn" id="mss-login-model-isolation-patterns-refresh">Refresh</button>
+                <button class="mss-login-btn btn-save" id="mss-login-model-isolation-patterns-save">Save patterns</button>
+            </div>
+            <p id="mss-login-model-isolation-patterns-status" class="mss-login-note" style="margin-top:8px;"></p>
+        </div>
+    ` : "";
     container.innerHTML = `
         <div class="mss-login-section">
             <h3>API keys (CivitAI / HuggingFace)</h3>
@@ -2173,6 +2224,7 @@ async renderModelDownload(container) {
             </div>
             <p id="mss-login-dl-status" class="mss-login-note" style="margin-top:8px;"></p>
         </div>
+        ${ownerPatternSection}
     `;
     const sourceSelect = container.querySelector("#mss-login-dl-source");
     const civitaiFields = container.querySelector("#mss-login-dl-civitai-fields");
@@ -2332,6 +2384,64 @@ async renderModelDownload(container) {
             statusEl.textContent = "Error: " + (e.message || "Download failed");
         }
     };
+
+    if (isOwner) {
+        const cfgArea = container.querySelector("#mss-login-model-isolation-patterns");
+        const effArea = container.querySelector("#mss-login-model-isolation-effective-patterns");
+        const statusEl = container.querySelector("#mss-login-model-isolation-patterns-status");
+        const refreshBtn = container.querySelector("#mss-login-model-isolation-patterns-refresh");
+        const saveBtn = container.querySelector("#mss-login-model-isolation-patterns-save");
+
+        const parsePatterns = (raw) => {
+            return Array.from(new Set(
+                String(raw || "")
+                    .split("\n")
+                    .map(x => x.trim().toLowerCase())
+                    .filter(Boolean)
+            ));
+        };
+
+        const loadPatterns = async () => {
+            statusEl.textContent = "Loading patterns...";
+            try {
+                const res = await api.fetchApi("/mss-login/api/settings/model-isolation-download-patterns", { method: "GET" });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    statusEl.textContent = "Error: " + (data.error || res.status);
+                    return;
+                }
+                cfgArea.value = (data.configured_patterns || []).join("\n");
+                effArea.value = (data.effective_patterns || []).join("\n");
+                statusEl.textContent = "Patterns loaded.";
+            } catch (e) {
+                statusEl.textContent = "Error: " + (e.message || "Failed to load patterns");
+            }
+        };
+
+        refreshBtn.onclick = loadPatterns;
+        saveBtn.onclick = async () => {
+            const patterns = parsePatterns(cfgArea.value);
+            statusEl.textContent = "Saving patterns...";
+            try {
+                const res = await api.fetchApi("/mss-login/api/settings/model-isolation-download-patterns", {
+                    method: "PUT",
+                    body: JSON.stringify({ patterns })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    statusEl.textContent = "Error: " + (data.error || res.status);
+                    return;
+                }
+                cfgArea.value = (data.configured_patterns || []).join("\n");
+                effArea.value = (data.effective_patterns || []).join("\n");
+                statusEl.textContent = "Patterns saved.";
+            } catch (e) {
+                statusEl.textContent = "Error: " + (e.message || "Failed to save patterns");
+            }
+        };
+
+        await loadPatterns();
+    }
 }
 
 async renderS3Settings(container) {

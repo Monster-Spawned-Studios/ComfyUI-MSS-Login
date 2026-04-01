@@ -11,6 +11,7 @@
 
     <link rel="icon" href="/mss-login/assets/mss_logo.png" type="image/png">
     <link rel="stylesheet" type="text/css" href="/mss-login/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="/mss-login/dist/auth.css">
     <meta name="mss-loading-timeout-ms" content="{{LOADING_TIMEOUT_MS}}">
 
     <style>
@@ -50,7 +51,8 @@
 </head>
 
 <body class="loading-page">
-    <div class="container">
+    <div id="mss-login-auth-app"></div>
+    <div class="container mss-auth-shell">
         <picture>
             <source srcset="/mss-login/assets/mss_logo.png" media="(prefers-color-scheme: dark)">
             <source srcset="/mss-login/assets/mss_logo.png" media="(prefers-color-scheme: light)">
@@ -69,4 +71,5 @@
     </div>
 </body>
 <script src="/mss-login/js/loading.js"></script>
+<script type="module" src="/mss-login/dist/auth-app.js"></script>
 </html>

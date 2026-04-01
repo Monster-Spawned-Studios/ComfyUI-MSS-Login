@@ -574,13 +574,19 @@ def experimental_news_enabled() -> bool:
 	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("news"))
 
 
+def experimental_model_isolation_enabled() -> bool:
+	"""True if master experimental is on and model isolation feature is enabled."""
+	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("model_isolation"))
+
+
 def get_experimental_flags() -> dict:
-	"""Return dict of per-feature flags for /me and settings. Keys: mfa, s3, loading_screen, news."""
+	"""Return dict of per-feature flags for /me and settings."""
 	return {
 		"mfa": experimental_mfa_enabled(),
 		"s3": experimental_s3_enabled(),
 		"loading_screen": experimental_loading_screen_enabled(),
 		"news": experimental_news_enabled(),
+		"model_isolation": experimental_model_isolation_enabled(),
 	}
 
 

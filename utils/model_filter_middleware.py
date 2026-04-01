@@ -16,6 +16,13 @@ import os
 from aiohttp import web
 import folder_paths  # pyright: ignore[reportMissingImports]
 
+from .model_visibility_policy import (
+	filter_items_by_grants,
+	get_effective_model_grants_for_user,
+	normalize_model_name,
+	user_can_access_s3,
+	user_can_view_all_models,
+)
 from .path_safety import is_safe_folder_segment
 
 
@@ -69,17 +76,6 @@ def create_model_filter_middleware(
 	"""Build middleware that filters /models and /embeddings by permission and shared items."""
 	from .model_cache import get_model_cache
 
-	def _user_can_view_all(role: str, perms: dict) -> bool:
-		"""True if user has group-based override to see all models (or is admin)."""
-		return perms.get("can_view_all_comfyui_items", False) is True or role in ("admin", "owner")
-
-	def _user_can_access_s3(role: str, perms: dict) -> bool:
-		"""True if user may see items from the S3 mount."""
-		val = perms.get("can_access_s3_storage")
-		if val is None:
-			return role in ("admin", "owner")
-		return val is True
-
 	def _get_s3_mount_root() -> str | None:
 		"""Return the S3 mount local_root, or None if not mounted."""
 		try:
@@ -107,11 +103,11 @@ def create_model_filter_middleware(
 					names.add(fn)
 				else:
 					names.add(os.path.join(rel, fn))
-		return frozenset(names)
+		return frozenset(normalize_model_name(name) for name in names)
 
 	def _strip_s3_items(items: list[str], folder: str, role: str, perms: dict) -> list[str]:
 		"""Remove S3-mounted items from the list when the user lacks S3 access."""
-		if _user_can_access_s3(role, perms):
+		if user_can_access_s3(role, perms):
 			return items
 		mount_root = _get_s3_mount_root()
 		if mount_root is None:
@@ -119,7 +115,7 @@ def create_model_filter_middleware(
 		s3_names = _s3_item_names(mount_root, folder)
 		if not s3_names:
 			return items
-		return [item for item in items if item not in s3_names]
+		return [item for item in items if normalize_model_name(item) not in s3_names]
 
 	def _get_folder_list():
 		"""Folder names: from cache if populated, else folder_paths."""
@@ -155,13 +151,19 @@ def create_model_filter_middleware(
 		if path == "/models":
 			role, perms, username = get_user_role_and_permissions(request)
 			folder_names = _get_folder_list()
-			if _user_can_view_all(role, perms):
+			if user_can_view_all_models(role, perms):
 				return web.json_response(folder_names)
-			user_id, _ = users_db.get_user(username=username) if username else (None, {})
-			if not user_id:
+			grants = get_effective_model_grants_for_user(
+				role=role,
+				perms=perms,
+				username=username,
+				users_db=users_db,
+				shared_items_store_getter=get_shared_items_store,
+				users_db_config=users_db_config,
+			)
+			if not grants:
 				return web.json_response([])
-			allowed = get_shared_items_store(users_db_config).get_all_for_user(user_id)
-			allowed_folders = {f for f, _ in allowed}
+			allowed_folders = {g["folder"] for g in grants}
 			filtered = [f for f in folder_names if f in allowed_folders]
 			return web.json_response(filtered)
 
@@ -173,28 +175,38 @@ def create_model_filter_middleware(
 			role, perms, username = get_user_role_and_permissions(request)
 			full_list = _get_item_list(folder)
 			full_list = _strip_s3_items(full_list, folder, role, perms)
-			if _user_can_view_all(role, perms):
+			if user_can_view_all_models(role, perms):
 				return web.json_response(full_list)
-			user_id, _ = users_db.get_user(username=username) if username else (None, {})
-			if not user_id:
+			grants = get_effective_model_grants_for_user(
+				role=role,
+				perms=perms,
+				username=username,
+				users_db=users_db,
+				shared_items_store_getter=get_shared_items_store,
+				users_db_config=users_db_config,
+			)
+			if not grants:
 				return web.json_response([])
-			allowed = get_shared_items_store(users_db_config).get_all_for_user(user_id)
-			allowed_in_folder = {name for f, name in allowed if f == folder}
-			filtered = [x for x in full_list if x in allowed_in_folder]
+			filtered = filter_items_by_grants(folder, full_list, grants)
 			return web.json_response(filtered)
 
 		if path == "/embeddings":
 			role, perms, username = get_user_role_and_permissions(request)
 			full_list = _get_item_list("embeddings")
 			full_list = _strip_s3_items(full_list, "embeddings", role, perms)
-			if _user_can_view_all(role, perms):
+			if user_can_view_all_models(role, perms):
 				return web.json_response(full_list)
-			user_id, _ = users_db.get_user(username=username) if username else (None, {})
-			if not user_id:
+			grants = get_effective_model_grants_for_user(
+				role=role,
+				perms=perms,
+				username=username,
+				users_db=users_db,
+				shared_items_store_getter=get_shared_items_store,
+				users_db_config=users_db_config,
+			)
+			if not grants:
 				return web.json_response([])
-			allowed = get_shared_items_store(users_db_config).get_all_for_user(user_id)
-			allowed_emb = {name for f, name in allowed if f == "embeddings"}
-			filtered = [x for x in full_list if x in allowed_emb]
+			filtered = filter_items_by_grants("embeddings", full_list, grants)
 			return web.json_response(filtered)
 
 		return await handler(request)

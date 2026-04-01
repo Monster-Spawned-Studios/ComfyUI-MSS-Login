@@ -22,10 +22,12 @@
         media="(prefers-color-scheme: dark)">
 
     <link rel="stylesheet" type="text/css" href="/mss-login/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="/mss-login/dist/auth.css">
 </head>
 
 <body>
-    <div class="container">
+    <div id="mss-login-auth-app"></div>
+    <div class="container mss-auth-shell">
         <picture>
             <!-- Dark mode logo -->
             <source srcset="/mss-login/assets/mss_logo.png"
@@ -40,40 +42,40 @@
 
         <!-- MFA Verify (mode: verify) -->
         <div id="mfa-verify-section" style="display:none;">
-            <h1 class="title">Two-Factor Authentication</h1>
+            <h1 class="title mss-auth-title">Two-Factor Authentication</h1>
             <p>Enter the 6-digit code from your authenticator app (e.g. Google Authenticator).</p>
-            <form id="mfa-verify-form" onsubmit="mfaPage.submitVerify(event)">
+            <form id="mfa-page-verify-form">
                 <div class="form-field">
-                    <label for="mfa-code">Verification code:</label>
-                    <input type="text" id="mfa-code" name="code" maxlength="8" placeholder="000000" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9 ]*">
+                    <label class="mss-auth-label" for="mfa-code">Verification code:</label>
+                    <input class="mss-auth-input" type="text" id="mfa-code" name="code" maxlength="8" placeholder="000000" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9 ]*">
                 </div>
                 <div class="form-field">
-                    <label for="mfa-backup">Or use backup code:</label>
-                    <input type="text" id="mfa-backup" name="backup_code" maxlength="12" placeholder="XXXX-XXXX" autocomplete="off">
+                    <label class="mss-auth-label" for="mfa-backup">Or use backup code:</label>
+                    <input class="mss-auth-input" type="text" id="mfa-backup" name="backup_code" maxlength="12" placeholder="XXXX-XXXX" autocomplete="off">
                 </div>
                 <div class="form-field">
-                    <button class="btn" type="submit">Verify</button>
-                    <a class="btn" href="/login" id="mfa-verify-back-link">Back to Login</a>
+                    <button class="btn mss-auth-btn" type="submit">Verify</button>
+                    <a class="btn mss-auth-btn" href="/login" id="mfa-verify-back-link">Back to Login</a>
                 </div>
             </form>
         </div>
 
         <!-- MFA Setup (mode: setup) -->
         <div id="mfa-setup-section" style="display:none;">
-            <h1 class="title">Set Up Two-Factor Authentication</h1>
+            <h1 class="title mss-auth-title">Set Up Two-Factor Authentication</h1>
             <p>Scan the QR code with Google Authenticator (or any TOTP app), then enter the 6-digit code.</p>
             <div id="mfa-qr-container" class="form-field" style="margin:1rem 0;"></div>
             <div id="mfa-backup-display" class="form-field" style="display:none;">
                 <strong>Backup code (save this):</strong> <code id="mfa-backup-code"></code>
             </div>
-            <form id="mfa-setup-form" onsubmit="mfaPage.submitSetup(event)">
+            <form id="mfa-page-setup-form">
                 <div class="form-field">
-                    <label for="mfa-setup-code">Enter 6-digit code from app:</label>
-                    <input type="text" id="mfa-setup-code" name="code" maxlength="8" placeholder="000000" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9 ]*">
+                    <label class="mss-auth-label" for="mfa-setup-code">Enter 6-digit code from app:</label>
+                    <input class="mss-auth-input" type="text" id="mfa-setup-code" name="code" maxlength="8" placeholder="000000" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9 ]*">
                 </div>
                 <div class="form-field">
-                    <button class="btn" type="submit">Complete Setup</button>
-                    <a class="btn" href="/login" id="mfa-setup-back-link">Cancel</a>
+                    <button class="btn mss-auth-btn" type="submit">Complete Setup</button>
+                    <a class="btn mss-auth-btn" href="/login" id="mfa-setup-back-link">Cancel</a>
                 </div>
             </form>
         </div>
@@ -89,5 +91,6 @@
 <!-- QRCode.js for MFA setup - generates QR locally (no third-party API) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" crossorigin="anonymous"></script>
 <script src="/mss-login/js/mfa.js"></script>
+<script type="module" src="/mss-login/dist/auth-app.js"></script>
 
 </html>

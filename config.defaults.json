@@ -69,7 +69,8 @@
 		"mfa": false,
 		"s3": false,
 		"loading_screen": false,
-		"news": false
+		"news": false,
+		"model_isolation": false
 	},
 	"s3_storage": {
 		"enabled": false,

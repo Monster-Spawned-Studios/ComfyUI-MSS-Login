@@ -8,11 +8,14 @@ import time
 
 from aiohttp import web
 
-from ..constants import USERS_DB_CONFIG, experimental_s3_enabled
+from ..constants import USERS_DB_CONFIG, experimental_model_isolation_enabled, experimental_s3_enabled
 from ..globals import jwt_auth, logger, routes, users_db
 from ..utils.model_cache import get_model_cache
+from ..utils.model_isolation import maybe_isolated_destination, sanitize_user_segment
 from ..utils.model_download import download_civitai_async, download_huggingface
 from ..utils.model_source_api_keys_store import SOURCES, get_model_source_api_keys_store
+from ..utils.model_visibility_policy import user_can_manage_model_sharing
+from ..utils.shared_items_store import get_shared_items_store
 
 
 def _current_user_id_and_username(request):
@@ -38,6 +41,15 @@ def _is_admin_or_owner(request):
 	_, u = users_db.get_user(username=username)
 	groups = [g.lower() for g in (u.get("groups") or [])]
 	return u.get("admin", False) or "admin" in groups or "owner" in groups
+
+
+def _role_and_perms(request):
+	try:
+		from ..globals import access_control
+
+		return access_control._get_user_role_and_permissions(request)
+	except Exception:
+		return "guest", {}, None
 
 
 @routes.get("/mss-login/api/model-download/sources")
@@ -105,6 +117,7 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 	user_id, _ = _current_user_id_and_username(request)
 	if not user_id:
 		return web.json_response({"error": "Authentication required"}, status=401)
+	role, perms, _username = _role_and_perms(request)
 	try:
 		body = await request.json()
 	except Exception as e:
@@ -151,17 +164,33 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 	# Resolve destination path and verify it stays within the expected base directory
 	dest_dir = None
 	base_dir = None
+	target_user_id = user_id
+	target_username = (body.get("target_username") or "").strip()
+	if target_username:
+		if not user_can_manage_model_sharing(role, perms):
+			return web.json_response(
+				{"error": "Only owner/admin with sharing permission can set target_username"},
+				status=403,
+			)
+		target_user_id, _ = users_db.get_user(username=target_username)
+		if not target_user_id:
+			return web.json_response({"error": "target_username not found"}, status=404)
 	if destination_type == "local":
 		try:
 			from folder_paths import get_folder_paths, models_path
 
-			paths = get_folder_paths(folder_type)
-			if paths:
-				dest_dir = paths[0]
-				base_dir = os.path.realpath(models_path)
+			isolated_dest = maybe_isolated_destination(folder_type, target_user_id)
+			if isolated_dest is not None:
+				dest_dir = isolated_dest
+				base_dir = os.path.realpath(os.path.join(isolated_dest, "..", "..", ".."))
 			else:
-				dest_dir = os.path.join(models_path, folder_type)
-				base_dir = os.path.realpath(models_path)
+				paths = get_folder_paths(folder_type)
+				if paths:
+					dest_dir = paths[0]
+					base_dir = os.path.realpath(models_path)
+				else:
+					dest_dir = os.path.join(models_path, folder_type)
+					base_dir = os.path.realpath(models_path)
 		except Exception as e:
 			return web.json_response(
 				{"error": f"Could not resolve local model path: {e}"}, status=500
@@ -173,7 +202,12 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 			mgr = get_mount_manager()
 			if mgr is None or not mgr.is_mounted():
 				raise RuntimeError("S3 mount is not active")
-			dest_dir = mgr.get_models_folder_path(folder_type)
+			if experimental_model_isolation_enabled():
+				dest_dir = mgr.get_models_folder_path(
+					f"{folder_type}/{sanitize_user_segment(target_user_id)}"
+				)
+			else:
+				dest_dir = mgr.get_models_folder_path(folder_type)
 			base_dir = os.path.realpath(mgr.models_root)
 		except Exception as e:
 			return web.json_response({"error": f"S3 mount not available: {e}"}, status=500)
@@ -286,6 +320,26 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 			cache.refresh_from_folder_paths()
 		except Exception as e:
 			pass
+
+		# Auto-grant isolated entries to the target user so visibility/prompt checks stay aligned.
+		if experimental_model_isolation_enabled() and target_user_id:
+			try:
+				cache = get_model_cache(USERS_DB_CONFIG)
+				items = cache.list_items(folder_type)
+				prefix = f"{sanitize_user_segment(target_user_id)}/"
+				shared_store = get_shared_items_store(USERS_DB_CONFIG)
+				for item_name in items:
+					if item_name.startswith(prefix):
+						shared_store.add(
+							target_user_id,
+							folder_type,
+							item_name,
+							source_backend=("s3" if destination_type == "s3" else "local"),
+							granted_by_user_id=user_id or "",
+							granted_by_role=role or "",
+						)
+			except Exception as e:
+				logger.warning(f"[MSS-Login] model isolation auto-grant failed: {e}")
 
 		await _write_progress_line(response, {"status": "ok", "destination": dest_dir})
 	except Exception as e:

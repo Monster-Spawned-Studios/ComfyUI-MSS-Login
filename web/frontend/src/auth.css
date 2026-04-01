@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+	body {
+		@apply min-h-screen bg-zinc-950 text-zinc-100 antialiased;
+	}
+}
+
+@layer components {
+	.mss-auth-shell {
+		@apply mx-auto my-8 w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-900/80 p-8 shadow-2xl;
+	}
+
+	.mss-auth-title {
+		@apply mb-6 text-center text-3xl font-semibold tracking-tight;
+	}
+
+	.mss-auth-subtitle {
+		@apply mb-4 text-sm text-zinc-300;
+	}
+
+	.mss-auth-field {
+		@apply mb-4;
+	}
+
+	.mss-auth-label {
+		@apply mb-2 block text-sm text-zinc-200;
+	}
+
+	.mss-auth-input {
+		@apply w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100 outline-none transition focus:border-blue-400;
+	}
+
+	.mss-auth-btn {
+		@apply w-full rounded-lg bg-blue-500 px-4 py-2 font-medium text-zinc-950 transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60;
+	}
+
+	.mss-auth-link {
+		@apply inline-block rounded-md bg-zinc-800 px-3 py-1 text-sm text-blue-300 transition hover:bg-zinc-700 hover:text-blue-200;
+	}
+}

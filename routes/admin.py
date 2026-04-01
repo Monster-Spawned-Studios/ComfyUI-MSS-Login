@@ -35,6 +35,12 @@ from ..utils.shared_items_store import get_shared_items_store
 from ..utils.updater import get_cached_status
 from ..utils.user_console_log import get_lines as get_user_console_lines
 from ..utils.user_console_log import list_users as list_console_users
+from ..utils.model_download_redirect import (
+	get_configured_route_patterns,
+	get_effective_route_patterns,
+	save_configured_route_patterns,
+)
+from ..utils.model_visibility_policy import user_can_manage_model_sharing
 
 
 def is_admin(request):
@@ -83,6 +89,22 @@ def is_owner(request):
 	return "owner" in groups
 
 
+def _get_caller_role_and_permissions(request):
+	"""Resolve caller role/perms using access control for consistent RBAC checks."""
+	try:
+		from ..globals import access_control
+
+		role, perms, username = access_control._get_user_role_and_permissions(request)
+		return role, perms, username
+	except Exception:
+		return "guest", {}, None
+
+
+def _can_manage_model_sharing(request) -> bool:
+	role, perms, _ = _get_caller_role_and_permissions(request)
+	return user_can_manage_model_sharing(role, perms)
+
+
 @routes.get("/mss-login/api/settings/guest-jwt")
 async def api_get_guest_jwt(request):
 	"""Return allow_guest_jwt (authenticated; any user can read)."""
@@ -118,6 +140,52 @@ async def api_put_guest_jwt(request):
 
 routes.get("/api/mss-login/api/settings/guest-jwt")(api_get_guest_jwt)
 routes.put("/api/mss-login/api/settings/guest-jwt")(api_put_guest_jwt)
+
+
+@routes.get("/mss-login/api/settings/model-isolation-download-patterns")
+async def api_get_model_isolation_download_patterns(request):
+	"""Return model download redirect patterns (owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	return web.json_response(
+		{
+			"configured_patterns": get_configured_route_patterns(),
+			"effective_patterns": get_effective_route_patterns(),
+		}
+	)
+
+
+@routes.put("/mss-login/api/settings/model-isolation-download-patterns")
+async def api_put_model_isolation_download_patterns(request):
+	"""Update owner-defined model download redirect patterns (owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	try:
+		data = await request.json()
+		patterns = data.get("patterns")
+		if not isinstance(patterns, list):
+			return web.json_response({"error": "patterns must be an array of strings"}, status=400)
+		normalized = [str(x).strip().lower() for x in patterns if str(x).strip()]
+		if len(normalized) > 200:
+			return web.json_response({"error": "Too many patterns (max 200)"}, status=400)
+		updated = save_configured_route_patterns(normalized)
+		return web.json_response(
+			{
+				"status": "ok",
+				"configured_patterns": updated,
+				"effective_patterns": get_effective_route_patterns(),
+			}
+		)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/model-isolation-download-patterns")(
+	api_get_model_isolation_download_patterns
+)
+routes.put("/api/mss-login/api/settings/model-isolation-download-patterns")(
+	api_put_model_isolation_download_patterns
+)
 
 
 @routes.get("/mss-login/api/settings/ntfy")
@@ -754,9 +822,9 @@ routes.post("/api/mss-login/api/model-cache/refresh")(api_model_cache_refresh)
 
 @routes.get("/mss-login/api/users/{username}/shared-items")
 async def api_get_shared_items(request):
-	"""List shared ComfyUI items (models, LoRAs, VAEs, embeddings) for a user (admin only)."""
-	if not is_admin(request):
-		return web.json_response({"error": "Admin only"}, status=403)
+	"""List shared ComfyUI items for a user (owner/admin with sharing permission)."""
+	if not _can_manage_model_sharing(request):
+		return web.json_response({"error": "Owner/Admin with sharing permission required"}, status=403)
 	username = request.match_info.get("username", "")
 	user_id, _ = users_db.get_user(username=username)
 	if not user_id:
@@ -771,17 +839,22 @@ routes.get("/api/mss-login/api/users/{username}/shared-items")(api_get_shared_it
 
 @routes.post("/mss-login/api/users/{username}/shared-items")
 async def api_add_shared_item(request):
-	"""Add one shared item for a user. Body: { "folder": "checkpoints", "item_name": "model.safetensors" } (admin only)."""
-	if not is_admin(request):
-		return web.json_response({"error": "Admin only"}, status=403)
+	"""Add one shared item for a user."""
+	if not _can_manage_model_sharing(request):
+		return web.json_response({"error": "Owner/Admin with sharing permission required"}, status=403)
 	username = request.match_info.get("username", "")
 	user_id, _ = users_db.get_user(username=username)
 	if not user_id:
 		return web.json_response({"error": "User not found"}, status=404)
+	role, _perms, caller_username = _get_caller_role_and_permissions(request)
+	caller_user_id, _ = users_db.get_user(username=caller_username) if caller_username else (None, {})
 	try:
 		data = await request.json()
 		folder = (data.get("folder") or "").strip()
 		item_name = (data.get("item_name") or "").strip()
+		source_backend = (data.get("source_backend") or "unknown").strip().lower()
+		if source_backend not in ("local", "s3", "unknown"):
+			source_backend = "unknown"
 		if not folder or not item_name:
 			return web.json_response({"error": "folder and item_name required"}, status=400)
 		if not is_safe_folder_segment(folder) or not is_safe_filename(item_name):
@@ -790,14 +863,28 @@ async def api_add_shared_item(request):
 				status=400,
 			)
 		store = get_shared_items_store(USERS_DB_CONFIG)
-		if store.add(user_id, folder, item_name):
+		if store.add(
+			user_id,
+			folder,
+			item_name,
+			source_backend=source_backend,
+			granted_by_user_id=caller_user_id or "",
+			granted_by_role=role or "",
+		):
 			send_notification(
 				"shared_items_added",
 				"MSS-Login: Shared item added",
 				f"Shared item: {folder}/{item_name} added to user: {username}",
 				priority="default",
 			)
-			return web.json_response({"status": "ok", "folder": folder, "item_name": item_name})
+			return web.json_response(
+				{
+					"status": "ok",
+					"folder": folder,
+					"item_name": item_name,
+					"source_backend": source_backend,
+				}
+			)
 		return web.json_response({"error": "Failed to add (may already exist)"}, status=400)
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
@@ -808,9 +895,9 @@ routes.post("/api/mss-login/api/users/{username}/shared-items")(api_add_shared_i
 
 @routes.delete("/mss-login/api/users/{username}/shared-items")
 async def api_remove_shared_item(request):
-	"""Remove one shared item for a user. Body: { "folder": "...", "item_name": "..." } (admin only)."""
-	if not is_admin(request):
-		return web.json_response({"error": "Admin only"}, status=403)
+	"""Remove one shared item for a user."""
+	if not _can_manage_model_sharing(request):
+		return web.json_response({"error": "Owner/Admin with sharing permission required"}, status=403)
 	username = request.match_info.get("username", "")
 	user_id, _ = users_db.get_user(username=username)
 	if not user_id:
