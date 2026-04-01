@@ -40,10 +40,9 @@ def user_can_view_all_models(role: str, perms: dict) -> bool:
 	if role == "owner":
 		return True
 	if role == "admin":
-		return (
-			perms.get("can_view_all_comfyui_items", False) is True
-			and user_can_manage_model_sharing(role, perms)
-		)
+		return perms.get(
+			"can_view_all_comfyui_items", False
+		) is True and user_can_manage_model_sharing(role, perms)
 	return False
 
 
@@ -127,4 +126,3 @@ def filter_items_by_grants(folder: str, item_names: list[str], grants: list[dict
 	if not allowed:
 		return []
 	return [item for item in item_names if normalize_model_name(item) in allowed]
-

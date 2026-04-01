@@ -84,7 +84,10 @@ def _detected_route_patterns() -> list[str]:
 def get_effective_route_patterns() -> list[str]:
 	"""Return merged route patterns for redirect matching."""
 	return _dedupe_patterns(
-		_DEFAULT_ROUTE_PATTERNS + _config_route_patterns() + _env_route_patterns() + _detected_route_patterns()
+		_DEFAULT_ROUTE_PATTERNS
+		+ _config_route_patterns()
+		+ _env_route_patterns()
+		+ _detected_route_patterns()
 	)
 
 
@@ -168,7 +171,9 @@ def _global_models_root() -> str:
 	try:
 		import folder_paths  # pyright: ignore[reportMissingImports]
 
-		root = getattr(folder_paths, "models_dir", None) or getattr(folder_paths, "models_path", None)
+		root = getattr(folder_paths, "models_dir", None) or getattr(
+			folder_paths, "models_path", None
+		)
 		if root:
 			return os.path.abspath(str(root))
 	except Exception:

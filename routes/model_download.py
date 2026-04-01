@@ -8,7 +8,11 @@ import time
 
 from aiohttp import web
 
-from ..constants import USERS_DB_CONFIG, experimental_model_isolation_enabled, experimental_s3_enabled
+from ..constants import (
+	USERS_DB_CONFIG,
+	experimental_model_isolation_enabled,
+	experimental_s3_enabled,
+)
 from ..globals import jwt_auth, logger, routes, users_db
 from ..utils.model_cache import get_model_cache
 from ..utils.model_isolation import maybe_isolated_destination, sanitize_user_segment

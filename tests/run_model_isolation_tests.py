@@ -94,8 +94,7 @@ def run_tests():
 		"admin cannot share without permission",
 	)
 	ok(
-		policy.normalize_model_name("UserA\\Model.SAFETENSORS")
-		== "usera/model.safetensors",
+		policy.normalize_model_name("UserA\\Model.SAFETENSORS") == "usera/model.safetensors",
 		"model names are normalized backend-agnostically",
 	)
 
@@ -108,7 +107,10 @@ def run_tests():
 		["alice/model-a.safetensors", "bob/model-b.safetensors", "other.safetensors"],
 		[policy._normalized_record(g) for g in grants],
 	)
-	ok(filtered == ["alice/model-a.safetensors", "bob/model-b.safetensors"], "grant filtering works")
+	ok(
+		filtered == ["alice/model-a.safetensors", "bob/model-b.safetensors"],
+		"grant filtering works",
+	)
 
 	print("TestModelIsolationPaths")
 	_install_fake_constants(enabled=True)
@@ -133,7 +135,9 @@ def run_tests():
 		"mss_login.utils",
 	)
 	payload = {
-		"destination_path": os.path.join(_PROJECT_ROOT, "ComfyUI", "models", "checkpoints", "foo.safetensors"),
+		"destination_path": os.path.join(
+			_PROJECT_ROOT, "ComfyUI", "models", "checkpoints", "foo.safetensors"
+		),
 		"other": "keep",
 	}
 	rewritten, changed = redirect.rewrite_download_payload_for_user(payload, "alice")

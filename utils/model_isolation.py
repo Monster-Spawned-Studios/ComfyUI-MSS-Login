@@ -55,4 +55,3 @@ def maybe_isolated_destination(folder_type: str, user_id: str | None) -> str | N
 	dest = isolation_user_folder(folder_type, user_id)
 	os.makedirs(dest, exist_ok=True)
 	return dest
-

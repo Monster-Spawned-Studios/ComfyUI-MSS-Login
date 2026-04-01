@@ -824,7 +824,9 @@ routes.post("/api/mss-login/api/model-cache/refresh")(api_model_cache_refresh)
 async def api_get_shared_items(request):
 	"""List shared ComfyUI items for a user (owner/admin with sharing permission)."""
 	if not _can_manage_model_sharing(request):
-		return web.json_response({"error": "Owner/Admin with sharing permission required"}, status=403)
+		return web.json_response(
+			{"error": "Owner/Admin with sharing permission required"}, status=403
+		)
 	username = request.match_info.get("username", "")
 	user_id, _ = users_db.get_user(username=username)
 	if not user_id:
@@ -841,13 +843,17 @@ routes.get("/api/mss-login/api/users/{username}/shared-items")(api_get_shared_it
 async def api_add_shared_item(request):
 	"""Add one shared item for a user."""
 	if not _can_manage_model_sharing(request):
-		return web.json_response({"error": "Owner/Admin with sharing permission required"}, status=403)
+		return web.json_response(
+			{"error": "Owner/Admin with sharing permission required"}, status=403
+		)
 	username = request.match_info.get("username", "")
 	user_id, _ = users_db.get_user(username=username)
 	if not user_id:
 		return web.json_response({"error": "User not found"}, status=404)
 	role, _perms, caller_username = _get_caller_role_and_permissions(request)
-	caller_user_id, _ = users_db.get_user(username=caller_username) if caller_username else (None, {})
+	caller_user_id, _ = (
+		users_db.get_user(username=caller_username) if caller_username else (None, {})
+	)
 	try:
 		data = await request.json()
 		folder = (data.get("folder") or "").strip()
@@ -897,7 +903,9 @@ routes.post("/api/mss-login/api/users/{username}/shared-items")(api_add_shared_i
 async def api_remove_shared_item(request):
 	"""Remove one shared item for a user."""
 	if not _can_manage_model_sharing(request):
-		return web.json_response({"error": "Owner/Admin with sharing permission required"}, status=403)
+		return web.json_response(
+			{"error": "Owner/Admin with sharing permission required"}, status=403
+		)
 	username = request.match_info.get("username", "")
 	user_id, _ = users_db.get_user(username=username)
 	if not user_id:
