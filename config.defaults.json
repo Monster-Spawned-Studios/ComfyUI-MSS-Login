@@ -31,6 +31,8 @@
 	"blacklist_expiry_hours": 24,
 	"free_memory_on_logout": true,
 	"force_https": false,
+	"cloudflare_proxy": false,
+	"cloudflared_local_bypass": false,
 	"seperate_users": true,
 	"manager_admin_only": true,
 	"api_token_store": {
@@ -57,6 +59,11 @@
 		"changelog_url": "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases"
 	},
 	"token_algorithm": "HS256",
+	"ntfy": {
+		"topic": "",
+		"base_url": "https://ntfy.sh",
+		"enabled_events": []
+	},
 	"experimental_features": false,
 	"experimental": {
 		"mfa": false,
@@ -75,11 +82,8 @@
 		"mount": {
 			"enabled": true,
 			"local_mount_path": "/workspace/s3",
-			"rclone_path": "rclone",
 			"mode": "auto",
 			"sync_interval_seconds": 600,
-			"vfs_cache_mode": "full",
-			"vfs_cache_max_size": "50G",
 			"model_folders": [
 				"checkpoints",
 				"loras",

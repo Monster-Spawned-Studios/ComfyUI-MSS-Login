@@ -460,3 +460,37 @@ async def run_update_check(
 					logger.warning(f"[mss-login] Auto-update failed: {msg}")
 	except Exception as e:
 		logger.debug(f"[mss-login] Update check failed: {e}")
+
+
+async def update_check_loop(
+	app: Any,
+	logger: Any,
+	config_file_path: str,
+) -> None:
+	"""Recurring background task that checks for updates on the configured interval.
+
+	Re-reads config.json on each iteration so runtime changes to auto_update
+	settings (interval, mode, enabled) take effect without a restart.
+	"""
+	while True:
+		try:
+			cfg = {}
+			if os.path.isfile(config_file_path):
+				try:
+					with open(config_file_path, "r", encoding="utf-8") as f:
+						cfg = json.load(f)
+				except Exception:
+					pass
+			au = cfg.get("auto_update") or {}
+			if not isinstance(au, dict) or not au.get("enabled", True):
+				await asyncio.sleep(3600)
+				continue
+
+			interval_hours = max(1, int(au.get("check_interval_hours") or 24))
+			await run_update_check(app, logger, cfg)
+			await asyncio.sleep(interval_hours * 3600)
+		except asyncio.CancelledError:
+			break
+		except Exception as exc:
+			logger.debug(f"[mss-login] Update loop error: {exc}")
+			await asyncio.sleep(3600)

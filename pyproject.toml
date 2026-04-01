@@ -2,7 +2,7 @@
 license = { file = "readme/LICENSE.md" }
 name = "MSS-Login"
 description = "A ComfyUI node to enhance the security of the overall ComfyUI experience, for both private and public-facing servers, adding more features, while still allowing ComfyUI to be usable."
-version = "0.0.1"
+version = "0.0.2"
 requires-python = ">=3.13"
 classifiers = [
 	# For OS-independent nodes (works on all operating systems)
@@ -36,6 +36,7 @@ dependencies = [
 	"torchvision",
 	"torchaudio",
 	"transformers",
+	"boto3",
 	"comfyui-frontend-package>=1.40.0",
 ]
 
@@ -73,6 +74,7 @@ production = [
 	"torchvision",
 	"torchaudio",
 	"transformers",
+	"boto3",
 ]
 # MKDocs documentation dependencies:
 documentation = ["mkdocs", "mkdocs-material", "uv"]

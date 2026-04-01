@@ -39,23 +39,21 @@ def check_tensor_nsfw(images_tensor):
 		img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
 
 		results = pipeline(img)
-		# print(f"[mss-login] 🔍 Raw Output: {results}")
 
 		if not results:
 			return False
 
-		top = results[0]
-		label = top.get("label", "").lower()
-		score = float(top.get("score", 0.0))
-
-		print(f"[mss-login] 🔍 Decision: Label='{label}' Score={score:.4f}")
-
-		if label == "nsfw" and score > SCORE_THRESHOLD:
-			print(f"[mss-login] 🛑 BLOCKED NSFW (Score {score:.4f})")
-			return True
+		# Scan all labels for an explicit "nsfw" entry (matching the file-path
+		# classifier logic in nsfw_guard._classify_image_path).
+		for entry in results:
+			label = (entry.get("label") or "").lower()
+			score = float(entry.get("score", 0.0))
+			if label == "nsfw" and score > SCORE_THRESHOLD:
+				print(f"[mss-login] 🛑 BLOCKED NSFW (Score {score:.4f})")
+				return True
 
 	except Exception as e:
-		print(f"[mss-login] ❌ Interceptor Error: {e}")
+		print(f"[mss-login] Interceptor Error: {e}")
 		return True
 
 	return False
@@ -139,7 +137,32 @@ def install_node_interceptor():
 
 	nodes.SaveImage.save_images = save_patch
 	nodes.PreviewImage.save_images = preview_patch
-	print("[MSS-Login] 🛡️ Node Interceptor Active.")
+
+	# Patch animated save nodes when available (SaveAnimatedWEBP, SaveAnimatedPNG).
+	# These nodes may not exist in all ComfyUI versions.
+	for anim_cls_name in ("SaveAnimatedWEBP", "SaveAnimatedPNG"):
+		anim_cls = getattr(nodes, anim_cls_name, None)
+		if anim_cls is None or not hasattr(anim_cls, "save_images"):
+			continue
+		_orig_anim = anim_cls.save_images
+
+		def _make_anim_patch(orig_fn):
+			def anim_patch(self, images, *args, **kwargs):
+				if check_tensor_nsfw(images):
+					print(f"[mss-login] BLOCKED {anim_cls_name}: Replacing with BLACK SQUARE.")
+					images = torch.zeros_like(images)
+				return orig_fn(self, images, *args, **kwargs)
+			return anim_patch
+
+		anim_cls.save_images = _make_anim_patch(_orig_anim)
+
+	# NOTE: ComfyUI may send preview bytes over /ws WebSocket frames without
+	# going through /view. This extension mitigates that by disabling latent
+	# previews globally and replacing NSFW tensors before save. Custom nodes
+	# that bypass SaveImage/PreviewImage are a ComfyUI architectural limitation
+	# that cannot be fully closed from an extension.
+
+	print("[MSS-Login] Node Interceptor Active.")
 
 
 # --- END OF FILE utils/node_interceptor.py ---

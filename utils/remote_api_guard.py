@@ -96,16 +96,32 @@ def _is_local_ip(ip: str, local_cidrs: list) -> bool:
 	return False
 
 
+def _is_cloudflared_local_request(request: web.Request, client_ip: str, local_cidrs: list) -> bool:
+	"""True when cloudflared_local_bypass applies: CF-Connecting-IP is present and the
+	real client behind Cloudflare is on the local network (same-host deployment)."""
+	cf_ip = request.headers.get("CF-Connecting-IP")
+	if not cf_ip:
+		return False
+	return _is_local_ip(cf_ip, local_cidrs)
+
+
 def create_remote_api_guard_middleware(
 	require_auth_for_remote_api: bool = True,
 	local_network_cidrs: list = None,
 	token_validator: Optional[Callable[[web.Request], bool]] = None,
+	cloudflare_proxy: bool = False,
+	cloudflared_local_bypass: bool = False,
 ):
 	"""
 	Create middleware that denies remote API access without auth when enabled.
 	If token_validator is provided, it is used to treat a request as authenticated
 	only when the token is valid (e.g. not expired, not revoked). Otherwise
 	_has_auth_token (token presence only) is used.
+
+	When cloudflare_proxy and cloudflared_local_bypass are both True, requests
+	arriving through cloudflared where the real client IP (CF-Connecting-IP) is
+	on the local network are treated as local. This supports comfy-portal-endpoint
+	headless browser scenarios on the same host.
 	"""
 	cidrs = list(local_network_cidrs) if local_network_cidrs else DEFAULT_LOCAL_CIDRS
 
@@ -121,6 +137,13 @@ def create_remote_api_guard_middleware(
 		)
 		client_ip = get_ip(request)
 		is_local = _is_local_ip(client_ip, cidrs)
+		if (
+			not is_local
+			and cloudflare_proxy
+			and cloudflared_local_bypass
+			and _is_cloudflared_local_request(request, client_ip, cidrs)
+		):
+			is_local = True
 		debug_write(
 			{
 				"location": "remote_api_guard",

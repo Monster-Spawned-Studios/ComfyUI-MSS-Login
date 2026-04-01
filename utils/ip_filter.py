@@ -15,12 +15,34 @@ DEVICE_ID_COOKIE = "mss_login_device_id"
 DEVICE_ID_HEADER = "X-Device-ID"
 
 
+def _is_cloudflare_proxy_enabled() -> bool:
+	"""Check if cloudflare_proxy is enabled in config (lazy import to avoid circular deps)."""
+	try:
+		from ..constants import CLOUDFLARE_PROXY
+		return bool(CLOUDFLARE_PROXY)
+	except Exception:
+		return False
+
+
 def get_ip(request: web.Request) -> str:
-	"""Extract IP address from request headers or remote address.
-	Prefers CF-Connecting-IP (Cloudflare Tunnel / cloudflared), then X-Forwarded-For,
-	then X-Real-IP, then request.remote, so the real client IP is used behind proxies.
+	"""Extract the real client IP address from request headers or remote address.
+
+	When cloudflare_proxy is enabled, Cloudflare-specific headers are trusted:
+	  CF-Connecting-IP > True-Client-IP > Cf-Pseudo-IPv4
+
+	Standard proxy headers are always checked as fallbacks:
+	  X-Forwarded-For (first hop) > X-Real-IP > request.remote
 	"""
-	ip = request.headers.get("CF-Connecting-IP")
+	ip = None
+	cf_enabled = _is_cloudflare_proxy_enabled()
+
+	if cf_enabled:
+		ip = request.headers.get("CF-Connecting-IP")
+		if not ip:
+			ip = request.headers.get("True-Client-IP")
+		if not ip:
+			ip = request.headers.get("Cf-Pseudo-IPv4")
+
 	if not ip:
 		forwarded = request.headers.get("X-Forwarded-For")
 		if forwarded:

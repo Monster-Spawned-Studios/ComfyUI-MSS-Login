@@ -862,7 +862,16 @@ def should_block_image_for_current_user(
 	# 3. Scan image (slow path, only if not cached)
 	cls = _classify_image_path(path, use_cache=use_cache)
 	if cls is None:
-		# Fail open (allow) if model is broken
+		# Fail-closed: block when the NSFW pipeline is unavailable and
+		# this user has SFW enforcement enabled, matching tensor-path behavior.
+		pipeline = _get_nsfw_pipeline()
+		if pipeline is None and sfw_enforced:
+			if not quiet:
+				print(
+					f"[mss-login::NSFWGuard] NSFW pipeline unavailable; "
+					f"blocking {os.path.basename(path)} (fail-closed)"
+				)
+			return True
 		return False
 
 	label, score = cls

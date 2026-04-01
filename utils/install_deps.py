@@ -6,10 +6,8 @@ Uses the same Python as ComfyUI (sys.executable). Failures are logged but do not
 import json
 import os
 import platform
-import shutil
 import subprocess
 import sys
-from os import getcwd
 from os.path import join
 
 # Extension root: parent of the directory containing this file (utils/)
@@ -39,110 +37,6 @@ _config_for_deps = _read_config_json(join(_install_deps_root, "config.json")) or
 )
 DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(
     _config_for_deps.get("debug_mode", False))
-
-
-def install_rclone() -> bool:
-    """Install rclone if it is not already on $PATH.
-
-    Uses the native package manager for the detected platform:
-      - Linux (apt-get)  -- covers nvidia/cuda Ubuntu 24.04 Docker images
-      - macOS (Homebrew)
-      - Windows (winget, Windows 11+)
-
-    Returns True if rclone is available after this call, False otherwise.
-    """
-    if shutil.which("rclone"):
-        if DEBUG_MODE:
-            print("[mss-login] rclone is already installed.")
-        return True
-
-    system = platform.system()
-
-    install_cmds: dict[str, list[list[str]]] = {
-        "Linux": [
-            ["apt-get", "update", "-qq"],
-            ["apt-get", "install", "-y", "-qq", "rclone"],
-        ],
-        "Darwin": [
-            ["brew", "install", "rclone"],
-        ],
-        "Windows": [
-            [
-                "winget",
-                "install",
-                "--id=Rclone.Rclone",
-                "--accept-source-agreements",
-                "--accept-package-agreements",
-            ],
-        ],
-    }
-
-    cmds = install_cmds.get(system)
-    if cmds is None:
-        print(
-            f"[mss-login] Unsupported platform '{system}' for automatic rclone install. "
-            "Please install rclone manually: https://rclone.org/install/",
-            file=sys.stderr,
-        )
-        return False
-
-    print(f"[mss-login] Installing rclone via {system} package manager...")
-
-    for cmd in cmds:
-        try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                check=False,
-            )
-            if result.returncode != 0:
-                stderr = result.stderr.strip() if result.stderr else "(no output)"
-                print(
-                    f"[mss-login] rclone install step '{' '.join(cmd)}' failed: {stderr}",
-                    file=sys.stderr,
-                )
-                return False
-        except FileNotFoundError:
-            pkg_mgr = cmd[0]
-            print(
-                f"[mss-login] '{pkg_mgr}' not found. "
-                "Please install rclone manually: https://rclone.org/install/",
-                file=sys.stderr,
-            )
-            return False
-        except subprocess.TimeoutExpired:
-            print(
-                f"[mss-login] rclone install step '{' '.join(cmd)}' timed out.",
-                file=sys.stderr,
-            )
-            return False
-        except Exception as exc:
-            print(
-                f"[mss-login] rclone install step '{' '.join(cmd)}' error: {exc}",
-                file=sys.stderr,
-            )
-            return False
-
-    # Verify the binary is now reachable
-    try:
-        subprocess.run(
-            ["rclone", "--version"],
-            capture_output=True,
-            timeout=10,
-            check=True,
-        )
-    except Exception:
-        print(
-            "[mss-login] rclone was installed but could not be verified. "
-            "You may need to restart your shell or add it to $PATH.",
-            file=sys.stderr,
-        )
-        return False
-
-    print("[mss-login] rclone installed successfully.")
-    return True
 
 
 # Return True if successful, False otherwise
@@ -326,15 +220,6 @@ def install_dependencies() -> bool:
         print(
             f"[mss-login] Dotenvx binary installation failed: {e}", file=sys.stderr)
         return False
-
-    try:
-        if not install_rclone():
-            print(
-                "[mss-login] rclone installation failed; S3 mount features will be unavailable.",
-                file=sys.stderr,
-            )
-    except Exception as e:
-        print(f"[mss-login] rclone installation failed: {e}", file=sys.stderr)
 
     return True
 

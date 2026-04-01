@@ -189,7 +189,15 @@ try:
 except (TypeError, ValueError):
     BLACKLIST_EXPIRY_HOURS = 24
 FREE_MEMORY_ON_LOGOUT = config_data.get("free_memory_on_logout", True)
-FORCE_HTTPS = config_data.get("force_https", False)
+_force_https_env = str(os.environ.get("FORCE_HTTPS", "")).strip().lower()
+if _force_https_env in ("1", "true", "yes"):
+    FORCE_HTTPS = True
+elif _force_https_env in ("0", "false", "no"):
+    FORCE_HTTPS = False
+else:
+    FORCE_HTTPS = config_data.get("force_https", False)
+CLOUDFLARE_PROXY = config_data.get("cloudflare_proxy", False)
+CLOUDFLARED_LOCAL_BYPASS = config_data.get("cloudflared_local_bypass", False)
 SEPERATE_USERS = config_data.get("seperate_users", True)
 MANAGER_ADMIN_ONLY = config_data.get("manager_admin_only", True)
 MATCH_HEADERS = {"X-Forwarded-Proto": "https"}
@@ -714,17 +722,14 @@ S3_STORAGE_CONFIG: dict = {
     "secret_access_key": (os.getenv(_s3_sk_env) or "").strip(),
 }
 
-# S3 mount sub-config (rclone FUSE mount / sync for model folders)
+# S3 mount sub-config (s3fs FUSE mount with boto3 fallback for model folders)
 _s3_mount_cfg = _s3_cfg.get("mount") or {}
 _s3_mount_local = (_s3_mount_cfg.get("local_mount_path") or "").strip()
 S3_MOUNT_CONFIG: dict = {
     "enabled": bool(_s3_mount_cfg.get("enabled", False)),
     "local_mount_path": _resolve_data_path(_s3_mount_local) if _s3_mount_local else "",
-    "rclone_path": (_s3_mount_cfg.get("rclone_path") or "rclone").strip(),
     "mode": (_s3_mount_cfg.get("mode") or "auto").strip().lower(),
     "sync_interval_seconds": int(_s3_mount_cfg.get("sync_interval_seconds") or 300),
-    "vfs_cache_mode": (_s3_mount_cfg.get("vfs_cache_mode") or "full").strip(),
-    "vfs_cache_max_size": (_s3_mount_cfg.get("vfs_cache_max_size") or "10G").strip(),
     "model_folders": _s3_mount_cfg.get("model_folders")
     or [
         "checkpoints",
@@ -779,11 +784,8 @@ def reload_s3_storage_config() -> dict:
     S3_MOUNT_CONFIG = {
         "enabled": bool(mc.get("enabled", False)),
         "local_mount_path": _resolve_data_path(mc_local) if mc_local else "",
-        "rclone_path": (mc.get("rclone_path") or "rclone").strip(),
         "mode": (mc.get("mode") or "auto").strip().lower(),
         "sync_interval_seconds": int(mc.get("sync_interval_seconds") or 300),
-        "vfs_cache_mode": (mc.get("vfs_cache_mode") or "full").strip(),
-        "vfs_cache_max_size": (mc.get("vfs_cache_max_size") or "10G").strip(),
         "model_folders": mc.get("model_folders")
         or [
             "checkpoints",
