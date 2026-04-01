@@ -9,16 +9,20 @@
 ## Critical Constraints
 
 ### Do NOT install or run ComfyUI
+
 The CI/cloud environment has no GPU. Installing ComfyUI (~1 GB+ deps) wastes resources. All tests and lint run without it. Never run `comfy-cli` or `uv sync --group comfyui`.
 
 ### Always use the project `.venv`
+
 ```bash
 .venv/bin/python          # Unix/macOS
 .venv\Scripts\python.exe  # Windows
 ```
+
 Never use bare `python`, `pytest`, or `ruff` — always prefix with `.venv/bin/` (Unix) or `.venv\Scripts\` (Windows).
 
 ### Python version: 3.13+
+
 Enforced in `pyproject.toml` (`requires-python = ">=3.13"`). Target `py313` for Ruff.
 
 ---
@@ -70,6 +74,7 @@ Exit code: `0` = pass, `1` = fail. See `tests/README.md` for full details.
 ```
 
 Config in `pyproject.toml` (`[tool.ruff]`). Key settings:
+
 - `target-version = "py313"`, `line-length = 100`
 - `indent-style = "tab"`, `line-ending = "lf"`
 - Ignored rules: `ARG001`, `PLR0913`, `F401`, `F841`, `E402`
@@ -80,7 +85,7 @@ Config in `pyproject.toml` (`[tool.ruff]`). Key settings:
 
 ## Codebase Structure
 
-```
+```plaintext
 __init__.py          # Extension entry point; registers middlewares, routes, node interceptor
 nodes.py             # ComfyUI node definitions (NODE_CLASS_MAPPINGS)
 api.py               # Public API exported to other extensions
@@ -161,6 +166,7 @@ tests/
 ## Key Conventions
 
 ### Security
+
 - **No `eval`/`exec`** on user/workflow input (RCE risk).
 - **No runtime `subprocess` pip install** — use declared dependencies only.
 - **No inline JS/CSS** in HTML — use external files from `WEB_DIRECTORY`.
@@ -171,16 +177,19 @@ tests/
 - Store user data/config under `DATA_DIR` (env: `MSS_LOGIN_DATA_DIR`), not next to source.
 
 ### ComfyUI Compatibility
+
 - Use stable ComfyUI APIs: `PromptServer` routes, `folder_paths`, node `INPUT_TYPES`/`RETURN_TYPES`.
 - Prefer feature detection over hard version checks.
 - Do not block or intercept the main ComfyUI page from loading (breaks Comfy Portal headless browser).
 - Use `app.registerExtension(...)` and `app.extensionManager.*` APIs for frontend UI — not `window.prompt`/`confirm`/`alert` (unavailable in ComfyUI Desktop).
 
 ### Comfy Portal Compatibility
+
 - Comfy Portal (iOS/Android) uses standard ComfyUI HTTP/WebSocket APIs.
 - `comfy-portal-endpoint` uses a headless browser that loads the real ComfyUI frontend — auth must not prevent this. If auth is added, allow unauthenticated access to minimal frontend assets for workflow conversion, or document the limitation.
 
 ### Code Style
+
 - Python 3.13+, type hints where helpful, `pathlib` for paths, explicit encoding for file I/O.
 - Tabs for indentation, LF line endings (enforced by Ruff and `.editorconfig`).
 - `known-first-party` for isort: `utils`, `utils.sfw_intercept`, `routes`.
@@ -204,16 +213,16 @@ If either variable is unset or empty: commit and push normally without signing.
 
 ## Environment Variables (key ones)
 
-| Variable | Purpose |
-|---|---|
-| `MSS_LOGIN_DATA_DIR` | External data directory (config, DB, logs) |
-| `HOST_BASE_URL` | Base URL for the server (persisted to app settings DB) |
-| `SECRET_KEY` | JWT signing key |
-| `FORCE_HTTPS` | Redirect HTTP → HTTPS |
-| `REQUIRE_AUTH_FOR_REMOTE_API` | Block unauthenticated remote API calls |
-| `EXPERIMENTAL_FEATURES` | Enable S3 mount/sync |
-| `MSS_SSH_PRIV_KEY` | SSH private key for commit signing |
-| `MSS_SSH_PASS` | Passphrase for SSH signing key (never log) |
+| Variable                      | Purpose                                                |
+| ----------------------------- | ------------------------------------------------------ |
+| `MSS_LOGIN_DATA_DIR`          | External data directory (config, DB, logs)             |
+| `HOST_BASE_URL`               | Base URL for the server (persisted to app settings DB) |
+| `SECRET_KEY`                  | JWT signing key                                        |
+| `FORCE_HTTPS`                 | Redirect HTTP → HTTPS                                  |
+| `REQUIRE_AUTH_FOR_REMOTE_API` | Block unauthenticated remote API calls                 |
+| `EXPERIMENTAL_FEATURES`       | Enable S3 mount/sync                                   |
+| `MSS_SSH_PRIV_KEY`            | SSH private key for commit signing                     |
+| `MSS_SSH_PASS`                | Passphrase for SSH signing key (never log)             |
 
 ---
 
@@ -230,6 +239,7 @@ If either variable is unset or empty: commit and push normally without signing.
 ## CI/CD
 
 Workflows in `.github/workflows/`:
+
 - `code-quality.yml` — Ruff lint and format check (triggers on push/PR to `production`)
 - `security.yml` — Security scanning
 - `pull-request.yml` — PR checks
