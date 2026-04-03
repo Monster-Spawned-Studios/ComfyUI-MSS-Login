@@ -12,7 +12,10 @@
     "minWordLength": 4,
     "ignorePaths": [
         ".git",
-        ".venv"
+        ".venv",
+        "tests",
+        "web/dist/*",
+        "web/frontend/*"
     ],
     "dictionaries": [
         "en-GB",
