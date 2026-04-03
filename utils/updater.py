@@ -383,6 +383,58 @@ def perform_update(
 		return False, str(e)
 
 
+def perform_recovery_update(
+	repo_root: str,
+	data_dir: str,
+	logger: Any,
+	branch: str = "development",
+) -> tuple[bool, str]:
+	"""Last-resort recovery update for repeated experimental failures.
+
+	Security invariant: never delete or rewrite external data-dir credentials/users DB.
+	This routine only manipulates git-tracked files under repo_root.
+	"""
+	if not os.path.isdir(repo_root):
+		return False, "Repository path is missing."
+	if not os.path.isdir(data_dir):
+		logger.warning("[mss-login] Recovery update: data dir missing, continuing without data backup.")
+	backup_path = backup_before_update(data_dir) if os.path.isdir(data_dir) else None
+	if os.path.isdir(data_dir) and not backup_path:
+		logger.warning("[mss-login] Recovery update: data backup failed; aborting to protect credentials.")
+		return False, "Recovery aborted because data backup failed."
+	try:
+		fetch = subprocess.run(
+			["git", "fetch", "origin", branch],
+			cwd=repo_root,
+			capture_output=True,
+			timeout=60,
+			text=True,
+			check=False,
+		)
+		if fetch.returncode != 0:
+			return False, fetch.stderr or fetch.stdout or "git fetch failed"
+
+		hard_reset = subprocess.run(
+			["git", "reset", "--hard", f"origin/{branch}"],
+			cwd=repo_root,
+			capture_output=True,
+			timeout=30,
+			text=True,
+			check=False,
+		)
+		if hard_reset.returncode != 0:
+			return False, hard_reset.stderr or hard_reset.stdout or "git reset failed"
+
+		success, msg = perform_update(repo_root, data_dir, logger)
+		if success:
+			return True, "Recovery update succeeded. Credentials/user data were preserved."
+		return False, f"Recovery update post-reset failed: {msg}"
+	except subprocess.TimeoutExpired:
+		return False, "Recovery update timed out."
+	except Exception as exc:
+		return False, str(exc)
+
+
 async def run_update_check(
 	app: Any,
 	logger: Any,

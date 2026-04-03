@@ -28,6 +28,14 @@ def user_can_manage_model_sharing(role: str, perms: dict) -> bool:
 	return False
 
 
+def user_can_download_models(role: str, perms: dict) -> bool:
+	"""Return True when role is allowed to queue/download/manage model downloads."""
+	val = perms.get("can_download_models")
+	if val is None:
+		return role in ("admin", "owner")
+	return val is True
+
+
 def user_can_view_all_models(role: str, perms: dict) -> bool:
 	"""
 	Return True when user can bypass per-item grants.

@@ -13,10 +13,13 @@ from ..constants import (
 	USERS_DB_CONFIG,
 	get_domain,
 	get_experimental_flags,
+	get_experimental_failsafe_settings,
 	reload_allow_guest_jwt,
 	reload_api_token_store_config,
 	reload_experimental_features,
+	reload_experimental_failsafe,
 	reload_users_db_config,
+	save_experimental_failsafe_settings,
 )
 from ..globals import ip_filter, jwt_auth, logger, routes, users_db
 from ..utils.admin_logic import delete_user_record, patch_user_group
@@ -290,6 +293,45 @@ async def api_put_experimental(request):
 
 routes.get("/api/mss-login/api/settings/experimental")(api_get_experimental)
 routes.put("/api/mss-login/api/settings/experimental")(api_put_experimental)
+
+
+@routes.get("/mss-login/api/settings/experimental-failsafe")
+async def api_get_experimental_failsafe(request):
+	"""Return non-experimental failsafe settings. Authenticated users can read."""
+	token = jwt_auth.get_token_from_request(request)
+	if not token or not jwt_auth.is_token_valid(token):
+		return web.json_response({"error": "Authentication required"}, status=401)
+	try:
+		return web.json_response(get_experimental_failsafe_settings())
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+@routes.put("/mss-login/api/settings/experimental-failsafe")
+async def api_put_experimental_failsafe(request):
+	"""Update non-experimental failsafe settings (Admin only)."""
+	if not is_admin(request):
+		return web.json_response({"error": "Admin only"}, status=403)
+	try:
+		data = await request.json()
+		if not isinstance(data, dict):
+			return web.json_response({"error": "Invalid body"}, status=400)
+		enabled = data.get("enabled")
+		escalate = data.get("escalate_after_repeated_failure")
+		updated = save_experimental_failsafe_settings(
+			enabled=(None if enabled is None else bool(enabled)),
+			escalate_after_repeated_failure=(
+				None if escalate is None else bool(escalate)
+			),
+		)
+		reload_experimental_failsafe()
+		return web.json_response({"status": "ok", **updated})
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/experimental-failsafe")(api_get_experimental_failsafe)
+routes.put("/api/mss-login/api/settings/experimental-failsafe")(api_put_experimental_failsafe)
 
 
 @routes.get("/mss-login/api/admin/consoles")

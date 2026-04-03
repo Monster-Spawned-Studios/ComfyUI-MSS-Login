@@ -7,6 +7,7 @@ import json
 import os
 import uuid
 import warnings
+from datetime import datetime, timezone
 
 # External data directory (~/.comfyui-mss-login or MSS_LOGIN_DATA_DIR); untouched by git pull.
 from .utils.data_dir import ensure_data_dir, get_data_dir
@@ -612,6 +613,115 @@ def reload_experimental_features() -> bool:
 	global EXPERIMENTAL_FEATURES
 	EXPERIMENTAL_FEATURES = _get_experimental_features()
 	return EXPERIMENTAL_FEATURES
+
+
+def _get_experimental_failsafe_cfg() -> dict:
+	cfg = _load_config(CONFIG_FILE_PATH)
+	block = cfg.get("experimental_failsafe")
+	if not isinstance(block, dict):
+		block = {}
+	return block
+
+
+def _get_experimental_failsafe_enabled() -> bool:
+	env_val = str(os.environ.get("MSS_LOGIN_EXPERIMENTAL_FAILSAFE", "")).strip().lower()
+	if env_val in ("1", "true", "yes"):
+		return True
+	if env_val in ("0", "false", "no"):
+		return False
+	return bool(_get_experimental_failsafe_cfg().get("enabled", True))
+
+
+def _get_experimental_failsafe_escalate() -> bool:
+	return bool(_get_experimental_failsafe_cfg().get("escalate_after_repeated_failure", True))
+
+
+EXPERIMENTAL_FAILSAFE_ENABLED = _get_experimental_failsafe_enabled()
+EXPERIMENTAL_FAILSAFE_ESCALATE = _get_experimental_failsafe_escalate()
+
+
+def reload_experimental_failsafe() -> tuple[bool, bool]:
+	"""Refresh in-memory experimental failsafe flags from config/env."""
+	global EXPERIMENTAL_FAILSAFE_ENABLED, EXPERIMENTAL_FAILSAFE_ESCALATE
+	EXPERIMENTAL_FAILSAFE_ENABLED = _get_experimental_failsafe_enabled()
+	EXPERIMENTAL_FAILSAFE_ESCALATE = _get_experimental_failsafe_escalate()
+	return EXPERIMENTAL_FAILSAFE_ENABLED, EXPERIMENTAL_FAILSAFE_ESCALATE
+
+
+def get_experimental_failsafe_settings() -> dict:
+	"""Return effective failsafe settings and state for admin UI."""
+	block = _get_experimental_failsafe_cfg()
+	return {
+		"enabled": bool(block.get("enabled", True)),
+		"escalate_after_repeated_failure": bool(
+			block.get("escalate_after_repeated_failure", True)
+		),
+		"failure_count": int(block.get("failure_count", 0) or 0),
+		"last_failure_reason": str(block.get("last_failure_reason", "") or ""),
+		"last_failure_at": str(block.get("last_failure_at", "") or ""),
+		"last_recovery_action": str(block.get("last_recovery_action", "") or ""),
+	}
+
+
+def save_experimental_failsafe_settings(
+	enabled: bool | None = None,
+	escalate_after_repeated_failure: bool | None = None,
+) -> dict:
+	"""Persist failsafe settings without touching credential-related config."""
+	cfg = _load_config(CONFIG_FILE_PATH)
+	if not isinstance(cfg, dict):
+		cfg = {}
+	block = cfg.get("experimental_failsafe")
+	if not isinstance(block, dict):
+		block = {}
+	if enabled is not None:
+		block["enabled"] = bool(enabled)
+	if escalate_after_repeated_failure is not None:
+		block["escalate_after_repeated_failure"] = bool(escalate_after_repeated_failure)
+	cfg["experimental_failsafe"] = block
+	with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
+		json.dump(cfg, f, indent=4)
+	reload_experimental_failsafe()
+	return get_experimental_failsafe_settings()
+
+
+def apply_experimental_safety_reset(reason: str, recovery_action: str = "config_reset") -> dict:
+	"""Disable all experimental flags in config while preserving credentials and user data.
+
+	This function intentionally updates only feature toggles and failsafe state. It never
+	rewrites users DB configuration, secret-key fields, API token stores, or data paths.
+	"""
+	cfg = _load_config(CONFIG_FILE_PATH)
+	if not isinstance(cfg, dict):
+		cfg = {}
+
+	cfg["experimental_features"] = False
+	block = cfg.get("experimental")
+	if not isinstance(block, dict):
+		block = {}
+	for key in ("mfa", "s3", "loading_screen", "news", "model_isolation"):
+		block[key] = False
+	cfg["experimental"] = block
+
+	failsafe = cfg.get("experimental_failsafe")
+	if not isinstance(failsafe, dict):
+		failsafe = {}
+	failsafe["failure_count"] = int(failsafe.get("failure_count", 0) or 0) + 1
+	failsafe["last_failure_reason"] = (reason or "unknown_failure").strip()[:500]
+	failsafe["last_failure_at"] = datetime.now(timezone.utc).isoformat()
+	failsafe["last_recovery_action"] = (recovery_action or "config_reset").strip()
+	if "enabled" not in failsafe:
+		failsafe["enabled"] = True
+	if "escalate_after_repeated_failure" not in failsafe:
+		failsafe["escalate_after_repeated_failure"] = True
+	cfg["experimental_failsafe"] = failsafe
+
+	with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
+		json.dump(cfg, f, indent=4)
+
+	reload_experimental_features()
+	reload_experimental_failsafe()
+	return get_experimental_failsafe_settings()
 
 
 # Guest JWT: allow guest login to receive a session JWT (default False for security)

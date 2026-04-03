@@ -82,6 +82,15 @@ def main() -> int:
 			("Navigation detection", os.path.join(TESTS_DIR, "run_navigation_detection_tests.py"))
 		)
 		steps.append(("Model isolation", os.path.join(TESTS_DIR, "run_model_isolation_tests.py")))
+		steps.append(
+			(
+				"Experimental failsafe",
+				os.path.join(TESTS_DIR, "run_experimental_failsafe_tests.py"),
+			)
+		)
+		steps.append(
+			("Model download queue", os.path.join(TESTS_DIR, "run_model_download_queue_tests.py"))
+		)
 	if not args.no_lint:
 		steps.append(("Ruff check", None))  # special
 		steps.append(("Ruff format", None))

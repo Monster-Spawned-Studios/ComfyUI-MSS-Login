@@ -4,7 +4,12 @@ from .globals import routes
 from server import PromptServer  # pyright: ignore[reportMissingImports]
 import server  # pyright: ignore[reportMissingImports]
 import asyncio
-from .utils.updater import run_update_check, get_cached_status, update_check_loop
+from .utils.updater import (
+	get_cached_status,
+	perform_recovery_update,
+	run_update_check,
+	update_check_loop,
+)
 from .utils.json_utils import load_json_file
 from .utils.model_cache import get_model_cache
 from .utils.prompt_model_validator import validate_prompt_models
@@ -74,6 +79,9 @@ from .constants import (
 	S3_WORKFLOW_SYNC_CONFIG,
 	DATA_DIR,
 	CURRENT_DIR,
+	EXPERIMENTAL_FAILSAFE_ENABLED,
+	EXPERIMENTAL_FAILSAFE_ESCALATE,
+	apply_experimental_safety_reset,
 	clear_host_base_url_cache,
 	experimental_model_isolation_enabled,
 )
@@ -84,6 +92,8 @@ import json
 import os
 import sys
 import importlib.util
+from datetime import datetime, timezone
+from .utils.ntfy_notifier import notify_experimental_recovery
 
 _root = os.path.dirname(os.path.abspath(__file__))
 _install_deps_path = os.path.join(_root, "utils", "install_deps.py")
@@ -414,6 +424,46 @@ except Exception:
 # ---------------------------------------------------------------------------
 # Consolidated S3 runtime (s3fs mount + workflow sync) -- experimental
 # ---------------------------------------------------------------------------
+def _handle_experimental_critical_failure(reason: str) -> None:
+	"""Trip failsafe and optionally escalate recovery on repeated failures."""
+	def _notify_recovery(action: str, failure_count: int, details: str = "") -> None:
+		try:
+			notify_experimental_recovery(
+				reason=reason,
+				recovery_action=action,
+				failure_count=failure_count,
+				occurred_at=datetime.now(timezone.utc).isoformat(),
+				details=details,
+			)
+		except Exception as _ntfy_exc:
+			print(f"[MSS-Login] Recovery ntfy notify error: {_ntfy_exc}")
+
+	if not EXPERIMENTAL_FAILSAFE_ENABLED:
+		print(f"[MSS-Login] Experimental critical failure (failsafe disabled): {reason}")
+		return
+	try:
+		state = apply_experimental_safety_reset(reason, recovery_action="config_reset")
+		print(
+			"[MSS-Login] Experimental failsafe reset applied. "
+			f"Reason='{reason}', failure_count={state.get('failure_count', 0)}"
+		)
+		failure_count = int(state.get("failure_count", 0) or 0)
+		_notify_recovery("config_reset", failure_count)
+		if EXPERIMENTAL_FAILSAFE_ESCALATE and failure_count >= 2:
+			ok, msg = perform_recovery_update(
+				repo_root=CURRENT_DIR,
+				data_dir=DATA_DIR,
+				logger=logger,
+				branch="development",
+			)
+			action = "recovery_update" if ok else "recovery_update_failed"
+			apply_experimental_safety_reset(reason, recovery_action=action)
+			_notify_recovery(action, failure_count, details=msg)
+			print(f"[MSS-Login] Experimental failsafe escalation result: {msg}")
+	except Exception as _failsafe_exc:
+		print(f"[MSS-Login] Experimental failsafe handler error: {_failsafe_exc}")
+
+
 _s3_runtime = None
 if EXPERIMENTAL_FEATURES:
 	try:
@@ -437,8 +487,12 @@ if EXPERIMENTAL_FEATURES:
 				"[MSS-Login] S3 runtime started in degraded mode: "
 				f"{_s3_runtime.status().get('last_error')}"
 			)
+			_handle_experimental_critical_failure(
+				f"s3_runtime_degraded:{_s3_runtime.status().get('last_error')}"
+			)
 	except Exception as _s3_exc:
 		print(f"[MSS-Login] S3 runtime init error: {_s3_exc}")
+		_handle_experimental_critical_failure(f"s3_runtime_init_error:{_s3_exc}")
 
 
 async def _shutdown_s3(app_ref) -> None:

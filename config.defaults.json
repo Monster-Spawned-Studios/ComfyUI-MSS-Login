@@ -65,6 +65,14 @@
 		"enabled_events": []
 	},
 	"experimental_features": false,
+	"experimental_failsafe": {
+		"enabled": true,
+		"escalate_after_repeated_failure": true,
+		"failure_count": 0,
+		"last_failure_reason": "",
+		"last_failure_at": "",
+		"last_recovery_action": ""
+	},
 	"experimental": {
 		"mfa": false,
 		"s3": false,

@@ -88,6 +88,7 @@ EVENT_KEYS: List[str] = [
 	"server_stopped",
 	"update_available",
 	"shared_items_added",
+	"experimental_recovery",
 ]
 """All recognized event keys that admins can toggle on/off."""
 
@@ -170,6 +171,10 @@ _EVENT_DEFAULTS: Dict[str, Dict[str, Union[str, List[str]]]] = {
 	"shared_items_removed": {
 		"tags": ["package", "shared_items"],
 		"priority": PRIORITY_DEFAULT,
+	},
+	"experimental_recovery": {
+		"tags": ["rotating_light", "shield", "recovery"],
+		"priority": PRIORITY_HIGH,
 	},
 }
 
@@ -930,5 +935,43 @@ def notify_update_available(
 		message="\n".join(parts),
 		markdown=True,
 		click=release_url or "",
+		**kwargs,
+	)
+
+
+def notify_experimental_recovery(
+	*,
+	reason: str,
+	recovery_action: str,
+	failure_count: int,
+	occurred_at: str = "",
+	details: str = "",
+	**kwargs,
+) -> Union[NotificationResult, bool]:
+	"""Notify when experimental failsafe/recovery is triggered."""
+	timestamp = occurred_at or "unknown time"
+	guidance = "No action required."
+	if recovery_action == "config_reset":
+		guidance = "Experimental flags were disabled automatically. Restart ComfyUI and verify stability."
+	elif recovery_action == "recovery_update":
+		guidance = "Recovery update completed. Validate that all services and auth flows are healthy."
+	elif recovery_action == "recovery_update_failed":
+		guidance = "Automatic recovery update failed. Review logs and perform controlled manual maintenance."
+	body_lines = [
+		"Experimental recovery event detected.",
+		f"- Time: `{timestamp}`",
+		f"- Reason: `{reason or 'unknown'}`",
+		f"- Action: `{recovery_action}`",
+		f"- Failure count: `{failure_count}`",
+		f"- Guidance: {guidance}",
+		"- Credential safety: user DB credentials and token stores are preserved by failsafe/reset paths.",
+	]
+	if details:
+		body_lines.append(f"- Details: `{details}`")
+	return send_notification(
+		"experimental_recovery",
+		title="MSS-Login: Experimental recovery triggered",
+		message="\n".join(body_lines),
+		markdown=True,
 		**kwargs,
 	)

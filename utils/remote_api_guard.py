@@ -9,11 +9,11 @@ count as auth; if not provided, any present token is treated as valid.
 
 import ipaddress
 from typing import Callable, Optional
+
 from aiohttp import web
 
-from .ip_filter import get_ip
 from .debug_log import debug_write
-
+from .ip_filter import get_ip
 
 # Default CIDRs considered "local" (Docker-aware: 172.17.0.0/16 is default bridge)
 DEFAULT_LOCAL_CIDRS = [
@@ -163,6 +163,7 @@ def create_remote_api_guard_middleware(
 			import json
 			import os
 			import time
+
 			from ..constants import DEBUG_LOG_PATH
 
 			os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
@@ -203,6 +204,7 @@ def create_remote_api_guard_middleware(
 		try:
 			import json
 			import time
+
 			from ..constants import DEBUG_LOG_PATH
 
 			with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:

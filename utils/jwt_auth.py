@@ -1,15 +1,16 @@
 import os
 import uuid
-import jwt
-from aiohttp import web
 from datetime import datetime, timedelta, timezone
 
-from .users_db import UsersDB
+import jwt
+from aiohttp import web
+
 from .access_control import AccessControl
-from .logger import Logger
 from .api_token_store import get_api_token_store
-from .session_token_store import get_session_token_store
 from .debug_log import debug_write
+from .logger import Logger
+from .session_token_store import get_session_token_store
+from .users_db import UsersDB
 
 
 class JWTAuth:
@@ -98,10 +99,7 @@ class JWTAuth:
 			jti = user.get("jti")
 			if jti:
 				try:
-					from ..constants import (
-						SESSION_TOKEN_STORE_CONFIG,
-						SESSION_IDLE_REVOKE_MINUTES,
-					)
+					from ..constants import SESSION_IDLE_REVOKE_MINUTES, SESSION_TOKEN_STORE_CONFIG
 
 					store = get_session_token_store(
 						SESSION_TOKEN_STORE_CONFIG,
@@ -153,6 +151,7 @@ class JWTAuth:
 				try:
 					import json
 					import time
+
 					from ..constants import DEBUG_LOG_PATH
 
 					os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
@@ -193,6 +192,7 @@ class JWTAuth:
 				try:
 					import json
 					import time
+
 					from ..constants import DEBUG_LOG_PATH
 
 					os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
@@ -242,8 +242,8 @@ class JWTAuth:
 				if jti:
 					try:
 						from ..constants import (
-							SESSION_TOKEN_STORE_CONFIG,
 							SESSION_IDLE_REVOKE_MINUTES,
+							SESSION_TOKEN_STORE_CONFIG,
 						)
 
 						store = get_session_token_store(
@@ -281,6 +281,7 @@ class JWTAuth:
 				try:
 					import json
 					import time
+
 					from ..constants import DEBUG_LOG_PATH
 
 					with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
@@ -318,6 +319,7 @@ class JWTAuth:
 				try:
 					import json
 					import time
+
 					from ..constants import DEBUG_LOG_PATH
 
 					with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
@@ -358,6 +360,7 @@ class JWTAuth:
 				try:
 					import json
 					import time
+
 					from ..constants import DEBUG_LOG_PATH
 
 					with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
