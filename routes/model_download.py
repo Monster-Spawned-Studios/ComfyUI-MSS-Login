@@ -10,7 +10,11 @@ from datetime import datetime, timezone
 
 from aiohttp import web
 
-from ..constants import USERS_DB_CONFIG, experimental_model_isolation_enabled, experimental_s3_enabled
+from ..constants import (
+	USERS_DB_CONFIG,
+	experimental_model_isolation_enabled,
+	experimental_s3_enabled,
+)
 from ..globals import jwt_auth, logger, routes, users_db
 from ..utils.model_cache import get_model_cache
 from ..utils.model_download import download_civitai_async, download_huggingface
@@ -175,7 +179,9 @@ def _resolve_destination_path(
 		if mgr is None or not mgr.is_mounted():
 			raise RuntimeError("S3 mount is not active")
 		if experimental_model_isolation_enabled():
-			dest_dir = mgr.get_models_folder_path(f"{folder_type}/{sanitize_user_segment(target_user_id)}")
+			dest_dir = mgr.get_models_folder_path(
+				f"{folder_type}/{sanitize_user_segment(target_user_id)}"
+			)
 		else:
 			dest_dir = mgr.get_models_folder_path(folder_type)
 		base_dir = os.path.realpath(mgr.models_root)
@@ -186,7 +192,9 @@ def _resolve_destination_path(
 	return dest_dir, base_dir
 
 
-async def _set_progress(job_id: str, bytes_done: int, total_bytes: int | None, start_time: float) -> None:
+async def _set_progress(
+	job_id: str, bytes_done: int, total_bytes: int | None, start_time: float
+) -> None:
 	async with _JOBS_LOCK:
 		job = _JOBS_BY_ID.get(job_id)
 		if not job:
@@ -312,7 +320,11 @@ async def _run_job(job_id: str) -> None:
 		async with _JOBS_LOCK:
 			job = _JOBS_BY_ID.get(job_id)
 			if job:
-				job["status"] = "completed" if success else ("cancelled" if error == "Cancelled by user" else "failed")
+				job["status"] = (
+					"completed"
+					if success
+					else ("cancelled" if error == "Cancelled by user" else "failed")
+				)
 				job["finished_at"] = _utc_now()
 				job["destination"] = dest_dir
 				job["error"] = error or ""
@@ -457,7 +469,9 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 		"cancel_requested": False,
 	}
 	if source == "civitai":
-		model_version_id = (body.get("model_version_id") or body.get("modelVersionId") or "").strip()
+		model_version_id = (
+			body.get("model_version_id") or body.get("modelVersionId") or ""
+		).strip()
 		if not model_version_id:
 			return web.json_response({"error": "model_version_id required for CivitAI"}, status=400)
 		job["model_version_id"] = model_version_id
@@ -474,7 +488,9 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 			if ".." in subfolder or subfolder.startswith("/"):
 				subfolder = None
 		if not repo_id or not filename:
-			return web.json_response({"error": "repo_id and filename required for HuggingFace"}, status=400)
+			return web.json_response(
+				{"error": "repo_id and filename required for HuggingFace"}, status=400
+			)
 		job["repo_id"] = repo_id
 		job["filename"] = filename
 		job["subfolder"] = subfolder
@@ -496,9 +512,7 @@ async def api_model_download_jobs(request: web.Request) -> web.Response:
 		return web.json_response({"error": "Model download permission required"}, status=403)
 	async with _JOBS_LOCK:
 		jobs = [
-			_job_public_view(job)
-			for job in _JOBS_BY_ID.values()
-			if job.get("user_id") == user_id
+			_job_public_view(job) for job in _JOBS_BY_ID.values() if job.get("user_id") == user_id
 		]
 		jobs.sort(key=lambda item: item.get("created_at", ""), reverse=True)
 		return web.json_response({"jobs": jobs, "stats": _queue_stats()})

@@ -397,10 +397,14 @@ def perform_recovery_update(
 	if not os.path.isdir(repo_root):
 		return False, "Repository path is missing."
 	if not os.path.isdir(data_dir):
-		logger.warning("[mss-login] Recovery update: data dir missing, continuing without data backup.")
+		logger.warning(
+			"[mss-login] Recovery update: data dir missing, continuing without data backup."
+		)
 	backup_path = backup_before_update(data_dir) if os.path.isdir(data_dir) else None
 	if os.path.isdir(data_dir) and not backup_path:
-		logger.warning("[mss-login] Recovery update: data backup failed; aborting to protect credentials.")
+		logger.warning(
+			"[mss-login] Recovery update: data backup failed; aborting to protect credentials."
+		)
 		return False, "Recovery aborted because data backup failed."
 	try:
 		fetch = subprocess.run(

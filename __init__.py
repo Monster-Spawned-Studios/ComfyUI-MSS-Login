@@ -421,11 +421,13 @@ try:
 except Exception:
 	pass  # Cache stays empty until admin uses "Refresh folders" in settings
 
+
 # ---------------------------------------------------------------------------
 # Consolidated S3 runtime (s3fs mount + workflow sync) -- experimental
 # ---------------------------------------------------------------------------
 def _handle_experimental_critical_failure(reason: str) -> None:
 	"""Trip failsafe and optionally escalate recovery on repeated failures."""
+
 	def _notify_recovery(action: str, failure_count: int, details: str = "") -> None:
 		try:
 			notify_experimental_recovery(

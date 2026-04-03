@@ -320,9 +320,7 @@ async def api_put_experimental_failsafe(request):
 		escalate = data.get("escalate_after_repeated_failure")
 		updated = save_experimental_failsafe_settings(
 			enabled=(None if enabled is None else bool(enabled)),
-			escalate_after_repeated_failure=(
-				None if escalate is None else bool(escalate)
-			),
+			escalate_after_repeated_failure=(None if escalate is None else bool(escalate)),
 		)
 		reload_experimental_failsafe()
 		return web.json_response({"status": "ok", **updated})

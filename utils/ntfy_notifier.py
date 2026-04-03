@@ -952,9 +952,13 @@ def notify_experimental_recovery(
 	timestamp = occurred_at or "unknown time"
 	guidance = "No action required."
 	if recovery_action == "config_reset":
-		guidance = "Experimental flags were disabled automatically. Restart ComfyUI and verify stability."
+		guidance = (
+			"Experimental flags were disabled automatically. Restart ComfyUI and verify stability."
+		)
 	elif recovery_action == "recovery_update":
-		guidance = "Recovery update completed. Validate that all services and auth flows are healthy."
+		guidance = (
+			"Recovery update completed. Validate that all services and auth flows are healthy."
+		)
 	elif recovery_action == "recovery_update_failed":
 		guidance = "Automatic recovery update failed. Review logs and perform controlled manual maintenance."
 	body_lines = [

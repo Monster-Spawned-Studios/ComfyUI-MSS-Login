@@ -121,7 +121,9 @@ def _install_stubs():
 	sys.modules["mss_login.utils.model_source_api_keys_store"] = keys_mod
 
 	policy_mod = types.ModuleType("mss_login.utils.model_visibility_policy")
-	policy_mod.user_can_download_models = lambda role, perms: perms.get("can_download_models", False)
+	policy_mod.user_can_download_models = lambda role, perms: perms.get(
+		"can_download_models", False
+	)
 	policy_mod.user_can_manage_model_sharing = lambda role, perms: False
 	sys.modules["mss_login.utils.model_visibility_policy"] = policy_mod
 
@@ -195,4 +197,3 @@ def run_tests():
 
 if __name__ == "__main__":
 	run_tests()
-

@@ -653,9 +653,7 @@ def get_experimental_failsafe_settings() -> dict:
 	block = _get_experimental_failsafe_cfg()
 	return {
 		"enabled": bool(block.get("enabled", True)),
-		"escalate_after_repeated_failure": bool(
-			block.get("escalate_after_repeated_failure", True)
-		),
+		"escalate_after_repeated_failure": bool(block.get("escalate_after_repeated_failure", True)),
 		"failure_count": int(block.get("failure_count", 0) or 0),
 		"last_failure_reason": str(block.get("last_failure_reason", "") or ""),
 		"last_failure_at": str(block.get("last_failure_at", "") or ""),

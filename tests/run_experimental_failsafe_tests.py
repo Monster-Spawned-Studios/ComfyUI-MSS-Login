@@ -83,9 +83,21 @@ def run_tests():
 		state = constants.apply_experimental_safety_reset("unit-test-failure")
 		with open(constants.CONFIG_FILE_PATH, "r", encoding="utf-8") as f:
 			updated = json.load(f)
-		ok(updated.get("experimental_features") is False, "failsafe disables experimental master switch")
-		ok(all(updated.get("experimental", {}).get(k) is False for k in ("mfa", "s3", "loading_screen", "news", "model_isolation")), "failsafe disables all experimental sub-flags")
-		ok(updated.get("users_db", {}).get("sqlite_path") == "data/mss_login_data.db", "users DB config remains unchanged")
+		ok(
+			updated.get("experimental_features") is False,
+			"failsafe disables experimental master switch",
+		)
+		ok(
+			all(
+				updated.get("experimental", {}).get(k) is False
+				for k in ("mfa", "s3", "loading_screen", "news", "model_isolation")
+			),
+			"failsafe disables all experimental sub-flags",
+		)
+		ok(
+			updated.get("users_db", {}).get("sqlite_path") == "data/mss_login_data.db",
+			"users DB config remains unchanged",
+		)
 		ok(updated.get("secret_key_env") == "SECRET_KEY", "secret-key config remains unchanged")
 		ok(int(state.get("failure_count", 0)) >= 1, "failsafe increments failure counter")
 
@@ -105,4 +117,3 @@ def run_tests():
 
 if __name__ == "__main__":
 	run_tests()
-
