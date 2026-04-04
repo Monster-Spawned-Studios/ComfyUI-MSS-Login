@@ -410,38 +410,70 @@ const ADMIN_STYLES = `
     z-index: 2;
     position: relative;
 }
-.mss-login-tabs {
-    display: flex;
-    background: #181b22;
-    padding: 0 16px;
+.mss-login-tab-menu {
+    position: relative;
+    padding: 8px 12px;
     border-bottom: 1px solid rgba(255,255,255,0.14);
-    gap: 2px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-    white-space: nowrap;
-    flex-wrap: nowrap;
+    background: #181b22;
 }
-.mss-login-tab {
-    padding: 10px 20px;
+.mss-login-tab-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.08);
+    color: #ffffff;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    text-transform: uppercase;
+}
+.mss-login-tab-toggle:hover {
+    background: rgba(255,255,255,0.16);
+}
+.mss-login-tab-toggle-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+.mss-login-tab-dropdown {
+    position: absolute;
+    top: calc(100% - 2px);
+    left: 12px;
+    min-width: 260px;
+    max-width: min(90vw, 380px);
+    max-height: 55vh;
+    overflow-y: auto;
+    background: #151821;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 10px;
+    box-shadow: 0 14px 32px rgba(0,0,0,0.5);
+    z-index: 20;
+    padding: 6px;
+}
+.mss-login-tab-menu-item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: #c5c8d3;
+    padding: 9px 10px;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 12px;
     font-weight: 600;
-    color: #c5c8d3;
-    border-bottom: 2px solid transparent;
-    transition: 0.16s ease;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
-    flex: 0 0 auto;
+    letter-spacing: 0.06em;
 }
-.mss-login-tab:hover {
+.mss-login-tab-menu-item:hover {
     color: #ffffff;
-    background: rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.09);
 }
-.mss-login-tab.active {
+.mss-login-tab-menu-item.active {
     color: #ffffff;
-    border-bottom-color: var(--p-button-primary-bg, #3b82f6);
-    background: rgba(59,130,246,0.18);
+    background: rgba(59,130,246,0.25);
 }
 
 /* Content Area */
@@ -469,10 +501,19 @@ const ADMIN_STYLES = `
         letter-spacing: 0.04em;
         text-transform: none;
     }
-    .mss-login-tab {
-        padding: 9px 12px;
+    .mss-login-tab-menu {
+        padding: 8px;
+    }
+    .mss-login-tab-toggle {
+        width: 100%;
+        justify-content: space-between;
         font-size: 11px;
-        letter-spacing: 0.04em;
+    }
+    .mss-login-tab-dropdown {
+        left: 8px;
+        right: 8px;
+        max-width: none;
+        min-width: 0;
     }
 }
 
@@ -797,21 +838,21 @@ class mss_loginDialog extends ComfyDialog {
         const allTabs = [...builtInTabs, ...extensionTabs.map(t => ({ id: t.id, label: t.label, order: t.order }))];
         allTabs.sort((a, b) => a.order - b.order);
         
-        // Build tabs HTML - mark "users" tab as active (first built-in tab)
+        // Build tab menu HTML - mark "users" tab as active (first built-in tab)
         // Escape tab.label to prevent XSS (tab.id is already validated during registration)
-        const tabsHTML = allTabs.map((tab, index) => {
-            const isActive = tab.id === "users" || (index === 0 && !builtInTabs.some(bt => bt.id === tab.id));
+        const initialActiveTabId = allTabs.find(tab => tab.id === "users")?.id || allTabs[0]?.id || "";
+        const tabsHTML = allTabs.map((tab) => {
             // ID is validated during registration (lowercase alphanumeric + underscore/hyphen), safe for HTML attributes
             // Label needs escaping as it's user-provided text
             const escapedLabel = escapeHtml(tab.label);
-            return `<div class="mss-login-tab${isActive ? ' active' : ''}" data-tab="${tab.id}">${escapedLabel}</div>`;
+            return `<button type="button" class="mss-login-tab-menu-item${tab.id === initialActiveTabId ? " active" : ""}" data-tab="${tab.id}">${escapedLabel}</button>`;
         }).join("");
         
         // Build content containers HTML - mark "users" content as active
         // tab.id is already validated during registration (lowercase alphanumeric + underscore/hyphen)
-        const contentHTML = allTabs.map((tab, index) => {
-            const isActive = tab.id === "users" || (index === 0 && !builtInTabs.some(bt => bt.id === tab.id));
-            return `<div class="mss-login-content${isActive ? ' active' : ''}" id="mss-login-tab-${tab.id}"></div>`;
+        const contentHTML = allTabs.map((tab) => {
+            const isActive = tab.id === initialActiveTabId;
+            return `<div class="mss-login-content${isActive ? " active" : ""}" id="mss-login-tab-${tab.id}"></div>`;
         }).join("");
         
         // Render Layout
@@ -821,8 +862,14 @@ class mss_loginDialog extends ComfyDialog {
                 <button class="mss-login-modal-close">✕</button>
             </div>
             <div class="mss-login-modal-body">
-                <div class="mss-login-tabs">
-                    ${tabsHTML}
+                <div class="mss-login-tab-menu">
+                    <button type="button" class="mss-login-tab-toggle" id="mss-login-tab-toggle" aria-haspopup="true" aria-expanded="false">
+                        <span class="mss-login-tab-toggle-icon">☰</span>
+                        <span class="mss-login-tab-toggle-text">${escapeHtml(allTabs.find(t => t.id === initialActiveTabId)?.label || "Select section")}</span>
+                    </button>
+                    <div class="mss-login-tab-dropdown" id="mss-login-tab-dropdown" hidden>
+                        ${tabsHTML}
+                    </div>
                 </div>
                 ${contentHTML}
             </div>
@@ -832,21 +879,73 @@ class mss_loginDialog extends ComfyDialog {
         this.element.querySelector(".mss-login-modal-close").onclick = () => this.close();
         this.overlay.onclick = (e) => { if (e.target === this.overlay) this.close(); };
 
-        const tabs = this.element.querySelectorAll(".mss-login-tab");
-        tabs.forEach(t => t.onclick = () => {
-            tabs.forEach(x => x.classList.remove("active"));
-            this.element.querySelectorAll(".mss-login-content").forEach(c => c.classList.remove("active"));
-            t.classList.add("active");
-            
-            // Validate tab ID before using in querySelector to prevent injection
-            const tabId = t.dataset.tab;
-            if (tabId && /^[a-z0-9_-]+$/.test(tabId)) {
-                const contentEl = this.element.querySelector(`#mss-login-tab-${tabId}`);
-                if (contentEl) {
-                    contentEl.classList.add("active");
-                }
+        const tabMenu = this.element.querySelector(".mss-login-tab-menu");
+        const tabToggle = this.element.querySelector("#mss-login-tab-toggle");
+        const tabToggleText = this.element.querySelector(".mss-login-tab-toggle-text");
+        const tabDropdown = this.element.querySelector("#mss-login-tab-dropdown");
+        const tabButtons = this.element.querySelectorAll(".mss-login-tab-menu-item");
+
+        const closeTabMenu = () => {
+            if (!tabDropdown || !tabToggle) return;
+            tabDropdown.hidden = true;
+            tabToggle.setAttribute("aria-expanded", "false");
+        };
+
+        const openTabMenu = () => {
+            if (!tabDropdown || !tabToggle) return;
+            tabDropdown.hidden = false;
+            tabToggle.setAttribute("aria-expanded", "true");
+        };
+
+        const setActiveTab = (tabId) => {
+            if (!tabId || !/^[a-z0-9_-]+$/.test(tabId)) {
+                return;
             }
+            const contentEl = this.element.querySelector(`#mss-login-tab-${tabId}`);
+            if (!contentEl) {
+                return;
+            }
+            tabButtons.forEach(btn => {
+                btn.classList.toggle("active", btn.dataset.tab === tabId);
+            });
+            this.element.querySelectorAll(".mss-login-content").forEach(c => c.classList.remove("active"));
+            contentEl.classList.add("active");
+            const activeTab = allTabs.find(tab => tab.id === tabId);
+            if (activeTab && tabToggleText) {
+                tabToggleText.textContent = activeTab.label;
+            }
+        };
+
+        if (tabToggle) {
+            tabToggle.onclick = () => {
+                if (tabDropdown?.hidden) {
+                    openTabMenu();
+                } else {
+                    closeTabMenu();
+                }
+            };
+        }
+
+        tabButtons.forEach(btn => {
+            btn.onclick = () => {
+                setActiveTab(btn.dataset.tab || "");
+                closeTabMenu();
+            };
         });
+
+        this._tabMenuOutsideClickHandler = (event) => {
+            if (tabDropdown?.hidden) return;
+            if (tabMenu && !tabMenu.contains(event.target)) {
+                closeTabMenu();
+            }
+        };
+        document.addEventListener("click", this._tabMenuOutsideClickHandler);
+        this._tabMenuEscapeHandler = (event) => {
+            if (event.key === "Escape") {
+                closeTabMenu();
+            }
+        };
+        document.addEventListener("keydown", this._tabMenuEscapeHandler);
 
         // Fill Data - Built-in tabs
         this.renderUsers(usersList, this.element.querySelector("#mss-login-tab-users"));
@@ -903,6 +1002,14 @@ class mss_loginDialog extends ComfyDialog {
     }
 
     close() { 
+        if (this._tabMenuOutsideClickHandler) {
+            document.removeEventListener("click", this._tabMenuOutsideClickHandler);
+            this._tabMenuOutsideClickHandler = null;
+        }
+        if (this._tabMenuEscapeHandler) {
+            document.removeEventListener("keydown", this._tabMenuEscapeHandler);
+            this._tabMenuEscapeHandler = null;
+        }
         this.overlay.remove();
         
         // Clear the global instance if this is the current dialog
@@ -4047,13 +4154,269 @@ app.ui.settings.addSetting({
             } catch (_) {}
         })();
 
-        // My JWT Tokens section (list, masked by default, eye to reveal, revoke)
+        // API/JWT token section (requires password re-entry and shows token names)
+        const apiJwtSection = document.createElement("div");
+        apiJwtSection.id = "mss-login-api-jwt-tokens";
+        apiJwtSection.style.marginTop = "12px";
+        apiJwtSection.style.width = "min(100%, 760px)";
+        apiJwtSection.style.textAlign = "left";
+        apiJwtSection.innerHTML = `
+            <h4 style="margin:0 0 8px 0;">API/JWT Tokens</h4>
+            <p class="mss-login-note" style="margin:0 0 10px 0;">
+                Create long-lived API/JWT tokens from inside ComfyUI. For security, you must re-enter your password.
+            </p>
+            <div class="mss-login-row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                <div>
+                    <label class="mss-login-field-label">Token name (optional)</label>
+                    <input type="text" id="mss-login-api-token-label" class="mss-login-input" placeholder="e.g. Tablet App">
+                </div>
+                <div>
+                    <label class="mss-login-field-label">Expires in hours</label>
+                    <input type="number" id="mss-login-api-token-expire-hours" class="mss-login-input" value="720" min="0" step="1" style="width:120px;">
+                </div>
+                <div style="flex:1; min-width:220px;">
+                    <label class="mss-login-field-label">Re-enter password</label>
+                    <input type="password" id="mss-login-api-token-password" class="mss-login-input" placeholder="Required for creation">
+                </div>
+                <div>
+                    <button class="mss-login-btn" id="mss-login-api-token-create">Create token</button>
+                </div>
+            </div>
+            <div id="mss-login-api-token-mfa-row" class="mss-login-row" style="margin-top:8px; gap:10px; align-items:flex-end; display:none; flex-wrap:wrap;">
+                <div>
+                    <label class="mss-login-field-label">MFA code</label>
+                    <input type="text" id="mss-login-api-token-mfa-code" class="mss-login-input" placeholder="123456" style="width:120px;">
+                </div>
+                <div>
+                    <label class="mss-login-field-label">Backup code</label>
+                    <input type="text" id="mss-login-api-token-mfa-backup" class="mss-login-input" placeholder="XXXX-XXXX" style="width:160px;">
+                </div>
+            </div>
+            <p id="mss-login-api-token-create-status" class="mss-login-note" style="margin-top:8px;"></p>
+            <div id="mss-login-api-token-output-wrap" style="display:none; margin-top:8px;">
+                <label class="mss-login-field-label">New token (shown once)</label>
+                <div class="mss-login-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+                    <code id="mss-login-api-token-output" style="padding:8px; border-radius:8px; background:#0f1117; display:block; max-width:100%; overflow:auto;"></code>
+                    <button class="mss-login-btn secondary" id="mss-login-api-token-copy">Copy</button>
+                </div>
+                <p class="mss-login-note" style="margin-top:6px;">Store this token securely. It cannot be shown again.</p>
+            </div>
+            <h5 style="margin:14px 0 8px 0;">My API/JWT tokens</h5>
+            <div id="mss-login-api-token-list" class="mss-login-note">Loading tokens...</div>
+        `;
+        wrapper.appendChild(apiJwtSection);
+        (async () => {
+            let mfaTempToken = null;
+            const me = await getData("/mss-login/api/me");
+            const createBtn = apiJwtSection.querySelector("#mss-login-api-token-create");
+            const labelInput = apiJwtSection.querySelector("#mss-login-api-token-label");
+            const expireInput = apiJwtSection.querySelector("#mss-login-api-token-expire-hours");
+            const passwordInput = apiJwtSection.querySelector("#mss-login-api-token-password");
+            const createStatus = apiJwtSection.querySelector("#mss-login-api-token-create-status");
+            const mfaRow = apiJwtSection.querySelector("#mss-login-api-token-mfa-row");
+            const mfaCodeInput = apiJwtSection.querySelector("#mss-login-api-token-mfa-code");
+            const mfaBackupInput = apiJwtSection.querySelector("#mss-login-api-token-mfa-backup");
+            const tokenOutputWrap = apiJwtSection.querySelector("#mss-login-api-token-output-wrap");
+            const tokenOutput = apiJwtSection.querySelector("#mss-login-api-token-output");
+            const copyBtn = apiJwtSection.querySelector("#mss-login-api-token-copy");
+            const tokenListContainer = apiJwtSection.querySelector("#mss-login-api-token-list");
+
+            const setCreateStatus = (msg, isError = false) => {
+                createStatus.textContent = msg || "";
+                createStatus.style.color = isError ? "#ff8a8a" : "#9ce3a5";
+            };
+
+            const formatDateTime = (value, fallback) => {
+                if (!value) return fallback;
+                try {
+                    return new Date(value).toLocaleString();
+                } catch (_) {
+                    return fallback;
+                }
+            };
+
+            const refreshApiTokenList = async () => {
+                if (!tokenListContainer) return;
+                tokenListContainer.textContent = "Loading tokens...";
+                try {
+                    const res = await api.fetchApi("/mss-login/api/tokens", { method: "GET" });
+                    if (!res.ok) {
+                        tokenListContainer.textContent = "Log in to view your API/JWT tokens.";
+                        return;
+                    }
+                    const data = await res.json().catch(() => ({}));
+                    const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+                    if (tokens.length === 0) {
+                        tokenListContainer.textContent = "No API/JWT tokens found.";
+                        return;
+                    }
+                    const table = document.createElement("table");
+                    table.className = "mss-login-table";
+                    const thead = document.createElement("thead");
+                    thead.innerHTML = "<tr><th>Name</th><th>Hash Prefix</th><th>Created</th><th>Last Used</th><th>Expires</th><th>Action</th></tr>";
+                    table.appendChild(thead);
+                    const tbody = document.createElement("tbody");
+                    tokens.forEach((token) => {
+                        const tr = document.createElement("tr");
+                        const nameTd = document.createElement("td");
+                        const label = typeof token.label === "string" ? token.label.trim() : "";
+                        nameTd.textContent = label || "Unlabeled";
+                        tr.appendChild(nameTd);
+                        const prefixTd = document.createElement("td");
+                        prefixTd.style.fontFamily = "monospace";
+                        prefixTd.textContent = token.token_hash_prefix || "";
+                        tr.appendChild(prefixTd);
+                        const createdTd = document.createElement("td");
+                        createdTd.textContent = formatDateTime(token.created_at_iso, "N/A");
+                        tr.appendChild(createdTd);
+                        const lastUsedTd = document.createElement("td");
+                        lastUsedTd.textContent = formatDateTime(token.last_used_at_iso, "Never");
+                        tr.appendChild(lastUsedTd);
+                        const expiresTd = document.createElement("td");
+                        const neverExpires = token.expires_iso === "9999-12-31T23:59:59+00:00";
+                        expiresTd.textContent = neverExpires ? "Never" : formatDateTime(token.expires_iso, "N/A");
+                        tr.appendChild(expiresTd);
+                        const actionTd = document.createElement("td");
+                        const revokeBtn = document.createElement("button");
+                        revokeBtn.className = "mss-login-btn mss-login-btn-danger";
+                        revokeBtn.textContent = "Revoke";
+                        revokeBtn.onclick = async () => {
+                            const shouldRevoke = window.confirm("Revoke this API/JWT token? This cannot be undone.");
+                            if (!shouldRevoke) return;
+                            try {
+                                const revokeRes = await api.fetchApi("/mss-login/api/tokens", {
+                                    method: "DELETE",
+                                    body: JSON.stringify({
+                                        token_hash_prefix: String(token.token_hash_prefix || "").replace(/\.+$/, ""),
+                                    }),
+                                });
+                                const revokeData = await revokeRes.json().catch(() => ({}));
+                                if (!revokeRes.ok) {
+                                    setCreateStatus(revokeData.error || "Failed to revoke token.", true);
+                                    return;
+                                }
+                                setCreateStatus(revokeData.message || "Token revoked.");
+                                refreshApiTokenList();
+                            } catch (e) {
+                                setCreateStatus("Failed to revoke token: " + (e.message || "Unknown error"), true);
+                            }
+                        };
+                        actionTd.appendChild(revokeBtn);
+                        tr.appendChild(actionTd);
+                        tbody.appendChild(tr);
+                    });
+                    table.appendChild(tbody);
+                    tokenListContainer.innerHTML = "";
+                    tokenListContainer.appendChild(table);
+                } catch (_) {
+                    tokenListContainer.textContent = "Could not load API/JWT tokens.";
+                }
+            };
+
+            if (!me || !me.username || String(me.username).toLowerCase() === "guest") {
+                createBtn.disabled = true;
+                if (passwordInput) passwordInput.disabled = true;
+                setCreateStatus("Guest accounts cannot create API/JWT tokens.", true);
+                await refreshApiTokenList();
+                return;
+            }
+
+            createBtn.onclick = async () => {
+                const expireHours = String(expireInput.value || "720").trim();
+                const label = String(labelInput.value || "").trim();
+                createBtn.disabled = true;
+                tokenOutputWrap.style.display = "none";
+                tokenOutput.textContent = "";
+                setCreateStatus("");
+
+                try {
+                    const formData = new FormData();
+                    formData.append("expire_hours", expireHours || "720");
+                    formData.append("label", label);
+                    formData.append("require_password_reauth", "true");
+
+                    if (mfaTempToken) {
+                        const mfaCode = String(mfaCodeInput.value || "").replace(/\s/g, "");
+                        const backupCode = String(mfaBackupInput.value || "").replace(/\s/g, "");
+                        formData.append("mfa_temp_token", mfaTempToken);
+                        if (backupCode) {
+                            formData.append("backup_code", backupCode);
+                        } else if (mfaCode) {
+                            formData.append("code", mfaCode);
+                        }
+                    } else {
+                        const password = String(passwordInput.value || "");
+                        if (!password) {
+                            setCreateStatus("Please re-enter your password first.", true);
+                            createBtn.disabled = false;
+                            return;
+                        }
+                        formData.append("username", String(me.username));
+                        formData.append("password", password);
+                    }
+
+                    const response = await fetch("/mss-login/generate_token", {
+                        method: "POST",
+                        body: formData,
+                        credentials: "same-origin",
+                    });
+                    const result = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        setCreateStatus(result.error || "Failed to create token.", true);
+                        createBtn.disabled = false;
+                        return;
+                    }
+
+                    if (result.mfa_required && result.mfa_temp_token) {
+                        mfaTempToken = result.mfa_temp_token;
+                        if (mfaRow) mfaRow.style.display = "flex";
+                        setCreateStatus("MFA required. Enter a code or backup code, then click Create token again.");
+                        createBtn.textContent = "Verify and create token";
+                        createBtn.disabled = false;
+                        return;
+                    }
+
+                    if (result.jwt_token) {
+                        if (mfaRow) mfaRow.style.display = "none";
+                        if (mfaCodeInput) mfaCodeInput.value = "";
+                        if (mfaBackupInput) mfaBackupInput.value = "";
+                        mfaTempToken = null;
+                        createBtn.textContent = "Create token";
+                        tokenOutput.textContent = String(result.jwt_token);
+                        tokenOutputWrap.style.display = "block";
+                        setCreateStatus(result.message || "Token created successfully.");
+                        passwordInput.value = "";
+                        await refreshApiTokenList();
+                    } else {
+                        setCreateStatus(result.message || "Token created.");
+                    }
+                } catch (e) {
+                    setCreateStatus("Failed to create token: " + (e.message || "Unknown error"), true);
+                }
+                createBtn.disabled = false;
+            };
+
+            copyBtn.onclick = async () => {
+                const tokenText = String(tokenOutput.textContent || "");
+                if (!tokenText) return;
+                try {
+                    await navigator.clipboard.writeText(tokenText);
+                    setCreateStatus("Copied token to clipboard.");
+                } catch (_) {
+                    setCreateStatus("Copy failed. Please copy manually.", true);
+                }
+            };
+
+            await refreshApiTokenList();
+        })();
+
+        // Session JWT section (list, masked by default, eye to reveal, revoke)
         const jwtSection = document.createElement("div");
         jwtSection.id = "mss-login-my-jwt-tokens";
         jwtSection.style.marginTop = "12px";
         const jwtHeading = document.createElement("h4");
         jwtHeading.style.margin = "0 0 8px 0";
-        jwtHeading.textContent = "My JWT Tokens";
+        jwtHeading.textContent = "My Session JWT Tokens";
         jwtSection.appendChild(jwtHeading);
         const jwtTableWrap = document.createElement("div");
         jwtTableWrap.innerHTML = "<table class='mss-login-sessions-table'><thead><tr><th>Token</th><th>Created</th><th>Last used</th><th>Actions</th></tr></thead><tbody id='mss-login-sessions-tbody'></tbody></table>";

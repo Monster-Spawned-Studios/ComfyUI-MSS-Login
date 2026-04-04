@@ -480,6 +480,13 @@ async def post_generate_token(request: web.Request) -> web.Response:
 	username = sanitize_username(sanitized_data.get("username"))
 	password = sanitize_password_input(sanitized_data.get("password"))
 	label = sanitize_label(sanitized_data.get("label"))
+	require_password_reauth_raw = sanitized_data.get("require_password_reauth")
+	require_password_reauth = str(require_password_reauth_raw).strip().lower() in (
+		"1",
+		"true",
+		"yes",
+		"on",
+	)
 	expire_hours_raw = sanitized_data.get("expire_hours")
 	try:
 		expire_hours = float(expire_hours_raw) if expire_hours_raw not in (None, "") else 720.0
@@ -497,8 +504,9 @@ async def post_generate_token(request: web.Request) -> web.Response:
 		expire_hours = max(1.0, expire_hours)
 
 	# Optionally resolve user from JWT (no password needed)
+	# For sensitive in-app flows, callers can force password re-auth.
 	token_from_request = jwt_auth.get_token_from_request(request)
-	if token_from_request:
+	if token_from_request and not require_password_reauth:
 		try:
 			payload = jwt_auth.decode_access_token(token_from_request)
 			jwt_username = payload.get("username")
