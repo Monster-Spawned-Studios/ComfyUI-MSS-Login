@@ -60,8 +60,8 @@ def create_https_middleware(match_headers: dict | None) -> web.middleware:
 			and _is_browser_request(request)
 			and (request.path in _BROWSER_REDIRECT_PATHS or request.path.startswith("/mss-login"))
 		):
-			https_url = str(request.url).replace("http://", "https://", 1)
-			raise web.HTTPMovedPermanently(https_url)
+			# Relative Location only: str(request.url) embeds Host / forwarded host and enables open redirects.
+			raise web.HTTPMovedPermanently(str(request.rel_url))
 
 		return await handler(request)
 

@@ -1,23 +1,25 @@
 {
-    "python.venvPath": ".venv",
-    "git.ignoreLimitWarning": true,
-    "files.autoSave": "afterDelay",
-    "files.autoSaveDelay": 1000,
-    "editor.formatOnSave": true,
-    "editor.codeActionsOnSave": {
-        "source.fixAll.ruff": "always"
-    },
-    "[python]": {
-        "editor.defaultFormatter": "charliermarsh.ruff",
-        "editor.formatOnSave": true,
-        "editor.formatOnPaste": true
-    },
-    "pylint.enabled": false,
-    "python.linting.pylintEnabled": false,
-    "snyk.features.codeSecurity": true,
-    "snyk.features.openSourceSecurity": true,
-    "snyk.scanningMode": "manual",
-    "snyk.securityAtInception.autoConfigureSnykMcpServer": true,
-    "snyk.advanced.autoSelectOrganization": false,
-    "snyk.advanced.organization": "monster-spawned-studios`",
+	"python.venvPath": ".venv",
+	"git.ignoreLimitWarning": true,
+	"files.autoSave": "afterDelay",
+	"files.autoSaveDelay": 1000,
+	"editor.formatOnSave": true,
+	"[python]": {
+		"editor.defaultFormatter": "charliermarsh.ruff",
+		"editor.formatOnSave": true,
+		"editor.formatOnPaste": true,
+		"editor.detectIndentation": true,
+		"editor.insertSpaces": false,
+		"editor.tabSize": 1,
+		"editor.codeActionsOnSave": {
+			"source.fixAll.ruff": "always",
+			"source.organizeImports.ruff": "always"
+		}
+	},
+	"snyk.features.codeSecurity": true,
+	"snyk.features.openSourceSecurity": true,
+	"snyk.scanningMode": "manual",
+	"snyk.securityAtInception.autoConfigureSnykMcpServer": true,
+	"snyk.advanced.organization": "monster-spawned-studios",
+	"snyk.advanced.autoSelectOrganization": false
 }

@@ -12,22 +12,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  add-copyright-dry-run:
-    name: Add copyright headers
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-      - name: Check copyright headers
-        run: python scripts/add_copyright.py --dry-run
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  add-copyright:
+  add-copyright-headers:
     name: Add copyright headers
     runs-on: ubuntu-latest
     steps:

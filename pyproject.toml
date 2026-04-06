@@ -153,10 +153,35 @@ extend-ignore = [
 # Isort: treat repo as single first-party; stdlib then third-party then local.
 [tool.ruff.lint.isort]
 known-first-party = ["utils", "utils.sfw_intercept", "routes"]
-# Format: match EditorConfig and common Python style (4 spaces, LF).
+# --- Python 3 formatting (canonical; replaces a dedicated [*.py] EditorConfig block) ---
+# Maps common EditorConfig keys for *.py:
+#   end_of_line lf          -> line-ending (below)
+#   indent_style tab        -> indent-style (below); one tab per indent level
+#   indent_size 4           -> editor tab *display* width only (set in .editorconfig / IDE; not a Ruff key)
+#   charset utf-8           -> not configurable in Ruff; save sources as UTF-8
+#   trim_trailing_whitespace / insert_final_newline -> applied when you run `ruff format`
+# Line width: [tool.ruff] line-length above (100).
+# Target syntax: [tool.ruff] target-version (py313).
 [tool.ruff.format]
-indent-style = "tab"
+indent-style = "space"
 line-ending = "lf"
+quote-style = "double"
+skip-magic-trailing-comma = false
+docstring-code-format = false
+docstring-code-line-length = 150
+exclude = [
+	".git",
+	".agent",
+	".vscode",
+	"users",
+	"docs",
+	"readme",
+	".venv",
+	"__pycache__",
+	"build",
+	"site",
+	"ComfyUI",
+]
 
 # Pytest: for when running with full ComfyUI env. Prefer standalone runners for CI (see tests/README.md).
 [tool.pytest.ini_options]

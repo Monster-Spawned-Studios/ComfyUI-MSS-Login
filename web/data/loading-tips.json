@@ -2,5 +2,12 @@
     "Preparing ComfyUI…",
     "Loading your workspace…",
     "Tip: Use the queue to run multiple prompts.",
-    "Tip: Save workflows from the menu to keep your work."
+    "Tip: Save workflows from the menu to keep your work.",
+    "Tip: Use the queue to run multiple prompts.",
+    "Tip: Change the model to use a different AI engine.",
+    "Tip: Make sure to keep your ComfyUI Manager up to date.",
+    "Tip: You can disable/enable NSFW detection and blocking inside the MSS-Login settings.",
+    "Tip: You can change the database backend location inside the MSS-Login settings (SQLite, PostgreSQL, MySQL).",
+    "Tip: You can enable/disable the guest account, if you have owner permissions.",
+    "Tip: If you have any technical issues, open an issue on the GitHub repository!"
 ]

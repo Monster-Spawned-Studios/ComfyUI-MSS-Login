@@ -10,6 +10,14 @@ on:
         description: "Release version (X.X.X). Leave empty to auto-increment patch from latest tag"
         required: false
         default: ""
+      pre-release:
+        description: "Whether to create a pre-release"
+        required: false
+        default: "false"
+      draft:
+        description: "Whether to create a draft release"
+        required: false
+        default: "false"
 
 permissions:
   contents: write
@@ -95,6 +103,6 @@ jobs:
           name: "Release v${{ steps.version.outputs.version }}"
           tag_name: "${{ steps.version.outputs.version }}"
           make_latest: true
-          draft: false
-          prerelease: false
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.pre-release }}
           body_path: readme/changelogs/${{ steps.version.outputs.version }}.md
