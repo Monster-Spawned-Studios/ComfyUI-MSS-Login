@@ -115,8 +115,7 @@ def _migrate_users_db_to_mss_login_data(data_dir: str) -> None:
     if isinstance(users_cfg, str):
         users_path = users_cfg
     else:
-        users_path = (users_cfg.get("sqlite_path")
-                      or "data/users.db").replace("\\", "/")
+        users_path = (users_cfg.get("sqlite_path") or "data/users.db").replace("\\", "/")
     if not users_path.rstrip("/").endswith("users.db"):
         return
     abs_users = (

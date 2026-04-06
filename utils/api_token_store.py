@@ -17,23 +17,23 @@ from typing import Optional
 
 # Default local-network CIDRs (used by remote_api_guard; defined here for reference only)
 DEFAULT_LOCAL_NETWORK_CIDRS = [
-	"127.0.0.0/8",
-	"::1/128",
-	"10.0.0.0/8",
-	"172.16.0.0/12",
-	"192.168.0.0/16",
-	"172.17.0.0/16",  # Docker default bridge
+    "127.0.0.0/8",
+    "::1/128",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "172.17.0.0/16",  # Docker default bridge
 ]
 
 
 def _normalize_lookup_token(token: str) -> str:
-	"""Strip token for lookup so client whitespace doesn't break matching."""
-	return (token or "").strip()
+    """Strip token for lookup so client whitespace doesn't break matching."""
+    return (token or "").strip()
 
 
 def _hash_token(token: str) -> str:
-	"""Return SHA-256 hex digest of token. Never log the result in user-facing logs."""
-	return hashlib.sha256(token.encode("utf-8")).hexdigest()
+    """Return SHA-256 hex digest of token. Never log the result in user-facing logs."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 # Sentinel for "never expires" (when expire_hours is 0 and user has permission)
@@ -41,26 +41,26 @@ NEVER_EXPIRES_ISO = "9999-12-31T23:59:59+00:00"
 
 
 def _iso_expires(expire_hours: float) -> str:
-	"""Return expires_iso. If expire_hours <= 0, return never-expires sentinel."""
-	if expire_hours <= 0:
-		return NEVER_EXPIRES_ISO
-	t = datetime.now(timezone.utc) + timedelta(hours=expire_hours)
-	return t.isoformat()
+    """Return expires_iso. If expire_hours <= 0, return never-expires sentinel."""
+    if expire_hours <= 0:
+        return NEVER_EXPIRES_ISO
+    t = datetime.now(timezone.utc) + timedelta(hours=expire_hours)
+    return t.isoformat()
 
 
 def _iso_now() -> str:
-	"""Return current UTC time as ISO-8601 string."""
-	return datetime.now(timezone.utc).isoformat()
+    """Return current UTC time as ISO-8601 string."""
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _is_expired(expires_iso: str) -> bool:
-	try:
-		if not expires_iso or expires_iso == NEVER_EXPIRES_ISO:
-			return False
-		t = datetime.fromisoformat(expires_iso.replace("Z", "+00:00"))
-		return datetime.now(timezone.utc) >= t
-	except Exception:
-		return True
+    try:
+        if not expires_iso or expires_iso == NEVER_EXPIRES_ISO:
+            return False
+        t = datetime.fromisoformat(expires_iso.replace("Z", "+00:00"))
+        return datetime.now(timezone.utc) >= t
+    except Exception:
+        return True
 
 
 # ---------------------------------------------------------------------------
@@ -69,98 +69,98 @@ def _is_expired(expires_iso: str) -> bool:
 
 
 class _JsonTokenStore:
-	def __init__(self, file_path: str):
-		self._path = Path(file_path)
-		self._path.parent.mkdir(parents=True, exist_ok=True)
-		self._data: dict = {}
-		self._load()
+    def __init__(self, file_path: str):
+        self._path = Path(file_path)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._data: dict = {}
+        self._load()
 
-	def _load(self) -> None:
-		if self._path.exists():
-			try:
-				with open(self._path, "r", encoding="utf-8") as f:
-					self._data = json.load(f)
-			except (json.JSONDecodeError, OSError):
-				self._data = {}
-		else:
-			self._data = {}
+    def _load(self) -> None:
+        if self._path.exists():
+            try:
+                with open(self._path, "r", encoding="utf-8") as f:
+                    self._data = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                self._data = {}
+        else:
+            self._data = {}
 
-	def _save(self) -> None:
-		with open(self._path, "w", encoding="utf-8") as f:
-			json.dump(self._data, f, indent=2)
+    def _save(self) -> None:
+        with open(self._path, "w", encoding="utf-8") as f:
+            json.dump(self._data, f, indent=2)
 
-	def get_user_for_token(self, token: str):
-		h = _hash_token(_normalize_lookup_token(token))
-		rec = self._data.get(h)
-		if not rec:
-			return None
-		if _is_expired(rec.get("expires_iso", "")):
-			del self._data[h]
-			self._save()
-			return None
-		self.update_last_used(token)
-		return (rec.get("user_id"), rec.get("username"))
+    def get_user_for_token(self, token: str):
+        h = _hash_token(_normalize_lookup_token(token))
+        rec = self._data.get(h)
+        if not rec:
+            return None
+        if _is_expired(rec.get("expires_iso", "")):
+            del self._data[h]
+            self._save()
+            return None
+        self.update_last_used(token)
+        return (rec.get("user_id"), rec.get("username"))
 
-	def update_last_used(self, token: str) -> bool:
-		"""Update last_used_at_iso for the token. Returns True if updated."""
-		h = _hash_token(_normalize_lookup_token(token))
-		if h not in self._data:
-			return False
-		if _is_expired(self._data[h].get("expires_iso", "")):
-			return False
-		self._data[h]["last_used_at_iso"] = _iso_now()
-		self._save()
-		return True
+    def update_last_used(self, token: str) -> bool:
+        """Update last_used_at_iso for the token. Returns True if updated."""
+        h = _hash_token(_normalize_lookup_token(token))
+        if h not in self._data:
+            return False
+        if _is_expired(self._data[h].get("expires_iso", "")):
+            return False
+        self._data[h]["last_used_at_iso"] = _iso_now()
+        self._save()
+        return True
 
-	def create_token(
-		self, user_id: str, username: str, expire_hours: float, label: str = ""
-	) -> str:
-		raw = secrets.token_urlsafe(32)
-		h = _hash_token(raw)
-		now = _iso_now()
-		self._data[h] = {
-			"user_id": user_id,
-			"username": username,
-			"expires_iso": _iso_expires(expire_hours),
-			"label": label,
-			"created_at_iso": now,
-			"last_used_at_iso": "",
-		}
-		self._save()
-		return raw
+    def create_token(
+        self, user_id: str, username: str, expire_hours: float, label: str = ""
+    ) -> str:
+        raw = secrets.token_urlsafe(32)
+        h = _hash_token(raw)
+        now = _iso_now()
+        self._data[h] = {
+            "user_id": user_id,
+            "username": username,
+            "expires_iso": _iso_expires(expire_hours),
+            "label": label,
+            "created_at_iso": now,
+            "last_used_at_iso": "",
+        }
+        self._save()
+        return raw
 
-	def revoke_token(self, token: str) -> bool:
-		h = _hash_token(_normalize_lookup_token(token))
-		if h in self._data:
-			del self._data[h]
-			self._save()
-			return True
-		return False
+    def revoke_token(self, token: str) -> bool:
+        h = _hash_token(_normalize_lookup_token(token))
+        if h in self._data:
+            del self._data[h]
+            self._save()
+            return True
+        return False
 
-	def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
-		"""Revoke a token whose hash starts with *prefix* (owned by *username*)."""
-		prefix = (prefix or "").strip().rstrip(".")
-		for h, rec in list(self._data.items()):
-			if h.startswith(prefix) and rec.get("username") == username:
-				del self._data[h]
-				self._save()
-				return True
-		return False
+    def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
+        """Revoke a token whose hash starts with *prefix* (owned by *username*)."""
+        prefix = (prefix or "").strip().rstrip(".")
+        for h, rec in list(self._data.items()):
+            if h.startswith(prefix) and rec.get("username") == username:
+                del self._data[h]
+                self._save()
+                return True
+        return False
 
-	def list_tokens_for_user(self, username: str) -> list:
-		out = []
-		for h, rec in list(self._data.items()):
-			if rec.get("username") == username and not _is_expired(rec.get("expires_iso", "")):
-				out.append(
-					{
-						"token_hash_prefix": h[:8] + "...",
-						"expires_iso": rec.get("expires_iso"),
-						"label": rec.get("label", ""),
-						"created_at_iso": rec.get("created_at_iso", ""),
-						"last_used_at_iso": rec.get("last_used_at_iso", ""),
-					}
-				)
-		return out
+    def list_tokens_for_user(self, username: str) -> list:
+        out = []
+        for h, rec in list(self._data.items()):
+            if rec.get("username") == username and not _is_expired(rec.get("expires_iso", "")):
+                out.append(
+                    {
+                        "token_hash_prefix": h[:8] + "...",
+                        "expires_iso": rec.get("expires_iso"),
+                        "label": rec.get("label", ""),
+                        "created_at_iso": rec.get("created_at_iso", ""),
+                        "last_used_at_iso": rec.get("last_used_at_iso", ""),
+                    }
+                )
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -169,117 +169,117 @@ class _JsonTokenStore:
 
 
 class _SqliteTokenStore:
-	def __init__(self, db_path: str, secret_key: str = "", encryption_level: str = ""):
-		self._path = Path(db_path)
-		from .sqlite_connection import open_sqlite
+    def __init__(self, db_path: str, secret_key: str = "", encryption_level: str = ""):
+        self._path = Path(db_path)
+        from .sqlite_connection import open_sqlite
 
-		self._conn = open_sqlite(
-			str(self._path),
-			secret_key=secret_key,
-			encryption_level=encryption_level or "",
-			check_same_thread=False,
-		)
-		self._conn.execute(
-			"CREATE TABLE IF NOT EXISTS api_tokens "
-			"(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, username TEXT NOT NULL, expires_iso TEXT NOT NULL)"
-		)
-		self._conn.commit()
-		self._migrate_schema()
+        self._conn = open_sqlite(
+            str(self._path),
+            secret_key=secret_key,
+            encryption_level=encryption_level or "",
+            check_same_thread=False,
+        )
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS api_tokens "
+            "(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, username TEXT NOT NULL, expires_iso TEXT NOT NULL)"
+        )
+        self._conn.commit()
+        self._migrate_schema()
 
-	def _migrate_schema(self) -> None:
-		"""Add label, created_at_iso, and last_used_at_iso columns if they don't exist yet."""
-		for col, col_def in (
-			("label", "TEXT DEFAULT ''"),
-			("created_at_iso", "TEXT DEFAULT ''"),
-			("last_used_at_iso", "TEXT DEFAULT ''"),
-		):
-			try:
-				self._conn.execute(f"ALTER TABLE api_tokens ADD COLUMN {col} {col_def}")
-				self._conn.commit()
-			except Exception:
-				pass
+    def _migrate_schema(self) -> None:
+        """Add label, created_at_iso, and last_used_at_iso columns if they don't exist yet."""
+        for col, col_def in (
+            ("label", "TEXT DEFAULT ''"),
+            ("created_at_iso", "TEXT DEFAULT ''"),
+            ("last_used_at_iso", "TEXT DEFAULT ''"),
+        ):
+            try:
+                self._conn.execute(f"ALTER TABLE api_tokens ADD COLUMN {col} {col_def}")
+                self._conn.commit()
+            except Exception:
+                pass
 
-	def get_user_for_token(self, token: str):
-		h = _hash_token(_normalize_lookup_token(token))
-		row = self._conn.execute(
-			"SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = ?",
-			(h,),
-		).fetchone()
-		if not row:
-			return None
-		user_id, username, expires_iso = row
-		if _is_expired(expires_iso):
-			self._conn.execute("DELETE FROM api_tokens WHERE token_hash = ?", (h,))
-			self._conn.commit()
-			return None
-		self.update_last_used(token)
-		return (user_id, username)
+    def get_user_for_token(self, token: str):
+        h = _hash_token(_normalize_lookup_token(token))
+        row = self._conn.execute(
+            "SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = ?",
+            (h,),
+        ).fetchone()
+        if not row:
+            return None
+        user_id, username, expires_iso = row
+        if _is_expired(expires_iso):
+            self._conn.execute("DELETE FROM api_tokens WHERE token_hash = ?", (h,))
+            self._conn.commit()
+            return None
+        self.update_last_used(token)
+        return (user_id, username)
 
-	def update_last_used(self, token: str) -> bool:
-		"""Update last_used_at_iso for the token. Returns True if updated."""
-		h = _hash_token(_normalize_lookup_token(token))
-		now = _iso_now()
-		cur = self._conn.execute(
-			"UPDATE api_tokens SET last_used_at_iso = ? WHERE token_hash = ?",
-			(now, h),
-		)
-		self._conn.commit()
-		return cur.rowcount > 0
+    def update_last_used(self, token: str) -> bool:
+        """Update last_used_at_iso for the token. Returns True if updated."""
+        h = _hash_token(_normalize_lookup_token(token))
+        now = _iso_now()
+        cur = self._conn.execute(
+            "UPDATE api_tokens SET last_used_at_iso = ? WHERE token_hash = ?",
+            (now, h),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
 
-	def create_token(
-		self, user_id: str, username: str, expire_hours: float, label: str = ""
-	) -> str:
-		raw = secrets.token_urlsafe(32)
-		h = _hash_token(raw)
-		exp = _iso_expires(expire_hours)
-		now = _iso_now()
-		self._conn.execute(
-			"INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso, last_used_at_iso) "
-			"VALUES (?, ?, ?, ?, ?, ?, ?)",
-			(h, user_id, username, exp, label, now, ""),
-		)
-		self._conn.commit()
-		return raw
+    def create_token(
+        self, user_id: str, username: str, expire_hours: float, label: str = ""
+    ) -> str:
+        raw = secrets.token_urlsafe(32)
+        h = _hash_token(raw)
+        exp = _iso_expires(expire_hours)
+        now = _iso_now()
+        self._conn.execute(
+            "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso, last_used_at_iso) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (h, user_id, username, exp, label, now, ""),
+        )
+        self._conn.commit()
+        return raw
 
-	def revoke_token(self, token: str) -> bool:
-		h = _hash_token(_normalize_lookup_token(token))
-		cur = self._conn.execute("DELETE FROM api_tokens WHERE token_hash = ?", (h,))
-		self._conn.commit()
-		return cur.rowcount > 0
+    def revoke_token(self, token: str) -> bool:
+        h = _hash_token(_normalize_lookup_token(token))
+        cur = self._conn.execute("DELETE FROM api_tokens WHERE token_hash = ?", (h,))
+        self._conn.commit()
+        return cur.rowcount > 0
 
-	def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
-		"""Revoke a token whose hash starts with *prefix* (owned by *username*)."""
-		prefix = (prefix or "").strip().rstrip(".")
-		cur = self._conn.execute(
-			"DELETE FROM api_tokens WHERE token_hash LIKE ? AND username = ?",
-			(prefix + "%", username),
-		)
-		self._conn.commit()
-		return cur.rowcount > 0
+    def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
+        """Revoke a token whose hash starts with *prefix* (owned by *username*)."""
+        prefix = (prefix or "").strip().rstrip(".")
+        cur = self._conn.execute(
+            "DELETE FROM api_tokens WHERE token_hash LIKE ? AND username = ?",
+            (prefix + "%", username),
+        )
+        self._conn.commit()
+        return cur.rowcount > 0
 
-	def list_tokens_for_user(self, username: str) -> list:
-		rows = self._conn.execute(
-			"SELECT token_hash, expires_iso, label, created_at_iso, last_used_at_iso FROM api_tokens WHERE username = ?",
-			(username,),
-		).fetchall()
-		out = []
-		for row in rows:
-			token_hash = row[0]
-			expires_iso = row[1]
-			label = row[2] if len(row) > 2 else ""
-			created_at_iso = row[3] if len(row) > 3 else ""
-			last_used_at_iso = row[4] if len(row) > 4 else ""
-			if not _is_expired(expires_iso):
-				out.append(
-					{
-						"token_hash_prefix": token_hash[:8] + "...",
-						"expires_iso": expires_iso,
-						"label": label or "",
-						"created_at_iso": created_at_iso or "",
-						"last_used_at_iso": last_used_at_iso or "",
-					}
-				)
-		return out
+    def list_tokens_for_user(self, username: str) -> list:
+        rows = self._conn.execute(
+            "SELECT token_hash, expires_iso, label, created_at_iso, last_used_at_iso FROM api_tokens WHERE username = ?",
+            (username,),
+        ).fetchall()
+        out = []
+        for row in rows:
+            token_hash = row[0]
+            expires_iso = row[1]
+            label = row[2] if len(row) > 2 else ""
+            created_at_iso = row[3] if len(row) > 3 else ""
+            last_used_at_iso = row[4] if len(row) > 4 else ""
+            if not _is_expired(expires_iso):
+                out.append(
+                    {
+                        "token_hash_prefix": token_hash[:8] + "...",
+                        "expires_iso": expires_iso,
+                        "label": label or "",
+                        "created_at_iso": created_at_iso or "",
+                        "last_used_at_iso": last_used_at_iso or "",
+                    }
+                )
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -288,24 +288,24 @@ class _SqliteTokenStore:
 
 
 def _get_postgres_store(host: str, port: int, database: str, user: str, password: str):
-	try:
-		import psycopg2
-		from psycopg2.extras import RealDictCursor
-	except ImportError:
-		raise RuntimeError(
-			"PostgreSQL backend requires psycopg2; install with: pip install psycopg2-binary"
-		)
+    try:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+    except ImportError:
+        raise RuntimeError(
+            "PostgreSQL backend requires psycopg2; install with: pip install psycopg2-binary"
+        )
 
-	conn = psycopg2.connect(
-		host=host,
-		port=port,
-		dbname=database,
-		user=user,
-		password=password,
-	)
-	cur = conn.cursor()
-	cur.execute(
-		"""
+    conn = psycopg2.connect(
+        host=host,
+        port=port,
+        dbname=database,
+        user=user,
+        password=password,
+    )
+    cur = conn.cursor()
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS api_tokens (
             token_hash TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
@@ -313,132 +313,132 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
             expires_iso TEXT NOT NULL
         )
         """
-	)
-	for col, col_def in (
-		("label", "TEXT DEFAULT ''"),
-		("created_at_iso", "TEXT DEFAULT ''"),
-		("last_used_at_iso", "TEXT DEFAULT ''"),
-	):
-		try:
-			cur.execute(f"ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS {col} {col_def}")
-		except Exception:
-			conn.rollback()
-	conn.commit()
-	cur.close()
+    )
+    for col, col_def in (
+        ("label", "TEXT DEFAULT ''"),
+        ("created_at_iso", "TEXT DEFAULT ''"),
+        ("last_used_at_iso", "TEXT DEFAULT ''"),
+    ):
+        try:
+            cur.execute(f"ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS {col} {col_def}")
+        except Exception:
+            conn.rollback()
+    conn.commit()
+    cur.close()
 
-	class _PostgresTokenStore:
-		def __init__(self, conn):
-			self._conn = conn
+    class _PostgresTokenStore:
+        def __init__(self, conn):
+            self._conn = conn
 
-		def _cursor(self):
-			return self._conn.cursor(cursor_factory=RealDictCursor)
+        def _cursor(self):
+            return self._conn.cursor(cursor_factory=RealDictCursor)
 
-		def get_user_for_token(self, token: str):
-			h = _hash_token(_normalize_lookup_token(token))
-			with self._cursor() as cur:
-				cur.execute(
-					"SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = %s",
-					(h,),
-				)
-				row = cur.fetchone()
-			if not row:
-				return None
-			if _is_expired(row["expires_iso"]):
-				with self._conn.cursor() as cur:
-					cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
-					self._conn.commit()
-				return None
-			self.update_last_used(token)
-			return (row["user_id"], row["username"])
+        def get_user_for_token(self, token: str):
+            h = _hash_token(_normalize_lookup_token(token))
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = %s",
+                    (h,),
+                )
+                row = cur.fetchone()
+            if not row:
+                return None
+            if _is_expired(row["expires_iso"]):
+                with self._conn.cursor() as cur:
+                    cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
+                    self._conn.commit()
+                return None
+            self.update_last_used(token)
+            return (row["user_id"], row["username"])
 
-		def update_last_used(self, token: str) -> bool:
-			"""Update last_used_at_iso for the token. Returns True if updated."""
-			h = _hash_token(_normalize_lookup_token(token))
-			now = _iso_now()
-			with self._conn.cursor() as cur:
-				cur.execute(
-					"UPDATE api_tokens SET last_used_at_iso = %s WHERE token_hash = %s",
-					(now, h),
-				)
-				self._conn.commit()
-				return cur.rowcount > 0
+        def update_last_used(self, token: str) -> bool:
+            """Update last_used_at_iso for the token. Returns True if updated."""
+            h = _hash_token(_normalize_lookup_token(token))
+            now = _iso_now()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE api_tokens SET last_used_at_iso = %s WHERE token_hash = %s",
+                    (now, h),
+                )
+                self._conn.commit()
+                return cur.rowcount > 0
 
-		def create_token(
-			self, user_id: str, username: str, expire_hours: float, label: str = ""
-		) -> str:
-			raw = secrets.token_urlsafe(32)
-			h = _hash_token(raw)
-			exp = _iso_expires(expire_hours)
-			now = _iso_now()
-			with self._conn.cursor() as cur:
-				cur.execute(
-					"INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso, last_used_at_iso) "
-					"VALUES (%s, %s, %s, %s, %s, %s, %s)",
-					(h, user_id, username, exp, label, now, ""),
-				)
-				self._conn.commit()
-			return raw
+        def create_token(
+            self, user_id: str, username: str, expire_hours: float, label: str = ""
+        ) -> str:
+            raw = secrets.token_urlsafe(32)
+            h = _hash_token(raw)
+            exp = _iso_expires(expire_hours)
+            now = _iso_now()
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso, last_used_at_iso) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (h, user_id, username, exp, label, now, ""),
+                )
+                self._conn.commit()
+            return raw
 
-		def revoke_token(self, token: str) -> bool:
-			h = _hash_token(_normalize_lookup_token(token))
-			with self._conn.cursor() as cur:
-				cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
-				self._conn.commit()
-				return cur.rowcount > 0
+        def revoke_token(self, token: str) -> bool:
+            h = _hash_token(_normalize_lookup_token(token))
+            with self._conn.cursor() as cur:
+                cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
+                self._conn.commit()
+                return cur.rowcount > 0
 
-		def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
-			"""Revoke a token whose hash starts with *prefix* (owned by *username*)."""
-			prefix = (prefix or "").strip().rstrip(".")
-			with self._conn.cursor() as cur:
-				cur.execute(
-					"DELETE FROM api_tokens WHERE token_hash LIKE %s AND username = %s",
-					(prefix + "%", username),
-				)
-				self._conn.commit()
-				return cur.rowcount > 0
+        def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
+            """Revoke a token whose hash starts with *prefix* (owned by *username*)."""
+            prefix = (prefix or "").strip().rstrip(".")
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM api_tokens WHERE token_hash LIKE %s AND username = %s",
+                    (prefix + "%", username),
+                )
+                self._conn.commit()
+                return cur.rowcount > 0
 
-		def list_tokens_for_user(self, username: str) -> list:
-			with self._cursor() as cur:
-				cur.execute(
-					"SELECT token_hash, expires_iso, label, created_at_iso, last_used_at_iso "
-					"FROM api_tokens WHERE username = %s",
-					(username,),
-				)
-				rows = cur.fetchall()
-			out = []
-			for r in rows:
-				if not _is_expired(r["expires_iso"]):
-					out.append(
-						{
-							"token_hash_prefix": r["token_hash"][:8] + "...",
-							"expires_iso": r["expires_iso"],
-							"label": r.get("label") or "",
-							"created_at_iso": r.get("created_at_iso") or "",
-							"last_used_at_iso": r.get("last_used_at_iso") or "",
-						}
-					)
-			return out
+        def list_tokens_for_user(self, username: str) -> list:
+            with self._cursor() as cur:
+                cur.execute(
+                    "SELECT token_hash, expires_iso, label, created_at_iso, last_used_at_iso "
+                    "FROM api_tokens WHERE username = %s",
+                    (username,),
+                )
+                rows = cur.fetchall()
+            out = []
+            for r in rows:
+                if not _is_expired(r["expires_iso"]):
+                    out.append(
+                        {
+                            "token_hash_prefix": r["token_hash"][:8] + "...",
+                            "expires_iso": r["expires_iso"],
+                            "label": r.get("label") or "",
+                            "created_at_iso": r.get("created_at_iso") or "",
+                            "last_used_at_iso": r.get("last_used_at_iso") or "",
+                        }
+                    )
+            return out
 
-	return _PostgresTokenStore(conn)
+    return _PostgresTokenStore(conn)
 
 
 def _get_mysql_store(host: str, port: int, database: str, user: str, password: str):
-	try:
-		import pymysql
-		from pymysql.cursors import DictCursor
-	except ImportError:
-		raise RuntimeError("MySQL API token store requires pymysql; pip install pymysql")
-	conn = pymysql.connect(
-		host=host,
-		port=port,
-		user=user,
-		password=password,
-		database=database,
-		charset="utf8mb4",
-	)
-	cur = conn.cursor()
-	cur.execute(
-		"""
+    try:
+        import pymysql
+        from pymysql.cursors import DictCursor
+    except ImportError:
+        raise RuntimeError("MySQL API token store requires pymysql; pip install pymysql")
+    conn = pymysql.connect(
+        host=host,
+        port=port,
+        user=user,
+        password=password,
+        database=database,
+        charset="utf8mb4",
+    )
+    cur = conn.cursor()
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS api_tokens (
             token_hash VARCHAR(64) PRIMARY KEY,
             user_id VARCHAR(255) NOT NULL,
@@ -449,112 +449,112 @@ def _get_mysql_store(host: str, port: int, database: str, user: str, password: s
             last_used_at_iso VARCHAR(64) DEFAULT ''
         )
         """
-	)
-	conn.commit()
-	cur.close()
+    )
+    conn.commit()
+    cur.close()
 
-	class _MySQLTokenStore:
-		def __init__(self, conn):
-			self._conn = conn
+    class _MySQLTokenStore:
+        def __init__(self, conn):
+            self._conn = conn
 
-		def _cursor(self):
-			return self._conn.cursor(DictCursor)
+        def _cursor(self):
+            return self._conn.cursor(DictCursor)
 
-		def get_user_for_token(self, token: str):
-			h = _hash_token(_normalize_lookup_token(token))
-			cur = self._cursor()
-			cur.execute(
-				"SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = %s",
-				(h,),
-			)
-			row = cur.fetchone()
-			cur.close()
-			if not row:
-				return None
-			if _is_expired(row["expires_iso"]):
-				cur = self._conn.cursor()
-				cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
-				self._conn.commit()
-				cur.close()
-				return None
-			self.update_last_used(token)
-			return (row["user_id"], row["username"])
+        def get_user_for_token(self, token: str):
+            h = _hash_token(_normalize_lookup_token(token))
+            cur = self._cursor()
+            cur.execute(
+                "SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = %s",
+                (h,),
+            )
+            row = cur.fetchone()
+            cur.close()
+            if not row:
+                return None
+            if _is_expired(row["expires_iso"]):
+                cur = self._conn.cursor()
+                cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
+                self._conn.commit()
+                cur.close()
+                return None
+            self.update_last_used(token)
+            return (row["user_id"], row["username"])
 
-		def update_last_used(self, token: str) -> bool:
-			h = _hash_token(_normalize_lookup_token(token))
-			now = _iso_now()
-			cur = self._conn.cursor()
-			cur.execute(
-				"UPDATE api_tokens SET last_used_at_iso = %s WHERE token_hash = %s",
-				(now, h),
-			)
-			self._conn.commit()
-			n = cur.rowcount
-			cur.close()
-			return n > 0
+        def update_last_used(self, token: str) -> bool:
+            h = _hash_token(_normalize_lookup_token(token))
+            now = _iso_now()
+            cur = self._conn.cursor()
+            cur.execute(
+                "UPDATE api_tokens SET last_used_at_iso = %s WHERE token_hash = %s",
+                (now, h),
+            )
+            self._conn.commit()
+            n = cur.rowcount
+            cur.close()
+            return n > 0
 
-		def create_token(
-			self, user_id: str, username: str, expire_hours: float, label: str = ""
-		) -> str:
-			raw = secrets.token_urlsafe(32)
-			h = _hash_token(raw)
-			exp = _iso_expires(expire_hours)
-			now = _iso_now()
-			cur = self._conn.cursor()
-			cur.execute(
-				"INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso, last_used_at_iso) "
-				"VALUES (%s, %s, %s, %s, %s, %s, %s)",
-				(h, user_id, username, exp, label, now, ""),
-			)
-			self._conn.commit()
-			cur.close()
-			return raw
+        def create_token(
+            self, user_id: str, username: str, expire_hours: float, label: str = ""
+        ) -> str:
+            raw = secrets.token_urlsafe(32)
+            h = _hash_token(raw)
+            exp = _iso_expires(expire_hours)
+            now = _iso_now()
+            cur = self._conn.cursor()
+            cur.execute(
+                "INSERT INTO api_tokens (token_hash, user_id, username, expires_iso, label, created_at_iso, last_used_at_iso) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                (h, user_id, username, exp, label, now, ""),
+            )
+            self._conn.commit()
+            cur.close()
+            return raw
 
-		def revoke_token(self, token: str) -> bool:
-			h = _hash_token(_normalize_lookup_token(token))
-			cur = self._conn.cursor()
-			cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
-			self._conn.commit()
-			n = cur.rowcount
-			cur.close()
-			return n > 0
+        def revoke_token(self, token: str) -> bool:
+            h = _hash_token(_normalize_lookup_token(token))
+            cur = self._conn.cursor()
+            cur.execute("DELETE FROM api_tokens WHERE token_hash = %s", (h,))
+            self._conn.commit()
+            n = cur.rowcount
+            cur.close()
+            return n > 0
 
-		def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
-			prefix = (prefix or "").strip().rstrip(".")
-			cur = self._conn.cursor()
-			cur.execute(
-				"DELETE FROM api_tokens WHERE token_hash LIKE %s AND username = %s",
-				(prefix + "%", username),
-			)
-			self._conn.commit()
-			n = cur.rowcount
-			cur.close()
-			return n > 0
+        def revoke_token_by_hash_prefix(self, prefix: str, username: str) -> bool:
+            prefix = (prefix or "").strip().rstrip(".")
+            cur = self._conn.cursor()
+            cur.execute(
+                "DELETE FROM api_tokens WHERE token_hash LIKE %s AND username = %s",
+                (prefix + "%", username),
+            )
+            self._conn.commit()
+            n = cur.rowcount
+            cur.close()
+            return n > 0
 
-		def list_tokens_for_user(self, username: str) -> list:
-			cur = self._cursor()
-			cur.execute(
-				"SELECT token_hash, expires_iso, label, created_at_iso, last_used_at_iso "
-				"FROM api_tokens WHERE username = %s",
-				(username,),
-			)
-			rows = cur.fetchall()
-			cur.close()
-			out = []
-			for r in rows:
-				if not _is_expired(r["expires_iso"]):
-					out.append(
-						{
-							"token_hash_prefix": r["token_hash"][:8] + "...",
-							"expires_iso": r["expires_iso"],
-							"label": r.get("label") or "",
-							"created_at_iso": r.get("created_at_iso") or "",
-							"last_used_at_iso": r.get("last_used_at_iso") or "",
-						}
-					)
-			return out
+        def list_tokens_for_user(self, username: str) -> list:
+            cur = self._cursor()
+            cur.execute(
+                "SELECT token_hash, expires_iso, label, created_at_iso, last_used_at_iso "
+                "FROM api_tokens WHERE username = %s",
+                (username,),
+            )
+            rows = cur.fetchall()
+            cur.close()
+            out = []
+            for r in rows:
+                if not _is_expired(r["expires_iso"]):
+                    out.append(
+                        {
+                            "token_hash_prefix": r["token_hash"][:8] + "...",
+                            "expires_iso": r["expires_iso"],
+                            "label": r.get("label") or "",
+                            "created_at_iso": r.get("created_at_iso") or "",
+                            "last_used_at_iso": r.get("last_used_at_iso") or "",
+                        }
+                    )
+            return out
 
-	return _MySQLTokenStore(conn)
+    return _MySQLTokenStore(conn)
 
 
 # ---------------------------------------------------------------------------
@@ -565,91 +565,91 @@ _api_token_store_instance = None
 
 
 def get_api_token_store(config: Optional[dict] = None):
-	"""Build or return the singleton API token store from config.
-	Uses same DB as users (backend, sqlite_path, postgres_* from USERS_DB_CONFIG).
-	config can be { "api_token_store": { ... } } or the inner { "backend", "json_path", ... }.
-	When config is None or empty, falls back to constants.API_TOKEN_STORE_CONFIG so named
-	tokens are always stored in the data directory (same DB as users).
-	"""
-	global _api_token_store_instance
-	if config is None:
-		config = {}
-	store_cfg = config.get("api_token_store") if "api_token_store" in config else config
-	if not store_cfg:
-		try:
-			from ..constants import API_TOKEN_STORE_CONFIG
+    """Build or return the singleton API token store from config.
+    Uses same DB as users (backend, sqlite_path, postgres_* from USERS_DB_CONFIG).
+    config can be { "api_token_store": { ... } } or the inner { "backend", "json_path", ... }.
+    When config is None or empty, falls back to constants.API_TOKEN_STORE_CONFIG so named
+    tokens are always stored in the data directory (same DB as users).
+    """
+    global _api_token_store_instance
+    if config is None:
+        config = {}
+    store_cfg = config.get("api_token_store") if "api_token_store" in config else config
+    if not store_cfg:
+        try:
+            from ..constants import API_TOKEN_STORE_CONFIG
 
-			store_cfg = API_TOKEN_STORE_CONFIG
-		except ImportError:
-			store_cfg = {}
-	backend = (store_cfg.get("backend") or "sqlite").lower()
-	if _api_token_store_instance is not None:
-		return _api_token_store_instance
+            store_cfg = API_TOKEN_STORE_CONFIG
+        except ImportError:
+            store_cfg = {}
+    backend = (store_cfg.get("backend") or "sqlite").lower()
+    if _api_token_store_instance is not None:
+        return _api_token_store_instance
 
-	# Legacy "json" backend is no longer used; use same DB as users (one database).
-	if backend == "json":
-		try:
-			from ..constants import API_TOKEN_STORE_CONFIG
+    # Legacy "json" backend is no longer used; use same DB as users (one database).
+    if backend == "json":
+        try:
+            from ..constants import API_TOKEN_STORE_CONFIG
 
-			store_cfg = API_TOKEN_STORE_CONFIG
-			backend = (store_cfg.get("backend") or "sqlite").lower()
-		except ImportError:
-			backend = "sqlite"
+            store_cfg = API_TOKEN_STORE_CONFIG
+            backend = (store_cfg.get("backend") or "sqlite").lower()
+        except ImportError:
+            backend = "sqlite"
 
-	if backend == "sqlite":
-		path = store_cfg.get("sqlite_path", "users/api_tokens.db")
-		if not path:
-			path = os.path.join(
-				os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-				"users",
-				"users.db",
-			)
-		try:
-			from ..constants import SECRET_KEY
-		except ImportError:
-			SECRET_KEY = ""
-		_api_token_store_instance = _SqliteTokenStore(
-			path,
-			secret_key=SECRET_KEY,
-			encryption_level=store_cfg.get("encryption_level", "standard"),
-		)
-	elif backend == "postgresql":
-		host = store_cfg.get("postgres_host", "localhost")
-		port = int(store_cfg.get("postgres_port", 5432))
-		database = store_cfg.get("postgres_database", "mss_login")
-		user = store_cfg.get("postgres_user", "mss_login")
-		password = (
-			store_cfg.get("postgres_password") or os.getenv("POSTGRES_PASSWORD") or ""
-		).strip()
-		_api_token_store_instance = _get_postgres_store(host, port, database, user, password)
-	elif backend == "mysql":
-		host = store_cfg.get("mysql_host", "localhost")
-		port = int(store_cfg.get("mysql_port", 3306))
-		database = store_cfg.get("mysql_database", "mss_login")
-		user = store_cfg.get("mysql_user", "mss_login")
-		password = (store_cfg.get("mysql_password") or os.getenv("MYSQL_PASSWORD") or "").strip()
-		_api_token_store_instance = _get_mysql_store(host, port, database, user, password)
-	else:
-		path = store_cfg.get("sqlite_path", "users/api_tokens.db")
-		if not path:
-			path = os.path.join(
-				os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-				"users",
-				"users.db",
-			)
-		try:
-			from ..constants import SECRET_KEY
-		except ImportError:
-			SECRET_KEY = ""
-		_api_token_store_instance = _SqliteTokenStore(
-			path,
-			secret_key=SECRET_KEY,
-			encryption_level=store_cfg.get("encryption_level", "standard"),
-		)
-	return _api_token_store_instance
+    if backend == "sqlite":
+        path = store_cfg.get("sqlite_path", "users/api_tokens.db")
+        if not path:
+            path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "users",
+                "users.db",
+            )
+        try:
+            from ..constants import SECRET_KEY
+        except ImportError:
+            SECRET_KEY = ""
+        _api_token_store_instance = _SqliteTokenStore(
+            path,
+            secret_key=SECRET_KEY,
+            encryption_level=store_cfg.get("encryption_level", "standard"),
+        )
+    elif backend == "postgresql":
+        host = store_cfg.get("postgres_host", "localhost")
+        port = int(store_cfg.get("postgres_port", 5432))
+        database = store_cfg.get("postgres_database", "mss_login")
+        user = store_cfg.get("postgres_user", "mss_login")
+        password = (
+            store_cfg.get("postgres_password") or os.getenv("POSTGRES_PASSWORD") or ""
+        ).strip()
+        _api_token_store_instance = _get_postgres_store(host, port, database, user, password)
+    elif backend == "mysql":
+        host = store_cfg.get("mysql_host", "localhost")
+        port = int(store_cfg.get("mysql_port", 3306))
+        database = store_cfg.get("mysql_database", "mss_login")
+        user = store_cfg.get("mysql_user", "mss_login")
+        password = (store_cfg.get("mysql_password") or os.getenv("MYSQL_PASSWORD") or "").strip()
+        _api_token_store_instance = _get_mysql_store(host, port, database, user, password)
+    else:
+        path = store_cfg.get("sqlite_path", "users/api_tokens.db")
+        if not path:
+            path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "users",
+                "users.db",
+            )
+        try:
+            from ..constants import SECRET_KEY
+        except ImportError:
+            SECRET_KEY = ""
+        _api_token_store_instance = _SqliteTokenStore(
+            path,
+            secret_key=SECRET_KEY,
+            encryption_level=store_cfg.get("encryption_level", "standard"),
+        )
+    return _api_token_store_instance
 
 
 def reset_api_token_store() -> None:
-	"""Clear the singleton so next get_api_token_store() builds from current config."""
-	global _api_token_store_instance
-	_api_token_store_instance = None
+    """Clear the singleton so next get_api_token_store() builds from current config."""
+    global _api_token_store_instance
+    _api_token_store_instance = None
