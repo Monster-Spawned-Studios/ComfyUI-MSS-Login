@@ -13,3 +13,4 @@ pillow
 numpy
 uv
 transformers
+boto3
