@@ -308,31 +308,30 @@ async def workflow_interceptor_middleware(request, handler):
     if path == "/view" and method == "GET":
         q = request.rel_url.query
         filename = q.get("filename") or q.get("file") or q.get("name")
+        subfolder = q.get("subfolder")
         img_type = q.get("type", "output")
+        rel_path = workflow_routes.build_safe_view_relative_path(filename, subfolder)
 
-        if filename and (img_type == "output" or img_type == "temp"):
-            if not is_safe_filename(filename):
-                filename = None
-            if filename:
-                if img_type == "temp":
-                    target_dir = folder_paths.get_temp_directory()
-                else:
-                    target_dir = folder_paths.get_output_directory()
-                img_path = resolve_path_under(target_dir, filename)
+        if rel_path and (img_type == "output" or img_type == "temp"):
+            if img_type == "temp":
+                target_dir = folder_paths.get_temp_directory()
+            else:
+                target_dir = folder_paths.get_output_directory()
+            img_path = resolve_path_under(target_dir, rel_path)
 
-                # Admin/owner fallback: if the file isn't in the current
-                # user's directory, search the shared output/temp base.
-                if not img_path or not os.path.isfile(img_path):
-                    is_privileged = access_control._is_current_user_admin_or_owner()
-                    if is_privileged:
-                        from .utils.data_dir import get_data_subdir
+            # Admin/owner fallback: if the file isn't in the current
+            # user's directory, search the shared output/temp base.
+            if not img_path or not os.path.isfile(img_path):
+                is_privileged = access_control._is_current_user_admin_or_owner()
+                if is_privileged:
+                    from .utils.data_dir import get_data_subdir
 
-                        base = get_data_subdir("temp" if img_type == "temp" else "output")
-                        img_path = resolve_path_under(base, filename)
+                    base = get_data_subdir("temp" if img_type == "temp" else "output")
+                    img_path = resolve_path_under(base, rel_path)
 
-                if img_path and os.path.isfile(img_path):
-                    if should_block_image_for_current_user(img_path):
-                        return web.Response(status=403, text="NSFW Blocked")
+            if img_path and os.path.isfile(img_path):
+                if should_block_image_for_current_user(img_path):
+                    return web.Response(status=403, text="NSFW Blocked")
 
     # --- Case B: /static_gallery ---
     if path.startswith("/static_gallery/") and method == "GET":

@@ -64,6 +64,10 @@ def run_tests():
         _install_stubs(tmp_data_dir)
         constants = _load_module("mss_login.constants", _CONSTANTS_PATH, "mss_login")
         constants.CONFIG_FILE_PATH = os.path.join(tmp_data_dir, "config.json")
+        ok(
+            constants.CONFIG_FILE_PATH == os.path.join(tmp_data_dir, "config.json"),
+            "test uses expected config path",
+        )
         initial = {
             "experimental_features": True,
             "experimental": {
@@ -100,6 +104,16 @@ def run_tests():
         )
         ok(updated.get("secret_key_env") == "SECRET_KEY", "secret-key config remains unchanged")
         ok(int(state.get("failure_count", 0)) >= 1, "failsafe increments failure counter")
+
+        print("TestFailsafeToggleParsing")
+        prev_toggle = os.environ.get("MSS_LOGIN_EXPERIMENTAL_FAILSAFE")
+        os.environ["MSS_LOGIN_EXPERIMENTAL_FAILSAFE"] = "0"
+        enabled, _escalate = constants.reload_experimental_failsafe()
+        ok(enabled is False, "env toggle disables runtime failsafe gate")
+        if prev_toggle is None:
+            os.environ.pop("MSS_LOGIN_EXPERIMENTAL_FAILSAFE", None)
+        else:
+            os.environ["MSS_LOGIN_EXPERIMENTAL_FAILSAFE"] = prev_toggle
 
     finally:
         try:

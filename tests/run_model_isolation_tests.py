@@ -120,8 +120,9 @@ def run_tests():
         "mss_login.utils",
     )
     ok(paths.sanitize_user_segment("bob@example.com") == "bob_example_com", "user id is sanitized")
+    isolation_path = paths.isolation_user_folder("checkpoints", "alice").replace("\\", "/")
     ok(
-        paths.isolation_user_folder("checkpoints", "alice").endswith("checkpoints/alice"),
+        isolation_path.endswith("checkpoints/alice"),
         "isolation folder path is per-user",
     )
 

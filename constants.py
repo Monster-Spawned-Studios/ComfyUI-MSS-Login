@@ -51,6 +51,10 @@ except ImportError:
         load_dotenvx(dotenv_path=_env_data, override=True)
     except ImportError:
         print("[MSS-Login] dotenvx not found, using os.environ")
+    except SystemExit as e:
+        # Some dotenvx builds exit when external binary is missing.
+        # Treat this as non-fatal and continue with plain environment variables.
+        print(f"[mss_login] dotenvx unavailable in this environment: {e}")
     except Exception as e:
         print(f"[mss_login] Failed to load .env with dotenvx: {e}")
 except Exception as e:
