@@ -32,8 +32,15 @@ from ..utils.ntfy_notifier import (
     get_ntfy_config,
     save_ntfy_config,
     send_notification,
+    verify_signed_action_token,
 )
-from ..utils.path_safety import is_safe_filename, is_safe_folder_segment
+from ..utils.path_safety import is_safe_filename, is_safe_folder_segment, path_under
+from ..utils.quarantine_store import (
+    get_quarantine_settings,
+    list_quarantine_items,
+    mark_quarantine_item_reviewed,
+    quarantine_image_file,
+)
 from ..utils.shared_items_store import get_shared_items_store
 from ..utils.updater import get_cached_status
 from ..utils.user_console_log import get_lines as get_user_console_lines
@@ -203,6 +210,7 @@ async def api_get_ntfy_settings(request):
             "topic": cfg.get("topic", ""),
             "base_url": cfg.get("base_url", ""),
             "enabled_events": cfg.get("enabled_events", []),
+            "has_api_token": bool(cfg.get("has_api_token", False)),
             "event_keys": EVENT_KEYS,
         }
     )
@@ -217,10 +225,13 @@ async def api_put_ntfy_settings(request):
         data = await request.json()
         topic = (data.get("topic") or "").strip()
         base_url = (data.get("base_url") or "").strip()
+        api_token = data.get("api_token")
         enabled = data.get("enabled_events")
         if not isinstance(enabled, list):
             enabled = []
-        save_ntfy_config(topic, enabled, base_url=base_url)
+        if api_token is not None and not isinstance(api_token, str):
+            return web.json_response({"error": "api_token must be a string"}, status=400)
+        save_ntfy_config(topic, enabled, base_url=base_url, api_token=api_token)
         return web.json_response({"status": "ok"})
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
@@ -228,6 +239,85 @@ async def api_put_ntfy_settings(request):
 
 routes.get("/api/mss-login/api/settings/ntfy")(api_get_ntfy_settings)
 routes.put("/api/mss-login/api/settings/ntfy")(api_put_ntfy_settings)
+
+
+def _resolve_ntfy_quarantine_source_path(raw_path: str) -> str | None:
+    """Resolve and validate file path for ntfy quarantine actions."""
+    if not raw_path or not isinstance(raw_path, str):
+        return None
+    try:
+        import os
+        import folder_paths  # type: ignore[import-untyped]
+        from ..utils.data_dir import get_data_subdir
+
+        candidate = os.path.realpath(raw_path)
+        allowed_roots = [
+            os.path.realpath(folder_paths.get_output_directory()),
+            os.path.realpath(folder_paths.get_temp_directory()),
+            os.path.realpath(get_data_subdir("output")),
+            os.path.realpath(get_data_subdir("temp")),
+        ]
+        for root in allowed_roots:
+            if path_under(candidate, root):
+                return candidate
+    except Exception:
+        return None
+    return None
+
+
+@routes.get("/mss-login/api/ntfy/quarantine")
+async def api_ntfy_quarantine_action(request):
+    """Handle signed ntfy action to quarantine an offending image (owner only)."""
+    if not is_owner(request):
+        return web.json_response({"error": "Owner only"}, status=403)
+    token = (request.query.get("token") or "").strip()
+    payload = verify_signed_action_token(token)
+    if not payload or payload.get("action") != "quarantine_nsfw_image":
+        return web.json_response({"error": "Invalid or expired token"}, status=400)
+    source_path = _resolve_ntfy_quarantine_source_path(str(payload.get("path") or ""))
+    if not source_path:
+        return web.json_response({"error": "Invalid source path"}, status=400)
+    quarantine_cfg = get_quarantine_settings()
+    retention_days = int(quarantine_cfg.get("retention_days", 30) or 30)
+    result = quarantine_image_file(
+        source_path=source_path,
+        username=str(payload.get("username") or "unknown"),
+        workflow_name=str(payload.get("workflow_name") or "unknown"),
+        generated_at=str(payload.get("generated_at") or ""),
+        score=payload.get("score"),
+        severity=payload.get("severity"),
+        retention_days=retention_days,
+    )
+    status = 200 if result.get("status") in ("ok", "already_quarantined") else 404
+    return web.json_response(result, status=status)
+
+
+@routes.get("/mss-login/api/quarantine")
+async def api_quarantine_list(request):
+    """List quarantine records (owner/admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    items = list_quarantine_items()
+    return web.json_response({"items": items, "count": len(items)})
+
+
+@routes.post("/mss-login/api/quarantine/{record_id}/review")
+async def api_quarantine_mark_reviewed(request):
+    """Mark a quarantined record as reviewed (owner/admin only)."""
+    if not is_admin(request):
+        return web.json_response({"error": "Admin only"}, status=403)
+    record_id = (request.match_info.get("record_id") or "").strip()
+    if not record_id:
+        return web.json_response({"error": "record_id required"}, status=400)
+    updated = mark_quarantine_item_reviewed(record_id)
+    if not updated:
+        return web.json_response({"error": "record not found"}, status=404)
+    return web.json_response({"status": "ok", "record": updated})
+
+
+routes.get("/api/mss-login/api/ntfy/quarantine")(api_ntfy_quarantine_action)
+routes.get("/api/mss-login/api/quarantine")(api_quarantine_list)
+routes.post("/api/mss-login/api/quarantine/{record_id}/review")(api_quarantine_mark_reviewed)
 
 
 @routes.get("/mss-login/api/settings/experimental")

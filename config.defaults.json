@@ -62,7 +62,12 @@
 	"ntfy": {
 		"topic": "",
 		"base_url": "https://ntfy.sh",
+		"api_token": "",
 		"enabled_events": []
+	},
+	"quarantine": {
+		"retention_days": 30,
+		"cleanup_interval_hours": 24
 	},
 	"experimental_features": false,
 	"experimental_failsafe": {

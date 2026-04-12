@@ -17,15 +17,22 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import mimetypes
 import os
+import time
 import threading
+from datetime import datetime, timezone
+import hmac
+import hashlib
+import base64
+from urllib.parse import quote_plus
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
 import requests
 
-from ..constants import DEBUG_MODE, NTFY_API_KEY
+from ..constants import DEBUG_MODE, NTFY_API_KEY, SECRET_KEY, get_domain
 
 logger = logging.getLogger("mss-login.ntfy")
 
@@ -198,7 +205,7 @@ def _load_ntfy_config() -> dict:
             }
         }
 
-    Returns a dict with keys: topic, enabled_events, base_url.
+    Returns a dict with keys: topic, enabled_events, base_url, api_token.
     """
     try:
         from ..constants import CONFIG_FILE_PATH
@@ -211,14 +218,34 @@ def _load_ntfy_config() -> dict:
         if not isinstance(enabled, list):
             enabled = []
         base_url = (ntfy.get("base_url") or DEFAULT_BASE_URL).rstrip("/")
-        return {"topic": topic, "enabled_events": enabled, "base_url": base_url}
+        api_token = (ntfy.get("api_token") or "").strip()
+        return {
+            "topic": topic,
+            "enabled_events": enabled,
+            "base_url": base_url,
+            "api_token": api_token,
+        }
     except Exception:
-        return {"topic": "", "enabled_events": [], "base_url": DEFAULT_BASE_URL}
+        return {
+            "topic": "",
+            "enabled_events": [],
+            "base_url": DEFAULT_BASE_URL,
+            "api_token": "",
+        }
 
 
-def get_ntfy_config() -> dict:
-    """Return current ntfy config (topic, enabled_events, base_url) for the admin API."""
-    return _load_ntfy_config()
+def get_ntfy_config(include_secret: bool = False) -> dict:
+    """Return ntfy config for API usage without exposing raw token by default."""
+    cfg = _load_ntfy_config()
+    out = {
+        "topic": cfg.get("topic", ""),
+        "enabled_events": cfg.get("enabled_events", []),
+        "base_url": cfg.get("base_url", DEFAULT_BASE_URL),
+        "has_api_token": bool(cfg.get("api_token")),
+    }
+    if include_secret:
+        out["api_token"] = cfg.get("api_token", "")
+    return out
 
 
 def _validate_ntfy_base_url(url: str) -> str:
@@ -251,6 +278,7 @@ def save_ntfy_config(
     topic: str,
     enabled_events: List[str],
     base_url: str = "",
+    api_token: Optional[str] = None,
 ) -> None:
     """
     Persist ntfy config to config.json.
@@ -264,6 +292,8 @@ def save_ntfy_config(
     base_url : str, optional
         Custom ntfy server URL. Defaults to ``DEFAULT_BASE_URL``.
         Must use HTTPS for non-local hosts.
+    api_token : str | None
+        Optional ntfy bearer token stored in config. If None, keep existing token.
 
     Raises
     ------
@@ -277,12 +307,110 @@ def save_ntfy_config(
     cfg = load_json_file(CONFIG_FILE_PATH, {})
     if not isinstance(cfg, dict):
         cfg = {}
+    current_ntfy = cfg.get("ntfy") or {}
+    if not isinstance(current_ntfy, dict):
+        current_ntfy = {}
+    resolved_token = (
+        current_ntfy.get("api_token", "") if api_token is None else str(api_token or "").strip()
+    )
     cfg["ntfy"] = {
         "topic": (topic or "").strip(),
         "enabled_events": (list(enabled_events) if isinstance(enabled_events, list) else []),
         "base_url": validated_url,
+        "api_token": resolved_token,
     }
     save_json_file(CONFIG_FILE_PATH, cfg)
+
+
+def _resolve_api_key(explicit_key: str, config_key: str) -> str:
+    """Resolve ntfy key precedence: explicit arg > config token > env token."""
+    if explicit_key:
+        return explicit_key.strip()
+    if config_key:
+        return config_key.strip()
+    return (NTFY_API_KEY or "").strip()
+
+
+def nsfw_score_to_severity(score: Optional[float]) -> Optional[int]:
+    """
+    Map NSFW score (0.0-1.0) to severity (1-10).
+    Returns None when score is unavailable.
+    """
+    if score is None:
+        return None
+    try:
+        score_value = float(score)
+    except (TypeError, ValueError):
+        return None
+    clamped = max(0.0, min(1.0, score_value))
+    return max(1, min(10, int(math.ceil(clamped * 10))))
+
+
+def _b64url_encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def _b64url_decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode((value + padding).encode("ascii"))
+
+
+def create_signed_action_token(payload: dict, ttl_seconds: int = 900) -> str:
+    """Create an HMAC-signed, short-lived action token."""
+    now = int(time.time())
+    token_payload = dict(payload or {})
+    token_payload["iat"] = now
+    token_payload["exp"] = now + max(30, int(ttl_seconds))
+    payload_bytes = json.dumps(token_payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    signature = hmac.new(SECRET_KEY.encode("utf-8"), payload_bytes, hashlib.sha256).digest()
+    return f"{_b64url_encode(payload_bytes)}.{_b64url_encode(signature)}"
+
+
+def verify_signed_action_token(token: str) -> Optional[dict]:
+    """Verify token signature and expiry; return payload on success."""
+    if not token or "." not in token:
+        return None
+    try:
+        payload_part, sig_part = token.split(".", 1)
+        payload_bytes = _b64url_decode(payload_part)
+        given_sig = _b64url_decode(sig_part)
+        expected_sig = hmac.new(SECRET_KEY.encode("utf-8"), payload_bytes, hashlib.sha256).digest()
+        if not hmac.compare_digest(given_sig, expected_sig):
+            return None
+        payload = json.loads(payload_bytes.decode("utf-8"))
+        exp = int(payload.get("exp", 0) or 0)
+        if exp <= int(time.time()):
+            return None
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+
+
+def build_nsfw_quarantine_action(
+    *,
+    image_path: str,
+    username: str,
+    workflow_name: str,
+    generated_at: str,
+    score: Optional[float],
+    ttl_seconds: int = 900,
+) -> Optional[dict]:
+    """Build a signed ntfy action button for quarantining an offending image."""
+    if not image_path:
+        return None
+    payload = {
+        "action": "quarantine_nsfw_image",
+        "path": image_path,
+        "username": username,
+        "workflow_name": workflow_name or "unknown",
+        "generated_at": generated_at or datetime.now(timezone.utc).isoformat(),
+        "score": score,
+        "severity": nsfw_score_to_severity(score),
+    }
+    token = create_signed_action_token(payload, ttl_seconds=ttl_seconds)
+    base = get_domain(use_https=True, use_port=False).rstrip("/")
+    url = f"{base}/mss-login/api/ntfy/quarantine?action=quarantine&token={quote_plus(token)}"
+    return {"action": "view", "label": "Quarantine image", "url": url, "clear": True}
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +537,7 @@ def send_notification(
         return NotificationResult(success=True, skipped=True) if not _async else True
 
     base_url = cfg.get("base_url", DEFAULT_BASE_URL)
-    resolved_key = api_key or NTFY_API_KEY
+    resolved_key = _resolve_api_key(api_key, cfg.get("api_token", ""))
 
     # Build the request parameters in a serialisable form so we can hand
     # them off to a background thread without closure pitfalls.
@@ -777,8 +905,12 @@ def notify_nsfw_block(
     username: str,
     image_name: str,
     *,
+    image_path: str = "",
+    workflow_name: str = "unknown",
+    generated_at: str = "",
     score: Optional[float] = None,
     cached: bool = False,
+    include_quarantine_action: bool = False,
     **kwargs,
 ) -> Union[NotificationResult, bool]:
     """
@@ -795,16 +927,38 @@ def notify_nsfw_block(
     cached : bool
         True when the result came from the metadata cache.
     """
-    detail = f" (Score: {score:.2f})" if score is not None else ""
-    if cached:
-        detail += " [cached]"
+    severity = nsfw_score_to_severity(score)
+    score_text = f"{score:.2f}" if score is not None else "unknown"
+    severity_text = f"{severity}/10" if severity is not None else "unknown"
+    generated_value = generated_at or datetime.now(timezone.utc).isoformat()
+    cached_suffix = " [cached]" if cached else ""
+    action = None
+    if include_quarantine_action and image_path:
+        action = build_nsfw_quarantine_action(
+            image_path=image_path,
+            username=username,
+            workflow_name=workflow_name,
+            generated_at=generated_value,
+            score=score,
+        )
+    actions = kwargs.pop("actions", None)
+    if action:
+        actions = (actions or []) + [action]
     return send_notification(
         "nsfw_block",
         title="MSS-Login: NSFW image blocked",
-        message=(
-            f"User **{username}** attempted to view/generate NSFW content: `{image_name}`{detail}"
+        message="\n".join(
+            [
+                f"User **{username}** attempted to view/generate NSFW content.",
+                f"- File: `{image_name}`",
+                f"- Workflow: `{workflow_name or 'unknown'}`",
+                f"- Generated at: `{generated_value}`",
+                f"- NSFW confidence: `{score_text}`",
+                f"- Severity: `{severity_text}`{cached_suffix}",
+            ]
         ),
         markdown=True,
+        actions=actions,
         **kwargs,
     )
 

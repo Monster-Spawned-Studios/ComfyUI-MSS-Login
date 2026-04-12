@@ -94,6 +94,7 @@ import sys
 import importlib.util
 from datetime import datetime, timezone
 from .utils.ntfy_notifier import notify_experimental_recovery
+from .utils.quarantine_store import quarantine_cleanup_loop
 
 _root = os.path.dirname(os.path.abspath(__file__))
 _install_deps_path = os.path.join(_root, "utils", "install_deps.py")
@@ -151,13 +152,21 @@ if _host_env and _host_env.startswith(("http://", "https://")):
 
 # Schedule recurring background update check (notify or auto according to config)
 _update_task = asyncio.ensure_future(update_check_loop(app, logger, CONFIG_FILE_PATH))
+_quarantine_cleanup_task = asyncio.ensure_future(
+    quarantine_cleanup_loop(app, logger, CONFIG_FILE_PATH)
+)
 
 
 async def _cancel_update_task(app_ref) -> None:
     """Cancel the recurring update check on shutdown."""
     _update_task.cancel()
+    _quarantine_cleanup_task.cancel()
     try:
         await _update_task
+    except (asyncio.CancelledError, Exception):
+        pass
+    try:
+        await _quarantine_cleanup_task
     except (asyncio.CancelledError, Exception):
         pass
 

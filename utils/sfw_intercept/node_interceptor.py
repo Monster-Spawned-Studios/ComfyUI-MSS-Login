@@ -5,13 +5,51 @@ import numpy as np
 from PIL import Image
 import latent_preview
 
+from ...globals import current_username_var, users_db
+from ...utils.ntfy_notifier import notify_image_generated
+from ...utils.path_safety import resolve_path_under
 from ...utils.sfw_intercept.nsfw_guard import (
     _get_nsfw_pipeline,
     is_sfw_enforced_for_current_session,
 )
+import folder_paths
 
 # --- CONFIGURATION ---
 SCORE_THRESHOLD = 0.50
+
+
+def _owner_generated_image_notify(result_payload) -> None:
+    """Send image-generated notification with attachment when owner generated it."""
+    try:
+        current_user = current_username_var.get(None)
+    except LookupError:
+        current_user = None
+    owner_username = users_db.get_owner_username()
+    if not current_user or not owner_username or current_user != owner_username:
+        return
+    images = (
+        (result_payload or {}).get("ui", {}).get("images", [])
+        if isinstance(result_payload, dict)
+        else []
+    )
+    for image in images:
+        if not isinstance(image, dict):
+            continue
+        filename = str(image.get("filename") or "").strip()
+        if not filename:
+            continue
+        image_type = str(image.get("type") or "output").strip().lower()
+        subfolder = str(image.get("subfolder") or "").strip()
+        base_dir = (
+            folder_paths.get_temp_directory()
+            if image_type == "temp"
+            else folder_paths.get_output_directory()
+        )
+        relative = f"{subfolder}/{filename}".strip("/") if subfolder else filename
+        image_path = resolve_path_under(base_dir, relative)
+        if image_path and image_path.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+            notify_image_generated(current_user, image_path=image_path)
+            return
 
 
 # ----------------------------------------------------------------------------
@@ -116,12 +154,16 @@ def install_node_interceptor():
             print(f"[mss-login] 🛑 BLOCKED {mode}: Replacing with BLACK SQUARE.")
             black_images = torch.zeros_like(images)
             if mode == "save":
-                return original_save(self, black_images, filename_prefix, prompt, extra_pnginfo)
+                result = original_save(self, black_images, filename_prefix, prompt, extra_pnginfo)
+                _owner_generated_image_notify(result)
+                return result
             else:
                 return original_preview(self, black_images, filename_prefix, prompt, extra_pnginfo)
 
         if mode == "save":
-            return original_save(self, images, filename_prefix, prompt, extra_pnginfo)
+            result = original_save(self, images, filename_prefix, prompt, extra_pnginfo)
+            _owner_generated_image_notify(result)
+            return result
         else:
             return original_preview(self, images, filename_prefix, prompt, extra_pnginfo)
 
