@@ -278,11 +278,7 @@ class _PostgresUsersBackend:
                 f"PostgreSQL backend requires psycopg2; pip install psycopg2-binary: {e}"
             ) from e
         self._conn = psycopg2.connect(
-            host=host,
-            port=port,
-            dbname=database,
-            user=user,
-            password=password,
+            host=host, port=port, dbname=database, user=user, password=password
         )
         self._cursor_factory = RealDictCursor
         self._ensure_schema()
@@ -437,14 +433,7 @@ class _PostgresUsersBackend:
 class _MySQLUsersBackend:
     """MySQL backend for the users database."""
 
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        database: str,
-        user: str,
-        password: str,
-    ):
+    def __init__(self, host: str, port: int, database: str, user: str, password: str):
         try:
             import pymysql
             from pymysql.cursors import DictCursor
@@ -452,12 +441,7 @@ class _MySQLUsersBackend:
             _get_logger().error(f"MySQL backend requires pymysql; pip install pymysql: {e}")
             raise RuntimeError("MySQL backend requires pymysql; pip install pymysql") from e
         self._conn = pymysql.connect(
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            database=database,
-            charset="utf8mb4",
+            host=host, port=port, user=user, password=password, database=database, charset="utf8mb4"
         )
         self._dict_cursor = DictCursor
         self._ensure_schema()
@@ -847,11 +831,7 @@ class UsersDB:
         return None
 
     def update_user(
-        self,
-        username: str,
-        groups: list,
-        is_admin: bool,
-        sfw_check: Optional[bool] = None,
+        self, username: str, groups: list, is_admin: bool, sfw_check: Optional[bool] = None
     ) -> bool:
         """Update groups, admin, and optionally sfw_check for a user. Returns True if found and updated."""
         user_id, user = self.get_user(username=username)

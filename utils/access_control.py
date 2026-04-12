@@ -149,11 +149,7 @@ class AccessControl:
 
             # 2. Core Extensions
             if path.startswith(
-                (
-                    "/extensions/core",
-                    "/extensions/ComfyUI-MSS-Login",
-                    "/extensions/MSS-Login",
-                )
+                ("/extensions/core", "/extensions/ComfyUI-MSS-Login", "/extensions/MSS-Login")
             ):
                 return await handler(request)
 
@@ -190,12 +186,7 @@ class AccessControl:
                 )
                 return web.json_response({"error": "MSS-Login: Upload Denied"}, status=403)
 
-            if is_userdata_workflow and request.method in (
-                "POST",
-                "PUT",
-                "DELETE",
-                "PATCH",
-            ):
+            if is_userdata_workflow and request.method in ("POST", "PUT", "DELETE", "PATCH"):
                 can_modify = perms.get("can_modify_workflows")
                 if can_modify is None:
                     can_modify = role != "guest"
@@ -229,8 +220,7 @@ class AccessControl:
                     can_s3 = role in ("admin", "owner")
                 if not can_s3:
                     return web.json_response(
-                        {"error": "MSS-Login: S3 Storage Access Denied"},
-                        status=403,
+                        {"error": "MSS-Login: S3 Storage Access Denied"}, status=403
                     )
 
             if not is_queue and not is_upload and path.startswith("/api/"):

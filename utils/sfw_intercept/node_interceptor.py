@@ -141,12 +141,7 @@ def install_node_interceptor():
         return
 
     def intercepted_wrapper(
-        self,
-        images,
-        filename_prefix="ComfyUI",
-        prompt=None,
-        extra_pnginfo=None,
-        mode="unknown",
+        self, images, filename_prefix="ComfyUI", prompt=None, extra_pnginfo=None, mode="unknown"
     ):
         is_bad = check_tensor_nsfw(images)
 

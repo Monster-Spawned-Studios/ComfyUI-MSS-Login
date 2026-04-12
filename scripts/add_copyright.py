@@ -35,11 +35,7 @@ DEFAULT_COPYRIGHT_FILE = DEFAULT_ROOT / "docs" / "COPYRIGHT"
 # "line" = each line prefixed (e.g. # or //); "block" = multi-line block (/* */ or <!-- -->).
 COMMENT_STYLES: dict[str, tuple[str, str, str]] = {
     "block_py": ("# ", "\n", "line"),  # Python, shell, YAML: # per line
-    "block_js": (
-        "/*\n * ",
-        "\n */",
-        "block",
-    ),  # JS/TS/CSS: /* \n * line \n * line \n */
+    "block_js": ("/*\n * ", "\n */", "block"),  # JS/TS/CSS: /* \n * line \n * line \n */
     # HTML: <!-- \n line \n line \n -->
     "block_html": ("<!--\n", "\n-->", "block"),
 }
@@ -186,11 +182,7 @@ def _file_matches_skip_entry(path: Path, root: Path, entry: str) -> bool:
     return path.name == norm
 
 
-def collect_files(
-    root: Path,
-    skip_dirs: set[str],
-    skip_files: set[str],
-) -> list[tuple[Path, str]]:
+def collect_files(root: Path, skip_dirs: set[str], skip_files: set[str]) -> list[tuple[Path, str]]:
     """Return list of (path, extension) for supported files under root."""
     out: list[tuple[Path, str]] = []
     for path in root.rglob("*"):
@@ -209,7 +201,7 @@ def collect_files(
 def main() -> int:
     """Main function to add or update copyright headers from a COPYRIGHT file."""
     parser = argparse.ArgumentParser(
-        description="Add or update copyright headers from a COPYRIGHT file.",
+        description="Add or update copyright headers from a COPYRIGHT file."
     )
     parser.add_argument(
         "root",
@@ -234,11 +226,7 @@ def main() -> int:
         action="store_true",
         help="Like --dry-run but exit 1 if any file would be modified (for CI)",
     )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Enable verbose output",
-    )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     _skip_dirs_default = ",".join(sorted(SKIP_DIRS))
     parser.add_argument(
         "--skip-dirs",

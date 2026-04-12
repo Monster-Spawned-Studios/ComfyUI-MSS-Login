@@ -228,8 +228,7 @@ class IPFilter:
 
             if not self.is_allowed(ip, request):
                 return await handle_access_denied(
-                    request,
-                    "Access denied: IP is either not whitelisted or is blacklisted.",
+                    request, "Access denied: IP is either not whitelisted or is blacklisted."
                 )
 
             return await handler(request)

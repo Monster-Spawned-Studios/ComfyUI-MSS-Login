@@ -93,9 +93,7 @@ if USERS_DB_CONFIG.get("backend") == "sqlite" and not USERS_DB_CONFIG.get("encry
     from .utils.migrate_api_tokens_to_unified import migrate_api_tokens_if_needed
 
     if migrate_api_tokens_if_needed(
-        USERS_DB_CONFIG.get("sqlite_path", ""),
-        _old_token_path,
-        CONFIG_FILE_PATH,
+        USERS_DB_CONFIG.get("sqlite_path", ""), _old_token_path, CONFIG_FILE_PATH
     ):
         logger.info("[mss_login] Migrated API tokens from separate DB into unified DB.")
 

@@ -28,11 +28,7 @@ def run_script(name: str, path: str) -> bool:
     if not os.path.isfile(venv_exe):
         venv_exe = sys.executable
     python = venv_exe
-    result = subprocess.run(
-        [python, path],
-        cwd=_PROJECT_ROOT,
-        capture_output=False,
-    )
+    result = subprocess.run([python, path], cwd=_PROJECT_ROOT, capture_output=False)
     return result.returncode == 0
 
 
@@ -83,10 +79,7 @@ def main() -> int:
         )
         steps.append(("Model isolation", os.path.join(TESTS_DIR, "run_model_isolation_tests.py")))
         steps.append(
-            (
-                "Experimental failsafe",
-                os.path.join(TESTS_DIR, "run_experimental_failsafe_tests.py"),
-            )
+            ("Experimental failsafe", os.path.join(TESTS_DIR, "run_experimental_failsafe_tests.py"))
         )
         steps.append(
             ("Model download queue", os.path.join(TESTS_DIR, "run_model_download_queue_tests.py"))

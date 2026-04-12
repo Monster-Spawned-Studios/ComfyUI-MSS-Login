@@ -7,11 +7,7 @@ from aiohttp import web
 
 from .. import constants as constants_module
 from ..globals import routes, users_db
-from ..utils.s3_mounter import (
-    get_s3_manager,
-    get_s3_settings_payload,
-    save_s3_settings,
-)
+from ..utils.s3_mounter import get_s3_manager, get_s3_settings_payload, save_s3_settings
 
 
 def _error_json(msg: str, status: int = 400) -> web.Response:

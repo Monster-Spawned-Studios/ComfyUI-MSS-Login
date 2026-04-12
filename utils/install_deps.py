@@ -27,11 +27,7 @@ def _read_config_json(path: str) -> dict:
 
 
 # DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
-DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in (
-    "1",
-    "true",
-    "yes",
-)
+DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
 _config_for_deps = _read_config_json(join(_install_deps_root, "config.json")) or _read_config_json(
     join(_install_deps_root, "config.defaults.json")
 )
@@ -47,18 +43,10 @@ def install_dependencies() -> bool:
     def run_command(command: str) -> bool:
         try:
             result = subprocess.run(
-                command,
-                cwd=root,
-                capture_output=True,
-                text=True,
-                timeout=300,
-                check=False,
+                command, cwd=root, capture_output=True, text=True, timeout=300, check=False
             )
             if result.returncode != 0 and result.stderr:
-                print(
-                    f"[mss-login] {command} warning: {result.stderr.strip()}",
-                    file=sys.stderr,
-                )
+                print(f"[mss-login] {command} warning: {result.stderr.strip()}", file=sys.stderr)
             return result.returncode == 0
         except Exception as e:
             print(f"[mss-login] {command} failed: {e}", file=sys.stderr)
@@ -66,10 +54,7 @@ def install_dependencies() -> bool:
 
     # Run a uv command and return True if successful, False otherwise
     def run_uv(
-        environment_variables: dict[str, str],
-        args: list[str],
-        timeout: int = 600,
-        cwd: str = root,
+        environment_variables: dict[str, str], args: list[str], timeout: int = 600, cwd: str = root
     ) -> bool:
         try:
             result = subprocess.run(
@@ -82,21 +67,14 @@ def install_dependencies() -> bool:
                 check=False,
             )
             if result.returncode != 0 and result.stderr:
-                print(
-                    f"[mss-login] uv {args} warning: {result.stderr.strip()}",
-                    file=sys.stderr,
-                )
+                print(f"[mss-login] uv {args} warning: {result.stderr.strip()}", file=sys.stderr)
             return result.returncode == 0
         except FileNotFoundError:
-            print(
-                "[mss-login] uv not available; skipping dependency install.",
-                file=sys.stderr,
-            )
+            print("[mss-login] uv not available; skipping dependency install.", file=sys.stderr)
             return False
         except subprocess.TimeoutExpired:
             print(
-                "[mss-login] uv install timed out; dependencies may be incomplete.",
-                file=sys.stderr,
+                "[mss-login] uv install timed out; dependencies may be incomplete.", file=sys.stderr
             )
             return False
         except Exception as e:
@@ -115,16 +93,10 @@ def install_dependencies() -> bool:
                 check=False,
             )
             if result.returncode != 0 and result.stderr:
-                print(
-                    f"[mss-login] pip install warning: {result.stderr.strip()}",
-                    file=sys.stderr,
-                )
+                print(f"[mss-login] pip install warning: {result.stderr.strip()}", file=sys.stderr)
             return result.returncode == 0
         except FileNotFoundError:
-            print(
-                "[mss-login] pip not available; skipping dependency install.",
-                file=sys.stderr,
-            )
+            print("[mss-login] pip not available; skipping dependency install.", file=sys.stderr)
             return False
         except subprocess.TimeoutExpired:
             print(
@@ -170,11 +142,7 @@ def install_dependencies() -> bool:
             return False
         # Install the dependencies from the pyproject.toml file
         pyproject = os.path.join(root, "pyproject.toml")
-        if os.path.isfile(pyproject) and platform.system() in [
-            "Windows",
-            "Linux",
-            "Darwin",
-        ]:
+        if os.path.isfile(pyproject) and platform.system() in ["Windows", "Linux", "Darwin"]:
             if not run_uv(
                 {"UV_TORCH_BACKEND": "auto"},
                 ["pip", "install", "-r", f"{root}/pyproject.toml"],

@@ -82,11 +82,7 @@ def _build_safe_relative_path(filename: str | None, subfolder: str | None) -> st
 
 
 def _resolve_image_path(
-    *,
-    image_type: str,
-    filename: str | None,
-    subfolder: str | None,
-    allow_global_lookup: bool,
+    *, image_type: str, filename: str | None, subfolder: str | None, allow_global_lookup: bool
 ) -> tuple[str | None, str | None]:
     import folder_paths
 
@@ -231,12 +227,7 @@ def list_trash_items(
     return filtered
 
 
-def restore_trash_item(
-    *,
-    item_id: str,
-    request_username: str,
-    is_owner: bool,
-) -> dict[str, Any]:
+def restore_trash_item(*, item_id: str, request_username: str, is_owner: bool) -> dict[str, Any]:
     items = _load_records()
     request_user = _sanitize_user_segment(request_username)
     for idx, item in enumerate(items):
@@ -282,10 +273,7 @@ def restore_trash_item(
 
 
 def empty_trash(
-    *,
-    request_username: str,
-    is_owner: bool,
-    target_user: str | None = None,
+    *, request_username: str, is_owner: bool, target_user: str | None = None
 ) -> dict[str, int]:
     items = _load_records()
     request_user = _sanitize_user_segment(request_username)

@@ -103,11 +103,7 @@ async def api_me(request: web.Request) -> web.Response:
     # Capture host base URL from first admin/owner connection when not set by env or DB
     if username and (is_admin or "owner" in groups):
         try:
-            from ..constants import (
-                clear_host_base_url_cache,
-                USERS_DB_CONFIG,
-                _is_safe_base_url,
-            )
+            from ..constants import clear_host_base_url_cache, USERS_DB_CONFIG, _is_safe_base_url
             from ..utils.app_settings_store import get_app_settings_store
 
             if not (os.getenv("HOST_BASE_URL") or "").strip():
@@ -210,12 +206,7 @@ async def api_user_env(request: web.Request) -> web.Response:
             msg += " This user is currently configured as the Gallery root."
 
         return web.json_response(
-            {
-                "user": target_user,
-                "files": files,
-                "is_gallery_root": is_root,
-                "message": msg,
-            }
+            {"user": target_user, "files": files, "is_gallery_root": is_root, "message": msg}
         )
 
     # --- LIST FILES -----------------------------------------------
@@ -277,11 +268,7 @@ async def api_user_env(request: web.Request) -> web.Response:
     if action == "list_workflows":
         workflows = user_env.list_user_workflows(target_user)
         return web.json_response(
-            {
-                "user": target_user,
-                "workflows": workflows,
-                "count": len(workflows),
-            }
+            {"user": target_user, "workflows": workflows, "count": len(workflows)}
         )
 
     # --- PROMOTE WORKFLOW TO GLOBAL DEFAULTS ----------------------
@@ -303,10 +290,7 @@ async def api_user_env(request: web.Request) -> web.Response:
 
         if not (os.path.exists(src) and os.path.isfile(src)):
             return web.json_response(
-                {
-                    "error": f"Workflow '{wf_name}' not found in user folder.",
-                    "user": target_user,
-                },
+                {"error": f"Workflow '{wf_name}' not found in user folder.", "user": target_user},
                 status=404,
             )
 
@@ -373,9 +357,7 @@ async def api_trash_list(request: web.Request) -> web.Response:
             {"error": "Owner access required for cross-user listing"}, status=403
         )
     items = list_trash_items(
-        request_username=username,
-        is_owner=is_owner,
-        target_user=target_user if is_owner else None,
+        request_username=username, is_owner=is_owner, target_user=target_user if is_owner else None
     )
     return web.json_response({"items": items, "count": len(items)})
 
@@ -396,9 +378,7 @@ async def api_trash_restore(request: web.Request) -> web.Response:
     if not item_id:
         return web.json_response({"error": "Missing 'item_id'"}, status=400)
     result = restore_trash_item(
-        item_id=item_id,
-        request_username=username,
-        is_owner=("owner" in groups),
+        item_id=item_id, request_username=username, is_owner=("owner" in groups)
     )
     status = str(result.get("status") or "")
     if status == "ok":
@@ -429,9 +409,7 @@ async def api_trash_empty(request: web.Request) -> web.Response:
             {"error": "Owner access required for cross-user empty"}, status=403
         )
     result = empty_trash(
-        request_username=username,
-        is_owner=is_owner,
-        target_user=target_user if is_owner else None,
+        request_username=username, is_owner=is_owner, target_user=target_user if is_owner else None
     )
     return web.json_response({"status": "ok", **result})
 

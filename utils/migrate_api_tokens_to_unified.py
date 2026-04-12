@@ -10,9 +10,7 @@ from typing import Optional
 
 
 def migrate_api_tokens_if_needed(
-    unified_path: str,
-    old_api_tokens_path: Optional[str],
-    config_path: str,
+    unified_path: str, old_api_tokens_path: Optional[str], config_path: str
 ) -> bool:
     """
     If old_api_tokens_path is set and differs from unified_path, and both files exist,

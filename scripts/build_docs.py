@@ -29,11 +29,7 @@ def main() -> None:
     if not GENERATOR.exists():
         print("Generator not found: %s", GENERATOR, file=sys.stderr)
         sys.exit(1)
-    result = subprocess.run(
-        [sys.executable, str(GENERATOR)],
-        cwd=str(ROOT),
-        check=True,
-    )
+    result = subprocess.run([sys.executable, str(GENERATOR)], cwd=str(ROOT), check=True)
     if result.returncode != 0:
         sys.exit(result.returncode)
 

@@ -266,8 +266,7 @@ def _set_nsfw_tag(path: str, is_nsfw: bool, score: float, label: str):
                 if existing_subject and "NSFW Content" not in str(existing_subject):
                     # Preserve existing subject, append NSFW info
                     pnginfo.add_text(
-                        "Subject",
-                        f"{existing_subject} | NSFW Content (Score: {score:.2f})",
+                        "Subject", f"{existing_subject} | NSFW Content (Score: {score:.2f})"
                     )
                 else:
                     # No existing subject or it's already NSFW-related, set new one
@@ -283,8 +282,7 @@ def _set_nsfw_tag(path: str, is_nsfw: bool, score: float, label: str):
                 else:
                     # No existing comment or it's already NSFW-related, set new one
                     pnginfo.add_text(
-                        "Comment",
-                        f"NSFW Content Detected - Score: {score:.2f}, Label: {label}",
+                        "Comment", f"NSFW Content Detected - Score: {score:.2f}, Label: {label}"
                     )
             else:
                 # If SFW, preserve existing Windows-readable fields (they're already excluded from preservation loop above)
@@ -431,11 +429,7 @@ def _set_nsfw_tag(path: str, is_nsfw: bool, score: float, label: str):
 
             # Save with info (may not work for all formats)
             try:
-                img.save(
-                    path,
-                    exif=img.getexif() if hasattr(img, "getexif") else None,
-                    **info,
-                )
+                img.save(path, exif=img.getexif() if hasattr(img, "getexif") else None, **info)
             except Exception:
                 # Some formats don't support metadata, fail silently
                 pass

@@ -64,12 +64,7 @@ def _get_mysql_store(
     except ImportError:
         raise RuntimeError("MySQL requires pymysql; pip install pymysql")
     conn = pymysql.connect(
-        host=host,
-        port=port,
-        user=user,
-        password=password,
-        database=database,
-        charset="utf8mb4",
+        host=host, port=port, user=user, password=password, database=database, charset="utf8mb4"
     )
     cur = conn.cursor()
     cur.execute(
@@ -95,8 +90,7 @@ class _SqliteAppSettingsStore:
 
     def set(self, key: str, value: str) -> None:
         self._conn.execute(
-            f"INSERT OR REPLACE INTO {TABLE} (key, value) VALUES (?, ?)",
-            (key, value),
+            f"INSERT OR REPLACE INTO {TABLE} (key, value) VALUES (?, ?)", (key, value)
         )
         self._conn.commit()
 

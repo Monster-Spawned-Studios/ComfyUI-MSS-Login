@@ -17,23 +17,9 @@ from .model_isolation import isolation_models_base, sanitize_user_segment
 from .json_utils import load_json_file, save_json_file
 
 
-_PATHISH_KEYWORDS = (
-    "path",
-    "dir",
-    "folder",
-    "destination",
-    "dest",
-    "download",
-    "save",
-    "output",
-)
+_PATHISH_KEYWORDS = ("path", "dir", "folder", "destination", "dest", "download", "save", "output")
 
-_DEFAULT_ROUTE_PATTERNS = [
-    "/civicomfy",
-    "civicomfy",
-    "/manager",
-    "model/download",
-]
+_DEFAULT_ROUTE_PATTERNS = ["/civicomfy", "civicomfy", "/manager", "model/download"]
 
 _cached_route_patterns: list[str] | None = None
 
@@ -128,11 +114,7 @@ def save_configured_route_patterns(patterns: list[str]) -> list[str]:
 
 def is_civicomfy_present() -> bool:
     """Best-effort detection for Civicomfy custom node presence."""
-    candidates = (
-        "Civicomfy",
-        "ComfyUI-Civicomfy",
-        "civicomfy",
-    )
+    candidates = ("Civicomfy", "ComfyUI-Civicomfy", "civicomfy")
     try:
         import folder_paths  # pyright: ignore[reportMissingImports]
 

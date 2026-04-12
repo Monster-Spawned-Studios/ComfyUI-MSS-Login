@@ -295,10 +295,7 @@ async def workflow_interceptor_middleware(request, handler):
                 )
                 if not valid:
                     return web.json_response(
-                        {
-                            "error": err_msg or "Model not allowed",
-                            "code": "MODEL_NOT_ALLOWED",
-                        },
+                        {"error": err_msg or "Model not allowed", "code": "MODEL_NOT_ALLOWED"},
                         status=403,
                     )
 
@@ -558,10 +555,7 @@ def _handle_experimental_critical_failure(reason: str) -> None:
         _notify_recovery("config_reset", failure_count)
         if EXPERIMENTAL_FAILSAFE_ESCALATE and failure_count >= 2:
             ok, msg = perform_recovery_update(
-                repo_root=CURRENT_DIR,
-                data_dir=DATA_DIR,
-                logger=logger,
-                branch="development",
+                repo_root=CURRENT_DIR, data_dir=DATA_DIR, logger=logger, branch="development"
             )
             action = "recovery_update" if ok else "recovery_update_failed"
             apply_experimental_safety_reset(reason, recovery_action=action)

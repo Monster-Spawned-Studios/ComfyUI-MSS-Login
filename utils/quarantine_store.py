@@ -23,11 +23,7 @@ def _get_paths() -> dict:
     quarantine_root = os.path.join(DATA_DIR, "quarantine")
     images_dir = os.path.join(quarantine_root, "images")
     records_path = os.path.join(quarantine_root, "records.json")
-    return {
-        "root": quarantine_root,
-        "images_dir": images_dir,
-        "records_path": records_path,
-    }
+    return {"root": quarantine_root, "images_dir": images_dir, "records_path": records_path}
 
 
 def get_quarantine_settings() -> dict:

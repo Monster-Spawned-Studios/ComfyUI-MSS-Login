@@ -107,78 +107,27 @@ EVENT_KEYS: List[str] = [
 # ---------------------------------------------------------------------------
 
 _EVENT_DEFAULTS: Dict[str, Dict[str, Union[str, List[str]]]] = {
-    "nsfw_block": {
-        "tags": ["no_entry_sign", "nsfw"],
-        "priority": PRIORITY_HIGH,
-    },
-    "user_created": {
-        "tags": ["tada", "new_user"],
-        "priority": PRIORITY_DEFAULT,
-    },
-    "user_login": {
-        "tags": ["key", "login"],
-        "priority": PRIORITY_DEFAULT,
-    },
-    "user_logout": {
-        "tags": ["wave", "logout"],
-        "priority": PRIORITY_LOW,
-    },
-    "api_token_created": {
-        "tags": ["lock", "api_token"],
-        "priority": PRIORITY_DEFAULT,
-    },
+    "nsfw_block": {"tags": ["no_entry_sign", "nsfw"], "priority": PRIORITY_HIGH},
+    "user_created": {"tags": ["tada", "new_user"], "priority": PRIORITY_DEFAULT},
+    "user_login": {"tags": ["key", "login"], "priority": PRIORITY_DEFAULT},
+    "user_logout": {"tags": ["wave", "logout"], "priority": PRIORITY_LOW},
+    "api_token_created": {"tags": ["lock", "api_token"], "priority": PRIORITY_DEFAULT},
     "login_failure": {
         "tags": ["warning", "rotating_light", "login_failure"],
         "priority": PRIORITY_HIGH,
     },
-    "mfa_enabled": {
-        "tags": ["heavy_check_mark", "shield", "mfa"],
-        "priority": PRIORITY_DEFAULT,
-    },
-    "mfa_disabled": {
-        "tags": ["warning", "shield", "mfa"],
-        "priority": PRIORITY_HIGH,
-    },
-    "image_generated": {
-        "tags": ["framed_picture", "image"],
-        "priority": PRIORITY_LOW,
-    },
-    "image_generation_failed": {
-        "tags": ["x", "image"],
-        "priority": PRIORITY_DEFAULT,
-    },
-    "user_deleted": {
-        "tags": ["skull", "user_deleted"],
-        "priority": PRIORITY_HIGH,
-    },
-    "user_role_changed": {
-        "tags": ["busts_in_silhouette", "role"],
-        "priority": PRIORITY_DEFAULT,
-    },
-    "settings_changed": {
-        "tags": ["gear", "settings"],
-        "priority": PRIORITY_LOW,
-    },
-    "server_started": {
-        "tags": ["rocket", "server"],
-        "priority": PRIORITY_DEFAULT,
-    },
-    "server_stopped": {
-        "tags": ["octagonal_sign", "server"],
-        "priority": PRIORITY_HIGH,
-    },
-    "update_available": {
-        "tags": ["loudspeaker", "update"],
-        "priority": PRIORITY_DEFAULT,
-    },
-    "shared_items_added": {
-        "tags": ["package", "shared_items"],
-        "priority": PRIORITY_DEFAULT,
-    },
-    "shared_items_removed": {
-        "tags": ["package", "shared_items"],
-        "priority": PRIORITY_DEFAULT,
-    },
+    "mfa_enabled": {"tags": ["heavy_check_mark", "shield", "mfa"], "priority": PRIORITY_DEFAULT},
+    "mfa_disabled": {"tags": ["warning", "shield", "mfa"], "priority": PRIORITY_HIGH},
+    "image_generated": {"tags": ["framed_picture", "image"], "priority": PRIORITY_LOW},
+    "image_generation_failed": {"tags": ["x", "image"], "priority": PRIORITY_DEFAULT},
+    "user_deleted": {"tags": ["skull", "user_deleted"], "priority": PRIORITY_HIGH},
+    "user_role_changed": {"tags": ["busts_in_silhouette", "role"], "priority": PRIORITY_DEFAULT},
+    "settings_changed": {"tags": ["gear", "settings"], "priority": PRIORITY_LOW},
+    "server_started": {"tags": ["rocket", "server"], "priority": PRIORITY_DEFAULT},
+    "server_stopped": {"tags": ["octagonal_sign", "server"], "priority": PRIORITY_HIGH},
+    "update_available": {"tags": ["loudspeaker", "update"], "priority": PRIORITY_DEFAULT},
+    "shared_items_added": {"tags": ["package", "shared_items"], "priority": PRIORITY_DEFAULT},
+    "shared_items_removed": {"tags": ["package", "shared_items"], "priority": PRIORITY_DEFAULT},
     "experimental_recovery": {
         "tags": ["rotating_light", "shield", "recovery"],
         "priority": PRIORITY_HIGH,
@@ -226,12 +175,7 @@ def _load_ntfy_config() -> dict:
             "api_token": api_token,
         }
     except Exception:
-        return {
-            "topic": "",
-            "enabled_events": [],
-            "base_url": DEFAULT_BASE_URL,
-            "api_token": "",
-        }
+        return {"topic": "", "enabled_events": [], "base_url": DEFAULT_BASE_URL, "api_token": ""}
 
 
 def get_ntfy_config(include_secret: bool = False) -> dict:
@@ -275,10 +219,7 @@ def _validate_ntfy_base_url(url: str) -> str:
 
 
 def save_ntfy_config(
-    topic: str,
-    enabled_events: List[str],
-    base_url: str = "",
-    api_token: Optional[str] = None,
+    topic: str, enabled_events: List[str], base_url: str = "", api_token: Optional[str] = None
 ) -> None:
     """
     Persist ntfy config to config.json.
@@ -564,10 +505,7 @@ def send_notification(
 
     if _async:
         thread = threading.Thread(
-            target=_send_request,
-            kwargs=request_kwargs,
-            daemon=True,
-            name=f"ntfy-{event_key}",
+            target=_send_request, kwargs=request_kwargs, daemon=True, name=f"ntfy-{event_key}"
         )
         thread.start()
         return True
@@ -740,19 +678,9 @@ def _send_request(
     try:
         if method == "PUT" and attachment_file_path:
             with open(attachment_file_path, "rb") as fh:
-                resp = requests.put(
-                    url,
-                    data=fh,
-                    headers=headers,
-                    timeout=timeout,
-                )
+                resp = requests.put(url, data=fh, headers=headers, timeout=timeout)
         else:
-            resp = requests.post(
-                url,
-                data=data,
-                headers=headers,
-                timeout=timeout,
-            )
+            resp = requests.post(url, data=data, headers=headers, timeout=timeout)
 
         if resp.status_code == 200:
             if DEBUG_MODE:
@@ -763,9 +691,7 @@ def _send_request(
                     message[:80] if message else "(no body)",
                 )
             return NotificationResult(
-                success=True,
-                status_code=resp.status_code,
-                response_body=resp.text,
+                success=True, status_code=resp.status_code, response_body=resp.text
             )
 
         error_msg = (
@@ -774,10 +700,7 @@ def _send_request(
         )
         logger.warning("[mss-login] %s", error_msg)
         return NotificationResult(
-            success=False,
-            status_code=resp.status_code,
-            error=error_msg,
-            response_body=resp.text,
+            success=False, status_code=resp.status_code, error=error_msg, response_body=resp.text
         )
 
     except requests.Timeout:
@@ -836,10 +759,7 @@ def notify_login_failure(username: str, ip: str, **kwargs) -> Union[Notification
 
 
 def notify_user_created(
-    new_username: str,
-    registered_by: str,
-    ip: str,
-    **kwargs,
+    new_username: str, registered_by: str, ip: str, **kwargs
 ) -> Union[NotificationResult, bool]:
     """Notify that a new user was created."""
     return send_notification(
@@ -864,11 +784,7 @@ def notify_user_deleted(
     )
 
 
-def notify_api_token_created(
-    username: str,
-    ip: str,
-    **kwargs,
-) -> Union[NotificationResult, bool]:
+def notify_api_token_created(username: str, ip: str, **kwargs) -> Union[NotificationResult, bool]:
     """Notify that an API token was generated."""
     return send_notification(
         "api_token_created",
@@ -964,12 +880,7 @@ def notify_nsfw_block(
 
 
 def notify_image_generated(
-    username: str,
-    image_path: str = "",
-    *,
-    attachment_url: str = "",
-    click: str = "",
-    **kwargs,
+    username: str, image_path: str = "", *, attachment_url: str = "", click: str = "", **kwargs
 ) -> Union[NotificationResult, bool]:
     """
     Notify that an image was successfully generated.
@@ -1002,9 +913,7 @@ def notify_image_generated(
 
 
 def notify_image_generation_failed(
-    username: str,
-    reason: str = "",
-    **kwargs,
+    username: str, reason: str = "", **kwargs
 ) -> Union[NotificationResult, bool]:
     """Notify that an image generation failed."""
     body = f"Image generation failed for user **{username}**."
@@ -1020,11 +929,7 @@ def notify_image_generation_failed(
 
 
 def notify_user_role_changed(
-    username: str,
-    old_role: str,
-    new_role: str,
-    changed_by: str = "",
-    **kwargs,
+    username: str, old_role: str, new_role: str, changed_by: str = "", **kwargs
 ) -> Union[NotificationResult, bool]:
     """Notify that a user's role was changed."""
     actor = f" by **{changed_by}**" if changed_by else ""
@@ -1038,9 +943,7 @@ def notify_user_role_changed(
 
 
 def notify_settings_changed(
-    changed_by: str,
-    setting_name: str = "",
-    **kwargs,
+    changed_by: str, setting_name: str = "", **kwargs
 ) -> Union[NotificationResult, bool]:
     """Notify that admin settings were changed."""
     detail = f": **{setting_name}**" if setting_name else ""
@@ -1074,10 +977,7 @@ def notify_server_stopped(**kwargs) -> Union[NotificationResult, bool]:
 
 
 def notify_update_available(
-    current_version: str = "",
-    new_version: str = "",
-    release_url: str = "",
-    **kwargs,
+    current_version: str = "", new_version: str = "", release_url: str = "", **kwargs
 ) -> Union[NotificationResult, bool]:
     """Notify that a new plugin update is available."""
     parts = ["A new MSS-Login update is available."]

@@ -338,12 +338,7 @@ async def api_get_experimental(request):
             "loading_screen": bool(block.get("loading_screen", False)),
             "news": bool(block.get("news", False)),
         }
-        return web.json_response(
-            {
-                "experimental_features": master,
-                "experimental": experimental,
-            }
-        )
+        return web.json_response({"experimental_features": master, "experimental": experimental})
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
 
@@ -371,12 +366,7 @@ async def api_put_experimental(request):
         cfg["experimental"] = block
         save_json_file(CONFIG_FILE_PATH, cfg)
         reload_experimental_features()
-        return web.json_response(
-            {
-                "status": "ok",
-                "experimental": get_experimental_flags(),
-            }
-        )
+        return web.json_response({"status": "ok", "experimental": get_experimental_flags()})
     except Exception as e:
         return web.json_response({"error": str(e)}, status=500)
 
@@ -619,8 +609,7 @@ async def api_put_users_db_config(request):
         backend = (data.get("backend") or "sqlite").lower()
         if backend not in ("sqlite", "postgresql", "mysql"):
             return web.json_response(
-                {"error": "Invalid backend; use sqlite, postgresql, or mysql"},
-                status=400,
+                {"error": "Invalid backend; use sqlite, postgresql, or mysql"}, status=400
             )
         cfg = load_json_file(CONFIG_FILE_PATH, {})
         if not isinstance(cfg, dict):
@@ -649,10 +638,7 @@ async def api_put_users_db_config(request):
         save_json_file(CONFIG_FILE_PATH, cfg)
         reload_users_db_config()
         return web.json_response(
-            {
-                "status": "ok",
-                "message": "Restart required for new backend to take effect.",
-            }
+            {"status": "ok", "message": "Restart required for new backend to take effect."}
         )
     except Exception as e:
         logger.error(f"[admin.py] api_put_users_db_config: {str(e)}")
@@ -995,8 +981,7 @@ async def api_add_shared_item(request):
             return web.json_response({"error": "folder and item_name required"}, status=400)
         if not is_safe_folder_segment(folder) or not is_safe_filename(item_name):
             return web.json_response(
-                {"error": "Invalid folder or item_name (path traversal not allowed)"},
-                status=400,
+                {"error": "Invalid folder or item_name (path traversal not allowed)"}, status=400
             )
         store = get_shared_items_store(USERS_DB_CONFIG)
         if store.add(
@@ -1048,8 +1033,7 @@ async def api_remove_shared_item(request):
             return web.json_response({"error": "folder and item_name required"}, status=400)
         if not is_safe_folder_segment(folder) or not is_safe_filename(item_name):
             return web.json_response(
-                {"error": "Invalid folder or item_name (path traversal not allowed)"},
-                status=400,
+                {"error": "Invalid folder or item_name (path traversal not allowed)"}, status=400
             )
         store = get_shared_items_store(USERS_DB_CONFIG)
         if store.remove(user_id, folder, item_name):

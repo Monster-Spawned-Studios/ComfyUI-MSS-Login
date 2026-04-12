@@ -151,10 +151,7 @@ def _validate_folder(folder_type: str) -> str | None:
     return None
 
 
-def _resolve_destination_path(
-    job: dict,
-    target_user_id: str,
-) -> tuple[str, str]:
+def _resolve_destination_path(job: dict, target_user_id: str) -> tuple[str, str]:
     destination_type = job.get("destination_type", "local")
     folder_type = job.get("folder_type", "checkpoints")
     if destination_type == "local":
@@ -347,12 +344,7 @@ async def api_model_download_sources(request: web.Request) -> web.Response:
         return web.json_response({"error": "Model download permission required"}, status=403)
     store = get_model_source_api_keys_store(USERS_DB_CONFIG)
     with_keys = store.list_sources_with_keys(user_id)
-    return web.json_response(
-        {
-            "sources": list(SOURCES),
-            "sources_with_keys": with_keys,
-        }
-    )
+    return web.json_response({"sources": list(SOURCES), "sources_with_keys": with_keys})
 
 
 @routes.get("/mss-login/api/model-download/api-keys")

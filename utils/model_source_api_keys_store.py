@@ -65,24 +65,14 @@ def _get_postgres_store(
 
 
 def _get_mysql_store(
-    host: str,
-    port: int,
-    database: str,
-    user: str,
-    password: str,
-    secret_key: str,
+    host: str, port: int, database: str, user: str, password: str, secret_key: str
 ) -> "_MySQLApiKeysStore":
     try:
         import pymysql
     except ImportError:
         raise RuntimeError("MySQL requires pymysql; pip install pymysql")
     conn = pymysql.connect(
-        host=host,
-        port=port,
-        user=user,
-        password=password,
-        database=database,
-        charset="utf8mb4",
+        host=host, port=port, user=user, password=password, database=database, charset="utf8mb4"
     )
     cur = conn.cursor()
     cur.execute(
@@ -158,16 +148,14 @@ class _SqliteApiKeysStore:
         if source not in SOURCES:
             return False
         cur = self._conn.execute(
-            f"DELETE FROM {TABLE} WHERE user_id = ? AND source = ?",
-            (user_id, source),
+            f"DELETE FROM {TABLE} WHERE user_id = ? AND source = ?", (user_id, source)
         )
         self._conn.commit()
         return cur.rowcount > 0
 
     def list_sources_with_keys(self, user_id: str) -> list[str]:
         rows = self._conn.execute(
-            f"SELECT source FROM {TABLE} WHERE user_id = ? AND api_key_encrypted != ''",
-            (user_id,),
+            f"SELECT source FROM {TABLE} WHERE user_id = ? AND api_key_encrypted != ''", (user_id,)
         ).fetchall()
         return [r[0] for r in rows]
 
@@ -246,8 +234,7 @@ class _PostgresApiKeysStore:
     def list_sources_with_keys(self, user_id: str) -> list[str]:
         cur = self._conn.cursor()
         cur.execute(
-            f"SELECT source FROM {TABLE} WHERE user_id = %s AND api_key_encrypted != ''",
-            (user_id,),
+            f"SELECT source FROM {TABLE} WHERE user_id = %s AND api_key_encrypted != ''", (user_id,)
         )
         rows = cur.fetchall()
         cur.close()
@@ -326,8 +313,7 @@ class _MySQLApiKeysStore:
     def list_sources_with_keys(self, user_id: str) -> list[str]:
         cur = self._conn.cursor()
         cur.execute(
-            f"SELECT source FROM {TABLE} WHERE user_id = %s AND api_key_encrypted != ''",
-            (user_id,),
+            f"SELECT source FROM {TABLE} WHERE user_id = %s AND api_key_encrypted != ''", (user_id,)
         )
         rows = cur.fetchall()
         cur.close()

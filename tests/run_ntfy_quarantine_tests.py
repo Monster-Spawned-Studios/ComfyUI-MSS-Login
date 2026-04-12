@@ -46,15 +46,11 @@ const_mod.DATA_DIR = os.path.join(_PROJECT_ROOT, "tests", "tmp-data")
 const_mod.get_domain = lambda use_https=True, use_port=False, port=8188: "https://localhost"
 sys.modules["mss_login.constants"] = const_mod
 json_utils = _load_module(
-    "mss_login.utils.json_utils",
-    os.path.join(_UTILS_DIR, "json_utils.py"),
-    "mss_login.utils",
+    "mss_login.utils.json_utils", os.path.join(_UTILS_DIR, "json_utils.py"), "mss_login.utils"
 )
 sys.modules["mss_login.utils.json_utils"] = json_utils
 ntfy_notifier = _load_module(
-    "mss_login.utils.ntfy_notifier",
-    os.path.join(_UTILS_DIR, "ntfy_notifier.py"),
-    "mss_login.utils",
+    "mss_login.utils.ntfy_notifier", os.path.join(_UTILS_DIR, "ntfy_notifier.py"), "mss_login.utils"
 )
 quarantine_store = _load_module(
     "mss_login.utils.quarantine_store",

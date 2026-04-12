@@ -19,13 +19,7 @@ _PROJECT_ROOT = dirname(dirname(abspath(__file__)))
 
 def _run(args: list[str], label: str, check_only: bool) -> bool:
     """Run a command and return True on success."""
-    result = subprocess.run(
-        args,
-        cwd=_PROJECT_ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = subprocess.run(args, cwd=_PROJECT_ROOT, capture_output=True, text=True, check=False)
 
     if result.returncode == 0:
         if not check_only:
@@ -50,9 +44,7 @@ def main() -> int:
         help="Check only; don't modify files (exit 1 if drift exists).",
     )
     ap.add_argument(
-        "--no-fix",
-        action="store_true",
-        help="Skip ruff check --fix (only run ruff format).",
+        "--no-fix", action="store_true", help="Skip ruff check --fix (only run ruff format)."
     )
     args = ap.parse_args()
 

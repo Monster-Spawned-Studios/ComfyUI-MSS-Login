@@ -114,11 +114,7 @@ async def get_news_feed(request: web.Request) -> web.Response:
 
     base_url = get_host_base_url() or (request.url.origin if request.url else "") or ""
     rss_xml = _build_rss(items, base_url)
-    return web.Response(
-        text=rss_xml,
-        content_type="application/rss+xml",
-        charset="utf-8",
-    )
+    return web.Response(text=rss_xml, content_type="application/rss+xml", charset="utf-8")
 
 
 routes.get("/api/mss-login/api/news/feed.xml")(get_news_feed)

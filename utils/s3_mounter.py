@@ -390,9 +390,7 @@ class S3MountManager:
         if not shutil.which("mountpoint"):
             return False
         result = subprocess.run(
-            ["mountpoint", "-q", self._mount_root],
-            capture_output=True,
-            check=False,
+            ["mountpoint", "-q", self._mount_root], capture_output=True, check=False
         )
         return result.returncode == 0
 
@@ -480,9 +478,7 @@ class S3MountManager:
                 cmd = self._build_mount_cmd()
                 try:
                     self._mount_proc = subprocess.Popen(
-                        cmd,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
+                        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
                     )
                     time.sleep(3)
                     if self._mountpoint_active():
@@ -580,11 +576,7 @@ class S3MountManager:
         self.unmount()
         mounted = self.mount_or_sync()
         registered = self.register_folder_paths() if mounted else []
-        return {
-            "remounted": mounted,
-            "registered_folders": registered,
-            "status": self.status(),
-        }
+        return {"remounted": mounted, "registered_folders": registered, "status": self.status()}
 
     def _path_for_key(self, s3_key: str) -> str:
         path = _resolve_under(self._mount_root, s3_key)
@@ -617,11 +609,7 @@ class S3MountManager:
                 st = os.stat(full)
                 rel = os.path.relpath(full, self._mount_root).replace("\\", "/")
                 results.append(
-                    {
-                        "key": rel,
-                        "size": st.st_size,
-                        "last_modified": _format_iso(st.st_mtime),
-                    }
+                    {"key": rel, "size": st.st_size, "last_modified": _format_iso(st.st_mtime)}
                 )
                 if len(results) >= max_keys:
                     return results
@@ -678,11 +666,7 @@ class S3MountManager:
         full_key = self._s3_prefix_key(s3_key)
         client.upload_file(local_path, self._cfg["bucket_name"], full_key)
         size = os.path.getsize(local_path)
-        return {
-            "bucket": self._cfg["bucket_name"],
-            "key": full_key,
-            "size": size,
-        }
+        return {"bucket": self._cfg["bucket_name"], "key": full_key, "size": size}
 
     def download_file(self, s3_key: str, local_path: str) -> str:
         if self._in_boto3_mode():
@@ -813,9 +797,7 @@ class S3MountManager:
             try:
                 if rel_name in local_files and rel_name not in remote_files:
                     self._copy_local_to_remote(
-                        _resolve_under(local_dir, rel_name) or "",
-                        remote_dir,
-                        rel_name,
+                        _resolve_under(local_dir, rel_name) or "", remote_dir, rel_name
                     )
                     stats["uploaded"] += 1
                 elif rel_name not in local_files and rel_name in remote_files:
@@ -825,9 +807,7 @@ class S3MountManager:
                     action = self._resolve_conflict(local_files[rel_name], remote_files[rel_name])
                     if action == "upload":
                         self._copy_local_to_remote(
-                            _resolve_under(local_dir, rel_name) or "",
-                            remote_dir,
-                            rel_name,
+                            _resolve_under(local_dir, rel_name) or "", remote_dir, rel_name
                         )
                         stats["uploaded"] += 1
                     elif action == "download":
@@ -912,9 +892,7 @@ class S3MountManager:
             return
         self._stop_event.clear()
         self._workflow_thread = threading.Thread(
-            target=self._workflow_loop,
-            daemon=True,
-            name="s3-workflow-sync",
+            target=self._workflow_loop, daemon=True, name="s3-workflow-sync"
         )
         self._workflow_thread.start()
 

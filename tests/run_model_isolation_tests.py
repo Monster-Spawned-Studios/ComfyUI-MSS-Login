@@ -121,10 +121,7 @@ def run_tests():
     )
     ok(paths.sanitize_user_segment("bob@example.com") == "bob_example_com", "user id is sanitized")
     isolation_path = paths.isolation_user_folder("checkpoints", "alice").replace("\\", "/")
-    ok(
-        isolation_path.endswith("checkpoints/alice"),
-        "isolation folder path is per-user",
-    )
+    ok(isolation_path.endswith("checkpoints/alice"), "isolation folder path is per-user")
 
     print("TestModelDownloadRedirect")
     folder_paths_mod = types.ModuleType("folder_paths")

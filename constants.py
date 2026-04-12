@@ -217,8 +217,7 @@ USERS_DB_CONFIG = {
         "USERS_DB_POSTGRES_PORT", str(_users_db_cfg.get("postgres_port", 5432))
     ),
     "postgres_database": _env_or_config(
-        "USERS_DB_POSTGRES_DATABASE",
-        _users_db_cfg.get("postgres_database", "mss_login"),
+        "USERS_DB_POSTGRES_DATABASE", _users_db_cfg.get("postgres_database", "mss_login")
     ),
     "postgres_user": _env_or_config(
         "USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "mss_login")
@@ -228,8 +227,7 @@ USERS_DB_CONFIG = {
     ),
     "mysql_port": _env_or_config("USERS_DB_MYSQL_PORT", str(_users_db_cfg.get("mysql_port", 3306))),
     "mysql_database": _env_or_config(
-        "USERS_DB_MYSQL_DATABASE",
-        _users_db_cfg.get("mysql_database", "mss_login"),
+        "USERS_DB_MYSQL_DATABASE", _users_db_cfg.get("mysql_database", "mss_login")
     ),
     "mysql_user": _env_or_config(
         "USERS_DB_MYSQL_USER", _users_db_cfg.get("mysql_user", "mss_login")
@@ -248,10 +246,7 @@ USERS_DB_CONFIG["mysql_password"] = (
 # Legacy "json" backend is no longer used; tokens live in the same SQLite/Postgres/MySQL as user accounts.
 _api_token_cfg = config_data.get("api_token_store") or {}
 _json_path = _resolve_data_path(
-    _env_or_config(
-        "API_TOKEN_JSON_PATH",
-        _api_token_cfg.get("json_path", "data/api_tokens.json"),
-    )
+    _env_or_config("API_TOKEN_JSON_PATH", _api_token_cfg.get("json_path", "data/api_tokens.json"))
 )
 API_TOKEN_STORE_CONFIG = {
     "backend": USERS_DB_CONFIG["backend"],
@@ -361,8 +356,7 @@ def reload_users_db_config() -> dict:
         _users_db_cfg = {"backend": "sqlite", "sqlite_path": _users_db_cfg}
     _users_sqlite_path = _resolve_data_path(
         _env_or_config(
-            "USERS_DB_SQLITE_PATH",
-            _users_db_cfg.get("sqlite_path", "data/mss_login_data.db"),
+            "USERS_DB_SQLITE_PATH", _users_db_cfg.get("sqlite_path", "data/mss_login_data.db")
         )
     )
     USERS_DB_CONFIG = {
@@ -375,8 +369,7 @@ def reload_users_db_config() -> dict:
             "USERS_DB_POSTGRES_PORT", str(_users_db_cfg.get("postgres_port", 5432))
         ),
         "postgres_database": _env_or_config(
-            "USERS_DB_POSTGRES_DATABASE",
-            _users_db_cfg.get("postgres_database", "mss_login"),
+            "USERS_DB_POSTGRES_DATABASE", _users_db_cfg.get("postgres_database", "mss_login")
         ),
         "postgres_user": _env_or_config(
             "USERS_DB_POSTGRES_USER", _users_db_cfg.get("postgres_user", "mss_login")
@@ -388,8 +381,7 @@ def reload_users_db_config() -> dict:
             "USERS_DB_MYSQL_PORT", str(_users_db_cfg.get("mysql_port", 3306))
         ),
         "mysql_database": _env_or_config(
-            "USERS_DB_MYSQL_DATABASE",
-            _users_db_cfg.get("mysql_database", "mss_login"),
+            "USERS_DB_MYSQL_DATABASE", _users_db_cfg.get("mysql_database", "mss_login")
         ),
         "mysql_user": _env_or_config(
             "USERS_DB_MYSQL_USER", _users_db_cfg.get("mysql_user", "mss_login")
@@ -405,10 +397,7 @@ def reload_users_db_config() -> dict:
     # Keep API token store in sync (same DB unless backend is "json")
     _api_cfg = config_data.get("api_token_store") or {}
     _jp = _resolve_data_path(
-        _env_or_config(
-            "API_TOKEN_JSON_PATH",
-            _api_cfg.get("json_path", "data/api_tokens.json"),
-        )
+        _env_or_config("API_TOKEN_JSON_PATH", _api_cfg.get("json_path", "data/api_tokens.json"))
     )
     API_TOKEN_STORE_CONFIG = {
         "backend": USERS_DB_CONFIG["backend"],
@@ -482,11 +471,7 @@ REQUIRE_AUTH_FOR_REMOTE_API = config_data.get("require_auth_for_remote_api", Tru
 LOCAL_NETWORK_CIDRS = config_data.get("local_network_cidrs") or []
 
 # DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
-DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in (
-    "1",
-    "true",
-    "yes",
-)
+DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
 DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(config_data.get("debug_mode", False))
 DEBUG_LOG_PATH = os.path.join(CURRENT_DIR, "logs", "debug.log")
 
@@ -666,8 +651,7 @@ def get_experimental_failsafe_settings() -> dict:
 
 
 def save_experimental_failsafe_settings(
-    enabled: bool | None = None,
-    escalate_after_repeated_failure: bool | None = None,
+    enabled: bool | None = None, escalate_after_repeated_failure: bool | None = None
 ) -> dict:
     """Persist failsafe settings without touching credential-related config."""
     cfg = _load_config(CONFIG_FILE_PATH)

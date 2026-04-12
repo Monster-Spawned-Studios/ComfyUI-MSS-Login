@@ -167,26 +167,19 @@ class Logger:
             f"Attempted token generation for username: '{username}' with expiration hours: {expire_hours}",
         )
         self._log_console(
-            "WARNING",
-            f"Attempted token generation for username: '{username}' from IP: {ip}",
+            "WARNING", f"Attempted token generation for username: '{username}' from IP: {ip}"
         )
 
     def generate_success(self, ip: str, username: str, expire_hours: int) -> None:
         self._log_file(
-            "INFO",
-            f"User: '{username}' generated token with expiration hours: {expire_hours}",
+            "INFO", f"User: '{username}' generated token with expiration hours: {expire_hours}"
         )
         self._log_console(
             "INFO",
             f"User: '{username}' generated token from IP: {ip} with expiration hours: {expire_hours}",
         )
 
-    def registration_attempt(
-        self,
-        ip: str,
-        username: str,
-        new_username: str,
-    ) -> None:
+    def registration_attempt(self, ip: str, username: str, new_username: str) -> None:
         """Log registration attempt (no passwords)."""
         self._log_file(
             "WARNING",
@@ -201,8 +194,7 @@ class Logger:
         if registered_by:
             self._log_file("INFO", f"New user: '{new_user}' registered by '{registered_by}'")
             self._log_console(
-                "INFO",
-                f"New user: '{new_user}' registered by '{registered_by}' from IP: {ip}",
+                "INFO", f"New user: '{new_user}' registered by '{registered_by}' from IP: {ip}"
             )
         else:
             self._log_file("INFO", f"Admin user: '{new_user}' registered")

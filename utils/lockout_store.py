@@ -108,12 +108,7 @@ def _get_mysql_store(
     except ImportError:
         raise RuntimeError("MySQL backend requires pymysql; pip install pymysql")
     conn = pymysql.connect(
-        host=host,
-        port=port,
-        user=user,
-        password=password,
-        database=database,
-        charset="utf8mb4",
+        host=host, port=port, user=user, password=password, database=database, charset="utf8mb4"
     )
     cur = conn.cursor()
     cur.execute(
@@ -163,8 +158,7 @@ class _SqliteLockoutStore:
     def get_blacklisted_ips(self) -> set[str]:
         now = _now_ts()
         rows = self._conn.execute(
-            f"SELECT ip FROM {TABLE_IP} WHERE expires_at IS NULL OR expires_at > ?",
-            (now,),
+            f"SELECT ip FROM {TABLE_IP} WHERE expires_at IS NULL OR expires_at > ?", (now,)
         ).fetchall()
         return {r[0] for r in rows}
 
@@ -178,10 +172,7 @@ class _SqliteLockoutStore:
         return {r[0] for r in rows}
 
     def add_lockout(
-        self,
-        ip: str,
-        device_id: Optional[str] = None,
-        expiry_hours: Optional[float] = None,
+        self, ip: str, device_id: Optional[str] = None, expiry_hours: Optional[float] = None
     ) -> None:
         expires_at = None
         if expiry_hours is not None and expiry_hours >= 0:
@@ -193,8 +184,7 @@ class _SqliteLockoutStore:
             )
             if device_id:
                 self._conn.execute(
-                    f"INSERT OR IGNORE INTO {TABLE_DEVICES} (device_id) VALUES (?)",
-                    (device_id,),
+                    f"INSERT OR IGNORE INTO {TABLE_DEVICES} (device_id) VALUES (?)", (device_id,)
                 )
             self._conn.commit()
         except Exception:
@@ -203,8 +193,7 @@ class _SqliteLockoutStore:
     def add_whitelist_entry(self, entry: str) -> None:
         try:
             self._conn.execute(
-                f"INSERT OR IGNORE INTO {TABLE_WHITELIST} (entry) VALUES (?)",
-                (entry,),
+                f"INSERT OR IGNORE INTO {TABLE_WHITELIST} (entry) VALUES (?)", (entry,)
             )
             self._conn.commit()
         except Exception:
@@ -245,8 +234,7 @@ class _SqliteLockoutStore:
                 entry = (entry or "").strip()
                 if entry:
                     self._conn.execute(
-                        f"INSERT OR IGNORE INTO {TABLE_WHITELIST} (entry) VALUES (?)",
-                        (entry,),
+                        f"INSERT OR IGNORE INTO {TABLE_WHITELIST} (entry) VALUES (?)", (entry,)
                     )
             self._conn.commit()
         except Exception:
@@ -260,8 +248,7 @@ class _SqliteLockoutStore:
                 ip = (ip or "").strip()
                 if ip:
                     self._conn.execute(
-                        f"INSERT INTO {TABLE_IP} (ip, expires_at) VALUES (?, ?)",
-                        (ip, expires_at),
+                        f"INSERT INTO {TABLE_IP} (ip, expires_at) VALUES (?, ?)", (ip, expires_at)
                     )
             self._conn.commit()
         except Exception:
@@ -309,10 +296,7 @@ class _PostgresLockoutStore:
         return out
 
     def add_lockout(
-        self,
-        ip: str,
-        device_id: Optional[str] = None,
-        expiry_hours: Optional[float] = None,
+        self, ip: str, device_id: Optional[str] = None, expiry_hours: Optional[float] = None
     ) -> None:
         try:
             cur = self._conn.cursor()
@@ -424,8 +408,7 @@ class _PostgresLockoutStore:
                         )
                     else:
                         cur.execute(
-                            f"INSERT INTO {TABLE_IP} (ip, expires_at) VALUES (%s, NULL)",
-                            (ip,),
+                            f"INSERT INTO {TABLE_IP} (ip, expires_at) VALUES (%s, NULL)", (ip,)
                         )
             self._conn.commit()
             cur.close()
@@ -448,8 +431,7 @@ class _MySQLLockoutStore:
         now = _now_ts()
         cur = self._conn.cursor()
         cur.execute(
-            f"SELECT ip FROM {TABLE_IP} WHERE expires_at IS NULL OR expires_at > %s",
-            (now,),
+            f"SELECT ip FROM {TABLE_IP} WHERE expires_at IS NULL OR expires_at > %s", (now,)
         )
         out = {r[0] for r in cur.fetchall()}
         cur.close()
@@ -470,10 +452,7 @@ class _MySQLLockoutStore:
         return out
 
     def add_lockout(
-        self,
-        ip: str,
-        device_id: Optional[str] = None,
-        expiry_hours: Optional[float] = None,
+        self, ip: str, device_id: Optional[str] = None, expiry_hours: Optional[float] = None
     ) -> None:
         try:
             cur = self._conn.cursor()
@@ -502,8 +481,7 @@ class _MySQLLockoutStore:
         try:
             cur = self._conn.cursor()
             cur.execute(
-                "INSERT IGNORE INTO {} (`entry`) VALUES (%s)".format(TABLE_WHITELIST),
-                (entry,),
+                "INSERT IGNORE INTO {} (`entry`) VALUES (%s)".format(TABLE_WHITELIST), (entry,)
             )
             self._conn.commit()
             cur.close()
@@ -545,10 +523,7 @@ class _MySQLLockoutStore:
 
     def remove_device(self, device_id: str) -> bool:
         cur = self._conn.cursor()
-        cur.execute(
-            "DELETE FROM {} WHERE device_id = %s".format(TABLE_DEVICES),
-            (device_id,),
-        )
+        cur.execute("DELETE FROM {} WHERE device_id = %s".format(TABLE_DEVICES), (device_id,))
         n = cur.rowcount
         self._conn.commit()
         cur.close()

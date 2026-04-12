@@ -87,12 +87,7 @@ def _get_mysql_store(
     except ImportError:
         raise RuntimeError("MySQL requires pymysql; pip install pymysql")
     conn = pymysql.connect(
-        host=host,
-        port=port,
-        user=user,
-        password=password,
-        database=database,
-        charset="utf8mb4",
+        host=host, port=port, user=user, password=password, database=database, charset="utf8mb4"
     )
     cur = conn.cursor()
     cur.execute(

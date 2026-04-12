@@ -146,9 +146,7 @@ def run_tests():
         ok(os.path.isfile(record.get("trash_path", "")), "trash file exists")
 
         restore = mod.restore_trash_item(
-            item_id=str(record.get("id")),
-            request_username="alice",
-            is_owner=False,
+            item_id=str(record.get("id")), request_username="alice", is_owner=False
         )
         ok(restore.get("status") == "ok", "user can restore own trashed item")
         ok(os.path.isfile(restore.get("restored_path", "")), "restored file exists")
@@ -169,15 +167,11 @@ def run_tests():
         )
         ok(res_owner.get("status") == "ok", "owner can trash another user's file")
         bob_items_owner = mod.list_trash_items(
-            request_username="owner",
-            is_owner=True,
-            target_user="bob",
+            request_username="owner", is_owner=True, target_user="bob"
         )
         ok(len(bob_items_owner) >= 1, "owner can list another user's trash")
         bob_items_non_owner = mod.list_trash_items(
-            request_username="alice",
-            is_owner=False,
-            target_user="bob",
+            request_username="alice", is_owner=False, target_user="bob"
         )
         ok(len(bob_items_non_owner) == 0, "non-owner cannot list another user's trash")
 

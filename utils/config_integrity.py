@@ -96,11 +96,7 @@ def verify_local_hashes(repo_root: str, data_dir: str) -> list[dict[str, Any]]:
 
 
 async def verify_remote_hashes(
-    repo_root: str,
-    data_dir: str,
-    check_url: str,
-    branch: str = "main",
-    timeout_sec: float = 10.0,
+    repo_root: str, data_dir: str, check_url: str, branch: str = "main", timeout_sec: float = 10.0
 ) -> list[dict[str, Any]]:
     """Fetch config file contents from GitHub and compare against local files.
 

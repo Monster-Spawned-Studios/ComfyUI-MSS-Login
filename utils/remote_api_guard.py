@@ -27,13 +27,7 @@ DEFAULT_LOCAL_CIDRS = [
 ]
 
 # Path prefixes that are considered "protected API" (require auth when remote)
-PROTECTED_API_PREFIXES = (
-    "/prompt",
-    "/api/prompt",
-    "/api/queue",
-    "/queue",
-    "/api/",
-)
+PROTECTED_API_PREFIXES = ("/prompt", "/api/prompt", "/api/queue", "/queue", "/api/")
 
 # Paths or prefixes that are always allowed without auth (even if under /api/)
 PUBLIC_API_PATHS = (
