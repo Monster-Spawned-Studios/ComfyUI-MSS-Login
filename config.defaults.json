@@ -69,6 +69,10 @@
 		"retention_days": 30,
 		"cleanup_interval_hours": 24
 	},
+	"trash": {
+		"retention_days": 30,
+		"cleanup_interval_hours": 24
+	},
 	"experimental_features": false,
 	"experimental_failsafe": {
 		"enabled": true,

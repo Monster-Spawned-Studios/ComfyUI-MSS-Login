@@ -62,6 +62,7 @@ from .globals import (
     instance,
     current_username_var,
     logger,
+    users_db,
 )
 from .constants import (
     FORCE_HTTPS,
@@ -95,6 +96,7 @@ import importlib.util
 from datetime import datetime, timezone
 from .utils.ntfy_notifier import notify_experimental_recovery
 from .utils.quarantine_store import quarantine_cleanup_loop
+from .utils.trash_store import trash_cleanup_loop, trash_deleted_history_images
 
 _root = os.path.dirname(os.path.abspath(__file__))
 _install_deps_path = os.path.join(_root, "utils", "install_deps.py")
@@ -155,18 +157,24 @@ _update_task = asyncio.ensure_future(update_check_loop(app, logger, CONFIG_FILE_
 _quarantine_cleanup_task = asyncio.ensure_future(
     quarantine_cleanup_loop(app, logger, CONFIG_FILE_PATH)
 )
+_trash_cleanup_task = asyncio.ensure_future(trash_cleanup_loop(app, logger, CONFIG_FILE_PATH))
 
 
 async def _cancel_update_task(app_ref) -> None:
     """Cancel the recurring update check on shutdown."""
     _update_task.cancel()
     _quarantine_cleanup_task.cancel()
+    _trash_cleanup_task.cancel()
     try:
         await _update_task
     except (asyncio.CancelledError, Exception):
         pass
     try:
         await _quarantine_cleanup_task
+    except (asyncio.CancelledError, Exception):
+        pass
+    try:
+        await _trash_cleanup_task
     except (asyncio.CancelledError, Exception):
         pass
 
@@ -304,6 +312,93 @@ async def workflow_interceptor_middleware(request, handler):
         request.read = _read
         request.json = _json
 
+    # --- Move deleted history images to per-user trash bin before core delete ---
+    if path in ("/history", "/api/history") and method in ("POST", "DELETE"):
+        body_bytes = await request.read()
+        payload = {}
+        try:
+            payload = json.loads(body_bytes) if body_bytes else {}
+        except (json.JSONDecodeError, TypeError):
+            payload = {}
+
+        delete_ids = []
+        clear_all = False
+        if isinstance(payload, dict):
+            clear_all = bool(payload.get("clear"))
+            raw_delete = payload.get("delete")
+            if isinstance(raw_delete, list):
+                delete_ids = [str(x) for x in raw_delete if str(x).strip()]
+
+        if method == "DELETE":
+            tail = path.rsplit("/", 1)[-1]
+            if tail and tail not in ("history", "api"):
+                delete_ids.append(tail)
+        if delete_ids or clear_all:
+            try:
+                username_for_delete = request.get("user") or workflow_routes.get_current_user(
+                    request
+                )
+                owner_username = users_db.get_owner_username()
+                is_owner_delete = bool(
+                    username_for_delete
+                    and owner_username
+                    and str(username_for_delete) == str(owner_username)
+                )
+
+                moved = 0
+                skipped = 0
+                forbidden = 0
+                missing = 0
+
+                if clear_all:
+                    visible = access_control.user_queue_get_history()
+                    for prompt_id, entry in (visible or {}).items():
+                        result = trash_deleted_history_images(
+                            history_entry=entry,
+                            request_username=str(username_for_delete or "guest"),
+                            is_owner=is_owner_delete,
+                            prompt_id=str(prompt_id),
+                        )
+                        moved += int(result.get("moved", 0) or 0)
+                        skipped += int(result.get("skipped", 0) or 0)
+                        forbidden += int(result.get("forbidden", 0) or 0)
+                        missing += int(result.get("missing", 0) or 0)
+                else:
+                    for prompt_id in delete_ids:
+                        visible = access_control.user_queue_get_history(prompt_id=prompt_id)
+                        entry = visible.get(prompt_id) if isinstance(visible, dict) else None
+                        result = trash_deleted_history_images(
+                            history_entry=entry,
+                            request_username=str(username_for_delete or "guest"),
+                            is_owner=is_owner_delete,
+                            prompt_id=str(prompt_id),
+                        )
+                        moved += int(result.get("moved", 0) or 0)
+                        skipped += int(result.get("skipped", 0) or 0)
+                        forbidden += int(result.get("forbidden", 0) or 0)
+                        missing += int(result.get("missing", 0) or 0)
+
+                if moved or skipped or forbidden or missing:
+                    logger.info(
+                        "[mss-login] Trash pre-delete: user=%s moved=%s skipped=%s forbidden=%s missing=%s",
+                        username_for_delete,
+                        moved,
+                        skipped,
+                        forbidden,
+                        missing,
+                    )
+            except Exception as trash_exc:
+                logger.warning("[mss-login] Trash pre-delete hook error: %s", trash_exc)
+
+        async def _read_history():
+            return body_bytes
+
+        async def _json_history():
+            return json.loads(body_bytes) if body_bytes else {}
+
+        request.read = _read_history
+        request.json = _json_history
+
     # --- Case A: /view ---
     if path == "/view" and method == "GET":
         q = request.rel_url.query
@@ -322,8 +417,10 @@ async def workflow_interceptor_middleware(request, handler):
             # Admin/owner fallback: if the file isn't in the current
             # user's directory, search the shared output/temp base.
             if not img_path or not os.path.isfile(img_path):
-                is_privileged = access_control._is_current_user_admin_or_owner()
-                if is_privileged:
+                request_user = request.get("user") or workflow_routes.get_current_user(request)
+                owner_username = users_db.get_owner_username()
+                is_owner = bool(request_user and owner_username and request_user == owner_username)
+                if is_owner:
                     from .utils.data_dir import get_data_subdir
 
                     base = get_data_subdir("temp" if img_type == "temp" else "output")
