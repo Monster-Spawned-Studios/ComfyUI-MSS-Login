@@ -183,16 +183,16 @@ def install_node_interceptor():
             continue
         _orig_anim = anim_cls.save_images
 
-        def _make_anim_patch(orig_fn):
+        def _make_anim_patch(orig_fn, cls_name):
             def anim_patch(self, images, *args, **kwargs):
                 if check_tensor_nsfw(images):
-                    print(f"[mss-login] BLOCKED {anim_cls_name}: Replacing with BLACK SQUARE.")
+                    print(f"[mss-login] BLOCKED {cls_name}: Replacing with BLACK SQUARE.")
                     images = torch.zeros_like(images)
                 return orig_fn(self, images, *args, **kwargs)
 
             return anim_patch
 
-        anim_cls.save_images = _make_anim_patch(_orig_anim)
+        anim_cls.save_images = _make_anim_patch(_orig_anim, anim_cls_name)
 
     # NOTE: ComfyUI may send preview bytes over /ws WebSocket frames without
     # going through /view. This extension mitigates that by disabling latent
