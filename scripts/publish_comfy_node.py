@@ -58,7 +58,7 @@ def _get_project_name_from_pyproject(base_path: str) -> str | None:
 	if args.debug or args.verbose:
 		print(f"Pyproject.toml file found in {base_path}.", file=stdout)
 	try:
-		with open(path, "rb", encoding="utf-8") as f:
+		with open(path, "rb") as f:
 			data = tomllib.load(f)
 		project = data.get("project")
 		if isinstance(project, dict):
@@ -155,7 +155,10 @@ def validate_node() -> bool:
 			return False
 		return True
 	except (OSError, FileNotFoundError) as e:
-		print(f"Warning: Node validation could not be completed: {e}. Proceeding with publish.", file=stderr)
+		print(
+			f"Warning: Node validation could not be completed: {e}. Proceeding with publish.",
+			file=stderr,
+		)
 		return False
 
 
@@ -164,7 +167,7 @@ def publish_node() -> bool:
 	"""Publish the node to the ComfyUI Registry."""
 	if args.dry_run:
 		print("Dry run enabled. No changes will be made.", file=stdout)
-		return 0
+		return True
 	print("Publishing node...", file=stdout if args.verbose else stderr)
 	try:
 		return (

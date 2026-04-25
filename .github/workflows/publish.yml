@@ -3,9 +3,7 @@ on:
     workflow_dispatch:
     push:
         branches:
-            - production
-        paths:
-            - "pyproject.toml"
+            - "release/*.*.*"
 
 permissions:
     contents: read
@@ -37,9 +35,18 @@ jobs:
               run: pip install -U uv
             - run: uv sync --group comfyui
               working-directory: ComfyUI-MSS-Login
+            - name: Validate release branch
+              if: github.event_name == 'push'
+              run: |
+                  if [[ ! "${GITHUB_REF_NAME}" =~ ^release/[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                      echo "::error::Publish pushes must target release/X.Y.Z branches. Got: ${GITHUB_REF_NAME}"
+                      exit 1
+                  fi
+                  echo "Release branch OK: ${GITHUB_REF_NAME}"
             - name: Publish ComfyUI Node
               working-directory: ${{ github.workspace }}/ComfyUI-MSS-Login
               env:
                   NODE_PATH: ${{ github.workspace }}/ComfyUI-MSS-Login
                   COMFY_NODE_NAME: MSS-Login
-              run: uv run scripts/publish_comfy_node.py -D -v --node-name ${{ env.COMFY_NODE_NAME }} --node-path ${{ env.NODE_PATH }} --registry-access-token ${{ secrets.REGISTRY_ACCESS_TOKEN }}
+                  REGISTRY_ACCESS_TOKEN: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
+              run: uv run scripts/publish_comfy_node.py -D -v --node-name "${COMFY_NODE_NAME}" --node-path "${NODE_PATH}"
