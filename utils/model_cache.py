@@ -21,7 +21,7 @@ ASSET_FOLDERS_FALLBACK = frozenset(
         "clip",
         "embeddings",
         "diffusion_models",
-        "]unet",
+        "unet",
         "clip_vision",
         "style_models",
         "controlnet",
