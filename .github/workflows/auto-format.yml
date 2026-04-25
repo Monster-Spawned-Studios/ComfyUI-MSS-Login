@@ -62,6 +62,9 @@ jobs:
         continue-on-error: true
 
       - name: Commit changes
+        env:
+          MSS_SSH_PRIV_KEY: ${{ secrets.MSS_SSH_PRIV_KEY }}
+          MSS_SSH_PASS: ${{ secrets.MSS_SSH_PASS }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -69,6 +72,22 @@ jobs:
           if git diff --cached --quiet; then
             echo "No formatting changes to commit."
           else
-            git commit -m "style: auto-format with ruff"
-            git push
+            if [ -n "$MSS_SSH_PRIV_KEY" ] && [ -n "$MSS_SSH_PASS" ]; then
+              KEY_FILE="$(mktemp)"
+              printf '%s\n' "$MSS_SSH_PRIV_KEY" > "$KEY_FILE"
+              chmod 600 "$KEY_FILE"
+              eval "$(ssh-agent -s)"
+              echo "$MSS_SSH_PASS" | ssh-add -q "$KEY_FILE"
+              git config gpg.format ssh
+              git config user.signingKey "$KEY_FILE"
+              git config commit.gpgsign true
+              git commit -S -m "style: auto-format with ruff"
+              git push
+              ssh-agent -k
+              shred -u "$KEY_FILE"
+            else
+              echo "SSH signing secrets not set; committing without signature."
+              git commit -m "style: auto-format with ruff"
+              git push
+            fi
           fi
