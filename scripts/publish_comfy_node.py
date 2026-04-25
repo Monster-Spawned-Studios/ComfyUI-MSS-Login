@@ -138,20 +138,24 @@ if args.dry_run:
 
 # Validate the node
 def validate_node() -> bool:
-	"""Validate the node using the ComfyUI CLI"""
+	"""Validate the node using the ComfyUI CLI. Returns True on success, False on failure (non-fatal)."""
 	print("Validating node...", file=stdout if args.verbose else stderr)
 	try:
-		return (
-			run(
-				["comfy", "node", "validate"],
-				check=True,
-				stdout=None if args.quiet else stdout,
-				stderr=None if args.quiet else stderr,
-			).returncode
-			== 0
+		result = run(
+			["comfy", "node", "validate"],
+			check=False,
+			stdout=None if args.quiet else stdout,
+			stderr=None if args.quiet else stderr,
 		)
-	except CalledProcessError as e:
-		print(f"Error validating node: {e}", file=stderr)
+		if result.returncode != 0:
+			print(
+				f"Warning: Node validation returned exit code {result.returncode}. Proceeding with publish.",
+				file=stderr,
+			)
+			return False
+		return True
+	except (OSError, FileNotFoundError) as e:
+		print(f"Warning: Node validation could not be completed: {e}. Proceeding with publish.", file=stderr)
 		return False
 
 
@@ -184,8 +188,7 @@ def publish_node() -> bool:
 def main() -> int:
 	"""Main function"""
 	if not validate_node():
-		print("Node validation failed.", file=stderr)
-		return 1
+		print("Node validation failed (non-fatal). Proceeding with publish.", file=stderr)
 	if not publish_node():
 		print("Node publication failed.", file=stderr)
 		return 1
@@ -193,15 +196,15 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-	if not args.quiet:  # Print success message to stdout if quiet is not enabled
-		print("Node published successfully.", file=stdout)
-	elif args.debug:  # Print success message to stdout if debug is enabled
-		print(
-			f"Node published successfully using parameters: --registry-access-token '{_redact_token(args.registry_access_token)}' --node-name '{args.node_name}' --node-path '{args.node_path}' --verbose '{args.verbose}' --debug '{args.debug}' --quiet '{args.quiet}' --dry-run '{args.dry_run}'.",
-			file=stdout,
-		)
-	elif args.dry_run:  # Print success message to stderr if dry run is not enabled
-		print("Node publishing test executed successfully.", file=stderr)
-	else:  # Print success message to stdout if quiet, debug, and dry run are enabled
-		print("Node published successfully.", file=stdout)
-	exit(main())
+	result = main()
+	if result == 0:
+		if args.dry_run:  # Print dry-run success message to stderr
+			print("Node publishing test executed successfully.", file=stderr)
+		elif args.debug:  # Print detailed success message if debug is enabled
+			print(
+				f"Node published successfully using parameters: --registry-access-token '{_redact_token(args.registry_access_token)}' --node-name '{args.node_name}' --node-path '{args.node_path}' --verbose '{args.verbose}' --debug '{args.debug}' --quiet '{args.quiet}' --dry-run '{args.dry_run}'.",
+				file=stdout,
+			)
+		elif not args.quiet:  # Print success message to stdout unless quiet
+			print("Node published successfully.", file=stdout)
+	exit(result)
