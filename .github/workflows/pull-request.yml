@@ -25,11 +25,14 @@ jobs:
 
   pr-check:
     name: PR description check
+    if: ${{ github.event.pull_request.user.type != 'Bot' && !endsWith(github.event.pull_request.user.login, '[bot]') && !contains(fromJSON('["dependabot","copilot","claude","cursor","github-actions"]'), github.event.pull_request.user.login) }}
     runs-on: ubuntu-latest
     steps:
       - name: Check PR body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          body="${{ github.event.pull_request.body }}"
+          body="${PR_BODY}"
           if [ -z "${body// }" ]; then
             echo "::warning::Pull request has no description. Consider adding a summary."
             exit 0
