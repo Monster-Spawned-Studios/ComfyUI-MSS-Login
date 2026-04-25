@@ -4,6 +4,7 @@ from ..constants import EXPERIMENTAL_FEATURES, get_experimental_flags
 from ..globals import routes, jwt_auth, users_db
 from ..utils import user_env
 from ..utils.path_safety import is_safe_filename, resolve_path_under
+from ..utils.trash_store import empty_trash, list_trash_items, restore_trash_item
 import folder_paths
 import os
 import shutil
@@ -43,6 +44,23 @@ def _get_caller_admin_info(request):
 		return False, None, ["guest"]
 
 	try:
+		try:
+			from ..constants import API_TOKEN_STORE_CONFIG
+			from ..utils.api_token_store import get_api_token_store
+
+			api_store = get_api_token_store(API_TOKEN_STORE_CONFIG)
+			api_user = api_store.get_user_for_token(token)
+			if api_user is not None:
+				_user_id, username = api_user
+				_, rec = users_db.get_user(username)
+				groups = [g.lower() for g in rec.get("groups", [])] if rec else ["guest"]
+				is_admin = bool(
+					rec and (rec.get("admin") or ("admin" in groups) or ("owner" in groups))
+				)
+				return is_admin, username, groups
+		except Exception:
+			pass
+
 		payload = jwt_auth.decode_access_token(token)
 		username = payload.get("username")
 		_, rec = users_db.get_user(username)
@@ -53,6 +71,13 @@ def _get_caller_admin_info(request):
 		print(f"[MSS-Login] admin check error: {e}")
 		return False, None, ["guest"]
 
+
+def _get_caller_user_info(request) -> tuple[str | None, bool, list[str]]:
+	is_admin, username, groups = _get_caller_admin_info(request)
+	if not username:
+		return None, False, ["guest"]
+	is_owner = "owner" in groups
+	return username, bool(is_admin or is_owner), groups
 
 
 def _request_origin(request: web.Request) -> str:
@@ -78,11 +103,7 @@ async def api_me(request: web.Request) -> web.Response:
 	# Capture host base URL from first admin/owner connection when not set by env or DB
 	if username and (is_admin or "owner" in groups):
 		try:
-			from ..constants import (
-				clear_host_base_url_cache,
-				USERS_DB_CONFIG,
-				_is_safe_base_url,
-			)
+			from ..constants import clear_host_base_url_cache, USERS_DB_CONFIG, _is_safe_base_url
 			from ..utils.app_settings_store import get_app_settings_store
 
 			if not (os.getenv("HOST_BASE_URL") or "").strip():
@@ -185,12 +206,7 @@ async def api_user_env(request: web.Request) -> web.Response:
 			msg += " This user is currently configured as the Gallery root."
 
 		return web.json_response(
-			{
-				"user": target_user,
-				"files": files,
-				"is_gallery_root": is_root,
-				"message": msg,
-			}
+			{"user": target_user, "files": files, "is_gallery_root": is_root, "message": msg}
 		)
 
 	# --- LIST FILES -----------------------------------------------
@@ -252,11 +268,7 @@ async def api_user_env(request: web.Request) -> web.Response:
 	if action == "list_workflows":
 		workflows = user_env.list_user_workflows(target_user)
 		return web.json_response(
-			{
-				"user": target_user,
-				"workflows": workflows,
-				"count": len(workflows),
-			}
+			{"user": target_user, "workflows": workflows, "count": len(workflows)}
 		)
 
 	# --- PROMOTE WORKFLOW TO GLOBAL DEFAULTS ----------------------
@@ -278,10 +290,7 @@ async def api_user_env(request: web.Request) -> web.Response:
 
 		if not (os.path.exists(src) and os.path.isfile(src)):
 			return web.json_response(
-				{
-					"error": f"Workflow '{wf_name}' not found in user folder.",
-					"user": target_user,
-				},
+				{"error": f"Workflow '{wf_name}' not found in user folder.", "user": target_user},
 				status=404,
 			)
 
@@ -334,6 +343,78 @@ async def api_user_env(request: web.Request) -> web.Response:
 
 
 routes.post("/api/mss-login/api/user-env")(api_user_env)
+
+
+@routes.get("/mss-login/api/trash")
+async def api_trash_list(request: web.Request) -> web.Response:
+	username, is_admin_or_owner, groups = _get_caller_user_info(request)
+	if not username:
+		return web.json_response({"error": "Authentication required"}, status=401)
+	is_owner = "owner" in groups
+	target_user = (request.query.get("user") or "").strip() or None
+	if target_user and not is_owner:
+		return web.json_response(
+			{"error": "Owner access required for cross-user listing"}, status=403
+		)
+	items = list_trash_items(
+		request_username=username, is_owner=is_owner, target_user=target_user if is_owner else None
+	)
+	return web.json_response({"items": items, "count": len(items)})
+
+
+routes.get("/api/mss-login/api/trash")(api_trash_list)
+
+
+@routes.post("/mss-login/api/trash/restore")
+async def api_trash_restore(request: web.Request) -> web.Response:
+	username, _is_admin_or_owner, groups = _get_caller_user_info(request)
+	if not username:
+		return web.json_response({"error": "Authentication required"}, status=401)
+	try:
+		data = await request.json()
+	except Exception:
+		return web.json_response({"error": "Invalid JSON body"}, status=400)
+	item_id = str(data.get("item_id") or "").strip()
+	if not item_id:
+		return web.json_response({"error": "Missing 'item_id'"}, status=400)
+	result = restore_trash_item(
+		item_id=item_id, request_username=username, is_owner=("owner" in groups)
+	)
+	status = str(result.get("status") or "")
+	if status == "ok":
+		return web.json_response(result)
+	if status == "forbidden":
+		return web.json_response({"error": "Forbidden"}, status=403)
+	if status in ("not_found", "missing"):
+		return web.json_response({"error": "Item not found"}, status=404)
+	return web.json_response({"error": result.get("error", "Failed to restore item")}, status=500)
+
+
+routes.post("/api/mss-login/api/trash/restore")(api_trash_restore)
+
+
+@routes.post("/mss-login/api/trash/empty")
+async def api_trash_empty(request: web.Request) -> web.Response:
+	username, _is_admin_or_owner, groups = _get_caller_user_info(request)
+	if not username:
+		return web.json_response({"error": "Authentication required"}, status=401)
+	is_owner = "owner" in groups
+	try:
+		data = await request.json()
+	except Exception:
+		data = {}
+	target_user = str(data.get("target_user") or "").strip() or None
+	if target_user and not is_owner:
+		return web.json_response(
+			{"error": "Owner access required for cross-user empty"}, status=403
+		)
+	result = empty_trash(
+		request_username=username, is_owner=is_owner, target_user=target_user if is_owner else None
+	)
+	return web.json_response({"status": "ok", **result})
+
+
+routes.post("/api/mss-login/api/trash/empty")(api_trash_empty)
 
 
 @routes.post("/mss-login-gallery/mark-nsfw")

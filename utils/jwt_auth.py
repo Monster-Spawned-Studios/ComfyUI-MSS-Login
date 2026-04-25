@@ -1,15 +1,16 @@
 import os
 import uuid
-import jwt
-from aiohttp import web
 from datetime import datetime, timedelta, timezone
 
-from .users_db import UsersDB
+import jwt
+from aiohttp import web
+
 from .access_control import AccessControl
-from .logger import Logger
 from .api_token_store import get_api_token_store
-from .session_token_store import get_session_token_store
 from .debug_log import debug_write
+from .logger import Logger
+from .session_token_store import get_session_token_store
+from .users_db import UsersDB
 
 
 class JWTAuth:
@@ -98,34 +99,21 @@ class JWTAuth:
 			jti = user.get("jti")
 			if jti:
 				try:
-					from ..constants import (
-						SESSION_TOKEN_STORE_CONFIG,
-						SESSION_IDLE_REVOKE_MINUTES,
-					)
+					from ..constants import SESSION_IDLE_REVOKE_MINUTES, SESSION_TOKEN_STORE_CONFIG
 
 					store = get_session_token_store(
-						SESSION_TOKEN_STORE_CONFIG,
-						idle_revoke_minutes=SESSION_IDLE_REVOKE_MINUTES,
+						SESSION_TOKEN_STORE_CONFIG, idle_revoke_minutes=SESSION_IDLE_REVOKE_MINUTES
 					)
 					if store.is_revoked(jti):
 						return False
 				except Exception:
 					pass
 			return True
-		except (
-			jwt.ExpiredSignatureError,
-			jwt.DecodeError,
-			ValueError,
-			KeyError,
-			TypeError,
-		):
+		except (jwt.ExpiredSignatureError, jwt.DecodeError, ValueError, KeyError, TypeError):
 			return False
 
 	def create_jwt_middleware(
-		self,
-		public: tuple = (),
-		public_prefixes: tuple = (),
-		public_suffixes: tuple = (),
+		self, public: tuple = (), public_prefixes: tuple = (), public_suffixes: tuple = ()
 	) -> web.middleware:
 		"""Create middleware for JWT authentication."""
 
@@ -153,6 +141,7 @@ class JWTAuth:
 				try:
 					import json
 					import time
+
 					from ..constants import DEBUG_LOG_PATH
 
 					os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
@@ -183,16 +172,14 @@ class JWTAuth:
 					{
 						"location": "jwt_auth",
 						"message": "api_store_lookup",
-						"data": {
-							"path": request.path,
-							"api_user_found": api_user is not None,
-						},
+						"data": {"path": request.path, "api_user_found": api_user is not None},
 						"hypothesisId": "B",
 					}
 				)
 				try:
 					import json
 					import time
+
 					from ..constants import DEBUG_LOG_PATH
 
 					os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
@@ -242,8 +229,8 @@ class JWTAuth:
 				if jti:
 					try:
 						from ..constants import (
-							SESSION_TOKEN_STORE_CONFIG,
 							SESSION_IDLE_REVOKE_MINUTES,
+							SESSION_TOKEN_STORE_CONFIG,
 						)
 
 						store = get_session_token_store(
@@ -271,16 +258,14 @@ class JWTAuth:
 					{
 						"location": "jwt_auth",
 						"message": "reject",
-						"data": {
-							"path": request.path,
-							"reason": "ExpiredSignatureError",
-						},
+						"data": {"path": request.path, "reason": "ExpiredSignatureError"},
 						"hypothesisId": "B",
 					}
 				)
 				try:
 					import json
 					import time
+
 					from ..constants import DEBUG_LOG_PATH
 
 					with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
@@ -318,6 +303,7 @@ class JWTAuth:
 				try:
 					import json
 					import time
+
 					from ..constants import DEBUG_LOG_PATH
 
 					with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
@@ -329,10 +315,7 @@ class JWTAuth:
 									"hypothesisId": "JWT-B",
 									"location": "jwt_auth.py",
 									"message": "reject",
-									"data": {
-										"path": request.path,
-										"reason": "DecodeError",
-									},
+									"data": {"path": request.path, "reason": "DecodeError"},
 									"timestamp": int(time.time() * 1000),
 								}
 							)
@@ -358,6 +341,7 @@ class JWTAuth:
 				try:
 					import json
 					import time
+
 					from ..constants import DEBUG_LOG_PATH
 
 					with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
@@ -369,10 +353,7 @@ class JWTAuth:
 									"hypothesisId": "JWT-B",
 									"location": "jwt_auth.py",
 									"message": "reject",
-									"data": {
-										"path": request.path,
-										"reason": type(e).__name__,
-									},
+									"data": {"path": request.path, "reason": type(e).__name__},
 									"timestamp": int(time.time() * 1000),
 								}
 							)
@@ -388,9 +369,7 @@ class JWTAuth:
 			return await handler(request)
 
 		async def handle_unauthorized_access(
-			request: web.Request,
-			redirect_path: str,
-			message: str = "Authentication required",
+			request: web.Request, redirect_path: str, message: str = "Authentication required"
 		) -> web.Response:
 			"""Handle unauthorized access: redirect browsers to login/logout, return JSON for API/native clients.
 
@@ -407,6 +386,7 @@ class JWTAuth:
 				body = {"error": message}
 				try:
 					from ..constants import DEBUG_MODE
+
 					if DEBUG_MODE:
 						body["debug"] = "DEBUG_MODE=1: see logs/debug.log or server logs."
 				except Exception:
@@ -428,6 +408,7 @@ class JWTAuth:
 			body = {"error": message}
 			try:
 				from ..constants import DEBUG_MODE
+
 				if DEBUG_MODE:
 					body["debug"] = "DEBUG_MODE=1: see logs/debug.log or server logs."
 			except Exception:

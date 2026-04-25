@@ -6,6 +6,7 @@ name: PR body check
 on:
   pull_request:
     types: [opened, edited, synchronize]
+    branches: [development, production]
 
 permissions:
   pull-requests: read

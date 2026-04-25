@@ -296,7 +296,7 @@ def save_s3_settings(payload: dict) -> dict:
 
 
 class S3MountManager:
-	"""Single runtime for mounted S3 access and workflow mirroring."""
+	"""Single runtime for mounted S3 access with boto3 fallback and workflow mirroring."""
 
 	def __init__(self, data_dir: str, users_db=None):
 		self._data_dir = data_dir
@@ -314,6 +314,7 @@ class S3MountManager:
 		self._models_root = ""
 		self._workflow_root = ""
 		self._passwd_path = os.path.join(self._data_dir, "data", ".passwd-s3fs")
+		self._boto3_s3 = None
 		self.refresh_config()
 
 	def refresh_config(self) -> dict:
@@ -348,6 +349,35 @@ class S3MountManager:
 			]
 		)
 
+	def _boto3_client(self):
+		"""Lazily create and return a boto3 S3 client, or None if boto3 is unavailable."""
+		if self._boto3_s3 is not None:
+			return self._boto3_s3
+		try:
+			import boto3
+			from botocore.config import Config as BotoConfig
+		except ImportError:
+			return None
+
+		kwargs = {
+			"aws_access_key_id": self._cfg.get("access_key_id"),
+			"aws_secret_access_key": self._cfg.get("secret_access_key"),
+		}
+		endpoint = (self._cfg.get("endpoint_url") or "").strip()
+		if endpoint:
+			kwargs["endpoint_url"] = endpoint
+		region = (self._cfg.get("region") or "").strip()
+		if region:
+			kwargs["region_name"] = region
+		if self._cfg.get("mount", {}).get("use_path_style"):
+			kwargs["config"] = BotoConfig(s3={"addressing_style": "path"})
+
+		self._boto3_s3 = boto3.client("s3", **kwargs)
+		return self._boto3_s3
+
+	def _in_boto3_mode(self) -> bool:
+		return self._active_mode == "boto3"
+
 	def _fuse_available(self) -> bool:
 		return os.name == "posix" and os.path.exists("/dev/fuse")
 
@@ -360,9 +390,7 @@ class S3MountManager:
 		if not shutil.which("mountpoint"):
 			return False
 		result = subprocess.run(
-			["mountpoint", "-q", self._mount_root],
-			capture_output=True,
-			check=False,
+			["mountpoint", "-q", self._mount_root], capture_output=True, check=False
 		)
 		return result.returncode == 0
 
@@ -436,45 +464,52 @@ class S3MountManager:
 				self._active_mode = "degraded"
 				self._last_error = "S3 is enabled but required settings are missing."
 				return False
-			if not self._ensure_s3fs():
-				self._active_mode = "degraded"
-				return False
-			if not self._fuse_available():
-				self._active_mode = "degraded"
-				self._last_error = "FUSE is not available in this container."
-				return False
-			os.makedirs(self._mount_root, exist_ok=True)
-			if self._mountpoint_active():
-				self._active_mode = "mount"
-				self.start_background_sync()
-				return True
 
-			self._write_passwd_file()
-			cmd = self._build_mount_cmd()
-			try:
-				self._mount_proc = subprocess.Popen(
-					cmd,
-					stdout=subprocess.PIPE,
-					stderr=subprocess.PIPE,
-				)
-				time.sleep(3)
-				if not self._mountpoint_active():
+			# Attempt FUSE mount first (Linux/macOS with s3fs + FUSE)
+			fuse_ok = self._fuse_available() and self._ensure_s3fs()
+			if fuse_ok:
+				os.makedirs(self._mount_root, exist_ok=True)
+				if self._mountpoint_active():
+					self._active_mode = "mount"
+					self.start_background_sync()
+					return True
+
+				self._write_passwd_file()
+				cmd = self._build_mount_cmd()
+				try:
+					self._mount_proc = subprocess.Popen(
+						cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+					)
+					time.sleep(3)
+					if self._mountpoint_active():
+						self._active_mode = "mount"
+						self.start_background_sync()
+						return True
 					stderr = ""
 					if self._mount_proc and self._mount_proc.poll() is not None:
 						stderr = (self._mount_proc.stderr.read() or b"").decode(errors="replace")
 					self._last_error = stderr or "s3fs did not establish a mount."
-					self._active_mode = "degraded"
-					return False
-				self._active_mode = "mount"
-				self.start_background_sync()
-				return True
-			except Exception as exc:
-				self._last_error = str(exc)
-				self._active_mode = "degraded"
-				return False
+				except Exception as exc:
+					self._last_error = str(exc)
+
+			# Fallback to boto3 direct mode (OS-agnostic: Windows, containers without FUSE)
+			client = self._boto3_client()
+			if client is not None:
+				try:
+					client.head_bucket(Bucket=self._cfg["bucket_name"])
+					self._active_mode = "boto3"
+					os.makedirs(self._mount_root, exist_ok=True)
+					logger.info("[mss-login] S3 operating in boto3 direct mode (FUSE unavailable).")
+					self.start_background_sync()
+					return True
+				except Exception as exc:
+					self._last_error = f"boto3 connection failed: {exc}"
+
+			self._active_mode = "degraded"
+			return False
 
 	def register_folder_paths(self) -> list[str]:
-		if not self.is_mounted():
+		if not self.is_mounted() and not self._in_boto3_mode():
 			return []
 		try:
 			import folder_paths  # pyright: ignore[reportMissingImports]
@@ -541,11 +576,7 @@ class S3MountManager:
 		self.unmount()
 		mounted = self.mount_or_sync()
 		registered = self.register_folder_paths() if mounted else []
-		return {
-			"remounted": mounted,
-			"registered_folders": registered,
-			"status": self.status(),
-		}
+		return {"remounted": mounted, "registered_folders": registered, "status": self.status()}
 
 	def _path_for_key(self, s3_key: str) -> str:
 		path = _resolve_under(self._mount_root, s3_key)
@@ -553,9 +584,17 @@ class S3MountManager:
 			raise ValueError("Invalid S3 key path.")
 		return path
 
+	def _s3_prefix_key(self, key: str) -> str:
+		"""Prepend the configured bucket prefix to a relative key for boto3 calls."""
+		prefix = (self._cfg.get("prefix") or "").strip("/")
+		clean = (_safe_relpath(key) or "").lstrip("/")
+		return f"{prefix}/{clean}" if prefix else clean
+
 	def list_objects(self, prefix: str = "", max_keys: int = 1000) -> list[dict]:
+		if self._in_boto3_mode():
+			return self._list_objects_boto3(prefix, max_keys)
 		if not self.is_mounted():
-			raise RuntimeError("S3 mount is not active.")
+			raise RuntimeError("S3 is not active.")
 		base = self._mount_root if not prefix else self._path_for_key(prefix)
 		if not os.path.exists(base):
 			return []
@@ -570,21 +609,46 @@ class S3MountManager:
 				st = os.stat(full)
 				rel = os.path.relpath(full, self._mount_root).replace("\\", "/")
 				results.append(
-					{
-						"key": rel,
-						"size": st.st_size,
-						"last_modified": _format_iso(st.st_mtime),
-					}
+					{"key": rel, "size": st.st_size, "last_modified": _format_iso(st.st_mtime)}
 				)
 				if len(results) >= max_keys:
 					return results
 		return results
 
+	def _list_objects_boto3(self, prefix: str, max_keys: int) -> list[dict]:
+		client = self._boto3_client()
+		if client is None:
+			raise RuntimeError("boto3 is not available.")
+		s3_prefix = (
+			self._s3_prefix_key(prefix)
+			if prefix
+			else (self._cfg.get("prefix") or "").strip("/") + "/"
+		)
+		bucket = self._cfg["bucket_name"]
+		results: list[dict] = []
+		paginator = client.get_paginator("list_objects_v2")
+		for page in paginator.paginate(
+			Bucket=bucket, Prefix=s3_prefix, PaginationConfig={"MaxItems": max_keys}
+		):
+			for obj in page.get("Contents", []):
+				results.append(
+					{
+						"key": obj["Key"],
+						"size": obj.get("Size", 0),
+						"last_modified": obj["LastModified"].isoformat()
+						if obj.get("LastModified")
+						else "",
+					}
+				)
+		return results
+
 	def upload_file(self, local_path: str, s3_key: str) -> dict:
-		if not self.is_mounted():
-			raise RuntimeError("S3 mount is not active.")
 		if not os.path.isfile(local_path):
 			raise FileNotFoundError(f"Local file not found: {local_path}")
+		if self._in_boto3_mode():
+			return self._upload_file_boto3(local_path, s3_key)
+		if not self.is_mounted():
+			raise RuntimeError("S3 is not active.")
 		dest = self._path_for_key(s3_key)
 		os.makedirs(os.path.dirname(dest), exist_ok=True)
 		shutil.copy2(local_path, dest)
@@ -595,9 +659,20 @@ class S3MountManager:
 			"size": size,
 		}
 
+	def _upload_file_boto3(self, local_path: str, s3_key: str) -> dict:
+		client = self._boto3_client()
+		if client is None:
+			raise RuntimeError("boto3 is not available.")
+		full_key = self._s3_prefix_key(s3_key)
+		client.upload_file(local_path, self._cfg["bucket_name"], full_key)
+		size = os.path.getsize(local_path)
+		return {"bucket": self._cfg["bucket_name"], "key": full_key, "size": size}
+
 	def download_file(self, s3_key: str, local_path: str) -> str:
+		if self._in_boto3_mode():
+			return self._download_file_boto3(s3_key, local_path)
 		if not self.is_mounted():
-			raise RuntimeError("S3 mount is not active.")
+			raise RuntimeError("S3 is not active.")
 		source = self._path_for_key(s3_key)
 		if not os.path.isfile(source):
 			raise FileNotFoundError(f"S3 object not found: {s3_key}")
@@ -605,9 +680,20 @@ class S3MountManager:
 		shutil.copy2(source, local_path)
 		return local_path
 
+	def _download_file_boto3(self, s3_key: str, local_path: str) -> str:
+		client = self._boto3_client()
+		if client is None:
+			raise RuntimeError("boto3 is not available.")
+		full_key = self._s3_prefix_key(s3_key)
+		os.makedirs(os.path.dirname(local_path) or ".", exist_ok=True)
+		client.download_file(self._cfg["bucket_name"], full_key, local_path)
+		return local_path
+
 	def delete_object(self, s3_key: str) -> bool:
+		if self._in_boto3_mode():
+			return self._delete_object_boto3(s3_key)
 		if not self.is_mounted():
-			raise RuntimeError("S3 mount is not active.")
+			raise RuntimeError("S3 is not active.")
 		target = self._path_for_key(s3_key)
 		if not os.path.exists(target):
 			return False
@@ -617,9 +703,20 @@ class S3MountManager:
 			os.remove(target)
 		return True
 
+	def _delete_object_boto3(self, s3_key: str) -> bool:
+		client = self._boto3_client()
+		if client is None:
+			raise RuntimeError("boto3 is not available.")
+		full_key = self._s3_prefix_key(s3_key)
+		try:
+			client.delete_object(Bucket=self._cfg["bucket_name"], Key=full_key)
+			return True
+		except Exception:
+			return False
+
 	def test_connection(self) -> dict:
 		return {
-			"ok": self.is_mounted(),
+			"ok": self._is_s3_active(),
 			"configured": self._is_configured(),
 			"bucket": self._cfg.get("bucket_name") or "",
 			"endpoint": self._cfg.get("endpoint_url") or "",
@@ -675,11 +772,14 @@ class S3MountManager:
 			return "skip"
 		return "upload" if local_mtime > remote_mtime else "download"
 
+	def _is_s3_active(self) -> bool:
+		return self.is_mounted() or self._in_boto3_mode()
+
 	def sync_user(self, username: str) -> dict:
 		from . import user_env
 
-		if not self.is_mounted():
-			return {"skipped": True, "reason": "s3 mount unavailable"}
+		if not self._is_s3_active():
+			return {"skipped": True, "reason": "s3 unavailable"}
 		if not username or username == "guest":
 			return {"skipped": True, "reason": "guest user"}
 
@@ -697,9 +797,7 @@ class S3MountManager:
 			try:
 				if rel_name in local_files and rel_name not in remote_files:
 					self._copy_local_to_remote(
-						_resolve_under(local_dir, rel_name) or "",
-						remote_dir,
-						rel_name,
+						_resolve_under(local_dir, rel_name) or "", remote_dir, rel_name
 					)
 					stats["uploaded"] += 1
 				elif rel_name not in local_files and rel_name in remote_files:
@@ -709,9 +807,7 @@ class S3MountManager:
 					action = self._resolve_conflict(local_files[rel_name], remote_files[rel_name])
 					if action == "upload":
 						self._copy_local_to_remote(
-							_resolve_under(local_dir, rel_name) or "",
-							remote_dir,
-							rel_name,
+							_resolve_under(local_dir, rel_name) or "", remote_dir, rel_name
 						)
 						stats["uploaded"] += 1
 					elif action == "download":
@@ -739,7 +835,7 @@ class S3MountManager:
 		return {username: self.sync_user(username) for username in usernames}
 
 	def upload_user_workflow(self, username: str, rel_name: str, local_path: str) -> None:
-		if not self._cfg["workflow_sync"].get("sync_on_save", True) or not self.is_mounted():
+		if not self._cfg["workflow_sync"].get("sync_on_save", True) or not self._is_s3_active():
 			return
 		remote_dir = self._workflow_dir_for_user(username)
 		os.makedirs(remote_dir, exist_ok=True)
@@ -747,7 +843,7 @@ class S3MountManager:
 		self._last_sync_times[username] = time.time()
 
 	def delete_user_workflow(self, username: str, rel_name: str) -> None:
-		if not self._cfg["workflow_sync"].get("sync_on_delete", True) or not self.is_mounted():
+		if not self._cfg["workflow_sync"].get("sync_on_delete", True) or not self._is_s3_active():
 			return
 		remote_dir = self._workflow_dir_for_user(username)
 		target = _resolve_under(remote_dir, rel_name)
@@ -759,7 +855,7 @@ class S3MountManager:
 		from . import user_env
 		from ..routes.workflow_routes import get_file_info
 
-		if not self.is_mounted() or not username or username == "guest":
+		if not self._is_s3_active() or not username or username == "guest":
 			return []
 
 		max_size = int(self._cfg["workflow_sync"].get("max_workflow_size_mb", 50)) * 1024 * 1024
@@ -790,15 +886,13 @@ class S3MountManager:
 	def start_background_sync(self) -> None:
 		if not self._cfg["workflow_sync"].get("enabled"):
 			return
-		if not self.is_mounted():
+		if not self._is_s3_active():
 			return
 		if self._workflow_thread and self._workflow_thread.is_alive():
 			return
 		self._stop_event.clear()
 		self._workflow_thread = threading.Thread(
-			target=self._workflow_loop,
-			daemon=True,
-			name="s3-workflow-sync",
+			target=self._workflow_loop, daemon=True, name="s3-workflow-sync"
 		)
 		self._workflow_thread.start()
 
@@ -809,7 +903,7 @@ class S3MountManager:
 		self._workflow_thread = None
 
 	def trigger_sync(self) -> bool:
-		if not self.is_mounted():
+		if not self._is_s3_active():
 			return False
 		self.sync_all_users()
 		return True

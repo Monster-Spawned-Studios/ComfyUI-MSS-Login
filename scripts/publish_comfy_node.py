@@ -36,30 +36,10 @@ parser.add_argument(
 	default=None,
 	help="The path to the ComfyUI node to publish (or set NODE_PATH or cwd)",
 )
-parser.add_argument(
-	"-v",
-	"--verbose",
-	action="store_true",
-	help="Enable verbose output",
-)
-parser.add_argument(
-	"-D",
-	"--debug",
-	action="store_true",
-	help="Enable debug output",
-)
-parser.add_argument(
-	"-q",
-	"--quiet",
-	action="store_true",
-	help="Enable quiet output",
-)
-parser.add_argument(
-	"-d",
-	"--dry-run",
-	action="store_true",
-	help="Enable dry run output",
-)
+parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
+parser.add_argument("-D", "--debug", action="store_true", help="Enable debug output")
+parser.add_argument("-q", "--quiet", action="store_true", help="Enable quiet output")
+parser.add_argument("-d", "--dry-run", action="store_true", help="Enable dry run output")
 
 args = parser.parse_args()
 

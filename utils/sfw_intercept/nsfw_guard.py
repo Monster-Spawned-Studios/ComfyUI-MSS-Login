@@ -2,6 +2,7 @@
 import os
 import json
 from functools import lru_cache
+from datetime import datetime, timezone
 from typing import Optional, Tuple, Dict
 
 from PIL import Image
@@ -32,6 +33,54 @@ _LATEST_PROMPT_USER = "guest"
 # Cache for SFW enforcement checks to avoid repeated DB lookups and logging
 _SFW_CACHE = {}  # {username: (sfw_flag, last_logged_username)}
 _LAST_LOGGED_USER = None
+
+
+def _extract_workflow_context(path: str) -> Tuple[str, str]:
+	"""Best-effort extraction of workflow name and generation time from image metadata."""
+	workflow_name = "unknown"
+	generated_at = datetime.now(timezone.utc).isoformat()
+	try:
+		with Image.open(path) as img:
+			info = img.info if isinstance(img.info, dict) else {}
+			for key in ("workflow_name", "workflow", "comfy_workflow", "prompt", "parameters"):
+				value = info.get(key)
+				if value is None:
+					continue
+				value_text = str(value).strip()
+				if not value_text:
+					continue
+				if key == "prompt":
+					try:
+						prompt_obj = json.loads(value_text)
+						if isinstance(prompt_obj, dict):
+							meta = prompt_obj.get("extra_pnginfo") or {}
+							if isinstance(meta, dict):
+								wf = meta.get("workflow") or meta.get("workflow_name")
+								if wf:
+									workflow_name = str(wf)[:200]
+									break
+					except Exception:
+						pass
+				workflow_name = value_text[:200]
+				break
+			for key in (
+				"generated_at",
+				"creation_time",
+				"created_at",
+				"timestamp",
+				"DateTime",
+				"DateTimeOriginal",
+			):
+				value = info.get(key)
+				if value is None:
+					continue
+				value_text = str(value).strip()
+				if value_text:
+					generated_at = value_text[:120]
+					break
+	except Exception:
+		pass
+	return workflow_name, generated_at
 
 
 def _get_nsfw_tag(path: str) -> Optional[Dict]:
@@ -217,8 +266,7 @@ def _set_nsfw_tag(path: str, is_nsfw: bool, score: float, label: str):
 				if existing_subject and "NSFW Content" not in str(existing_subject):
 					# Preserve existing subject, append NSFW info
 					pnginfo.add_text(
-						"Subject",
-						f"{existing_subject} | NSFW Content (Score: {score:.2f})",
+						"Subject", f"{existing_subject} | NSFW Content (Score: {score:.2f})"
 					)
 				else:
 					# No existing subject or it's already NSFW-related, set new one
@@ -234,8 +282,7 @@ def _set_nsfw_tag(path: str, is_nsfw: bool, score: float, label: str):
 				else:
 					# No existing comment or it's already NSFW-related, set new one
 					pnginfo.add_text(
-						"Comment",
-						f"NSFW Content Detected - Score: {score:.2f}, Label: {label}",
+						"Comment", f"NSFW Content Detected - Score: {score:.2f}, Label: {label}"
 					)
 			else:
 				# If SFW, preserve existing Windows-readable fields (they're already excluded from preservation loop above)
@@ -382,11 +429,7 @@ def _set_nsfw_tag(path: str, is_nsfw: bool, score: float, label: str):
 
 			# Save with info (may not work for all formats)
 			try:
-				img.save(
-					path,
-					exif=img.getexif() if hasattr(img, "getexif") else None,
-					**info,
-				)
+				img.save(path, exif=img.getexif() if hasattr(img, "getexif") else None, **info)
 			except Exception:
 				# Some formats don't support metadata, fail silently
 				pass
@@ -844,13 +887,19 @@ def should_block_image_for_current_user(
 						f"{os.path.basename(path)} (Score: {cached_score:.2f})"
 					)
 				try:
-					from ...utils.ntfy_notifier import send_notification
+					from ...utils.ntfy_notifier import notify_nsfw_block
 
 					username = current_username_var.get() or _LATEST_PROMPT_USER or "unknown"
-					send_notification(
-						"nsfw_block",
-						"mss-login: NSFW blocked",
-						f"User {username} attempted to view/generate NSFW image: {os.path.basename(path)} (cached)",
+					workflow_name, generated_at = _extract_workflow_context(path)
+					notify_nsfw_block(
+						username=username,
+						image_name=os.path.basename(path),
+						image_path=path,
+						workflow_name=workflow_name,
+						generated_at=generated_at,
+						score=float(tag.get("score", 0.0) or 0.0),
+						cached=True,
+						include_quarantine_action=True,
 					)
 				except Exception:
 					pass
@@ -862,7 +911,16 @@ def should_block_image_for_current_user(
 	# 3. Scan image (slow path, only if not cached)
 	cls = _classify_image_path(path, use_cache=use_cache)
 	if cls is None:
-		# Fail open (allow) if model is broken
+		# Fail-closed: block when the NSFW pipeline is unavailable and
+		# this user has SFW enforcement enabled, matching tensor-path behavior.
+		pipeline = _get_nsfw_pipeline()
+		if pipeline is None and sfw_enforced:
+			if not quiet:
+				print(
+					f"[mss-login::NSFWGuard] NSFW pipeline unavailable; "
+					f"blocking {os.path.basename(path)} (fail-closed)"
+				)
+			return True
 		return False
 
 	label, score = cls
@@ -877,13 +935,19 @@ def should_block_image_for_current_user(
 				f"{os.path.basename(path)} (Score: {score:.2f})"
 			)
 		try:
-			from ...utils.ntfy_notifier import send_notification
+			from ...utils.ntfy_notifier import notify_nsfw_block
 
 			username = current_username_var.get() or _LATEST_PROMPT_USER or "unknown"
-			send_notification(
-				"nsfw_block",
-				"mss-login: NSFW blocked",
-				f"User {username} attempted to view/generate NSFW image: {os.path.basename(path)} (Score: {score:.2f})",
+			workflow_name, generated_at = _extract_workflow_context(path)
+			notify_nsfw_block(
+				username=username,
+				image_name=os.path.basename(path),
+				image_path=path,
+				workflow_name=workflow_name,
+				generated_at=generated_at,
+				score=score,
+				cached=False,
+				include_quarantine_action=True,
 			)
 		except Exception:
 			pass

@@ -23,10 +23,7 @@ NODE_MODEL_INPUTS: dict[str, list[tuple[str, str]]] = {
 	"VAEEncode": [],
 	# CLIP / text encoders (DualCLIPLoader has two)
 	"CLIPLoader": [("clip", "clip_name")],
-	"DualCLIPLoader": [
-		("text_encoders", "clip_name1"),
-		("text_encoders", "clip_name2"),
-	],
+	"DualCLIPLoader": [("text_encoders", "clip_name1"), ("text_encoders", "clip_name2")],
 	"CLIPVisionLoader": [("clip_vision", "clip_name")],
 	# ControlNet, upscale, etc.
 	"ControlNetLoader": [("controlnet", "control_net_name")],
@@ -63,21 +60,10 @@ NODE_MODEL_INPUTS: dict[str, list[tuple[str, str]]] = {
 }
 
 # Legacy folder name mapping (e.g. unet -> diffusion_models, clip -> text_encoders)
-_LEGACY_FOLDER: dict[str, str] = {
-	"unet": "diffusion_models",
-	"clip": "text_encoders",
-}
+_LEGACY_FOLDER: dict[str, str] = {"unet": "diffusion_models", "clip": "text_encoders"}
 
 # Extensions that indicate a model file (for catch-all detection of unknown node types)
-_MODEL_FILE_EXTENSIONS = (
-	".safetensors",
-	".ckpt",
-	".pt",
-	".pth",
-	".bin",
-	".onnx",
-	".engine",
-)
+_MODEL_FILE_EXTENSIONS = (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".onnx", ".engine")
 
 
 def _normalize_folder(folder: str) -> str:
@@ -93,8 +79,7 @@ def _looks_like_model_file(value: str) -> bool:
 
 
 def extract_model_references(
-	prompt: dict[str, Any],
-	known_models: Optional[set[tuple[str, str]]] = None,
+	prompt: dict[str, Any], known_models: Optional[set[tuple[str, str]]] = None
 ) -> set[tuple[str, str]]:
 	"""
 	Extract (folder, item_name) from a ComfyUI API-format prompt.

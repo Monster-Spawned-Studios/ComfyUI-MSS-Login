@@ -34,12 +34,12 @@ jobs:
                   cache: "pip"
                   cache-dependency-path: ComfyUI-MSS-Login/pyproject.toml
             - name: Install uv
-              run: pip install uv
+              run: pip install -U uv
             - run: uv sync --group comfyui
               working-directory: ComfyUI-MSS-Login
             - name: Publish ComfyUI Node
               working-directory: ${{ github.workspace }}/ComfyUI-MSS-Login
               env:
                   NODE_PATH: ${{ github.workspace }}/ComfyUI-MSS-Login
-                  REGISTRY_ACCESS_TOKEN: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
-              run: uv run scripts/publish_comfy_node.py -D -v
+                  COMFY_NODE_NAME: MSS-Login
+              run: uv run scripts/publish_comfy_node.py -D -v --node-name ${{ env.COMFY_NODE_NAME }} --node-path ${{ env.NODE_PATH }} --registry-access-token ${{ secrets.REGISTRY_ACCESS_TOKEN }}

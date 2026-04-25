@@ -11,10 +11,7 @@ from ..constants import (
 )
 from ..utils.session_token_store import get_session_token_store
 from ..utils.user_console_log import append as user_console_append
-from ..utils.mfa_temp_store import (
-	consume_mfa_temp_token,
-	get_username_for_mfa_temp_token,
-)
+from ..utils.mfa_temp_store import consume_mfa_temp_token, get_username_for_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
 from ..utils.ip_filter import get_ip, is_https_request
 from ..utils.request_navigation import is_browser_navigation
@@ -187,11 +184,7 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
 		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 		return resp
 	resp = web.json_response(
-		{
-			"message": "Login successful",
-			"jwt_token": token,
-			"redirect_url": redirect_url,
-		}
+		{"message": "Login successful", "jwt_token": token, "redirect_url": redirect_url}
 	)
 	resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 	return resp

@@ -1,50 +1,42 @@
 # --- START OF FILE __init__.py ---
 # Auto-install dependencies before any package imports
-import json
-import os
-import sys
-import importlib.util
-
-_root = os.path.dirname(os.path.abspath(__file__))
-_install_deps_path = os.path.join(_root, "utils", "install_deps.py")
-if os.path.isfile(_install_deps_path):
-	_spec = importlib.util.spec_from_file_location("install_deps", _install_deps_path)
-	if _spec and _spec.loader:
-		_mod = importlib.util.module_from_spec(_spec)
-		_spec.loader.exec_module(_mod)
-		_mod.install_dependencies()
-
-from aiohttp import web
-import folder_paths  # pyright: ignore[reportMissingImports]
-from .nodes import NODE_CLASS_MAPPINGS
-from .constants import (
-	FORCE_HTTPS,
-	SEPERATE_USERS,
-	MATCH_HEADERS,
-	REQUIRE_AUTH_FOR_REMOTE_API,
-	LOCAL_NETWORK_CIDRS,
-	USERS_DB_CONFIG,
-	CONFIG_FILE_PATH,
-	EXPERIMENTAL_FEATURES,
-	S3_STORAGE_CONFIG,
-	S3_MOUNT_CONFIG,
-	S3_WORKFLOW_SYNC_CONFIG,
-	DATA_DIR,
-	clear_host_base_url_cache,
+from .globals import routes
+from server import PromptServer  # pyright: ignore[reportMissingImports]
+import server  # pyright: ignore[reportMissingImports]
+import asyncio
+from .utils.updater import (
+	get_cached_status,
+	perform_recovery_update,
+	run_update_check,
+	update_check_loop,
 )
-from .globals import (
-	app,
-	ip_filter,
-	sanitizer,
-	timeout,
-	jwt_auth,
-	access_control,
-	instance,
-	current_username_var,
-	logger,
+from .utils.json_utils import load_json_file
+from .utils.model_cache import get_model_cache
+from .utils.prompt_model_validator import validate_prompt_models
+from .utils.shared_items_store import get_shared_items_store
+from .utils.path_safety import is_safe_filename, resolve_path_under
+from .utils.csp import create_csp_middleware
+from .utils.model_filter_middleware import create_model_filter_middleware
+from .utils.model_download_redirect import (
+	initialize_redirect_pattern_cache,
+	is_civicomfy_present,
+	rewrite_download_payload_for_user,
+	should_try_model_download_redirect,
 )
-from .utils import watcher
-from .utils.bootstrap import ensure_groups_config
+from .utils.model_isolation import isolation_models_base
+from .utils.model_visibility_policy import (
+	allowed_set_from_grants,
+	get_effective_model_grants_for_user,
+	user_can_view_all_models,
+)
+from .utils.remote_api_guard import create_remote_api_guard_middleware
+from .utils.api_browser_redirect import create_api_browser_redirect_middleware
+from .utils.sfw_intercept.node_interceptor import install_node_interceptor
+from .utils.sfw_intercept.nsfw_guard import (
+	should_block_image_for_current_user,
+	set_latest_prompt_user,
+)
+from .utils.sfw_intercept.reactor_sfw_intercept import _load_reactor_module
 from .routes import (
 	static,
 	auth,
@@ -58,29 +50,67 @@ from .routes import (
 	model_download,
 	news,
 )
+from .utils.bootstrap import ensure_groups_config
+from .utils import watcher
+from .globals import (
+	app,
+	ip_filter,
+	sanitizer,
+	timeout,
+	jwt_auth,
+	access_control,
+	instance,
+	current_username_var,
+	logger,
+	users_db,
+)
+from .constants import (
+	FORCE_HTTPS,
+	CLOUDFLARE_PROXY,
+	CLOUDFLARED_LOCAL_BYPASS,
+	SEPERATE_USERS,
+	MATCH_HEADERS,
+	REQUIRE_AUTH_FOR_REMOTE_API,
+	LOCAL_NETWORK_CIDRS,
+	USERS_DB_CONFIG,
+	CONFIG_FILE_PATH,
+	EXPERIMENTAL_FEATURES,
+	S3_STORAGE_CONFIG,
+	S3_MOUNT_CONFIG,
+	S3_WORKFLOW_SYNC_CONFIG,
+	DATA_DIR,
+	CURRENT_DIR,
+	EXPERIMENTAL_FAILSAFE_ENABLED,
+	EXPERIMENTAL_FAILSAFE_ESCALATE,
+	apply_experimental_safety_reset,
+	clear_host_base_url_cache,
+	experimental_model_isolation_enabled,
+)
+from .nodes import NODE_CLASS_MAPPINGS
+import folder_paths  # pyright: ignore[reportMissingImports]
+from aiohttp import web
+import json
+import os
+import sys
+import importlib.util
+from datetime import datetime, timezone
+from .utils.ntfy_notifier import notify_experimental_recovery
+from .utils.quarantine_store import quarantine_cleanup_loop
+from .utils.trash_store import trash_cleanup_loop, trash_deleted_history_images
+
+_root = os.path.dirname(os.path.abspath(__file__))
+_install_deps_path = os.path.join(_root, "utils", "install_deps.py")
+if os.path.isfile(_install_deps_path):
+	_spec = importlib.util.spec_from_file_location("install_deps", _install_deps_path)
+	if _spec and _spec.loader:
+		_mod = importlib.util.module_from_spec(_spec)
+		_spec.loader.exec_module(_mod)
+		_mod.install_dependencies()
+
 
 if EXPERIMENTAL_FEATURES:
 	from .routes import s3 as _s3_routes  # noqa: F401
-from .utils.sfw_intercept.reactor_sfw_intercept import _load_reactor_module
-from .utils.sfw_intercept.nsfw_guard import (
-	should_block_image_for_current_user,
-	set_latest_prompt_user,
-)
-from .utils.sfw_intercept.node_interceptor import install_node_interceptor
-from .utils.api_browser_redirect import create_api_browser_redirect_middleware
-from .utils.remote_api_guard import create_remote_api_guard_middleware
-from .utils.model_filter_middleware import create_model_filter_middleware
-from .utils.csp import create_csp_middleware
-from .utils.path_safety import is_safe_filename, resolve_path_under
-from .utils.shared_items_store import get_shared_items_store
-from .utils.prompt_model_validator import validate_prompt_models
-from .utils.model_cache import get_model_cache
-from .utils.json_utils import load_json_file
-from .utils.updater import run_update_check, get_cached_status
 
-import asyncio
-import server  # pyright: ignore[reportMissingImports]
-from server import PromptServer  # pyright: ignore[reportMissingImports]
 
 WEB_DIRECTORY = "web"
 
@@ -93,6 +123,23 @@ except ImportError:
 	__all__ = ["NODE_CLASS_MAPPINGS", "WEB_DIRECTORY"]
 
 ensure_groups_config()
+initialize_redirect_pattern_cache(logger=logger)
+
+# Verify config file integrity (SHA-256) on startup; log warnings for mismatches
+try:
+	from .utils.config_integrity import verify_local_hashes
+
+	_integrity_mismatches = verify_local_hashes(CURRENT_DIR, DATA_DIR)
+	if _integrity_mismatches:
+		for _m in _integrity_mismatches:
+			logger.warning(
+				"[mss-login] Config integrity mismatch: %s (expected %s, got %s)",
+				_m["file"],
+				_m["expected"][:12] + "...",
+				_m["actual"][:12] + "...",
+			)
+except Exception:
+	pass
 
 # If HOST_BASE_URL is set, persist to app_settings so DB and env stay in sync
 _host_env = (os.getenv("HOST_BASE_URL") or "").strip().rstrip("/")
@@ -105,9 +152,34 @@ if _host_env and _host_env.startswith(("http://", "https://")):
 	except Exception:
 		pass
 
-# Schedule background update check (notify or auto according to config)
-_config_for_updater = load_json_file(CONFIG_FILE_PATH, {})
-asyncio.ensure_future(run_update_check(app, logger, _config_for_updater))
+# Schedule recurring background update check (notify or auto according to config)
+_update_task = asyncio.ensure_future(update_check_loop(app, logger, CONFIG_FILE_PATH))
+_quarantine_cleanup_task = asyncio.ensure_future(
+	quarantine_cleanup_loop(app, logger, CONFIG_FILE_PATH)
+)
+_trash_cleanup_task = asyncio.ensure_future(trash_cleanup_loop(app, logger, CONFIG_FILE_PATH))
+
+
+async def _cancel_update_task(app_ref) -> None:
+	"""Cancel the recurring update check on shutdown."""
+	_update_task.cancel()
+	_quarantine_cleanup_task.cancel()
+	_trash_cleanup_task.cancel()
+	try:
+		await _update_task
+	except (asyncio.CancelledError, Exception):
+		pass
+	try:
+		await _quarantine_cleanup_task
+	except (asyncio.CancelledError, Exception):
+		pass
+	try:
+		await _trash_cleanup_task
+	except (asyncio.CancelledError, Exception):
+		pass
+
+
+app.on_cleanup.append(_cancel_update_task)
 
 
 # --- WORKFLOW + GLOBAL SFW INTERCEPTION MIDDLEWARE ---
@@ -142,6 +214,45 @@ async def workflow_interceptor_middleware(request, handler):
 		set_latest_prompt_user(username)
 		print(f"[MSS-Login::Middleware] PROMPT CAPTURE path={path} user={username!r}")
 
+	# --- Model download destination rewrite for Civicomfy / core model routes ---
+	if (
+		experimental_model_isolation_enabled()
+		and method in ("POST", "PUT", "PATCH")
+		and should_try_model_download_redirect(path)
+	):
+		current_user_id = access_control.get_current_user_id()
+		if current_user_id and (
+			is_civicomfy_present() or "/manager" in path.lower() or "model" in path.lower()
+		):
+			original_body = await request.read()
+			rewritten_body = original_body
+			content_type = (request.headers.get("Content-Type") or "").lower()
+			if "application/json" in content_type and original_body:
+				try:
+					payload = json.loads(original_body)
+					rewritten_payload, changed = rewrite_download_payload_for_user(
+						payload, current_user_id
+					)
+					if changed:
+						rewritten_body = json.dumps(rewritten_payload).encode("utf-8")
+						logger.info(
+							"[mss-login] Model isolation redirected model download path for user=%s path=%s target_base=%s",
+							current_user_id,
+							path,
+							isolation_models_base(),
+						)
+				except (json.JSONDecodeError, TypeError):
+					pass
+
+			async def _read_redirect():
+				return rewritten_body
+
+			async def _json_redirect():
+				return json.loads(rewritten_body) if rewritten_body else {}
+
+			request.read = _read_redirect
+			request.json = _json_redirect
+
 	# --- Prompt model validation (POST/PUT /prompt and /api/prompt) ---
 	if path in ("/prompt", "/api/prompt") and method in ("POST", "PUT"):
 		body_bytes = await request.read()
@@ -157,20 +268,17 @@ async def workflow_interceptor_middleware(request, handler):
 			pass
 		if prompt_to_validate is not None:
 			role, perms, username_for_perm = access_control._get_user_role_and_permissions(request)
-			can_view_all = perms.get("can_view_all_comfyui_items", False) is True or role in (
-				"admin",
-				"owner",
-			)
+			can_view_all = user_can_view_all_models(role, perms)
 			if not can_view_all:
-				user_id, _ = (
-					access_control.users_db.get_user(username=username_for_perm)
-					if username_for_perm
-					else (None, {})
+				grants = get_effective_model_grants_for_user(
+					role=role,
+					perms=perms,
+					username=username_for_perm,
+					users_db=access_control.users_db,
+					shared_items_store_getter=get_shared_items_store,
+					users_db_config=USERS_DB_CONFIG,
 				)
-				allowed_set = set()
-				if user_id:
-					store = get_shared_items_store(USERS_DB_CONFIG)
-					allowed_set = store.get_all_for_user(user_id)
+				allowed_set = allowed_set_from_grants(grants)
 				known_models = set()
 				try:
 					cache = get_model_cache(USERS_DB_CONFIG)
@@ -187,10 +295,7 @@ async def workflow_interceptor_middleware(request, handler):
 				)
 				if not valid:
 					return web.json_response(
-						{
-							"error": err_msg or "Model not allowed",
-							"code": "MODEL_NOT_ALLOWED",
-						},
+						{"error": err_msg or "Model not allowed", "code": "MODEL_NOT_ALLOWED"},
 						status=403,
 					)
 
@@ -204,24 +309,123 @@ async def workflow_interceptor_middleware(request, handler):
 		request.read = _read
 		request.json = _json
 
+	# --- Move deleted history images to per-user trash bin before core delete ---
+	if path in ("/history", "/api/history") and method in ("POST", "DELETE"):
+		body_bytes = await request.read()
+		payload = {}
+		try:
+			payload = json.loads(body_bytes) if body_bytes else {}
+		except (json.JSONDecodeError, TypeError):
+			payload = {}
+
+		delete_ids = []
+		clear_all = False
+		if isinstance(payload, dict):
+			clear_all = bool(payload.get("clear"))
+			raw_delete = payload.get("delete")
+			if isinstance(raw_delete, list):
+				delete_ids = [str(x) for x in raw_delete if str(x).strip()]
+
+		if method == "DELETE":
+			tail = path.rsplit("/", 1)[-1]
+			if tail and tail not in ("history", "api"):
+				delete_ids.append(tail)
+		if delete_ids or clear_all:
+			try:
+				username_for_delete = request.get("user") or workflow_routes.get_current_user(
+					request
+				)
+				owner_username = users_db.get_owner_username()
+				is_owner_delete = bool(
+					username_for_delete
+					and owner_username
+					and str(username_for_delete) == str(owner_username)
+				)
+
+				moved = 0
+				skipped = 0
+				forbidden = 0
+				missing = 0
+
+				if clear_all:
+					visible = access_control.user_queue_get_history()
+					for prompt_id, entry in (visible or {}).items():
+						result = trash_deleted_history_images(
+							history_entry=entry,
+							request_username=str(username_for_delete or "guest"),
+							is_owner=is_owner_delete,
+							prompt_id=str(prompt_id),
+						)
+						moved += int(result.get("moved", 0) or 0)
+						skipped += int(result.get("skipped", 0) or 0)
+						forbidden += int(result.get("forbidden", 0) or 0)
+						missing += int(result.get("missing", 0) or 0)
+				else:
+					for prompt_id in delete_ids:
+						visible = access_control.user_queue_get_history(prompt_id=prompt_id)
+						entry = visible.get(prompt_id) if isinstance(visible, dict) else None
+						result = trash_deleted_history_images(
+							history_entry=entry,
+							request_username=str(username_for_delete or "guest"),
+							is_owner=is_owner_delete,
+							prompt_id=str(prompt_id),
+						)
+						moved += int(result.get("moved", 0) or 0)
+						skipped += int(result.get("skipped", 0) or 0)
+						forbidden += int(result.get("forbidden", 0) or 0)
+						missing += int(result.get("missing", 0) or 0)
+
+				if moved or skipped or forbidden or missing:
+					logger.info(
+						"[mss-login] Trash pre-delete: user=%s moved=%s skipped=%s forbidden=%s missing=%s",
+						username_for_delete,
+						moved,
+						skipped,
+						forbidden,
+						missing,
+					)
+			except Exception as trash_exc:
+				logger.warning("[mss-login] Trash pre-delete hook error: %s", trash_exc)
+
+		async def _read_history():
+			return body_bytes
+
+		async def _json_history():
+			return json.loads(body_bytes) if body_bytes else {}
+
+		request.read = _read_history
+		request.json = _json_history
+
 	# --- Case A: /view ---
 	if path == "/view" and method == "GET":
 		q = request.rel_url.query
 		filename = q.get("filename") or q.get("file") or q.get("name")
+		subfolder = q.get("subfolder")
 		img_type = q.get("type", "output")
+		rel_path = workflow_routes.build_safe_view_relative_path(filename, subfolder)
 
-		if filename and (img_type == "output" or img_type == "temp"):
-			if not is_safe_filename(filename):
-				filename = None
-			if filename:
-				if img_type == "temp":
-					target_dir = folder_paths.get_temp_directory()
-				else:
-					target_dir = folder_paths.get_output_directory()
-				img_path = resolve_path_under(target_dir, filename)
-				if img_path and os.path.isfile(img_path):
-					if should_block_image_for_current_user(img_path):
-						return web.Response(status=403, text="NSFW Blocked")
+		if rel_path and (img_type == "output" or img_type == "temp"):
+			if img_type == "temp":
+				target_dir = folder_paths.get_temp_directory()
+			else:
+				target_dir = folder_paths.get_output_directory()
+			img_path = resolve_path_under(target_dir, rel_path)
+
+			# Admin/owner fallback: if the file isn't in the current
+			# user's directory, search the shared output/temp base.
+			if not img_path or not os.path.isfile(img_path):
+				request_user = request.get("user") or workflow_routes.get_current_user(request)
+				owner_username = users_db.get_owner_username()
+				is_owner = bool(request_user and owner_username and request_user == owner_username)
+				if is_owner:
+					from .utils.data_dir import get_data_subdir
+
+					base = get_data_subdir("temp" if img_type == "temp" else "output")
+					img_path = resolve_path_under(base, rel_path)
+
+			if img_path and os.path.isfile(img_path):
+				if should_block_image_for_current_user(img_path):
+					return web.Response(status=403, text="NSFW Blocked")
 
 	# --- Case B: /static_gallery ---
 	if path.startswith("/static_gallery/") and method == "GET":
@@ -237,6 +441,10 @@ async def workflow_interceptor_middleware(request, handler):
 
 
 # ---------------- Core middlewares ----------------
+from .utils.force_https import create_security_headers_middleware
+
+app.middlewares.append(create_security_headers_middleware(cloudflare_proxy=CLOUDFLARE_PROXY))
+
 if FORCE_HTTPS:
 	from .utils.force_https import create_https_middleware
 
@@ -260,6 +468,8 @@ app.middlewares.append(
 		require_auth_for_remote_api=REQUIRE_AUTH_FOR_REMOTE_API,
 		local_network_cidrs=LOCAL_NETWORK_CIDRS if LOCAL_NETWORK_CIDRS else None,
 		token_validator=_remote_guard_token_valid,
+		cloudflare_proxy=CLOUDFLARE_PROXY,
+		cloudflared_local_bypass=CLOUDFLARED_LOCAL_BYPASS,
 	)
 )
 
@@ -313,9 +523,48 @@ try:
 except Exception:
 	pass  # Cache stays empty until admin uses "Refresh folders" in settings
 
+
 # ---------------------------------------------------------------------------
 # Consolidated S3 runtime (s3fs mount + workflow sync) -- experimental
 # ---------------------------------------------------------------------------
+def _handle_experimental_critical_failure(reason: str) -> None:
+	"""Trip failsafe and optionally escalate recovery on repeated failures."""
+
+	def _notify_recovery(action: str, failure_count: int, details: str = "") -> None:
+		try:
+			notify_experimental_recovery(
+				reason=reason,
+				recovery_action=action,
+				failure_count=failure_count,
+				occurred_at=datetime.now(timezone.utc).isoformat(),
+				details=details,
+			)
+		except Exception as _ntfy_exc:
+			print(f"[MSS-Login] Recovery ntfy notify error: {_ntfy_exc}")
+
+	if not EXPERIMENTAL_FAILSAFE_ENABLED:
+		print(f"[MSS-Login] Experimental critical failure (failsafe disabled): {reason}")
+		return
+	try:
+		state = apply_experimental_safety_reset(reason, recovery_action="config_reset")
+		print(
+			"[MSS-Login] Experimental failsafe reset applied. "
+			f"Reason='{reason}', failure_count={state.get('failure_count', 0)}"
+		)
+		failure_count = int(state.get("failure_count", 0) or 0)
+		_notify_recovery("config_reset", failure_count)
+		if EXPERIMENTAL_FAILSAFE_ESCALATE and failure_count >= 2:
+			ok, msg = perform_recovery_update(
+				repo_root=CURRENT_DIR, data_dir=DATA_DIR, logger=logger, branch="development"
+			)
+			action = "recovery_update" if ok else "recovery_update_failed"
+			apply_experimental_safety_reset(reason, recovery_action=action)
+			_notify_recovery(action, failure_count, details=msg)
+			print(f"[MSS-Login] Experimental failsafe escalation result: {msg}")
+	except Exception as _failsafe_exc:
+		print(f"[MSS-Login] Experimental failsafe handler error: {_failsafe_exc}")
+
+
 _s3_runtime = None
 if EXPERIMENTAL_FEATURES:
 	try:
@@ -339,8 +588,12 @@ if EXPERIMENTAL_FEATURES:
 				"[MSS-Login] S3 runtime started in degraded mode: "
 				f"{_s3_runtime.status().get('last_error')}"
 			)
+			_handle_experimental_critical_failure(
+				f"s3_runtime_degraded:{_s3_runtime.status().get('last_error')}"
+			)
 	except Exception as _s3_exc:
 		print(f"[MSS-Login] S3 runtime init error: {_s3_exc}")
+		_handle_experimental_critical_failure(f"s3_runtime_init_error:{_s3_exc}")
 
 
 async def _shutdown_s3(app_ref) -> None:
@@ -357,7 +610,6 @@ app.on_shutdown.append(_shutdown_s3)
 # Ensure routes are added to the app
 # In ComfyUI, instance.routes should be automatically added by PromptServer,
 # but we'll explicitly add them to ensure they're registered
-from .globals import routes
 
 try:
 	# Check if routes are already in the app

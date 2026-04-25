@@ -31,6 +31,8 @@
 	"blacklist_expiry_hours": 24,
 	"free_memory_on_logout": true,
 	"force_https": false,
+	"cloudflare_proxy": false,
+	"cloudflared_local_bypass": false,
 	"seperate_users": true,
 	"manager_admin_only": true,
 	"api_token_store": {
@@ -57,12 +59,35 @@
 		"changelog_url": "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases"
 	},
 	"token_algorithm": "HS256",
+	"ntfy": {
+		"topic": "",
+		"base_url": "https://ntfy.sh",
+		"api_token": "",
+		"enabled_events": []
+	},
+	"quarantine": {
+		"retention_days": 30,
+		"cleanup_interval_hours": 24
+	},
+	"trash": {
+		"retention_days": 30,
+		"cleanup_interval_hours": 24
+	},
 	"experimental_features": false,
+	"experimental_failsafe": {
+		"enabled": true,
+		"escalate_after_repeated_failure": true,
+		"failure_count": 0,
+		"last_failure_reason": "",
+		"last_failure_at": "",
+		"last_recovery_action": ""
+	},
 	"experimental": {
 		"mfa": false,
 		"s3": false,
 		"loading_screen": false,
-		"news": false
+		"news": false,
+		"model_isolation": false
 	},
 	"s3_storage": {
 		"enabled": false,
@@ -75,11 +100,8 @@
 		"mount": {
 			"enabled": true,
 			"local_mount_path": "/workspace/s3",
-			"rclone_path": "rclone",
 			"mode": "auto",
 			"sync_interval_seconds": 600,
-			"vfs_cache_mode": "full",
-			"vfs_cache_max_size": "50G",
 			"model_folders": [
 				"checkpoints",
 				"loras",

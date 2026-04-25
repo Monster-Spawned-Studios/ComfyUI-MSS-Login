@@ -26,10 +26,7 @@ def _check_sqlcipher() -> bool:
 
 
 def open_sqlite(
-	path: str,
-	secret_key: str,
-	encryption_level: str,
-	check_same_thread: bool = False,
+	path: str, secret_key: str, encryption_level: str, check_same_thread: bool = False
 ) -> Any:
 	"""
 	Open a SQLite connection. If encryption_level is non-empty, use SQLCipher with

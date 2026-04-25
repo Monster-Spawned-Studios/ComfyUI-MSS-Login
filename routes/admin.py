@@ -13,10 +13,13 @@ from ..constants import (
 	USERS_DB_CONFIG,
 	get_domain,
 	get_experimental_flags,
+	get_experimental_failsafe_settings,
 	reload_allow_guest_jwt,
 	reload_api_token_store_config,
 	reload_experimental_features,
+	reload_experimental_failsafe,
 	reload_users_db_config,
+	save_experimental_failsafe_settings,
 )
 from ..globals import ip_filter, jwt_auth, logger, routes, users_db
 from ..utils.admin_logic import delete_user_record, patch_user_group
@@ -29,12 +32,25 @@ from ..utils.ntfy_notifier import (
 	get_ntfy_config,
 	save_ntfy_config,
 	send_notification,
+	verify_signed_action_token,
 )
-from ..utils.path_safety import is_safe_filename, is_safe_folder_segment
+from ..utils.path_safety import is_safe_filename, is_safe_folder_segment, path_under
+from ..utils.quarantine_store import (
+	get_quarantine_settings,
+	list_quarantine_items,
+	mark_quarantine_item_reviewed,
+	quarantine_image_file,
+)
 from ..utils.shared_items_store import get_shared_items_store
 from ..utils.updater import get_cached_status
 from ..utils.user_console_log import get_lines as get_user_console_lines
 from ..utils.user_console_log import list_users as list_console_users
+from ..utils.model_download_redirect import (
+	get_configured_route_patterns,
+	get_effective_route_patterns,
+	save_configured_route_patterns,
+)
+from ..utils.model_visibility_policy import user_can_manage_model_sharing
 
 
 def is_admin(request):
@@ -83,6 +99,22 @@ def is_owner(request):
 	return "owner" in groups
 
 
+def _get_caller_role_and_permissions(request):
+	"""Resolve caller role/perms using access control for consistent RBAC checks."""
+	try:
+		from ..globals import access_control
+
+		role, perms, username = access_control._get_user_role_and_permissions(request)
+		return role, perms, username
+	except Exception:
+		return "guest", {}, None
+
+
+def _can_manage_model_sharing(request) -> bool:
+	role, perms, _ = _get_caller_role_and_permissions(request)
+	return user_can_manage_model_sharing(role, perms)
+
+
 @routes.get("/mss-login/api/settings/guest-jwt")
 async def api_get_guest_jwt(request):
 	"""Return allow_guest_jwt (authenticated; any user can read)."""
@@ -120,6 +152,52 @@ routes.get("/api/mss-login/api/settings/guest-jwt")(api_get_guest_jwt)
 routes.put("/api/mss-login/api/settings/guest-jwt")(api_put_guest_jwt)
 
 
+@routes.get("/mss-login/api/settings/model-isolation-download-patterns")
+async def api_get_model_isolation_download_patterns(request):
+	"""Return model download redirect patterns (owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	return web.json_response(
+		{
+			"configured_patterns": get_configured_route_patterns(),
+			"effective_patterns": get_effective_route_patterns(),
+		}
+	)
+
+
+@routes.put("/mss-login/api/settings/model-isolation-download-patterns")
+async def api_put_model_isolation_download_patterns(request):
+	"""Update owner-defined model download redirect patterns (owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	try:
+		data = await request.json()
+		patterns = data.get("patterns")
+		if not isinstance(patterns, list):
+			return web.json_response({"error": "patterns must be an array of strings"}, status=400)
+		normalized = [str(x).strip().lower() for x in patterns if str(x).strip()]
+		if len(normalized) > 200:
+			return web.json_response({"error": "Too many patterns (max 200)"}, status=400)
+		updated = save_configured_route_patterns(normalized)
+		return web.json_response(
+			{
+				"status": "ok",
+				"configured_patterns": updated,
+				"effective_patterns": get_effective_route_patterns(),
+			}
+		)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/model-isolation-download-patterns")(
+	api_get_model_isolation_download_patterns
+)
+routes.put("/api/mss-login/api/settings/model-isolation-download-patterns")(
+	api_put_model_isolation_download_patterns
+)
+
+
 @routes.get("/mss-login/api/settings/ntfy")
 async def api_get_ntfy_settings(request):
 	"""Return ntfy config (topic, enabled_events). Authenticated; read available to all."""
@@ -132,6 +210,7 @@ async def api_get_ntfy_settings(request):
 			"topic": cfg.get("topic", ""),
 			"base_url": cfg.get("base_url", ""),
 			"enabled_events": cfg.get("enabled_events", []),
+			"has_api_token": bool(cfg.get("has_api_token", False)),
 			"event_keys": EVENT_KEYS,
 		}
 	)
@@ -146,10 +225,13 @@ async def api_put_ntfy_settings(request):
 		data = await request.json()
 		topic = (data.get("topic") or "").strip()
 		base_url = (data.get("base_url") or "").strip()
+		api_token = data.get("api_token")
 		enabled = data.get("enabled_events")
 		if not isinstance(enabled, list):
 			enabled = []
-		save_ntfy_config(topic, enabled, base_url=base_url)
+		if api_token is not None and not isinstance(api_token, str):
+			return web.json_response({"error": "api_token must be a string"}, status=400)
+		save_ntfy_config(topic, enabled, base_url=base_url, api_token=api_token)
 		return web.json_response({"status": "ok"})
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
@@ -157,6 +239,85 @@ async def api_put_ntfy_settings(request):
 
 routes.get("/api/mss-login/api/settings/ntfy")(api_get_ntfy_settings)
 routes.put("/api/mss-login/api/settings/ntfy")(api_put_ntfy_settings)
+
+
+def _resolve_ntfy_quarantine_source_path(raw_path: str) -> str | None:
+	"""Resolve and validate file path for ntfy quarantine actions."""
+	if not raw_path or not isinstance(raw_path, str):
+		return None
+	try:
+		import os
+		import folder_paths  # type: ignore[import-untyped]
+		from ..utils.data_dir import get_data_subdir
+
+		candidate = os.path.realpath(raw_path)
+		allowed_roots = [
+			os.path.realpath(folder_paths.get_output_directory()),
+			os.path.realpath(folder_paths.get_temp_directory()),
+			os.path.realpath(get_data_subdir("output")),
+			os.path.realpath(get_data_subdir("temp")),
+		]
+		for root in allowed_roots:
+			if path_under(candidate, root):
+				return candidate
+	except Exception:
+		return None
+	return None
+
+
+@routes.get("/mss-login/api/ntfy/quarantine")
+async def api_ntfy_quarantine_action(request):
+	"""Handle signed ntfy action to quarantine an offending image (owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	token = (request.query.get("token") or "").strip()
+	payload = verify_signed_action_token(token)
+	if not payload or payload.get("action") != "quarantine_nsfw_image":
+		return web.json_response({"error": "Invalid or expired token"}, status=400)
+	source_path = _resolve_ntfy_quarantine_source_path(str(payload.get("path") or ""))
+	if not source_path:
+		return web.json_response({"error": "Invalid source path"}, status=400)
+	quarantine_cfg = get_quarantine_settings()
+	retention_days = int(quarantine_cfg.get("retention_days", 30) or 30)
+	result = quarantine_image_file(
+		source_path=source_path,
+		username=str(payload.get("username") or "unknown"),
+		workflow_name=str(payload.get("workflow_name") or "unknown"),
+		generated_at=str(payload.get("generated_at") or ""),
+		score=payload.get("score"),
+		severity=payload.get("severity"),
+		retention_days=retention_days,
+	)
+	status = 200 if result.get("status") in ("ok", "already_quarantined") else 404
+	return web.json_response(result, status=status)
+
+
+@routes.get("/mss-login/api/quarantine")
+async def api_quarantine_list(request):
+	"""List quarantine records (owner/admin only)."""
+	if not is_admin(request):
+		return web.json_response({"error": "Admin only"}, status=403)
+	items = list_quarantine_items()
+	return web.json_response({"items": items, "count": len(items)})
+
+
+@routes.post("/mss-login/api/quarantine/{record_id}/review")
+async def api_quarantine_mark_reviewed(request):
+	"""Mark a quarantined record as reviewed (owner/admin only)."""
+	if not is_admin(request):
+		return web.json_response({"error": "Admin only"}, status=403)
+	record_id = (request.match_info.get("record_id") or "").strip()
+	if not record_id:
+		return web.json_response({"error": "record_id required"}, status=400)
+	updated = mark_quarantine_item_reviewed(record_id)
+	if not updated:
+		return web.json_response({"error": "record not found"}, status=404)
+	return web.json_response({"status": "ok", "record": updated})
+
+
+routes.get("/api/mss-login/api/ntfy/quarantine")(api_ntfy_quarantine_action)
+routes.get("/api/mss-login/api/quarantine")(api_quarantine_list)
+routes.post("/api/mss-login/api/quarantine/{record_id}/review")(api_quarantine_mark_reviewed)
 
 
 @routes.get("/mss-login/api/settings/experimental")
@@ -177,12 +338,7 @@ async def api_get_experimental(request):
 			"loading_screen": bool(block.get("loading_screen", False)),
 			"news": bool(block.get("news", False)),
 		}
-		return web.json_response(
-			{
-				"experimental_features": master,
-				"experimental": experimental,
-			}
-		)
+		return web.json_response({"experimental_features": master, "experimental": experimental})
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
 
@@ -210,18 +366,50 @@ async def api_put_experimental(request):
 		cfg["experimental"] = block
 		save_json_file(CONFIG_FILE_PATH, cfg)
 		reload_experimental_features()
-		return web.json_response(
-			{
-				"status": "ok",
-				"experimental": get_experimental_flags(),
-			}
-		)
+		return web.json_response({"status": "ok", "experimental": get_experimental_flags()})
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
 
 
 routes.get("/api/mss-login/api/settings/experimental")(api_get_experimental)
 routes.put("/api/mss-login/api/settings/experimental")(api_put_experimental)
+
+
+@routes.get("/mss-login/api/settings/experimental-failsafe")
+async def api_get_experimental_failsafe(request):
+	"""Return non-experimental failsafe settings. Authenticated users can read."""
+	token = jwt_auth.get_token_from_request(request)
+	if not token or not jwt_auth.is_token_valid(token):
+		return web.json_response({"error": "Authentication required"}, status=401)
+	try:
+		return web.json_response(get_experimental_failsafe_settings())
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+@routes.put("/mss-login/api/settings/experimental-failsafe")
+async def api_put_experimental_failsafe(request):
+	"""Update non-experimental failsafe settings (Admin only)."""
+	if not is_admin(request):
+		return web.json_response({"error": "Admin only"}, status=403)
+	try:
+		data = await request.json()
+		if not isinstance(data, dict):
+			return web.json_response({"error": "Invalid body"}, status=400)
+		enabled = data.get("enabled")
+		escalate = data.get("escalate_after_repeated_failure")
+		updated = save_experimental_failsafe_settings(
+			enabled=(None if enabled is None else bool(enabled)),
+			escalate_after_repeated_failure=(None if escalate is None else bool(escalate)),
+		)
+		reload_experimental_failsafe()
+		return web.json_response({"status": "ok", **updated})
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/experimental-failsafe")(api_get_experimental_failsafe)
+routes.put("/api/mss-login/api/settings/experimental-failsafe")(api_put_experimental_failsafe)
 
 
 @routes.get("/mss-login/api/admin/consoles")
@@ -421,8 +609,7 @@ async def api_put_users_db_config(request):
 		backend = (data.get("backend") or "sqlite").lower()
 		if backend not in ("sqlite", "postgresql", "mysql"):
 			return web.json_response(
-				{"error": "Invalid backend; use sqlite, postgresql, or mysql"},
-				status=400,
+				{"error": "Invalid backend; use sqlite, postgresql, or mysql"}, status=400
 			)
 		cfg = load_json_file(CONFIG_FILE_PATH, {})
 		if not isinstance(cfg, dict):
@@ -451,10 +638,7 @@ async def api_put_users_db_config(request):
 		save_json_file(CONFIG_FILE_PATH, cfg)
 		reload_users_db_config()
 		return web.json_response(
-			{
-				"status": "ok",
-				"message": "Restart required for new backend to take effect.",
-			}
+			{"status": "ok", "message": "Restart required for new backend to take effect."}
 		)
 	except Exception as e:
 		logger.error(f"[admin.py] api_put_users_db_config: {str(e)}")
@@ -754,9 +938,11 @@ routes.post("/api/mss-login/api/model-cache/refresh")(api_model_cache_refresh)
 
 @routes.get("/mss-login/api/users/{username}/shared-items")
 async def api_get_shared_items(request):
-	"""List shared ComfyUI items (models, LoRAs, VAEs, embeddings) for a user (admin only)."""
-	if not is_admin(request):
-		return web.json_response({"error": "Admin only"}, status=403)
+	"""List shared ComfyUI items for a user (owner/admin with sharing permission)."""
+	if not _can_manage_model_sharing(request):
+		return web.json_response(
+			{"error": "Owner/Admin with sharing permission required"}, status=403
+		)
 	username = request.match_info.get("username", "")
 	user_id, _ = users_db.get_user(username=username)
 	if not user_id:
@@ -771,33 +957,55 @@ routes.get("/api/mss-login/api/users/{username}/shared-items")(api_get_shared_it
 
 @routes.post("/mss-login/api/users/{username}/shared-items")
 async def api_add_shared_item(request):
-	"""Add one shared item for a user. Body: { "folder": "checkpoints", "item_name": "model.safetensors" } (admin only)."""
-	if not is_admin(request):
-		return web.json_response({"error": "Admin only"}, status=403)
+	"""Add one shared item for a user."""
+	if not _can_manage_model_sharing(request):
+		return web.json_response(
+			{"error": "Owner/Admin with sharing permission required"}, status=403
+		)
 	username = request.match_info.get("username", "")
 	user_id, _ = users_db.get_user(username=username)
 	if not user_id:
 		return web.json_response({"error": "User not found"}, status=404)
+	role, _perms, caller_username = _get_caller_role_and_permissions(request)
+	caller_user_id, _ = (
+		users_db.get_user(username=caller_username) if caller_username else (None, {})
+	)
 	try:
 		data = await request.json()
 		folder = (data.get("folder") or "").strip()
 		item_name = (data.get("item_name") or "").strip()
+		source_backend = (data.get("source_backend") or "unknown").strip().lower()
+		if source_backend not in ("local", "s3", "unknown"):
+			source_backend = "unknown"
 		if not folder or not item_name:
 			return web.json_response({"error": "folder and item_name required"}, status=400)
 		if not is_safe_folder_segment(folder) or not is_safe_filename(item_name):
 			return web.json_response(
-				{"error": "Invalid folder or item_name (path traversal not allowed)"},
-				status=400,
+				{"error": "Invalid folder or item_name (path traversal not allowed)"}, status=400
 			)
 		store = get_shared_items_store(USERS_DB_CONFIG)
-		if store.add(user_id, folder, item_name):
+		if store.add(
+			user_id,
+			folder,
+			item_name,
+			source_backend=source_backend,
+			granted_by_user_id=caller_user_id or "",
+			granted_by_role=role or "",
+		):
 			send_notification(
 				"shared_items_added",
 				"MSS-Login: Shared item added",
 				f"Shared item: {folder}/{item_name} added to user: {username}",
 				priority="default",
 			)
-			return web.json_response({"status": "ok", "folder": folder, "item_name": item_name})
+			return web.json_response(
+				{
+					"status": "ok",
+					"folder": folder,
+					"item_name": item_name,
+					"source_backend": source_backend,
+				}
+			)
 		return web.json_response({"error": "Failed to add (may already exist)"}, status=400)
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
@@ -808,9 +1016,11 @@ routes.post("/api/mss-login/api/users/{username}/shared-items")(api_add_shared_i
 
 @routes.delete("/mss-login/api/users/{username}/shared-items")
 async def api_remove_shared_item(request):
-	"""Remove one shared item for a user. Body: { "folder": "...", "item_name": "..." } (admin only)."""
-	if not is_admin(request):
-		return web.json_response({"error": "Admin only"}, status=403)
+	"""Remove one shared item for a user."""
+	if not _can_manage_model_sharing(request):
+		return web.json_response(
+			{"error": "Owner/Admin with sharing permission required"}, status=403
+		)
 	username = request.match_info.get("username", "")
 	user_id, _ = users_db.get_user(username=username)
 	if not user_id:
@@ -823,8 +1033,7 @@ async def api_remove_shared_item(request):
 			return web.json_response({"error": "folder and item_name required"}, status=400)
 		if not is_safe_folder_segment(folder) or not is_safe_filename(item_name):
 			return web.json_response(
-				{"error": "Invalid folder or item_name (path traversal not allowed)"},
-				status=400,
+				{"error": "Invalid folder or item_name (path traversal not allowed)"}, status=400
 			)
 		store = get_shared_items_store(USERS_DB_CONFIG)
 		if store.remove(user_id, folder, item_name):

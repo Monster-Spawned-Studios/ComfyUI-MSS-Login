@@ -32,17 +32,10 @@ parser.add_argument(
 )
 parser.add_argument("-D", "--debug", action="store_true", help="Enable debug logging.")
 parser.add_argument(
-	"-i",
-	"--install-comfyui",
-	action="store_true",
-	help="Install ComfyUI  and its dependencies.",
+	"-i", "--install-comfyui", action="store_true", help="Install ComfyUI  and its dependencies."
 )
 parser.add_argument(
-	"-d",
-	"--comfyui-dir",
-	type=str,
-	default="ComfyUI",
-	help="The directory to install ComfyUI to.",
+	"-d", "--comfyui-dir", type=str, default="ComfyUI", help="The directory to install ComfyUI to."
 )
 parser.add_argument(
 	"-m",
@@ -136,28 +129,19 @@ def setup_dev(
 		"[MSS-Login] Setting up the local development environment for the ComfyUI-MSS-Login extension using Python %s.",
 		python_version,
 	)
-	logger.debug(
-		"Creating a virtual environment for the project using Python %s.",
-		python_version,
-	)
+	logger.debug("Creating a virtual environment for the project using Python %s.", python_version)
 	try:
 		subprocess.run(["uv", "venv", "--python", f"{python_version}"], check=True)
 	except subprocess.CalledProcessError as e:
 		logger.error("Failed to create a virtual environment for the project: %s", e)
 		return False
-	logger.debug(
-		"Installing the dependencies for the project using the %s group.",
-		dev_group,
-	)
+	logger.debug("Installing the dependencies for the project using the %s group.", dev_group)
 	try:
 		subprocess.run(["uv", "sync", "--group", f"{dev_group}"], check=True)
 	except subprocess.CalledProcessError as e:
 		logger.error("Failed to install the dependencies for the project: %s", e)
 		return False
-	logger.debug(
-		"Creating a local ComfyUI installation using the %s group.",
-		comfyui_group,
-	)
+	logger.debug("Creating a local ComfyUI installation using the %s group.", comfyui_group)
 	try:
 		subprocess.run(["comfy", "install", "--group", comfyui_group], check=True)
 	except subprocess.CalledProcessError as e:
@@ -171,9 +155,7 @@ def setup_dev(
 
 
 def install_comfyui(
-	python_version: str = "3.13",
-	comfyui_group: str = "comfyui",
-	comfyui_dir: str = "ComfyUI",
+	python_version: str = "3.13", comfyui_group: str = "comfyui", comfyui_dir: str = "ComfyUI"
 ) -> bool:
 	"""Install ComfyUI and its dependencies.
 
@@ -186,8 +168,7 @@ def install_comfyui(
 	    install_comfyui: Whether to install ComfyUI and its dependencies.
 	"""
 	logger.info(
-		"Installing ComfyUI and its dependencies using Python version '%s'.",
-		python_version,
+		"Installing ComfyUI and its dependencies using Python version '%s'.", python_version
 	)
 	logger.debug(
 		"Installing ComfyUI and its dependencies using the %s group into the %s directory.",
@@ -282,17 +263,6 @@ def install_comfyui(
 
 
 if __name__ == "__main__":
-	"""
-    Main function to setup the local development environment for the ComfyUI-MSS-Login extension.
-
-    Args:
-        python_version: The version of Python to use for the virtual environment.
-        dev_group: The group to use for the development dependencies.
-        comfyui_group: The group to use for the ComfyUI dependencies.
-        debug_mode: Whether to enable debug logging.
-        verbose: Whether to enable verbose logging.
-        install_comfyui: Whether to install ComfyUI and its dependencies.
-    """
 	try:
 		try:
 			result = subprocess.run(["uv", "--help"], check=True, capture_output=True, text=True)
@@ -307,10 +277,7 @@ if __name__ == "__main__":
 			)
 			sleep(3)
 			exit(1)
-		if setup_dev(
-			arg_values["python_version"],
-			arg_values["dependency_groups"],
-		):
+		if setup_dev(arg_values["python_version"], arg_values["dependency_groups"]):
 			logger.info("Local development environment setup complete.")
 			if arg_values.get("install_comfyui", False):
 				if install_comfyui(

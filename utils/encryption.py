@@ -31,11 +31,7 @@ def _derive_key(secret_key: str) -> bytes:
 		raise RuntimeError("cryptography package required for encryption; pip install cryptography")
 	key_material = secret_key.encode("utf-8") if isinstance(secret_key, str) else secret_key
 	hkdf = HKDF(
-		algorithm=hashes.SHA256(),
-		length=32,
-		salt=None,
-		info=HKDF_INFO,
-		backend=default_backend(),
+		algorithm=hashes.SHA256(), length=32, salt=None, info=HKDF_INFO, backend=default_backend()
 	)
 	key_bytes = hkdf.derive(key_material)
 	# Fernet needs base64-encoded 32-byte key

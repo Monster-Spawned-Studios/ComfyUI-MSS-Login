@@ -232,8 +232,7 @@ async def post_login(request: web.Request) -> web.Response:
 	if str(sanitized_data.get("guest_login", "false")).lower() == "true":
 		if not constants_module.ALLOW_GUEST_JWT:
 			return web.json_response(
-				{"error": "Guest login is disabled. Guests cannot obtain JWT tokens."},
-				status=403,
+				{"error": "Guest login is disabled. Guests cannot obtain JWT tokens."}, status=403
 			)
 		ensure_guest_user()
 		guest_id, _ = users_db.get_user("guest")
@@ -268,11 +267,7 @@ async def post_login(request: web.Request) -> web.Response:
 			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 			return resp
 		resp = web.json_response(
-			{
-				"message": "Guest login",
-				"jwt_token": token,
-				"redirect_url": redirect_url,
-			}
+			{"message": "Guest login", "jwt_token": token, "redirect_url": redirect_url}
 		)
 		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 		return resp
@@ -333,8 +328,7 @@ async def post_login(request: web.Request) -> web.Response:
 
 		no_exp = _user_can_have_non_expiring_jwt(username)
 		token = jwt_auth.create_access_token(
-			{"id": user_id, "username": username},
-			no_expiration=no_exp,
+			{"id": user_id, "username": username}, no_expiration=no_exp
 		)
 		try:
 			payload = jwt_auth.decode_access_token(token)
@@ -354,9 +348,7 @@ async def post_login(request: web.Request) -> web.Response:
 		user_console_append(username, f"JWT token created for user: {username}")
 		try:
 			send_notification(
-				"user_login",
-				"mss-login: User login",
-				f"User {username} logged in from IP: {ip}",
+				"user_login", "mss-login: User login", f"User {username} logged in from IP: {ip}"
 			)
 		except Exception as e:
 			logger.error(f"[auth.py] post_login: send_notification: {e}")
@@ -369,11 +361,7 @@ async def post_login(request: web.Request) -> web.Response:
 			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 			return resp
 		resp = web.json_response(
-			{
-				"message": "Login successful",
-				"jwt_token": token,
-				"redirect_url": redirect_url,
-			}
+			{"message": "Login successful", "jwt_token": token, "redirect_url": redirect_url}
 		)
 		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
 		return resp
@@ -480,6 +468,13 @@ async def post_generate_token(request: web.Request) -> web.Response:
 	username = sanitize_username(sanitized_data.get("username"))
 	password = sanitize_password_input(sanitized_data.get("password"))
 	label = sanitize_label(sanitized_data.get("label"))
+	require_password_reauth_raw = sanitized_data.get("require_password_reauth")
+	require_password_reauth = str(require_password_reauth_raw).strip().lower() in (
+		"1",
+		"true",
+		"yes",
+		"on",
+	)
 	expire_hours_raw = sanitized_data.get("expire_hours")
 	try:
 		expire_hours = float(expire_hours_raw) if expire_hours_raw not in (None, "") else 720.0
@@ -497,8 +492,9 @@ async def post_generate_token(request: web.Request) -> web.Response:
 		expire_hours = max(1.0, expire_hours)
 
 	# Optionally resolve user from JWT (no password needed)
+	# For sensitive in-app flows, callers can force password re-auth.
 	token_from_request = jwt_auth.get_token_from_request(request)
-	if token_from_request:
+	if token_from_request and not require_password_reauth:
 		try:
 			payload = jwt_auth.decode_access_token(token_from_request)
 			jwt_username = payload.get("username")
@@ -554,8 +550,7 @@ async def post_generate_token(request: web.Request) -> web.Response:
 		mfa_username = consume_mfa_temp_token(mfa_temp)
 		if not mfa_username:
 			return web.json_response(
-				{"error": "Invalid or expired MFA token. Please log in again."},
-				status=401,
+				{"error": "Invalid or expired MFA token. Please log in again."}, status=401
 			)
 		if mfa_backup:
 			if not users_db.verify_backup_code_and_consume(mfa_username, mfa_backup):
@@ -580,8 +575,7 @@ async def post_generate_token(request: web.Request) -> web.Response:
 			expire_hours = max(1.0, expire_hours)
 		if not _user_can_have_api_tokens(username):
 			return web.json_response(
-				{"error": "mss-login: You do not have permission to create API tokens."},
-				status=403,
+				{"error": "mss-login: You do not have permission to create API tokens."}, status=403
 			)
 		if expire_hours <= 0 and not _user_can_have_non_expiring_jwt(username):
 			return web.json_response(
@@ -625,8 +619,7 @@ async def post_generate_token(request: web.Request) -> web.Response:
 
 	if not _user_can_have_api_tokens(username):
 		return web.json_response(
-			{"error": "MSS-Login: You do not have permission to create API tokens."},
-			status=403,
+			{"error": "MSS-Login: You do not have permission to create API tokens."}, status=403
 		)
 	if expire_hours <= 0 and not _user_can_have_non_expiring_jwt(username):
 		return web.json_response(
@@ -721,8 +714,7 @@ async def delete_user_token(request: web.Request) -> web.Response:
 	prefix = sanitize_token_hash_prefix(body.get("token_hash_prefix"))
 	if not prefix or len(prefix) < 8:
 		return web.json_response(
-			{"error": "token_hash_prefix must be at least 8 alphanumeric characters."},
-			status=400,
+			{"error": "token_hash_prefix must be at least 8 alphanumeric characters."}, status=400
 		)
 	store = get_api_token_store(API_TOKEN_STORE_CONFIG)
 	revoked = store.revoke_token_by_hash_prefix(prefix, username)

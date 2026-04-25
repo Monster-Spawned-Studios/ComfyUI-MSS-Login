@@ -30,9 +30,7 @@ def create_error_watcher_middleware():
 		if path.startswith("/api/userdata/workflows"):
 			resp.headers["X-mss-login-Error"] = WORKFLOW_DENY_CODE
 			LOG.info(
-				"[Watcher] Tagged workflow save denial: path=%s method=%s",
-				path,
-				request.method,
+				"[Watcher] Tagged workflow save denial: path=%s method=%s", path, request.method
 			)
 
 		return resp

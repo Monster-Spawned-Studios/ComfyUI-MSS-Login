@@ -28,11 +28,7 @@ def run_script(name: str, path: str) -> bool:
 	if not os.path.isfile(venv_exe):
 		venv_exe = sys.executable
 	python = venv_exe
-	result = subprocess.run(
-		[python, path],
-		cwd=_PROJECT_ROOT,
-		capture_output=False,
-	)
+	result = subprocess.run([python, path], cwd=_PROJECT_ROOT, capture_output=False)
 	return result.returncode == 0
 
 
@@ -81,6 +77,16 @@ def main() -> int:
 		steps.append(
 			("Navigation detection", os.path.join(TESTS_DIR, "run_navigation_detection_tests.py"))
 		)
+		steps.append(("Model isolation", os.path.join(TESTS_DIR, "run_model_isolation_tests.py")))
+		steps.append(
+			("Experimental failsafe", os.path.join(TESTS_DIR, "run_experimental_failsafe_tests.py"))
+		)
+		steps.append(
+			("Model download queue", os.path.join(TESTS_DIR, "run_model_download_queue_tests.py"))
+		)
+		steps.append(("View path safety", os.path.join(TESTS_DIR, "run_view_path_safety_tests.py")))
+		steps.append(("Trash bin", os.path.join(TESTS_DIR, "run_trash_bin_tests.py")))
+		steps.append(("NTFY + quarantine", os.path.join(TESTS_DIR, "run_ntfy_quarantine_tests.py")))
 	if not args.no_lint:
 		steps.append(("Ruff check", None))  # special
 		steps.append(("Ruff format", None))

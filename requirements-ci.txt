@@ -23,3 +23,4 @@ ruff
 pytest
 pip-audit
 mkdocs
+boto3

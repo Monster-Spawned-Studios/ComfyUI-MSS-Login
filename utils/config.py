@@ -1,14 +1,19 @@
-import os
-import warnings
-import uuid
+"""
+Load and parse config.json from external data directory.
+Provide global constants for the MSS-Login server.
+"""
+
 import json
-from typing import Dict, Any
+import os
+import uuid
+import warnings
 from pathlib import Path
+from typing import Any, Dict
 
 # Repo root (package directory, one level up from utils/)
 EXT_PATH = os.path.join(os.path.dirname(__file__), "..")
 # Runtime config lives in external data dir (~/.comfyui-mss-login)
-from .data_dir import get_data_dir, ensure_data_dir
+from .data_dir import ensure_data_dir, get_data_dir
 
 ensure_data_dir(EXT_PATH)
 _DATA_DIR = get_data_dir()
@@ -31,7 +36,7 @@ def _resolve_data_path(rel_or_abs: str) -> str:
 
 def load_config(file_path: str) -> Dict[str, Any]:
 	if os.path.exists(file_path):
-		with open(file_path, "r") as f:
+		with open(file_path, "r", encoding="utf-8") as f:
 			try:
 				return json.load(f)
 			except json.JSONDecodeError:

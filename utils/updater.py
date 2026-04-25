@@ -31,11 +31,7 @@ _LAST_CHECK_PATH = os.path.join(_REPO_ROOT, ".last_update_check")
 _CACHE: dict[str, Any] = {}
 
 # DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
-DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in (
-	"1",
-	"true",
-	"yes",
-)
+DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
 _config_for_updater = _read_config_json(join(_REPO_ROOT, "config.json")) or _read_config_json(
 	join(_REPO_ROOT, "config.defaults.json")
 )
@@ -94,9 +90,7 @@ def _version_gt(local: str, remote: str) -> bool:
 
 
 async def check_for_update(
-	check_url: str,
-	local_version: str | None = None,
-	timeout_sec: float = 10.0,
+	check_url: str, local_version: str | None = None, timeout_sec: float = 10.0
 ) -> tuple[bool, str]:
 	"""
 	Fetch remote version from check_url. URL can be GitHub releases/latest (single
@@ -162,10 +156,7 @@ def _parse_version_from_content(body: str, content_type: str = "") -> str:
 			pass
 	import re
 
-	for pattern in (
-		r'version\s*=\s*["\']([^"\']+)["\']',
-		r'"version"\s*:\s*["\']([^"\']+)["\']',
-	):
+	for pattern in (r'version\s*=\s*["\']([^"\']+)["\']', r'"version"\s*:\s*["\']([^"\']+)["\']'):
 		m = re.search(pattern, body)
 		if m:
 			return m.group(1).strip().lstrip("v") or ""
@@ -173,9 +164,7 @@ def _parse_version_from_content(body: str, content_type: str = "") -> str:
 
 
 async def check_for_update_branch(
-	check_url: str,
-	local_version: str | None = None,
-	timeout_sec: float = 10.0,
+	check_url: str, local_version: str | None = None, timeout_sec: float = 10.0
 ) -> tuple[bool, str]:
 	"""
 	Fetch version from a branch URL (e.g. raw pyproject.toml or version.json).
@@ -236,11 +225,7 @@ def _extract_github_repo_from_url(check_url: str) -> tuple[str | None, str | Non
 
 
 async def _fetch_changelog_markdown(
-	version: str,
-	check_url: str,
-	check_mode: str,
-	branch: str,
-	timeout_sec: float = 8.0,
+	version: str, check_url: str, check_mode: str, branch: str, timeout_sec: float = 8.0
 ) -> str:
 	"""
 	Try to load changelog from readme/changelogs/X.X.X.md (raw GitHub/Gitea/GitLab),
@@ -283,21 +268,14 @@ def backup_before_update(data_dir: str) -> str | None:
 		dest = os.path.join(backups_dir, ts)
 		if os.path.isdir(data_dir):
 			shutil.copytree(
-				data_dir,
-				dest,
-				dirs_exist_ok=False,
-				ignore=shutil.ignore_patterns("backups"),
+				data_dir, dest, dirs_exist_ok=False, ignore=shutil.ignore_patterns("backups")
 			)
 		return dest
 	except Exception:
 		return None
 
 
-def perform_update(
-	repo_root: str,
-	data_dir: str,
-	logger: Any,
-) -> tuple[bool, str]:
+def perform_update(repo_root: str, data_dir: str, logger: Any) -> tuple[bool, str]:
 	"""
 	Run git pull and pip install. Backup data dir first. On failure, attempt rollback.
 	Returns (success, message).
@@ -329,10 +307,7 @@ def perform_update(
 			# Rollback
 			try:
 				subprocess.run(
-					["git", "merge", "--abort"],
-					cwd=repo_root,
-					capture_output=True,
-					timeout=10,
+					["git", "merge", "--abort"], cwd=repo_root, capture_output=True, timeout=10
 				)
 			except Exception:
 				pass
@@ -383,11 +358,60 @@ def perform_update(
 		return False, str(e)
 
 
-async def run_update_check(
-	app: Any,
-	logger: Any,
-	config: dict[str, Any],
-) -> None:
+def perform_recovery_update(
+	repo_root: str, data_dir: str, logger: Any, branch: str = "development"
+) -> tuple[bool, str]:
+	"""Last-resort recovery update for repeated experimental failures.
+
+	Security invariant: never delete or rewrite external data-dir credentials/users DB.
+	This routine only manipulates git-tracked files under repo_root.
+	"""
+	if not os.path.isdir(repo_root):
+		return False, "Repository path is missing."
+	if not os.path.isdir(data_dir):
+		logger.warning(
+			"[mss-login] Recovery update: data dir missing, continuing without data backup."
+		)
+	backup_path = backup_before_update(data_dir) if os.path.isdir(data_dir) else None
+	if os.path.isdir(data_dir) and not backup_path:
+		logger.warning(
+			"[mss-login] Recovery update: data backup failed; aborting to protect credentials."
+		)
+		return False, "Recovery aborted because data backup failed."
+	try:
+		fetch = subprocess.run(
+			["git", "fetch", "origin", branch],
+			cwd=repo_root,
+			capture_output=True,
+			timeout=60,
+			text=True,
+			check=False,
+		)
+		if fetch.returncode != 0:
+			return False, fetch.stderr or fetch.stdout or "git fetch failed"
+
+		hard_reset = subprocess.run(
+			["git", "reset", "--hard", f"origin/{branch}"],
+			cwd=repo_root,
+			capture_output=True,
+			timeout=30,
+			text=True,
+			check=False,
+		)
+		if hard_reset.returncode != 0:
+			return False, hard_reset.stderr or hard_reset.stdout or "git reset failed"
+
+		success, msg = perform_update(repo_root, data_dir, logger)
+		if success:
+			return True, "Recovery update succeeded. Credentials/user data were preserved."
+		return False, f"Recovery update post-reset failed: {msg}"
+	except subprocess.TimeoutExpired:
+		return False, "Recovery update timed out."
+	except Exception as exc:
+		return False, str(exc)
+
+
+async def run_update_check(app: Any, logger: Any, config: dict[str, Any]) -> None:
 	"""
 	Background task: run version check (and optionally auto-update) according to config.
 	Does not block; errors are logged only.
@@ -451,8 +475,7 @@ async def run_update_check(
 
 				loop = asyncio.get_event_loop()
 				success, msg = await loop.run_in_executor(
-					None,
-					lambda: perform_update(_REPO_ROOT, get_data_dir(), logger),
+					None, lambda: perform_update(_REPO_ROOT, get_data_dir(), logger)
 				)
 				if success:
 					logger.info(f"[mss-login] {msg}")
@@ -460,3 +483,33 @@ async def run_update_check(
 					logger.warning(f"[mss-login] Auto-update failed: {msg}")
 	except Exception as e:
 		logger.debug(f"[mss-login] Update check failed: {e}")
+
+
+async def update_check_loop(app: Any, logger: Any, config_file_path: str) -> None:
+	"""Recurring background task that checks for updates on the configured interval.
+
+	Re-reads config.json on each iteration so runtime changes to auto_update
+	settings (interval, mode, enabled) take effect without a restart.
+	"""
+	while True:
+		try:
+			cfg = {}
+			if os.path.isfile(config_file_path):
+				try:
+					with open(config_file_path, "r", encoding="utf-8") as f:
+						cfg = json.load(f)
+				except Exception:
+					pass
+			au = cfg.get("auto_update") or {}
+			if not isinstance(au, dict) or not au.get("enabled", True):
+				await asyncio.sleep(3600)
+				continue
+
+			interval_hours = max(1, int(au.get("check_interval_hours") or 24))
+			await run_update_check(app, logger, cfg)
+			await asyncio.sleep(interval_hours * 3600)
+		except asyncio.CancelledError:
+			break
+		except Exception as exc:
+			logger.debug(f"[mss-login] Update loop error: {exc}")
+			await asyncio.sleep(3600)

@@ -10,7 +10,9 @@
         "can_view_console": true,
         "mfa_required": true,
         "can_view_all_comfyui_items": true,
-        "can_access_s3_storage": true
+        "can_access_s3_storage": true,
+        "can_manage_model_sharing": true,
+        "can_download_models": true
     },
     "admin": {
         "can_run": true,
@@ -23,7 +25,9 @@
         "can_view_console": false,
         "mfa_required": true,
         "can_view_all_comfyui_items": true,
-        "can_access_s3_storage": true
+        "can_access_s3_storage": true,
+        "can_manage_model_sharing": true,
+        "can_download_models": true
     },
     "power": {
         "can_run": true,
@@ -36,7 +40,9 @@
         "can_view_console": false,
         "mfa_required": false,
         "can_view_all_comfyui_items": false,
-        "can_access_s3_storage": false
+        "can_access_s3_storage": false,
+        "can_manage_model_sharing": false,
+        "can_download_models": false
     },
     "user": {
         "can_run": true,
@@ -108,7 +114,9 @@
         "can_view_console": false,
         "mfa_required": false,
         "can_view_all_comfyui_items": false,
-        "can_access_s3_storage": false
+        "can_access_s3_storage": false,
+        "can_manage_model_sharing": false,
+        "can_download_models": false
     },
     "guest": {
         "can_run": true,
@@ -138,6 +146,8 @@
         "can_view_console": false,
         "mfa_required": false,
         "can_view_all_comfyui_items": false,
-        "can_access_s3_storage": false
+        "can_access_s3_storage": false,
+        "can_manage_model_sharing": false,
+        "can_download_models": false
     }
 }

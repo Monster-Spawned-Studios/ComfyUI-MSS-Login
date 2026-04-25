@@ -35,12 +35,9 @@ DEFAULT_COPYRIGHT_FILE = DEFAULT_ROOT / "docs" / "COPYRIGHT"
 # "line" = each line prefixed (e.g. # or //); "block" = multi-line block (/* */ or <!-- -->).
 COMMENT_STYLES: dict[str, tuple[str, str, str]] = {
 	"block_py": ("# ", "\n", "line"),  # Python, shell, YAML: # per line
-	"block_js": (
-		"/*\n * ",
-		"\n */",
-		"block",
-	),  # JS/TS/CSS: /* \n * line \n * line \n */
-	"block_html": ("<!--\n", "\n-->", "block"),  # HTML: <!-- \n line \n line \n -->
+	"block_js": ("/*\n * ", "\n */", "block"),  # JS/TS/CSS: /* \n * line \n * line \n */
+	# HTML: <!-- \n line \n line \n -->
+	"block_html": ("<!--\n", "\n-->", "block"),
 }
 
 # Map file extension -> style key
@@ -169,13 +166,31 @@ def insert_header(content: str, header: str, ext: str) -> str:
 	return header + content
 
 
-def collect_files(root: Path) -> list[tuple[Path, str]]:
+def _parse_comma_separated(value: str) -> list[str]:
+	"""Split a comma-separated CLI string into stripped non-empty parts."""
+	return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def _file_matches_skip_entry(path: Path, root: Path, entry: str) -> bool:
+	"""True if path should be skipped for this skip-files entry (basename or relative path)."""
+	norm = entry.replace("\\", "/").strip()
+	if not norm:
+		return False
+	rel = path.relative_to(root).as_posix()
+	if "/" in norm or norm.startswith("."):
+		return rel == norm.lstrip("./")
+	return path.name == norm
+
+
+def collect_files(root: Path, skip_dirs: set[str], skip_files: set[str]) -> list[tuple[Path, str]]:
 	"""Return list of (path, extension) for supported files under root."""
 	out: list[tuple[Path, str]] = []
 	for path in root.rglob("*"):
 		if not path.is_file():
 			continue
-		if any(part in SKIP_DIRS for part in path.parts):
+		if any(part in skip_dirs for part in path.parts):
+			continue
+		if skip_files and any(_file_matches_skip_entry(path, root, e) for e in skip_files):
 			continue
 		ext = path.suffix.lower()
 		if ext in EXTENSION_STYLE:
@@ -186,7 +201,7 @@ def collect_files(root: Path) -> list[tuple[Path, str]]:
 def main() -> int:
 	"""Main function to add or update copyright headers from a COPYRIGHT file."""
 	parser = argparse.ArgumentParser(
-		description="Add or update copyright headers from a COPYRIGHT file.",
+		description="Add or update copyright headers from a COPYRIGHT file."
 	)
 	parser.add_argument(
 		"root",
@@ -211,6 +226,25 @@ def main() -> int:
 		action="store_true",
 		help="Like --dry-run but exit 1 if any file would be modified (for CI)",
 	)
+	parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+	_skip_dirs_default = ",".join(sorted(SKIP_DIRS))
+	parser.add_argument(
+		"--skip-dirs",
+		type=_parse_comma_separated,
+		default=_parse_comma_separated(_skip_dirs_default),
+		help=f"Comma-separated directory names to skip when walking (default: {_skip_dirs_default})",
+		metavar="DIRS",
+	)
+	parser.add_argument(
+		"--skip-files",
+		type=_parse_comma_separated,
+		default=[],
+		help=(
+			"Comma-separated files to skip: basename (any folder) or repo-relative path "
+			"(e.g. web/foo.js)"
+		),
+		metavar="FILES",
+	)
 	args = parser.parse_args()
 	if args.check:
 		args.dry_run = True
@@ -234,7 +268,7 @@ def main() -> int:
 			print(f"Updated year in {copyright_path.relative_to(root)}")
 	copyright_lines = [s.strip() for s in copyright_text.splitlines() if s.strip()]
 
-	files = collect_files(root)
+	files = collect_files(root, set(args.skip_dirs), set(args.skip_files))
 	modified: list[Path] = []
 	skipped: list[tuple[Path, str]] = []
 
@@ -266,9 +300,11 @@ def main() -> int:
 		return 0
 
 	for p in modified:
-		print(f"Updated: {p.relative_to(root)}")
+		if args.verbose:
+			print(f"Updated: {p.relative_to(root)}")
 	if not modified:
-		print("No files modified.")
+		if args.verbose:
+			print("No files modified.")
 	return 0
 
 

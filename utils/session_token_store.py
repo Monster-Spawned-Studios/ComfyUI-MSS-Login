@@ -81,11 +81,7 @@ class _SqliteSessionStore:
 		self._idle_revoke_minutes = idle_revoke_minutes
 
 	def register_session(
-		self,
-		jti: str,
-		user_id: str,
-		username: str,
-		exp_at_iso: Optional[str] = None,
+		self, jti: str, user_id: str, username: str, exp_at_iso: Optional[str] = None
 	) -> None:
 		now = _iso_now()
 		self._conn.execute(
@@ -207,11 +203,7 @@ def _get_postgres_session_store(
 			return self._conn.cursor(cursor_factory=RealDictCursor)
 
 		def register_session(
-			self,
-			jti: str,
-			user_id: str,
-			username: str,
-			exp_at_iso: Optional[str] = None,
+			self, jti: str, user_id: str, username: str, exp_at_iso: Optional[str] = None
 		) -> None:
 			now = _iso_now()
 			with self._conn.cursor() as cur:
@@ -313,12 +305,7 @@ def _get_mysql_session_store(
 	except ImportError:
 		raise RuntimeError("MySQL session store requires pymysql; pip install pymysql")
 	conn = pymysql.connect(
-		host=host,
-		port=port,
-		user=user,
-		password=password,
-		database=database,
-		charset="utf8mb4",
+		host=host, port=port, user=user, password=password, database=database, charset="utf8mb4"
 	)
 	cur = conn.cursor()
 	cur.execute(
@@ -346,11 +333,7 @@ def _get_mysql_session_store(
 			return self._conn.cursor(DictCursor)
 
 		def register_session(
-			self,
-			jti: str,
-			user_id: str,
-			username: str,
-			exp_at_iso: Optional[str] = None,
+			self, jti: str, user_id: str, username: str, exp_at_iso: Optional[str] = None
 		) -> None:
 			now = _iso_now()
 			cur = self._conn.cursor()
@@ -476,10 +459,7 @@ def _migrate_json_to_backend(json_path: str, store) -> int:
 		if jti in blocklist or _is_expired(rec.get("exp_at_iso")):
 			continue
 		store.register_session(
-			jti,
-			rec.get("user_id", ""),
-			rec.get("username", ""),
-			rec.get("exp_at_iso"),
+			jti, rec.get("user_id", ""), rec.get("username", ""), rec.get("exp_at_iso")
 		)
 		migrated += 1
 
@@ -499,8 +479,7 @@ _session_store = None
 
 
 def get_session_token_store(
-	config: Optional[dict] = None,
-	idle_revoke_minutes: Optional[int] = None,
+	config: Optional[dict] = None, idle_revoke_minutes: Optional[int] = None
 ) -> "_SqliteSessionStore":
 	"""
 	Build or return the singleton session token store from config.

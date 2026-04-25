@@ -149,11 +149,7 @@ class AccessControl:
 
 			# 2. Core Extensions
 			if path.startswith(
-				(
-					"/extensions/core",
-					"/extensions/ComfyUI-MSS-Login",
-					"/extensions/MSS-Login",
-				)
+				("/extensions/core", "/extensions/ComfyUI-MSS-Login", "/extensions/MSS-Login")
 			):
 				return await handler(request)
 
@@ -190,12 +186,7 @@ class AccessControl:
 				)
 				return web.json_response({"error": "MSS-Login: Upload Denied"}, status=403)
 
-			if is_userdata_workflow and request.method in (
-				"POST",
-				"PUT",
-				"DELETE",
-				"PATCH",
-			):
+			if is_userdata_workflow and request.method in ("POST", "PUT", "DELETE", "PATCH"):
 				can_modify = perms.get("can_modify_workflows")
 				if can_modify is None:
 					can_modify = role != "guest"
@@ -229,8 +220,7 @@ class AccessControl:
 					can_s3 = role in ("admin", "owner")
 				if not can_s3:
 					return web.json_response(
-						{"error": "MSS-Login: S3 Storage Access Denied"},
-						status=403,
+						{"error": "MSS-Login: S3 Storage Access Denied"}, status=403
 					)
 
 			if not is_queue and not is_upload and path.startswith("/api/"):
@@ -258,6 +248,20 @@ class AccessControl:
 
 	def get_current_user_id(self):
 		return self._current_user.get() or self.__current_user_id
+
+	def _is_current_user_admin_or_owner(self) -> bool:
+		"""Return True if the current user has admin or owner role."""
+		user_id = self.get_current_user_id()
+		if not user_id or user_id == "public":
+			return False
+		try:
+			_, user_rec = self.users_db.get_user(user_id)
+			if not user_rec:
+				return False
+			groups = [g.lower() for g in user_rec.get("groups", [])]
+			return "admin" in groups or "owner" in groups or bool(user_rec.get("admin"))
+		except Exception:
+			return False
 
 	def _get_output_base(self):
 		"""Base directory for user output under MSS_LOGIN_DATA_DIR."""
@@ -404,29 +408,33 @@ class AccessControl:
 			return entry
 
 		current_user = self.get_current_user_id()
+		show_all = self._is_current_user_admin_or_owner()
 		with self.__prompt_queue.mutex:
 			running = []
 			pending = []
 			for item in self.__prompt_queue.currently_running.values():
 				meta = item[-1] if isinstance(item[-1], dict) else None
-				if not meta or meta.get("user_id") != current_user:
+				if not show_all and (not meta or meta.get("user_id") != current_user):
 					continue
 				running.append(unwrap(item))
 			for item in self.__prompt_queue.queue:
 				meta = item[-1] if isinstance(item[-1], dict) else None
-				if not meta or meta.get("user_id") != current_user:
+				if not show_all and (not meta or meta.get("user_id") != current_user):
 					continue
 				pending.append(unwrap(item))
 			return (running, copy.deepcopy(pending))
 
 	def user_queue_wipe_queue(self):
 		with self.__prompt_queue.mutex:
-			current_user = self.get_current_user_id()
-			self.__prompt_queue.queue = [
-				i
-				for i in self.__prompt_queue.queue
-				if not (isinstance(i[-1], dict) and i[-1].get("user_id") == current_user)
-			]
+			if self._is_current_user_admin_or_owner():
+				self.__prompt_queue.queue = []
+			else:
+				current_user = self.get_current_user_id()
+				self.__prompt_queue.queue = [
+					i
+					for i in self.__prompt_queue.queue
+					if not (isinstance(i[-1], dict) and i[-1].get("user_id") == current_user)
+				]
 			self.server.queue_updated()
 
 	def user_queue_delete_queue_item(self, func):
@@ -452,9 +460,12 @@ class AccessControl:
 	def user_queue_get_history(self, prompt_id=None, max_items=None, offset=-1):
 		with self.__prompt_queue.mutex:
 			user = self.get_current_user_id()
-			filtered = {
-				k: v for k, v in self.__prompt_queue.history.items() if v.get("user_id") == user
-			}
+			if self._is_current_user_admin_or_owner():
+				filtered = dict(self.__prompt_queue.history)
+			else:
+				filtered = {
+					k: v for k, v in self.__prompt_queue.history.items() if v.get("user_id") == user
+				}
 			if prompt_id:
 				return {prompt_id: filtered.get(prompt_id)} if prompt_id in filtered else {}
 			keys = list(filtered.keys())
@@ -469,7 +480,10 @@ class AccessControl:
 
 	def user_queue_wipe_history(self):
 		with self.__prompt_queue.mutex:
-			u = self.get_current_user_id()
-			self.__prompt_queue.history = {
-				k: v for k, v in self.__prompt_queue.history.items() if v.get("user_id") != u
-			}
+			if self._is_current_user_admin_or_owner():
+				self.__prompt_queue.history = {}
+			else:
+				u = self.get_current_user_id()
+				self.__prompt_queue.history = {
+					k: v for k, v in self.__prompt_queue.history.items() if v.get("user_id") != u
+				}

@@ -202,8 +202,7 @@ class _SqliteTokenStore:
 	def get_user_for_token(self, token: str):
 		h = _hash_token(_normalize_lookup_token(token))
 		row = self._conn.execute(
-			"SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = ?",
-			(h,),
+			"SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = ?", (h,)
 		).fetchone()
 		if not row:
 			return None
@@ -220,8 +219,7 @@ class _SqliteTokenStore:
 		h = _hash_token(_normalize_lookup_token(token))
 		now = _iso_now()
 		cur = self._conn.execute(
-			"UPDATE api_tokens SET last_used_at_iso = ? WHERE token_hash = ?",
-			(now, h),
+			"UPDATE api_tokens SET last_used_at_iso = ? WHERE token_hash = ?", (now, h)
 		)
 		self._conn.commit()
 		return cur.rowcount > 0
@@ -296,13 +294,7 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
 			"PostgreSQL backend requires psycopg2; install with: pip install psycopg2-binary"
 		)
 
-	conn = psycopg2.connect(
-		host=host,
-		port=port,
-		dbname=database,
-		user=user,
-		password=password,
-	)
+	conn = psycopg2.connect(host=host, port=port, dbname=database, user=user, password=password)
 	cur = conn.cursor()
 	cur.execute(
 		"""
@@ -357,8 +349,7 @@ def _get_postgres_store(host: str, port: int, database: str, user: str, password
 			now = _iso_now()
 			with self._conn.cursor() as cur:
 				cur.execute(
-					"UPDATE api_tokens SET last_used_at_iso = %s WHERE token_hash = %s",
-					(now, h),
+					"UPDATE api_tokens SET last_used_at_iso = %s WHERE token_hash = %s", (now, h)
 				)
 				self._conn.commit()
 				return cur.rowcount > 0
@@ -429,12 +420,7 @@ def _get_mysql_store(host: str, port: int, database: str, user: str, password: s
 	except ImportError:
 		raise RuntimeError("MySQL API token store requires pymysql; pip install pymysql")
 	conn = pymysql.connect(
-		host=host,
-		port=port,
-		user=user,
-		password=password,
-		database=database,
-		charset="utf8mb4",
+		host=host, port=port, user=user, password=password, database=database, charset="utf8mb4"
 	)
 	cur = conn.cursor()
 	cur.execute(
@@ -464,8 +450,7 @@ def _get_mysql_store(host: str, port: int, database: str, user: str, password: s
 			h = _hash_token(_normalize_lookup_token(token))
 			cur = self._cursor()
 			cur.execute(
-				"SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = %s",
-				(h,),
+				"SELECT user_id, username, expires_iso FROM api_tokens WHERE token_hash = %s", (h,)
 			)
 			row = cur.fetchone()
 			cur.close()
@@ -485,8 +470,7 @@ def _get_mysql_store(host: str, port: int, database: str, user: str, password: s
 			now = _iso_now()
 			cur = self._conn.cursor()
 			cur.execute(
-				"UPDATE api_tokens SET last_used_at_iso = %s WHERE token_hash = %s",
-				(now, h),
+				"UPDATE api_tokens SET last_used_at_iso = %s WHERE token_hash = %s", (now, h)
 			)
 			self._conn.commit()
 			n = cur.rowcount
@@ -600,9 +584,7 @@ def get_api_token_store(config: Optional[dict] = None):
 		path = store_cfg.get("sqlite_path", "users/api_tokens.db")
 		if not path:
 			path = os.path.join(
-				os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-				"users",
-				"users.db",
+				os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "users", "users.db"
 			)
 		try:
 			from ..constants import SECRET_KEY
@@ -633,9 +615,7 @@ def get_api_token_store(config: Optional[dict] = None):
 		path = store_cfg.get("sqlite_path", "users/api_tokens.db")
 		if not path:
 			path = os.path.join(
-				os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-				"users",
-				"users.db",
+				os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "users", "users.db"
 			)
 		try:
 			from ..constants import SECRET_KEY

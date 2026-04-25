@@ -12,6 +12,36 @@ from ..utils.sfw_intercept.nsfw_guard import should_block_image_for_current_user
 import folder_paths
 
 
+def _sanitize_view_subfolder(subfolder: str | None) -> str | None:
+	"""
+	Normalize and validate a /view subfolder query value.
+
+	Allows nested relative segments, but rejects traversal/absolute paths.
+	"""
+	raw = str(subfolder or "").replace("\\", "/").strip()
+	if not raw:
+		return ""
+	if raw.startswith("/") or ".." in raw:
+		return None
+	parts = [segment for segment in raw.split("/") if segment]
+	if any(segment in (".", "..") for segment in parts):
+		return None
+	return "/".join(parts)
+
+
+def build_safe_view_relative_path(filename: str | None, subfolder: str | None) -> str | None:
+	"""
+	Build a safe relative path for /view from filename + subfolder.
+	"""
+	safe_filename = (filename or "").strip()
+	if not is_safe_filename(safe_filename):
+		return None
+	safe_subfolder = _sanitize_view_subfolder(subfolder)
+	if safe_subfolder is None:
+		return None
+	return f"{safe_subfolder}/{safe_filename}" if safe_subfolder else safe_filename
+
+
 def _get_workflow_sync():
 	"""Lazy accessor for the S3 workflow sync singleton (None when disabled)."""
 	try:
@@ -402,14 +432,14 @@ async def middleware_dispatch(request):
 
 		q = request.rel_url.query
 		filename = q.get("filename") or q.get("file") or q.get("name")
+		subfolder = q.get("subfolder")
 		img_type = q.get("type", "output")
-		if not filename or not is_safe_filename(filename):
-			filename = None
+		rel_path = build_safe_view_relative_path(filename, subfolder)
 
 		# Only guard standard output images for now
-		if filename and img_type == "output":
+		if rel_path and img_type == "output":
 			out_dir = folder_paths.get_output_directory()
-			img_path = resolve_path_under(out_dir, filename)
+			img_path = resolve_path_under(out_dir, rel_path)
 
 			if img_path and os.path.isfile(img_path):
 				try:

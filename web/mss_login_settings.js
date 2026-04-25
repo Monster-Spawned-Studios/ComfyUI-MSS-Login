@@ -410,32 +410,70 @@ const ADMIN_STYLES = `
     z-index: 2;
     position: relative;
 }
-.mss-login-tabs {
-    display: flex;
-    background: #181b22;
-    padding: 0 16px;
+.mss-login-tab-menu {
+    position: relative;
+    padding: 8px 12px;
     border-bottom: 1px solid rgba(255,255,255,0.14);
-    gap: 2px;
+    background: #181b22;
 }
-.mss-login-tab {
-    padding: 10px 20px;
+.mss-login-tab-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.08);
+    color: #ffffff;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    text-transform: uppercase;
+}
+.mss-login-tab-toggle:hover {
+    background: rgba(255,255,255,0.16);
+}
+.mss-login-tab-toggle-icon {
+    font-size: 14px;
+    line-height: 1;
+}
+.mss-login-tab-dropdown {
+    position: absolute;
+    top: calc(100% - 2px);
+    left: 12px;
+    min-width: 260px;
+    max-width: min(90vw, 380px);
+    max-height: 55vh;
+    overflow-y: auto;
+    background: #151821;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 10px;
+    box-shadow: 0 14px 32px rgba(0,0,0,0.5);
+    z-index: 20;
+    padding: 6px;
+}
+.mss-login-tab-menu-item {
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: #c5c8d3;
+    padding: 9px 10px;
+    border-radius: 8px;
     cursor: pointer;
     font-size: 12px;
     font-weight: 600;
-    color: #c5c8d3;
-    border-bottom: 2px solid transparent;
-    transition: 0.16s ease;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
 }
-.mss-login-tab:hover {
+.mss-login-tab-menu-item:hover {
     color: #ffffff;
-    background: rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.09);
 }
-.mss-login-tab.active {
+.mss-login-tab-menu-item.active {
     color: #ffffff;
-    border-bottom-color: var(--p-button-primary-bg, #3b82f6);
-    background: rgba(59,130,246,0.18);
+    background: rgba(59,130,246,0.25);
 }
 
 /* Content Area */
@@ -443,10 +481,40 @@ const ADMIN_STYLES = `
     flex: 1;
     padding: 10px 0 0;
     overflow-y: auto;
+    overflow-x: hidden;
     display: none;
 }
 .mss-login-content.active {
     display: block;
+}
+
+@media (max-width: 980px) {
+    .mss-login-modal {
+        width: 98vw;
+        height: 94vh;
+    }
+    .mss-login-modal-header {
+        padding: 10px 14px;
+    }
+    .mss-login-modal-title {
+        font-size: 15px;
+        letter-spacing: 0.04em;
+        text-transform: none;
+    }
+    .mss-login-tab-menu {
+        padding: 8px;
+    }
+    .mss-login-tab-toggle {
+        width: 100%;
+        justify-content: space-between;
+        font-size: 11px;
+    }
+    .mss-login-tab-dropdown {
+        left: 8px;
+        right: 8px;
+        max-width: none;
+        min-width: 0;
+    }
 }
 
 /* Tables */
@@ -770,21 +838,21 @@ class mss_loginDialog extends ComfyDialog {
         const allTabs = [...builtInTabs, ...extensionTabs.map(t => ({ id: t.id, label: t.label, order: t.order }))];
         allTabs.sort((a, b) => a.order - b.order);
         
-        // Build tabs HTML - mark "users" tab as active (first built-in tab)
+        // Build tab menu HTML - mark "users" tab as active (first built-in tab)
         // Escape tab.label to prevent XSS (tab.id is already validated during registration)
-        const tabsHTML = allTabs.map((tab, index) => {
-            const isActive = tab.id === "users" || (index === 0 && !builtInTabs.some(bt => bt.id === tab.id));
+        const initialActiveTabId = allTabs.find(tab => tab.id === "users")?.id || allTabs[0]?.id || "";
+        const tabsHTML = allTabs.map((tab) => {
             // ID is validated during registration (lowercase alphanumeric + underscore/hyphen), safe for HTML attributes
             // Label needs escaping as it's user-provided text
             const escapedLabel = escapeHtml(tab.label);
-            return `<div class="mss-login-tab${isActive ? ' active' : ''}" data-tab="${tab.id}">${escapedLabel}</div>`;
+            return `<button type="button" class="mss-login-tab-menu-item${tab.id === initialActiveTabId ? " active" : ""}" data-tab="${tab.id}">${escapedLabel}</button>`;
         }).join("");
         
         // Build content containers HTML - mark "users" content as active
         // tab.id is already validated during registration (lowercase alphanumeric + underscore/hyphen)
-        const contentHTML = allTabs.map((tab, index) => {
-            const isActive = tab.id === "users" || (index === 0 && !builtInTabs.some(bt => bt.id === tab.id));
-            return `<div class="mss-login-content${isActive ? ' active' : ''}" id="mss-login-tab-${tab.id}"></div>`;
+        const contentHTML = allTabs.map((tab) => {
+            const isActive = tab.id === initialActiveTabId;
+            return `<div class="mss-login-content${isActive ? " active" : ""}" id="mss-login-tab-${tab.id}"></div>`;
         }).join("");
         
         // Render Layout
@@ -794,8 +862,14 @@ class mss_loginDialog extends ComfyDialog {
                 <button class="mss-login-modal-close">✕</button>
             </div>
             <div class="mss-login-modal-body">
-                <div class="mss-login-tabs">
-                    ${tabsHTML}
+                <div class="mss-login-tab-menu">
+                    <button type="button" class="mss-login-tab-toggle" id="mss-login-tab-toggle" aria-haspopup="true" aria-expanded="false">
+                        <span class="mss-login-tab-toggle-icon">☰</span>
+                        <span class="mss-login-tab-toggle-text">${escapeHtml(allTabs.find(t => t.id === initialActiveTabId)?.label || "Select section")}</span>
+                    </button>
+                    <div class="mss-login-tab-dropdown" id="mss-login-tab-dropdown" hidden>
+                        ${tabsHTML}
+                    </div>
                 </div>
                 ${contentHTML}
             </div>
@@ -805,21 +879,73 @@ class mss_loginDialog extends ComfyDialog {
         this.element.querySelector(".mss-login-modal-close").onclick = () => this.close();
         this.overlay.onclick = (e) => { if (e.target === this.overlay) this.close(); };
 
-        const tabs = this.element.querySelectorAll(".mss-login-tab");
-        tabs.forEach(t => t.onclick = () => {
-            tabs.forEach(x => x.classList.remove("active"));
-            this.element.querySelectorAll(".mss-login-content").forEach(c => c.classList.remove("active"));
-            t.classList.add("active");
-            
-            // Validate tab ID before using in querySelector to prevent injection
-            const tabId = t.dataset.tab;
-            if (tabId && /^[a-z0-9_-]+$/.test(tabId)) {
-                const contentEl = this.element.querySelector(`#mss-login-tab-${tabId}`);
-                if (contentEl) {
-                    contentEl.classList.add("active");
-                }
+        const tabMenu = this.element.querySelector(".mss-login-tab-menu");
+        const tabToggle = this.element.querySelector("#mss-login-tab-toggle");
+        const tabToggleText = this.element.querySelector(".mss-login-tab-toggle-text");
+        const tabDropdown = this.element.querySelector("#mss-login-tab-dropdown");
+        const tabButtons = this.element.querySelectorAll(".mss-login-tab-menu-item");
+
+        const closeTabMenu = () => {
+            if (!tabDropdown || !tabToggle) return;
+            tabDropdown.hidden = true;
+            tabToggle.setAttribute("aria-expanded", "false");
+        };
+
+        const openTabMenu = () => {
+            if (!tabDropdown || !tabToggle) return;
+            tabDropdown.hidden = false;
+            tabToggle.setAttribute("aria-expanded", "true");
+        };
+
+        const setActiveTab = (tabId) => {
+            if (!tabId || !/^[a-z0-9_-]+$/.test(tabId)) {
+                return;
             }
+            const contentEl = this.element.querySelector(`#mss-login-tab-${tabId}`);
+            if (!contentEl) {
+                return;
+            }
+            tabButtons.forEach(btn => {
+                btn.classList.toggle("active", btn.dataset.tab === tabId);
+            });
+            this.element.querySelectorAll(".mss-login-content").forEach(c => c.classList.remove("active"));
+            contentEl.classList.add("active");
+            const activeTab = allTabs.find(tab => tab.id === tabId);
+            if (activeTab && tabToggleText) {
+                tabToggleText.textContent = activeTab.label;
+            }
+        };
+
+        if (tabToggle) {
+            tabToggle.onclick = () => {
+                if (tabDropdown?.hidden) {
+                    openTabMenu();
+                } else {
+                    closeTabMenu();
+                }
+            };
+        }
+
+        tabButtons.forEach(btn => {
+            btn.onclick = () => {
+                setActiveTab(btn.dataset.tab || "");
+                closeTabMenu();
+            };
         });
+
+        this._tabMenuOutsideClickHandler = (event) => {
+            if (tabDropdown?.hidden) return;
+            if (tabMenu && !tabMenu.contains(event.target)) {
+                closeTabMenu();
+            }
+        };
+        document.addEventListener("click", this._tabMenuOutsideClickHandler);
+        this._tabMenuEscapeHandler = (event) => {
+            if (event.key === "Escape") {
+                closeTabMenu();
+            }
+        };
+        document.addEventListener("keydown", this._tabMenuEscapeHandler);
 
         // Fill Data - Built-in tabs
         this.renderUsers(usersList, this.element.querySelector("#mss-login-tab-users"));
@@ -876,6 +1002,14 @@ class mss_loginDialog extends ComfyDialog {
     }
 
     close() { 
+        if (this._tabMenuOutsideClickHandler) {
+            document.removeEventListener("click", this._tabMenuOutsideClickHandler);
+            this._tabMenuOutsideClickHandler = null;
+        }
+        if (this._tabMenuEscapeHandler) {
+            document.removeEventListener("keydown", this._tabMenuEscapeHandler);
+            this._tabMenuEscapeHandler = null;
+        }
         this.overlay.remove();
         
         // Clear the global instance if this is the current dialog
@@ -2105,15 +2239,29 @@ async renderUsersDbConfig(container) {
 }
 
 async renderModelDownload(container) {
+    const isOwner = Array.isArray(currentUser?.groups)
+        && currentUser.groups.map(g => String(g).toLowerCase()).includes("owner");
     let sourcesWithKeys = [];
+    let hasDownloadPermission = true;
     try {
         const res = await api.fetchApi("/mss-login/api/model-download/sources", { method: "GET" });
-        if (res.ok) {
+        if (res.status === 403) {
+            hasDownloadPermission = false;
+        } else if (res.ok) {
             const data = await res.json();
             sourcesWithKeys = data.sources_with_keys || [];
         }
     } catch (e) {
         console.warn("[mss-login] Model download sources load failed:", e);
+    }
+    if (!hasDownloadPermission) {
+        container.innerHTML = `
+            <div class="mss-login-section">
+                <h3>Model download</h3>
+                <p>Your role does not have permission to view or manage model downloads.</p>
+            </div>
+        `;
+        return;
     }
     let folders = ["checkpoints", "loras", "vae", "embeddings", "controlnet", "upscale_models"];
     try {
@@ -2122,6 +2270,28 @@ async renderModelDownload(container) {
         if (fd.folders && fd.folders.length) folders = fd.folders;
     } catch (e) {}
     const folderOptions = folders.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
+    const ownerPatternSection = isOwner ? `
+        <div class="mss-login-section" style="margin-top:24px;">
+            <h3>Model isolation download redirect patterns</h3>
+            <p>Owner override patterns used to detect third-party/core model download routes that should be redirected to per-user model folders while <code>experimental.model_isolation</code> is enabled.</p>
+            <p class="mss-login-note">Defaults and launch-time auto-detected patterns (such as Civicomfy, when present) are always applied. Add one custom pattern per line below.</p>
+            <div class="mss-login-row" style="margin-top:12px; gap:12px; flex-wrap:wrap;">
+                <div style="min-width:360px; flex:2;">
+                    <label class="mss-login-field-label">Configured patterns (owner-defined)</label>
+                    <textarea id="mss-login-model-isolation-patterns" class="mss-login-input" style="min-height:120px; width:100%;" placeholder="/my/custom/route-pattern"></textarea>
+                </div>
+                <div style="min-width:360px; flex:2;">
+                    <label class="mss-login-field-label">Effective patterns (read-only)</label>
+                    <textarea id="mss-login-model-isolation-effective-patterns" class="mss-login-input" style="min-height:120px; width:100%;" readonly></textarea>
+                </div>
+            </div>
+            <div class="mss-login-row" style="margin-top:12px;">
+                <button class="mss-login-btn" id="mss-login-model-isolation-patterns-refresh">Refresh</button>
+                <button class="mss-login-btn btn-save" id="mss-login-model-isolation-patterns-save">Save patterns</button>
+            </div>
+            <p id="mss-login-model-isolation-patterns-status" class="mss-login-note" style="margin-top:8px;"></p>
+        </div>
+    ` : "";
     container.innerHTML = `
         <div class="mss-login-section">
             <h3>API keys (CivitAI / HuggingFace)</h3>
@@ -2172,7 +2342,13 @@ async renderModelDownload(container) {
                 <button class="mss-login-btn" id="mss-login-dl-start">Download</button>
             </div>
             <p id="mss-login-dl-status" class="mss-login-note" style="margin-top:8px;"></p>
+            <div class="mss-login-section" style="margin-top:16px;">
+                <h4 style="margin: 0 0 8px 0;">Download queue</h4>
+                <p id="mss-login-dl-queue-summary" class="mss-login-note"></p>
+                <div id="mss-login-dl-jobs"></div>
+            </div>
         </div>
+        ${ownerPatternSection}
     `;
     const sourceSelect = container.querySelector("#mss-login-dl-source");
     const civitaiFields = container.querySelector("#mss-login-dl-civitai-fields");
@@ -2240,8 +2416,7 @@ async renderModelDownload(container) {
                 return;
             }
         }
-        statusEl.textContent = "Downloading...";
-        const prevTitle = document.title;
+        statusEl.textContent = "Queueing download...";
         try {
             const res = await api.fetchApi("/mss-login/api/model-download/download", { method: "POST", body: JSON.stringify(body) });
             if (!res.ok) {
@@ -2249,89 +2424,179 @@ async renderModelDownload(container) {
                 statusEl.textContent = "Error: " + (data.error || res.status);
                 return;
             }
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            let buf = "";
-            let lastData = null;
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                buf += decoder.decode(value, { stream: true });
-                const lines = buf.split("\n");
-                buf = lines.pop() || "";
-                for (const line of lines) {
-                    if (!line.trim()) continue;
-                    try {
-                        const data = JSON.parse(line);
-                        lastData = data;
-                        if (data.status === "ok") {
-                            document.title = prevTitle;
-                            statusEl.textContent = "Download complete: " + (data.destination || "");
-                            return;
-                        }
-                        if (data.status === "error") {
-                            document.title = prevTitle;
-                            statusEl.textContent = "Error: " + (data.error || "Download failed");
-                            return;
-                        }
-                        const bytesDone = data.bytes_done ?? 0;
-                        const totalBytes = data.total_bytes ?? null;
-                        const elapsed = data.elapsed ?? 0;
-                        const mb = (bytesDone / (1024 * 1024)).toFixed(1);
-                        let statusText = "Downloading... " + mb + " MB";
-                        let titleSuffix = " – " + mb + " MB";
-                        if (totalBytes != null && totalBytes > 0 && bytesDone > 0) {
-                            const pct = Math.min(99, Math.round((bytesDone / totalBytes) * 100));
-                            statusText = "Downloading... " + pct + "% (" + mb + " MB)";
-                            titleSuffix = " – " + pct + "%";
-                            if (elapsed > 0.5) {
-                                const speed = bytesDone / elapsed;
-                                const remainingSec = (totalBytes - bytesDone) / speed;
-                                if (remainingSec >= 60) {
-                                    const min = Math.round(remainingSec / 60);
-                                    titleSuffix += " – ~" + min + " min remaining";
-                                    statusText += " – ~" + min + " min remaining";
-                                } else if (remainingSec >= 1) {
-                                    const sec = Math.round(remainingSec);
-                                    titleSuffix += " – ~" + sec + " sec remaining";
-                                    statusText += " – ~" + sec + " sec remaining";
-                                }
-                            }
-                        } else if (elapsed > 1) {
-                            titleSuffix += " – estimating...";
-                        }
-                        document.title = "MSS-Login: Downloading" + titleSuffix;
-                        statusEl.textContent = statusText;
-                    } catch (_) {}
-                }
-            }
-            if (buf.trim()) {
-                try {
-                    const data = JSON.parse(buf);
-                    lastData = data;
-                    if (data.status === "ok") {
-                        document.title = prevTitle;
-                        statusEl.textContent = "Download complete: " + (data.destination || "");
-                        return;
-                    }
-                    if (data.status === "error") {
-                        document.title = prevTitle;
-                        statusEl.textContent = "Error: " + (data.error || "Download failed");
-                        return;
-                    }
-                } catch (_) {}
-            }
-            document.title = prevTitle;
-            if (lastData && lastData.status === "ok") {
-                statusEl.textContent = "Download complete: " + (lastData.destination || "");
-            } else {
-                statusEl.textContent = lastData && lastData.error ? "Error: " + lastData.error : "Download finished.";
-            }
+            const data = await res.json().catch(() => ({}));
+            statusEl.textContent = data?.job_id
+                ? ("Queued download job: " + data.job_id)
+                : "Download queued.";
+            await refreshJobs();
         } catch (e) {
-            document.title = prevTitle;
             statusEl.textContent = "Error: " + (e.message || "Download failed");
         }
     };
+
+    const jobsWrap = container.querySelector("#mss-login-dl-jobs");
+    const queueSummary = container.querySelector("#mss-login-dl-queue-summary");
+    const humanBytes = (n) => {
+        const num = Number(n || 0);
+        if (num < 1024) return num.toFixed(0) + " B";
+        if (num < 1024 * 1024) return (num / 1024).toFixed(1) + " KB";
+        return (num / (1024 * 1024)).toFixed(1) + " MB";
+    };
+    const humanSpeed = (bps) => {
+        const val = Number(bps || 0);
+        if (!val || val <= 0) return "0 KB/s";
+        if (val >= 1024 * 1024) return (val / (1024 * 1024)).toFixed(2) + " MB/s";
+        return (val / 1024).toFixed(1) + " KB/s";
+    };
+    const humanEta = (etaSeconds) => {
+        const s = Number(etaSeconds || 0);
+        if (!s || s <= 0) return "estimating...";
+        if (s >= 60) return Math.round(s / 60) + " min";
+        return Math.round(s) + " sec";
+    };
+    const statusColor = (status) => {
+        if (status === "failed" || status === "cancelled") return "#ff6666";
+        if (status === "completed") return "#66cc88";
+        if (status === "running") return "#6fa8ff";
+        return "#aaa";
+    };
+    const renderJob = (job) => {
+        const pct = Math.max(0, Math.min(100, Number(job.progress_pct || 0)));
+        const speed = humanSpeed(job.speed_bps);
+        const eta = humanEta(job.eta_seconds);
+        const bytes = humanBytes(job.bytes_done || 0);
+        const total = job.total_bytes ? humanBytes(job.total_bytes) : "?";
+        const err = job.error ? `<div class="mss-login-note" style="color:#ff8888;">Error: ${escapeHtml(job.error)}</div>` : "";
+        const canCancel = !!job.can_cancel;
+        return `
+            <div style="border:1px solid #333; border-radius:8px; padding:10px; margin:8px 0;">
+                <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
+                    <div><strong>${escapeHtml(job.source || "unknown")}</strong> -> ${escapeHtml(job.folder_type || "")}</div>
+                    <div style="color:${statusColor(job.status)}; text-transform:capitalize;">${escapeHtml(job.status || "queued")}</div>
+                </div>
+                <div style="height:10px; background:#222; border-radius:6px; margin-top:8px; overflow:hidden;">
+                    <div style="height:10px; width:${pct}%; background:#4a90e2;"></div>
+                </div>
+                <div class="mss-login-note" style="margin-top:6px;">
+                    ${pct.toFixed(1)}% • ${bytes} / ${total} • ${speed} • ETA ${eta}
+                </div>
+                ${err}
+                ${canCancel ? `<button class="mss-login-btn mss-login-job-cancel" data-job-id="${escapeHtml(job.job_id)}" style="margin-top:8px;">Cancel</button>` : ""}
+            </div>
+        `;
+    };
+    const bindCancelButtons = () => {
+        jobsWrap.querySelectorAll(".mss-login-job-cancel").forEach((btn) => {
+            btn.onclick = async () => {
+                const jobId = btn.dataset.jobId;
+                try {
+                    const res = await api.fetchApi(`/mss-login/api/model-download/jobs/${encodeURIComponent(jobId)}/cancel`, {
+                        method: "POST"
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        container.querySelector("#mss-login-dl-status").textContent = "Error: " + (data.error || res.status);
+                        return;
+                    }
+                    container.querySelector("#mss-login-dl-status").textContent = "Cancel requested for " + jobId;
+                    await refreshJobs();
+                } catch (e) {
+                    container.querySelector("#mss-login-dl-status").textContent = "Error: " + (e.message || "Cancel failed");
+                }
+            };
+        });
+    };
+    const refreshJobs = async () => {
+        try {
+            const res = await api.fetchApi("/mss-login/api/model-download/jobs", { method: "GET" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                queueSummary.textContent = "Unable to load jobs: " + (data.error || res.status);
+                return;
+            }
+            const stats = data.stats || {};
+            queueSummary.textContent =
+                `Active ${stats.active_total || 0}/${stats.limit_total || 5} | ` +
+                `CivitAI ${stats.active_civitai || 0}/${stats.limit_civitai || 3} | ` +
+                `HuggingFace ${stats.active_huggingface || 0}/${stats.limit_huggingface || 2} | ` +
+                `Queued ${stats.pending_total || 0}`;
+            const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+            if (!jobs.length) {
+                jobsWrap.innerHTML = `<p class="mss-login-note">No queued or active model downloads.</p>`;
+                return;
+            }
+            jobsWrap.innerHTML = jobs.map(renderJob).join("");
+            bindCancelButtons();
+        } catch (e) {
+            queueSummary.textContent = "Unable to load jobs: " + (e.message || "Unknown error");
+        }
+    };
+    if (this._modelDownloadPollTimer) {
+        clearInterval(this._modelDownloadPollTimer);
+        this._modelDownloadPollTimer = null;
+    }
+    await refreshJobs();
+    this._modelDownloadPollTimer = setInterval(() => {
+        refreshJobs().catch(() => {});
+    }, 1500);
+
+    if (isOwner) {
+        const cfgArea = container.querySelector("#mss-login-model-isolation-patterns");
+        const effArea = container.querySelector("#mss-login-model-isolation-effective-patterns");
+        const statusEl = container.querySelector("#mss-login-model-isolation-patterns-status");
+        const refreshBtn = container.querySelector("#mss-login-model-isolation-patterns-refresh");
+        const saveBtn = container.querySelector("#mss-login-model-isolation-patterns-save");
+
+        const parsePatterns = (raw) => {
+            return Array.from(new Set(
+                String(raw || "")
+                    .split("\n")
+                    .map(x => x.trim().toLowerCase())
+                    .filter(Boolean)
+            ));
+        };
+
+        const loadPatterns = async () => {
+            statusEl.textContent = "Loading patterns...";
+            try {
+                const res = await api.fetchApi("/mss-login/api/settings/model-isolation-download-patterns", { method: "GET" });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    statusEl.textContent = "Error: " + (data.error || res.status);
+                    return;
+                }
+                cfgArea.value = (data.configured_patterns || []).join("\n");
+                effArea.value = (data.effective_patterns || []).join("\n");
+                statusEl.textContent = "Patterns loaded.";
+            } catch (e) {
+                statusEl.textContent = "Error: " + (e.message || "Failed to load patterns");
+            }
+        };
+
+        refreshBtn.onclick = loadPatterns;
+        saveBtn.onclick = async () => {
+            const patterns = parsePatterns(cfgArea.value);
+            statusEl.textContent = "Saving patterns...";
+            try {
+                const res = await api.fetchApi("/mss-login/api/settings/model-isolation-download-patterns", {
+                    method: "PUT",
+                    body: JSON.stringify({ patterns })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    statusEl.textContent = "Error: " + (data.error || res.status);
+                    return;
+                }
+                cfgArea.value = (data.configured_patterns || []).join("\n");
+                effArea.value = (data.effective_patterns || []).join("\n");
+                statusEl.textContent = "Patterns saved.";
+            } catch (e) {
+                statusEl.textContent = "Error: " + (e.message || "Failed to save patterns");
+            }
+        };
+
+        await loadPatterns();
+    }
 }
 
 async renderS3Settings(container) {
@@ -2659,6 +2924,7 @@ async renderS3Settings(container) {
         html += drawRow("View built-in Console (bottom panel)", "can_view_console");
         html += drawRow("View all ComfyUI items (models, LoRAs, VAEs, embeddings)", "can_view_all_comfyui_items");
         html += drawRow("Access S3 Storage (mount, sync, API)", "can_access_s3_storage");
+        html += drawRow("Download models (queue, view, cancel own jobs)", "can_download_models");
 
         // Section 2: Global UI
         html += drawRow("Interface Elements", null, true);
@@ -3584,7 +3850,8 @@ app.ui.settings.addSetting({
                         user_login: "Notify when user logs in (include IP)",
                         user_logout: "Notify when user logs out",
                         api_token_created: "Notify when API/JWT token created",
-                        login_failure: "Notify on login failure"
+                        login_failure: "Notify on login failure",
+                        experimental_recovery: "Notify when experimental failsafe/recovery runs"
                     };
                     const keys = cfg.event_keys || ["nsfw_block", "user_created", "user_login", "user_logout", "api_token_created", "login_failure"];
                     ntfyCheckWrap.innerHTML = "";
@@ -3670,6 +3937,95 @@ app.ui.settings.addSetting({
                         experimentalChecks.appendChild(label);
                     });
                 }
+            } catch (_) {}
+        })();
+
+        // Experimental failsafe (non-experimental safety control) - Admin only
+        const failsafeSection = document.createElement("div");
+        failsafeSection.id = "mss-login-failsafe-section";
+        failsafeSection.style.display = "none";
+        failsafeSection.style.marginTop = "12px";
+        failsafeSection.style.width = "min(100%, 560px)";
+        failsafeSection.style.textAlign = "left";
+        failsafeSection.innerHTML = `
+            <h4 style="margin:0 0 8px 0;">Experimental failsafe</h4>
+            <p style="margin:0 0 8px 0; font-size:0.9em; color:#888;">
+                If critical experimental startup failures occur, MSS-Login can auto-disable experimental features.
+                Credentials/user DB data are preserved during this safety reset.
+            </p>
+            <label style="display:block; margin-bottom:6px;">
+                <input type="checkbox" id="mss-login-failsafe-enabled"> Enable experimental failsafe
+            </label>
+            <label style="display:block; margin-bottom:8px;">
+                <input type="checkbox" id="mss-login-failsafe-escalate"> Escalate to recovery update after repeated failures
+            </label>
+            <p id="mss-login-failsafe-state" class="mss-login-note" style="margin:0 0 8px 0;"></p>
+            <div id="mss-login-failsafe-details" class="mss-login-note" style="margin:0 0 8px 0; border:1px solid #333; border-radius:8px; padding:8px;"></div>
+            <button class="mss-login-launch-btn" id="mss-login-failsafe-save">Save failsafe settings</button>
+        `;
+        wrapper.appendChild(failsafeSection);
+        (async () => {
+            try {
+                const me = await getData("/mss-login/api/me");
+                if (!(me && me.is_admin)) return;
+                const cfg = await getData("/mss-login/api/settings/experimental-failsafe");
+                if (!cfg) return;
+                failsafeSection.style.display = "block";
+                const enabled = failsafeSection.querySelector("#mss-login-failsafe-enabled");
+                const escalate = failsafeSection.querySelector("#mss-login-failsafe-escalate");
+                const state = failsafeSection.querySelector("#mss-login-failsafe-state");
+                const details = failsafeSection.querySelector("#mss-login-failsafe-details");
+                const renderFailsafeDetails = (data) => {
+                    const action = String(data.last_recovery_action || "none");
+                    const reason = String(data.last_failure_reason || "");
+                    const failureCount = Number(data.failure_count || 0);
+                    let guidance = "No recovery action has been needed yet.";
+                    if (action === "config_reset") {
+                        guidance = "Experimental flags were auto-disabled. Restart ComfyUI to confirm stability.";
+                    } else if (action === "recovery_update") {
+                        guidance = "Escalation update succeeded after repeated failures. Verify service health now.";
+                    } else if (action === "recovery_update_failed") {
+                        guidance = "Escalation update failed. Review logs and perform controlled maintenance.";
+                    }
+                    details.innerHTML = `
+                        <div><strong>Last action:</strong> ${escapeHtml(action)}</div>
+                        <div><strong>Last reason:</strong> ${escapeHtml(reason || "n/a")}</div>
+                        <div><strong>Safety guidance:</strong> ${escapeHtml(guidance)}</div>
+                        <div><strong>Credential safety:</strong> Failsafe avoids wiping user DB credentials or token stores.</div>
+                        <div><strong>Failure count:</strong> ${failureCount}</div>
+                    `;
+                };
+                enabled.checked = !!cfg.enabled;
+                escalate.checked = !!cfg.escalate_after_repeated_failure;
+                state.textContent =
+                    `Failures: ${cfg.failure_count || 0}` +
+                    (cfg.last_failure_at ? ` • Last: ${cfg.last_failure_at}` : "") +
+                    (cfg.last_recovery_action ? ` • Action: ${cfg.last_recovery_action}` : "");
+                renderFailsafeDetails(cfg);
+                failsafeSection.querySelector("#mss-login-failsafe-save").onclick = async () => {
+                    try {
+                        const res = await api.fetchApi("/mss-login/api/settings/experimental-failsafe", {
+                            method: "PUT",
+                            body: JSON.stringify({
+                                enabled: !!enabled.checked,
+                                escalate_after_repeated_failure: !!escalate.checked
+                            })
+                        });
+                        const data = await res.json().catch(() => ({}));
+                        if (!res.ok) {
+                            if (window.showToast) window.showToast("Save failed: " + (data.error || res.status));
+                            return;
+                        }
+                        state.textContent =
+                            `Failures: ${data.failure_count || 0}` +
+                            (data.last_failure_at ? ` • Last: ${data.last_failure_at}` : "") +
+                            (data.last_recovery_action ? ` • Action: ${data.last_recovery_action}` : "");
+                        renderFailsafeDetails(data);
+                        if (window.showToast) window.showToast("Failsafe settings saved.");
+                    } catch (e) {
+                        if (window.showToast) window.showToast("Save failed: " + (e.message || "Unknown error"));
+                    }
+                };
             } catch (_) {}
         })();
 
@@ -3806,13 +4162,269 @@ app.ui.settings.addSetting({
             } catch (_) {}
         })();
 
-        // My JWT Tokens section (list, masked by default, eye to reveal, revoke)
+        // API/JWT token section (requires password re-entry and shows token names)
+        const apiJwtSection = document.createElement("div");
+        apiJwtSection.id = "mss-login-api-jwt-tokens";
+        apiJwtSection.style.marginTop = "12px";
+        apiJwtSection.style.width = "min(100%, 760px)";
+        apiJwtSection.style.textAlign = "left";
+        apiJwtSection.innerHTML = `
+            <h4 style="margin:0 0 8px 0;">API/JWT Tokens</h4>
+            <p class="mss-login-note" style="margin:0 0 10px 0;">
+                Create long-lived API/JWT tokens from inside ComfyUI. For security, you must re-enter your password.
+            </p>
+            <div class="mss-login-row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                <div>
+                    <label class="mss-login-field-label">Token name (optional)</label>
+                    <input type="text" id="mss-login-api-token-label" class="mss-login-input" placeholder="e.g. Tablet App">
+                </div>
+                <div>
+                    <label class="mss-login-field-label">Expires in hours</label>
+                    <input type="number" id="mss-login-api-token-expire-hours" class="mss-login-input" value="720" min="0" step="1" style="width:120px;">
+                </div>
+                <div style="flex:1; min-width:220px;">
+                    <label class="mss-login-field-label">Re-enter password</label>
+                    <input type="password" id="mss-login-api-token-password" class="mss-login-input" placeholder="Required for creation">
+                </div>
+                <div>
+                    <button class="mss-login-btn" id="mss-login-api-token-create">Create token</button>
+                </div>
+            </div>
+            <div id="mss-login-api-token-mfa-row" class="mss-login-row" style="margin-top:8px; gap:10px; align-items:flex-end; display:none; flex-wrap:wrap;">
+                <div>
+                    <label class="mss-login-field-label">MFA code</label>
+                    <input type="text" id="mss-login-api-token-mfa-code" class="mss-login-input" placeholder="123456" style="width:120px;">
+                </div>
+                <div>
+                    <label class="mss-login-field-label">Backup code</label>
+                    <input type="text" id="mss-login-api-token-mfa-backup" class="mss-login-input" placeholder="XXXX-XXXX" style="width:160px;">
+                </div>
+            </div>
+            <p id="mss-login-api-token-create-status" class="mss-login-note" style="margin-top:8px;"></p>
+            <div id="mss-login-api-token-output-wrap" style="display:none; margin-top:8px;">
+                <label class="mss-login-field-label">New token (shown once)</label>
+                <div class="mss-login-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
+                    <code id="mss-login-api-token-output" style="padding:8px; border-radius:8px; background:#0f1117; display:block; max-width:100%; overflow:auto;"></code>
+                    <button class="mss-login-btn secondary" id="mss-login-api-token-copy">Copy</button>
+                </div>
+                <p class="mss-login-note" style="margin-top:6px;">Store this token securely. It cannot be shown again.</p>
+            </div>
+            <h5 style="margin:14px 0 8px 0;">My API/JWT tokens</h5>
+            <div id="mss-login-api-token-list" class="mss-login-note">Loading tokens...</div>
+        `;
+        wrapper.appendChild(apiJwtSection);
+        (async () => {
+            let mfaTempToken = null;
+            const me = await getData("/mss-login/api/me");
+            const createBtn = apiJwtSection.querySelector("#mss-login-api-token-create");
+            const labelInput = apiJwtSection.querySelector("#mss-login-api-token-label");
+            const expireInput = apiJwtSection.querySelector("#mss-login-api-token-expire-hours");
+            const passwordInput = apiJwtSection.querySelector("#mss-login-api-token-password");
+            const createStatus = apiJwtSection.querySelector("#mss-login-api-token-create-status");
+            const mfaRow = apiJwtSection.querySelector("#mss-login-api-token-mfa-row");
+            const mfaCodeInput = apiJwtSection.querySelector("#mss-login-api-token-mfa-code");
+            const mfaBackupInput = apiJwtSection.querySelector("#mss-login-api-token-mfa-backup");
+            const tokenOutputWrap = apiJwtSection.querySelector("#mss-login-api-token-output-wrap");
+            const tokenOutput = apiJwtSection.querySelector("#mss-login-api-token-output");
+            const copyBtn = apiJwtSection.querySelector("#mss-login-api-token-copy");
+            const tokenListContainer = apiJwtSection.querySelector("#mss-login-api-token-list");
+
+            const setCreateStatus = (msg, isError = false) => {
+                createStatus.textContent = msg || "";
+                createStatus.style.color = isError ? "#ff8a8a" : "#9ce3a5";
+            };
+
+            const formatDateTime = (value, fallback) => {
+                if (!value) return fallback;
+                try {
+                    return new Date(value).toLocaleString();
+                } catch (_) {
+                    return fallback;
+                }
+            };
+
+            const refreshApiTokenList = async () => {
+                if (!tokenListContainer) return;
+                tokenListContainer.textContent = "Loading tokens...";
+                try {
+                    const res = await api.fetchApi("/mss-login/api/tokens", { method: "GET" });
+                    if (!res.ok) {
+                        tokenListContainer.textContent = "Log in to view your API/JWT tokens.";
+                        return;
+                    }
+                    const data = await res.json().catch(() => ({}));
+                    const tokens = Array.isArray(data.tokens) ? data.tokens : [];
+                    if (tokens.length === 0) {
+                        tokenListContainer.textContent = "No API/JWT tokens found.";
+                        return;
+                    }
+                    const table = document.createElement("table");
+                    table.className = "mss-login-table";
+                    const thead = document.createElement("thead");
+                    thead.innerHTML = "<tr><th>Name</th><th>Hash Prefix</th><th>Created</th><th>Last Used</th><th>Expires</th><th>Action</th></tr>";
+                    table.appendChild(thead);
+                    const tbody = document.createElement("tbody");
+                    tokens.forEach((token) => {
+                        const tr = document.createElement("tr");
+                        const nameTd = document.createElement("td");
+                        const label = typeof token.label === "string" ? token.label.trim() : "";
+                        nameTd.textContent = label || "Unlabeled";
+                        tr.appendChild(nameTd);
+                        const prefixTd = document.createElement("td");
+                        prefixTd.style.fontFamily = "monospace";
+                        prefixTd.textContent = token.token_hash_prefix || "";
+                        tr.appendChild(prefixTd);
+                        const createdTd = document.createElement("td");
+                        createdTd.textContent = formatDateTime(token.created_at_iso, "N/A");
+                        tr.appendChild(createdTd);
+                        const lastUsedTd = document.createElement("td");
+                        lastUsedTd.textContent = formatDateTime(token.last_used_at_iso, "Never");
+                        tr.appendChild(lastUsedTd);
+                        const expiresTd = document.createElement("td");
+                        const neverExpires = token.expires_iso === "9999-12-31T23:59:59+00:00";
+                        expiresTd.textContent = neverExpires ? "Never" : formatDateTime(token.expires_iso, "N/A");
+                        tr.appendChild(expiresTd);
+                        const actionTd = document.createElement("td");
+                        const revokeBtn = document.createElement("button");
+                        revokeBtn.className = "mss-login-btn mss-login-btn-danger";
+                        revokeBtn.textContent = "Revoke";
+                        revokeBtn.onclick = async () => {
+                            const shouldRevoke = window.confirm("Revoke this API/JWT token? This cannot be undone.");
+                            if (!shouldRevoke) return;
+                            try {
+                                const revokeRes = await api.fetchApi("/mss-login/api/tokens", {
+                                    method: "DELETE",
+                                    body: JSON.stringify({
+                                        token_hash_prefix: String(token.token_hash_prefix || "").replace(/\.+$/, ""),
+                                    }),
+                                });
+                                const revokeData = await revokeRes.json().catch(() => ({}));
+                                if (!revokeRes.ok) {
+                                    setCreateStatus(revokeData.error || "Failed to revoke token.", true);
+                                    return;
+                                }
+                                setCreateStatus(revokeData.message || "Token revoked.");
+                                refreshApiTokenList();
+                            } catch (e) {
+                                setCreateStatus("Failed to revoke token: " + (e.message || "Unknown error"), true);
+                            }
+                        };
+                        actionTd.appendChild(revokeBtn);
+                        tr.appendChild(actionTd);
+                        tbody.appendChild(tr);
+                    });
+                    table.appendChild(tbody);
+                    tokenListContainer.innerHTML = "";
+                    tokenListContainer.appendChild(table);
+                } catch (_) {
+                    tokenListContainer.textContent = "Could not load API/JWT tokens.";
+                }
+            };
+
+            if (!me || !me.username || String(me.username).toLowerCase() === "guest") {
+                createBtn.disabled = true;
+                if (passwordInput) passwordInput.disabled = true;
+                setCreateStatus("Guest accounts cannot create API/JWT tokens.", true);
+                await refreshApiTokenList();
+                return;
+            }
+
+            createBtn.onclick = async () => {
+                const expireHours = String(expireInput.value || "720").trim();
+                const label = String(labelInput.value || "").trim();
+                createBtn.disabled = true;
+                tokenOutputWrap.style.display = "none";
+                tokenOutput.textContent = "";
+                setCreateStatus("");
+
+                try {
+                    const formData = new FormData();
+                    formData.append("expire_hours", expireHours || "720");
+                    formData.append("label", label);
+                    formData.append("require_password_reauth", "true");
+
+                    if (mfaTempToken) {
+                        const mfaCode = String(mfaCodeInput.value || "").replace(/\s/g, "");
+                        const backupCode = String(mfaBackupInput.value || "").replace(/\s/g, "");
+                        formData.append("mfa_temp_token", mfaTempToken);
+                        if (backupCode) {
+                            formData.append("backup_code", backupCode);
+                        } else if (mfaCode) {
+                            formData.append("code", mfaCode);
+                        }
+                    } else {
+                        const password = String(passwordInput.value || "");
+                        if (!password) {
+                            setCreateStatus("Please re-enter your password first.", true);
+                            createBtn.disabled = false;
+                            return;
+                        }
+                        formData.append("username", String(me.username));
+                        formData.append("password", password);
+                    }
+
+                    const response = await fetch("/mss-login/generate_token", {
+                        method: "POST",
+                        body: formData,
+                        credentials: "same-origin",
+                    });
+                    const result = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        setCreateStatus(result.error || "Failed to create token.", true);
+                        createBtn.disabled = false;
+                        return;
+                    }
+
+                    if (result.mfa_required && result.mfa_temp_token) {
+                        mfaTempToken = result.mfa_temp_token;
+                        if (mfaRow) mfaRow.style.display = "flex";
+                        setCreateStatus("MFA required. Enter a code or backup code, then click Create token again.");
+                        createBtn.textContent = "Verify and create token";
+                        createBtn.disabled = false;
+                        return;
+                    }
+
+                    if (result.jwt_token) {
+                        if (mfaRow) mfaRow.style.display = "none";
+                        if (mfaCodeInput) mfaCodeInput.value = "";
+                        if (mfaBackupInput) mfaBackupInput.value = "";
+                        mfaTempToken = null;
+                        createBtn.textContent = "Create token";
+                        tokenOutput.textContent = String(result.jwt_token);
+                        tokenOutputWrap.style.display = "block";
+                        setCreateStatus(result.message || "Token created successfully.");
+                        passwordInput.value = "";
+                        await refreshApiTokenList();
+                    } else {
+                        setCreateStatus(result.message || "Token created.");
+                    }
+                } catch (e) {
+                    setCreateStatus("Failed to create token: " + (e.message || "Unknown error"), true);
+                }
+                createBtn.disabled = false;
+            };
+
+            copyBtn.onclick = async () => {
+                const tokenText = String(tokenOutput.textContent || "");
+                if (!tokenText) return;
+                try {
+                    await navigator.clipboard.writeText(tokenText);
+                    setCreateStatus("Copied token to clipboard.");
+                } catch (_) {
+                    setCreateStatus("Copy failed. Please copy manually.", true);
+                }
+            };
+
+            await refreshApiTokenList();
+        })();
+
+        // Session JWT section (list, masked by default, eye to reveal, revoke)
         const jwtSection = document.createElement("div");
         jwtSection.id = "mss-login-my-jwt-tokens";
         jwtSection.style.marginTop = "12px";
         const jwtHeading = document.createElement("h4");
         jwtHeading.style.margin = "0 0 8px 0";
-        jwtHeading.textContent = "My JWT Tokens";
+        jwtHeading.textContent = "My Session JWT Tokens";
         jwtSection.appendChild(jwtHeading);
         const jwtTableWrap = document.createElement("div");
         jwtTableWrap.innerHTML = "<table class='mss-login-sessions-table'><thead><tr><th>Token</th><th>Created</th><th>Last used</th><th>Actions</th></tr></thead><tbody id='mss-login-sessions-tbody'></tbody></table>";

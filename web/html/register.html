@@ -19,10 +19,12 @@
         media="(prefers-color-scheme: dark)">
 
     <link rel="stylesheet" type="text/css" href="/mss-login/css/styles.css">
+    <link rel="stylesheet" type="text/css" href="/mss-login/dist/auth.css">
 </head>
 
 <body data-admin-user="{{ X-Admin-User }}">
-    <div class="container">
+    <div id="mss-login-auth-app"></div>
+    <div class="container mss-auth-shell">
         <picture>
             <!-- Dark mode logo -->
             <source srcset="/mss-login/assets/mss_logo.png"
@@ -34,20 +36,20 @@
                 src="/mss-login/assets/mss_logo.png"
                 alt="MSS-Login Logo">
         </picture>
-        <h1 class="title register">Register</h1>
+        <h1 class="title register mss-auth-title">Register</h1>
         <!-- method="post" and action prevent credentials from ever being sent in the URL (e.g. if JS is disabled). -->
-        <form id="register-form" method="post" action="/register" onsubmit="register(event)">
+        <form id="register-form" method="post" action="/register">
             <div class="form-fields">
                 <div class="fields-group" id="admin-fields">
                     <h3 class="subtitle">Admin Authentication</h3>
                     <span class="divider"></span>
                     <div class="form-field">
-                        <label for="username">Username:</label>
-                        <input type="text" id="username" name="username">
+                        <label class="mss-auth-label" for="username">Username:</label>
+                        <input class="mss-auth-input" type="text" id="username" name="username">
                     </div>
                     <div class="form-field">
-                        <label for="password">Password:</label>
-                        <input type="password" id="password" name="password">
+                        <label class="mss-auth-label" for="password">Password:</label>
+                        <input class="mss-auth-input" type="password" id="password" name="password">
                     </div>
                 </div>
                 <span class="divider vertical" id="vertical-divider"></span>
@@ -55,24 +57,25 @@
                     <h3 class="subtitle">New User</h3>
                     <span class="divider"></span>
                     <div class="form-field">
-                        <label for="new_user_username">Username:</label>
-                        <input type="text" id="new_user_username" name="new_user_username" required>
+                        <label class="mss-auth-label" for="new_user_username">Username:</label>
+                        <input class="mss-auth-input" type="text" id="new_user_username" name="new_user_username" required>
                     </div>
                     <div class="form-field">
-                        <label for="new_user_password">Password:</label>
-                        <input type="password" id="new_user_password" name="new_user_password" required>
+                        <label class="mss-auth-label" for="new_user_password">Password:</label>
+                        <input class="mss-auth-input" type="password" id="new_user_password" name="new_user_password" required>
                     </div>
                 </div>
             </div>
             <div class="form-field" id="register-link">
-                <a href="/login">Login to an Existing Account</a>
+                <a class="mss-auth-link" href="/login">Login to an Existing Account</a>
             </div>
-            <button class="btn" type="submit">Register</button>
+            <button class="btn mss-auth-btn" type="submit">Register</button>
         </form>
     </div>
     <div class="toast-container" id="toasts"></div>
 </body>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js"></script>
 <script src="/mss-login/js/auth.js"></script>
+<script type="module" src="/mss-login/dist/auth-app.js"></script>
 
 </html>

@@ -108,12 +108,7 @@ def _get_mysql_store(
 	except ImportError:
 		raise RuntimeError("MySQL requires pymysql; pip install pymysql")
 	conn = pymysql.connect(
-		host=host,
-		port=port,
-		user=user,
-		password=password,
-		database=database,
-		charset="utf8mb4",
+		host=host, port=port, user=user, password=password, database=database, charset="utf8mb4"
 	)
 	cur = conn.cursor()
 	cur.execute(
@@ -191,8 +186,7 @@ class _SqliteModelCache:
 	def list_items(self, folder: str) -> list[str]:
 		"""Return item names in folder from cache, ordered."""
 		rows = self._conn.execute(
-			f"SELECT item_name FROM {TABLE} WHERE folder = ? ORDER BY item_name",
-			(folder,),
+			f"SELECT item_name FROM {TABLE} WHERE folder = ? ORDER BY item_name", (folder,)
 		).fetchall()
 		return [r[0] for r in rows]
 
@@ -247,8 +241,7 @@ class _PostgresModelCache:
 			cur = self._conn.cursor()
 			placeholders = ",".join("%s" for _ in folder_names)
 			cur.execute(
-				f"DELETE FROM {TABLE} WHERE folder NOT IN ({placeholders})",
-				tuple(folder_names),
+				f"DELETE FROM {TABLE} WHERE folder NOT IN ({placeholders})", tuple(folder_names)
 			)
 			cur.close()
 			self._conn.commit()
@@ -266,8 +259,7 @@ class _PostgresModelCache:
 		"""Return item names in folder from cache, ordered."""
 		cur = self._conn.cursor()
 		cur.execute(
-			f"SELECT item_name FROM {TABLE} WHERE folder = %s ORDER BY item_name",
-			(folder,),
+			f"SELECT item_name FROM {TABLE} WHERE folder = %s ORDER BY item_name", (folder,)
 		)
 		rows = cur.fetchall()
 		cur.close()
@@ -323,8 +315,7 @@ class _MySQLModelCache:
 			cur = self._conn.cursor()
 			placeholders = ",".join("%s" for _ in folder_names)
 			cur.execute(
-				f"DELETE FROM {TABLE} WHERE folder NOT IN ({placeholders})",
-				tuple(folder_names),
+				f"DELETE FROM {TABLE} WHERE folder NOT IN ({placeholders})", tuple(folder_names)
 			)
 			cur.close()
 			self._conn.commit()
@@ -340,8 +331,7 @@ class _MySQLModelCache:
 	def list_items(self, folder: str) -> list[str]:
 		cur = self._conn.cursor()
 		cur.execute(
-			f"SELECT item_name FROM {TABLE} WHERE folder = %s ORDER BY item_name",
-			(folder,),
+			f"SELECT item_name FROM {TABLE} WHERE folder = %s ORDER BY item_name", (folder,)
 		)
 		rows = cur.fetchall()
 		cur.close()

@@ -1,10 +1,13 @@
 checkpw
+civicomfy
 Civit
 civitai
 comfyui
 cuda
 hashpw
+Krita
 pycache
 rocm
+usera
 venv
 webdav
