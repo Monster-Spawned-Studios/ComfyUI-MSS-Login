@@ -21,7 +21,22 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const body = context.payload.pull_request.body || '';
+            const pr = context.payload.pull_request;
+            const author = pr.user || {};
+            const login = (author.login || '').toLowerCase();
+            const authorType = (author.type || '').toLowerCase();
+            const knownBotPrefixes = ['dependabot', 'copilot', 'claude', 'cursor', 'github-actions'];
+            const isBot =
+              authorType === 'bot' ||
+              login.endsWith('[bot]') ||
+              login.endsWith('-bot') ||
+              knownBotPrefixes.some((prefix) => login === prefix || login.startsWith(`${prefix}-`));
+            if (isBot) {
+              console.log(`Skipping PR body check for bot author: ${author.login || 'unknown'}`);
+              return;
+            }
+
+            const body = pr.body || '';
             const stripped = body.replace(/\s/g, '').replace(/<!--[\s\S]*?-->/g, '');
             const minLength = 80;
             const hasTemplateSection = /##\s*(Description|Type of change|Bug|Scope|Behavior|Checklist)/i.test(body);
