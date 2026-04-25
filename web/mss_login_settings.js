@@ -3355,6 +3355,14 @@ app.registerExtension({
         style.innerHTML = ADMIN_STYLES;
         document.head.appendChild(style);
 
+        // Replace the default ComfyUI favicon with the custom MSS logo
+        document.querySelectorAll("link[rel~='icon']").forEach(l => l.remove());
+        const faviconLink = document.createElement("link");
+        faviconLink.rel = "icon";
+        faviconLink.type = "image/x-icon";
+        faviconLink.href = "/mss-login/assets/mss_logo.ico";
+        document.head.appendChild(faviconLink);
+
         // Install backend 403 watcher for workflow save denials
         installWorkflowSaveDeniedWatcher();
 
