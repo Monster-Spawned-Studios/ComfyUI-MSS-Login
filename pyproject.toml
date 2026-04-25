@@ -163,7 +163,7 @@ known-first-party = ["utils", "utils.sfw_intercept", "routes"]
 # Line width: [tool.ruff] line-length above (100).
 # Target syntax: [tool.ruff] target-version (py313).
 [tool.ruff.format]
-indent-style = "space"
+indent-style = "tab"
 line-ending = "lf"
 quote-style = "double"
 skip-magic-trailing-comma = true
