@@ -13,47 +13,47 @@ _sqlcipher_available: Optional[bool] = None
 
 
 def _check_sqlcipher() -> bool:
-    global _sqlcipher_available
-    if _sqlcipher_available is not None:
-        return _sqlcipher_available
-    try:
-        import sqlcipher3
+	global _sqlcipher_available
+	if _sqlcipher_available is not None:
+		return _sqlcipher_available
+	try:
+		import sqlcipher3
 
-        _sqlcipher_available = True
-    except ImportError:
-        _sqlcipher_available = False
-    return _sqlcipher_available
+		_sqlcipher_available = True
+	except ImportError:
+		_sqlcipher_available = False
+	return _sqlcipher_available
 
 
 def open_sqlite(
-    path: str, secret_key: str, encryption_level: str, check_same_thread: bool = False
+	path: str, secret_key: str, encryption_level: str, check_same_thread: bool = False
 ) -> Any:
-    """
-    Open a SQLite connection. If encryption_level is non-empty, use SQLCipher with
-    key derived from secret_key (Argon2id). Otherwise use standard sqlite3.
-    Raises RuntimeError if encryption is requested but sqlcipher3 is not installed.
-    """
-    path = str(Path(path).resolve())
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    if not (encryption_level or "").strip():
-        import sqlite3
+	"""
+	Open a SQLite connection. If encryption_level is non-empty, use SQLCipher with
+	key derived from secret_key (Argon2id). Otherwise use standard sqlite3.
+	Raises RuntimeError if encryption is requested but sqlcipher3 is not installed.
+	"""
+	path = str(Path(path).resolve())
+	os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+	if not (encryption_level or "").strip():
+		import sqlite3
 
-        return sqlite3.connect(path, check_same_thread=check_same_thread)
-    if not _check_sqlcipher():
-        raise RuntimeError(
-            "SQLite encryption is enabled but sqlcipher3 is not installed. "
-            "Install with: pip install sqlcipher3 (requires SQLCipher system library). "
-            "Or set encryption_level to empty in users_db config to use unencrypted SQLite."  # pylint: disable=line-too-long
-        )
-    from .db_key_derivation import derive_db_key
+		return sqlite3.connect(path, check_same_thread=check_same_thread)
+	if not _check_sqlcipher():
+		raise RuntimeError(
+			"SQLite encryption is enabled but sqlcipher3 is not installed. "
+			"Install with: pip install sqlcipher3 (requires SQLCipher system library). "
+			"Or set encryption_level to empty in users_db config to use unencrypted SQLite."  # pylint: disable=line-too-long
+		)
+	from .db_key_derivation import derive_db_key
 
-    key_bytes = derive_db_key(secret_key, encryption_level)
-    key_hex = key_bytes.hex()
-    import sqlcipher3
+	key_bytes = derive_db_key(secret_key, encryption_level)
+	key_hex = key_bytes.hex()
+	import sqlcipher3
 
-    conn = sqlcipher3.connect(path, check_same_thread=check_same_thread)
-    # Pass raw key as hex so SQLCipher uses it directly (no PBKDF2).
-    # SQLCipher expects the blob literal wrapped in double quotes to avoid syntax errors
-    # in some builds (see Zetetic: "PRAGMA key = \"x'...'\"")
-    conn.execute(f"PRAGMA key = \"x'{key_hex}'\"")
-    return conn
+	conn = sqlcipher3.connect(path, check_same_thread=check_same_thread)
+	# Pass raw key as hex so SQLCipher uses it directly (no PBKDF2).
+	# SQLCipher expects the blob literal wrapped in double quotes to avoid syntax errors
+	# in some builds (see Zetetic: "PRAGMA key = \"x'...'\"")
+	conn.execute(f"PRAGMA key = \"x'{key_hex}'\"")
+	return conn
