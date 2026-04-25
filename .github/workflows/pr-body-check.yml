@@ -32,7 +32,7 @@ jobs:
               login.endsWith('-bot') ||
               knownBotPrefixes.some((prefix) => login === prefix || login.startsWith(`${prefix}-`));
             if (isBot) {
-              console.log(`Skipping PR body check for bot author: ${author.login || 'unknown'}`);
+              console.log(`Skipping PR body and template checks for bot author: ${author.login || 'unknown'}`);
               return;
             }
 
