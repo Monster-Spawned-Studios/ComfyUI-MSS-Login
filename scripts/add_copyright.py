@@ -231,14 +231,14 @@ def main() -> int:
 	parser.add_argument(
 		"--skip-dirs",
 		type=_parse_comma_separated,
-		default=_skip_dirs_default,
+		default=_parse_comma_separated(_skip_dirs_default),
 		help=f"Comma-separated directory names to skip when walking (default: {_skip_dirs_default})",
 		metavar="DIRS",
 	)
 	parser.add_argument(
 		"--skip-files",
 		type=_parse_comma_separated,
-		default="",
+		default=[],
 		help=(
 			"Comma-separated files to skip: basename (any folder) or repo-relative path "
 			"(e.g. web/foo.js)"
