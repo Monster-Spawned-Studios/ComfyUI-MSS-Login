@@ -119,8 +119,8 @@ Documentation = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/wi
 "Bug Tracker" = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/issues"
 
 [tool.comfy]
-PublisherId = "Monster-Spawned-Studios"
-DisplayName = "ComfyUI-MSS-Login"
+PublisherId = "monsterspawnedstudios"
+DisplayName = "MSS-Login"
 Icon = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/raw/production/web/assets/mss_logo.png"
 includes = []
 requires-comfyui = ">=0.10.0"                                                                                # ComfyUI version compatibility
