@@ -13,6 +13,7 @@ from sys import stderr, stdout
 
 # Safe node name: alphanumeric, dots, underscores, hyphens only (prevents injection)
 _SAFE_NODE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_COMFY_CLI_NON_INTERACTIVE_FLAGS = ["--skip-prompt", "--no-enable-telemetry"]
 
 parser = ArgumentParser(description="Publish a ComfyUI node to the ComfyUI registry")
 parser.add_argument(
@@ -142,7 +143,7 @@ def validate_node() -> bool:
 	print("Validating node...", file=stdout if args.verbose else stderr)
 	try:
 		result = run(
-			["comfy", "node", "validate"],
+			["comfy", *_COMFY_CLI_NON_INTERACTIVE_FLAGS, "node", "validate"],
 			check=False,
 			stdout=None if args.quiet else stdout,
 			stderr=None if args.quiet else stderr,
@@ -172,7 +173,14 @@ def publish_node() -> bool:
 	try:
 		return (
 			run(
-				["comfy", "node", "publish", "--token", args.registry_access_token],
+				[
+					"comfy",
+					*_COMFY_CLI_NON_INTERACTIVE_FLAGS,
+					"node",
+					"publish",
+					"--token",
+					args.registry_access_token,
+				],
 				check=True,
 				stdout=None if args.quiet else stdout,
 				stderr=None if args.quiet else stderr,
