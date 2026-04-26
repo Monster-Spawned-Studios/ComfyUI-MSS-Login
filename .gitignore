@@ -80,3 +80,6 @@ $SystemVolumeInformation/
 web/frontend/node_modules/
 web/frontend/dist/
 web/frontend/package-lock.json
+
+# Compressed node file:
+node.zip
