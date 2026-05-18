@@ -72,6 +72,22 @@ See [Workflow & intercepted endpoints](workflow-endpoints.md).
 | POST | `/login` | Browser/session login |
 | POST | `/mss-login/api/mfa/*` | MFA setup and verify |
 
+### Model download (CivitAI / Hugging Face)
+
+Requires `can_download_models`. Bearer auth only; suitable for mobile apps.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/mss-login/api/model-download/sources` | Sources, key presence, capabilities |
+| GET | `/mss-login/api/model-download/folders` | Valid `folder_type` names |
+| PUT | `/mss-login/api/model-download/api-keys` | Store per-user CivitAI/HF keys |
+| POST | `/mss-login/api/model-download/download` | Queue download |
+| GET | `/mss-login/api/model-download/jobs/{job_id}` | Poll one job |
+| GET | `/mss-login/api/model-download/jobs` | List jobs + queue stats |
+| POST | `/mss-login/api/model-download/jobs/{job_id}/cancel` | Cancel queued job |
+
+Full guide: [Model download API](../guide/model-download-api.md).
+
 Full MSS-Login route table: [HTTP Endpoints](endpoints.md).
 
 ## Typical mobile sequence
@@ -82,6 +98,8 @@ Full MSS-Login route table: [HTTP Endpoints](endpoints.md).
 4. `POST /prompt`
 5. `GET /queue` / `GET /history` / WebSocket
 6. `GET /view?filename=...&type=output`
+
+Optional model download flow: see [Model download API](../guide/model-download-api.md) (`PUT .../api-keys` → `POST .../download` → `GET .../jobs/{job_id}`).
 
 Detailed narrative: [Image generation pipeline](../guide/image-generation.md).
 

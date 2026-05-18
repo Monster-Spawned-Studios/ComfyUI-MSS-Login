@@ -42,6 +42,7 @@ nav:
       - Headless JWT session: guide/headless-jwt-session.md
       - NSFW and outputs: guide/nsfw-and-outputs.md
       - Model isolation: guide/model-isolation.md
+      - Model download API: guide/model-download-api.md
       - Extending the node: guide/extending.md
   - Integrations:
       - Mobile and Comfy Portal: integrations/comfy-portal.md

@@ -16,9 +16,10 @@ from ..constants import (
 	experimental_s3_enabled,
 )
 from ..globals import jwt_auth, logger, routes, users_db
-from ..utils.model_cache import get_model_cache
+from ..utils.model_cache import ASSET_FOLDERS_FALLBACK, get_model_cache
 from ..utils.model_download import download_civitai_async, download_huggingface
-from ..utils.model_isolation import maybe_isolated_destination, sanitize_user_segment
+from ..utils.folder_paths_compat import resolve_local_model_destination
+from ..utils.model_isolation import sanitize_user_segment
 from ..utils.model_source_api_keys_store import SOURCES, get_model_source_api_keys_store
 from ..utils.model_visibility_policy import user_can_download_models, user_can_manage_model_sharing
 from ..utils.shared_items_store import get_shared_items_store
@@ -54,6 +55,50 @@ def _can_download_models(request) -> bool:
 	return user_can_download_models(role, perms)
 
 
+def _download_auth_or_response(request: web.Request) -> tuple[str | None, web.Response | None]:
+	"""Return (user_id, None) when authorized, or (None, error_response)."""
+	user_id, _ = _current_user_id_and_username(request)
+	if not user_id:
+		return None, web.json_response({"error": "Authentication required"}, status=401)
+	if not _can_download_models(request):
+		return None, web.json_response({"error": "Model download permission required"}, status=403)
+	return user_id, None
+
+
+def _download_capabilities() -> dict:
+	return {
+		"sources": list(SOURCES),
+		"destination_types": ["local", "s3"],
+		"limits": {
+			"active_total": MAX_ACTIVE_DOWNLOADS,
+			"active_civitai": MAX_CIVITAI_DOWNLOADS,
+			"active_huggingface": MAX_HUGGINGFACE_DOWNLOADS,
+		},
+		"experimental": {
+			"s3": experimental_s3_enabled(),
+			"model_isolation": experimental_model_isolation_enabled(),
+		},
+		"civitai_fields": ["model_version_id", "type", "format", "size", "fp"],
+		"huggingface_fields": ["repo_id", "filename", "subfolder"],
+	}
+
+
+def _list_download_folder_types() -> list[str]:
+	try:
+		cache = get_model_cache(USERS_DB_CONFIG)
+		folders = cache.list_folders()
+		if folders:
+			return folders
+	except Exception:
+		pass
+	try:
+		import folder_paths  # pyright: ignore[reportMissingImports]
+
+		return sorted(folder_paths.folder_names_and_paths.keys())
+	except Exception:
+		return sorted(ASSET_FOLDERS_FALLBACK)
+
+
 MAX_ACTIVE_DOWNLOADS = 5
 MAX_CIVITAI_DOWNLOADS = 3
 MAX_HUGGINGFACE_DOWNLOADS = 2
@@ -70,7 +115,7 @@ def _utc_now() -> str:
 
 
 def _job_public_view(job: dict) -> dict:
-	return {
+	out = {
 		"job_id": job["job_id"],
 		"source": job.get("source"),
 		"destination_type": job.get("destination_type"),
@@ -89,6 +134,14 @@ def _job_public_view(job: dict) -> dict:
 		"error": job.get("error", ""),
 		"can_cancel": job.get("status") == "queued",
 	}
+	if job.get("source") == "civitai" and job.get("model_version_id"):
+		out["model_version_id"] = job["model_version_id"]
+	elif job.get("source") == "huggingface":
+		if job.get("repo_id"):
+			out["repo_id"] = job["repo_id"]
+		if job.get("filename"):
+			out["filename"] = job["filename"]
+	return out
 
 
 def _queue_stats() -> dict:
@@ -155,20 +208,7 @@ def _resolve_destination_path(job: dict, target_user_id: str) -> tuple[str, str]
 	destination_type = job.get("destination_type", "local")
 	folder_type = job.get("folder_type", "checkpoints")
 	if destination_type == "local":
-		from folder_paths import get_folder_paths, models_path
-
-		isolated_dest = maybe_isolated_destination(folder_type, target_user_id)
-		if isolated_dest is not None:
-			dest_dir = isolated_dest
-			base_dir = os.path.realpath(os.path.join(isolated_dest, "..", "..", ".."))
-		else:
-			paths = get_folder_paths(folder_type)
-			if paths:
-				dest_dir = paths[0]
-				base_dir = os.path.realpath(models_path)
-			else:
-				dest_dir = os.path.join(models_path, folder_type)
-				base_dir = os.path.realpath(models_path)
+		dest_dir, base_dir = resolve_local_model_destination(folder_type, target_user_id)
 	else:
 		from ..utils.s3_mounter import get_mount_manager
 
@@ -249,6 +289,8 @@ async def _run_job(job_id: str) -> None:
 				dest_dir,
 				type_param=job.get("type"),
 				format_param=job.get("format"),
+				size_param=job.get("size"),
+				fp_param=job.get("fp"),
 				progress_callback=progress_callback,
 			)
 		else:
@@ -336,25 +378,37 @@ async def _run_job(job_id: str) -> None:
 
 @routes.get("/mss-login/api/model-download/sources")
 async def api_model_download_sources(request: web.Request) -> web.Response:
-	"""List sources and key-presence for current user. Requires model-download permission."""
-	user_id, _ = _current_user_id_and_username(request)
-	if not user_id:
-		return web.json_response({"error": "Authentication required"}, status=401)
-	if not _can_download_models(request):
-		return web.json_response({"error": "Model download permission required"}, status=403)
+	"""List sources, key-presence, and client capabilities. Requires model-download permission."""
+	user_id, err = _download_auth_or_response(request)
+	if err:
+		return err
 	store = get_model_source_api_keys_store(USERS_DB_CONFIG)
 	with_keys = store.list_sources_with_keys(user_id)
-	return web.json_response({"sources": list(SOURCES), "sources_with_keys": with_keys})
+	return web.json_response(
+		{
+			"sources": list(SOURCES),
+			"sources_with_keys": with_keys,
+			"capabilities": _download_capabilities(),
+		}
+	)
+
+
+@routes.get("/mss-login/api/model-download/folders")
+async def api_model_download_folders(request: web.Request) -> web.Response:
+	"""List valid folder_type values for download destinations (mobile/client API)."""
+	_user_id, err = _download_auth_or_response(request)
+	if err:
+		return err
+	folders = _list_download_folder_types()
+	return web.json_response({"folders": folders, "default_folder": "checkpoints"})
 
 
 @routes.get("/mss-login/api/model-download/api-keys")
 async def api_model_download_api_keys_get(request: web.Request) -> web.Response:
 	"""Return which sources have keys for current user only."""
-	user_id, _ = _current_user_id_and_username(request)
-	if not user_id:
-		return web.json_response({"error": "Authentication required"}, status=401)
-	if not _can_download_models(request):
-		return web.json_response({"error": "Model download permission required"}, status=403)
+	user_id, err = _download_auth_or_response(request)
+	if err:
+		return err
 	store = get_model_source_api_keys_store(USERS_DB_CONFIG)
 	with_keys = store.list_sources_with_keys(user_id)
 	return web.json_response({"sources_with_keys": with_keys})
@@ -363,11 +417,9 @@ async def api_model_download_api_keys_get(request: web.Request) -> web.Response:
 @routes.put("/mss-login/api/model-download/api-keys")
 async def api_model_download_api_keys_put(request: web.Request) -> web.Response:
 	"""Set or clear API key for a source. Body: { source, api_key }. Current user only."""
-	user_id, _ = _current_user_id_and_username(request)
-	if not user_id:
-		return web.json_response({"error": "Authentication required"}, status=401)
-	if not _can_download_models(request):
-		return web.json_response({"error": "Model download permission required"}, status=403)
+	user_id, err = _download_auth_or_response(request)
+	if err:
+		return err
 	try:
 		body = await request.json()
 	except Exception as e:
@@ -390,11 +442,9 @@ async def api_model_download_api_keys_put(request: web.Request) -> web.Response:
 @routes.post("/mss-login/api/model-download/download")
 async def api_model_download_start(request: web.Request) -> web.Response:
 	"""Queue a model download job and return job id."""
-	user_id, _ = _current_user_id_and_username(request)
-	if not user_id:
-		return web.json_response({"error": "Authentication required"}, status=401)
-	if not _can_download_models(request):
-		return web.json_response({"error": "Model download permission required"}, status=403)
+	user_id, err = _download_auth_or_response(request)
+	if err:
+		return err
 	role, perms, _username = _role_and_perms(request)
 	try:
 		body = await request.json()
@@ -469,6 +519,8 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 		job["model_version_id"] = model_version_id
 		job["type"] = body.get("type")
 		job["format"] = body.get("format")
+		job["size"] = body.get("size")
+		job["fp"] = body.get("fp")
 	else:
 		repo_id = (body.get("repo_id") or "").strip()
 		filename = (body.get("filename") or "").strip()
@@ -494,14 +546,28 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 	return web.json_response({"status": "queued", "job_id": job_id, "stats": _queue_stats()})
 
 
+@routes.get("/mss-login/api/model-download/jobs/{job_id}")
+async def api_model_download_job_get(request: web.Request) -> web.Response:
+	"""Return one download job by id (for mobile polling). Caller must own the job."""
+	user_id, err = _download_auth_or_response(request)
+	if err:
+		return err
+	job_id = (request.match_info.get("job_id") or "").strip()
+	if not job_id:
+		return web.json_response({"error": "Missing job_id"}, status=400)
+	async with _JOBS_LOCK:
+		job = _JOBS_BY_ID.get(job_id)
+		if not job or job.get("user_id") != user_id:
+			return web.json_response({"error": "Job not found"}, status=404)
+		return web.json_response({"job": _job_public_view(job), "stats": _queue_stats()})
+
+
 @routes.get("/mss-login/api/model-download/jobs")
 async def api_model_download_jobs(request: web.Request) -> web.Response:
 	"""Return caller-visible jobs and queue stats (privacy-preserving, per-user)."""
-	user_id, _ = _current_user_id_and_username(request)
-	if not user_id:
-		return web.json_response({"error": "Authentication required"}, status=401)
-	if not _can_download_models(request):
-		return web.json_response({"error": "Model download permission required"}, status=403)
+	user_id, err = _download_auth_or_response(request)
+	if err:
+		return err
 	async with _JOBS_LOCK:
 		jobs = [
 			_job_public_view(job) for job in _JOBS_BY_ID.values() if job.get("user_id") == user_id
@@ -513,11 +579,9 @@ async def api_model_download_jobs(request: web.Request) -> web.Response:
 @routes.post("/mss-login/api/model-download/jobs/{job_id}/cancel")
 async def api_model_download_cancel(request: web.Request) -> web.Response:
 	"""Cancel a queued/running download job owned by the caller."""
-	user_id, _ = _current_user_id_and_username(request)
-	if not user_id:
-		return web.json_response({"error": "Authentication required"}, status=401)
-	if not _can_download_models(request):
-		return web.json_response({"error": "Model download permission required"}, status=403)
+	user_id, err = _download_auth_or_response(request)
+	if err:
+		return err
 	job_id = (request.match_info.get("job_id") or "").strip()
 	if not job_id:
 		return web.json_response({"error": "Missing job_id"}, status=400)
@@ -544,8 +608,10 @@ async def api_model_download_cancel(request: web.Request) -> web.Response:
 
 
 routes.get("/api/mss-login/api/model-download/sources")(api_model_download_sources)
+routes.get("/api/mss-login/api/model-download/folders")(api_model_download_folders)
 routes.get("/api/mss-login/api/model-download/api-keys")(api_model_download_api_keys_get)
 routes.put("/api/mss-login/api/model-download/api-keys")(api_model_download_api_keys_put)
 routes.post("/api/mss-login/api/model-download/download")(api_model_download_start)
+routes.get("/api/mss-login/api/model-download/jobs/{job_id}")(api_model_download_job_get)
 routes.get("/api/mss-login/api/model-download/jobs")(api_model_download_jobs)
 routes.post("/api/mss-login/api/model-download/jobs/{job_id}/cancel")(api_model_download_cancel)

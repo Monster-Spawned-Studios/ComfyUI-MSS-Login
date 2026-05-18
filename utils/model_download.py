@@ -20,6 +20,8 @@ async def download_civitai_async(
 	dest_path: str | Path,
 	type_param: Optional[str] = None,
 	format_param: Optional[str] = None,
+	size_param: Optional[str] = None,
+	fp_param: Optional[str] = None,
 	progress_callback: ProgressCallback = None,
 ) -> tuple[bool, str]:
 	"""
@@ -36,24 +38,26 @@ async def download_civitai_async(
 		params["type"] = type_param
 	if format_param:
 		params["format"] = format_param
+	if size_param:
+		params["size"] = size_param
+	if fp_param:
+		params["fp"] = fp_param
 
 	dest_path = Path(dest_path)
 	dest_path.parent.mkdir(parents=True, exist_ok=True)
 
 	try:
 		headers = {"Authorization": f"Bearer {token}"} if token else {}
-		async with aiohttp.ClientSession() as session:
-			async with session.get(url, params=params or None, headers=headers or None) as resp:
+		timeout = aiohttp.ClientTimeout(total=None, sock_read=300)
+		async with aiohttp.ClientSession(timeout=timeout) as session:
+			async with session.get(
+				url,
+				params=params or None,
+				headers=headers or None,
+				allow_redirects=True,
+			) as resp:
 				if resp.status != 200:
 					return False, f"CivitAI returned {resp.status}"
-				while resp.status in (301, 302, 303, 307, 308):
-					loc = resp.headers.get("Location")
-					if not loc:
-						return False, "Redirect without Location"
-					async with session.get(loc) as r2:
-						resp = r2
-				if resp.status != 200:
-					return False, f"Redirect target returned {resp.status}"
 				content_disp = resp.headers.get("Content-Disposition")
 				filename = None
 				if content_disp and "filename=" in content_disp:

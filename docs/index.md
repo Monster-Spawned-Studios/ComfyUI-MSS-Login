@@ -10,6 +10,7 @@ Start with these guides for a smooth API-token flow from login through image dow
 
 - [Authentication](guide/authentication.md) — API tokens, Bearer headers, permissions
 - [Image generation pipeline](guide/image-generation.md) — `/prompt` → queue/history → `/view`
+- [Model download API](guide/model-download-api.md) — CivitAI / Hugging Face downloads from mobile or scripts
 - [Mobile and Comfy Portal](integrations/comfy-portal.md) — Comfy Portal and troubleshooting
 
 ## Quick links
@@ -18,6 +19,7 @@ Start with these guides for a smooth API-token flow from login through image dow
 - [Configuration](guide/configuration.md) — config.json, environment variables, roles, ntfy
 - [Authentication](guide/authentication.md) — JWT, API tokens, MFA, remote API guard
 - [Image generation pipeline](guide/image-generation.md) — End-to-end run flow for API clients
+- [Model download API](guide/model-download-api.md) — Queue CivitAI/Hugging Face downloads via Bearer token
 - [Headless JWT session](guide/headless-jwt-session.md) — WebSocket and REST only (no HTML)
 - [NSFW and outputs](guide/nsfw-and-outputs.md) — Save-time and `/view` enforcement
 - [Extending the node](guide/extending.md) — Use the HTTP API and Python extension API in your projects
