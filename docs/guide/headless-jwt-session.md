@@ -57,3 +57,11 @@ All of the above require a valid token; they are **not** in the JWT public list.
 | REST | `Authorization: Bearer <token>`, or cookie `jwt_token`, or query `token` / `access_token` |
 
 No HTML is required; a headless session is purely WebSocket + GET/PUT/POST.
+
+## See also
+
+- [Authentication](authentication.md) — API tokens and permissions for mobile apps
+- [Image generation pipeline](image-generation.md) — Full flow from token to output images
+- [ComfyUI client APIs](../api-reference/comfyui-client-endpoints.md) — Endpoint reference table
+- [NSFW and outputs](nsfw-and-outputs.md) — 403 behavior on `/view`
+- [Mobile and Comfy Portal](../integrations/comfy-portal.md)
