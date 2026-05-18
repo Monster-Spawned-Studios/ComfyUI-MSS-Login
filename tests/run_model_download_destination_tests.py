@@ -73,10 +73,7 @@ def run_tests():
 	ok(compat.get_models_root() == os.path.abspath(models_root), "get_models_root reads models_dir")
 
 	print("TestResolveWithFolderPaths")
-	_install_stubs(
-		models_root,
-		{"checkpoints": [checkpoints_dir]},
-	)
+	_install_stubs(models_root, {"checkpoints": [checkpoints_dir]})
 	compat = _load_module(
 		"mss_login.utils.folder_paths_compat",
 		os.path.join(_UTILS_DIR, "folder_paths_compat.py"),

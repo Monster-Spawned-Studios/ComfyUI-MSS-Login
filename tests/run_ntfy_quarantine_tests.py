@@ -129,7 +129,9 @@ def run_tests():
 		cfg = ntfy_notifier._load_ntfy_config()
 		ok(cfg.get("base_url") == "https://ntfy.example.com", "custom base_url saved")
 		ok(cfg.get("api_token") == "cfg-token", "api_token saved")
-		ntfy_notifier.save_ntfy_config("topic-a", ["image_generated"], base_url=None, api_token=None)
+		ntfy_notifier.save_ntfy_config(
+			"topic-a", ["image_generated"], base_url=None, api_token=None
+		)
 		cfg2 = ntfy_notifier._load_ntfy_config()
 		ok(
 			cfg2.get("base_url") == "https://ntfy.example.com",

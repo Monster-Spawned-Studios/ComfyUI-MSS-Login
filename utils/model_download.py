@@ -51,10 +51,7 @@ async def download_civitai_async(
 		timeout = aiohttp.ClientTimeout(total=None, sock_read=300)
 		async with aiohttp.ClientSession(timeout=timeout) as session:
 			async with session.get(
-				url,
-				params=params or None,
-				headers=headers or None,
-				allow_redirects=True,
+				url, params=params or None, headers=headers or None, allow_redirects=True
 			) as resp:
 				if resp.status != 200:
 					return False, f"CivitAI returned {resp.status}"
