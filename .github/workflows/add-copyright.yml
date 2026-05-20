@@ -23,6 +23,6 @@ jobs:
         with:
           python-version: "3.13"
       - name: Add copyright headers
-        run: python scripts/add_copyright.py
+        run: python scripts/add_copyright.py --directory . --copyright-notice docs/COPYRIGHT --recursive --update
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
