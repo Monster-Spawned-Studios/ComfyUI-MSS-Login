@@ -40,7 +40,15 @@ class CopyrightInstaller:
 		".psm1",
 	)
 	SHEBANG_EXTENSIONS = {".py", ".sh"}
-	SKIP_DIRECTORIES = {".git", ".venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
+	SKIP_DIRECTORIES = {
+		".git",
+		".venv",
+		"node_modules",
+		"__pycache__",
+		".mypy_cache",
+		".pytest_cache",
+		".ruff_cache",
+	}
 
 	def __init__(self) -> None:
 		self.args = self._parse_args()
@@ -298,7 +306,9 @@ class CopyrightInstaller:
 	def _iter_target_files(self, root: Path):
 		if self.args.recursive:
 			for current_root, directory_names, file_names in os.walk(root):
-				directory_names[:] = [name for name in directory_names if name not in self.SKIP_DIRECTORIES]
+				directory_names[:] = [
+					name for name in directory_names if name not in self.SKIP_DIRECTORIES
+				]
 				for file_name in file_names:
 					yield Path(current_root) / file_name
 			return
