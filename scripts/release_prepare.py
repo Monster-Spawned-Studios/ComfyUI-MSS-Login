@@ -12,14 +12,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-_VERSION_RE = re.compile(
-	r"^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$"
-)
+_VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$")
 _SEMVER_TAG_RE = re.compile(r"^v?([0-9]+\.[0-9]+\.[0-9]+)(?:[-+].*)?$")
-_VERSION_LINE_RE = re.compile(
-	r'^(\s*version\s*=\s*["\'])([^"\']+)(["\']\s*)$',
-	re.MULTILINE,
-)
+_VERSION_LINE_RE = re.compile(r'^(\s*version\s*=\s*["\'])([^"\']+)(["\']\s*)$', re.MULTILINE)
 
 
 def _repo_root(explicit: str | None) -> Path:
@@ -53,23 +48,13 @@ def write_pyproject_version(pyproject_path: Path, version: str) -> bool:
 	current = match.group(2).strip()
 	if current == version:
 		return False
-	new_text = _VERSION_LINE_RE.sub(
-		lambda m: f"{m.group(1)}{version}{m.group(3)}",
-		text,
-		count=1,
-	)
+	new_text = _VERSION_LINE_RE.sub(lambda m: f"{m.group(1)}{version}{m.group(3)}", text, count=1)
 	pyproject_path.write_text(new_text, encoding="utf-8")
 	return True
 
 
 def _run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-	return subprocess.run(
-		["git", *args],
-		cwd=cwd,
-		capture_output=True,
-		text=True,
-		check=False,
-	)
+	return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=False)
 
 
 def latest_semver_tag(repo_root: Path) -> str | None:
@@ -91,25 +76,13 @@ def git_log_bullets(repo_root: Path, version: str) -> list[str]:
 	range_arg: str
 	if prev:
 		if prev == version:
-			result = _run_git(
-				["log", "-1", "--no-merges", "--pretty=format:%s (%h)"],
-				repo_root,
-			)
+			result = _run_git(["log", "-1", "--no-merges", "--pretty=format:%s (%h)"], repo_root)
 		else:
 			result = _run_git(
-				[
-					"log",
-					f"{prev}..HEAD",
-					"--no-merges",
-					"--pretty=format:%s (%h)",
-				],
-				repo_root,
+				["log", f"{prev}..HEAD", "--no-merges", "--pretty=format:%s (%h)"], repo_root
 			)
 	else:
-		result = _run_git(
-			["log", "--no-merges", "--pretty=format:%s (%h)"],
-			repo_root,
-		)
+		result = _run_git(["log", "--no-merges", "--pretty=format:%s (%h)"], repo_root)
 	if result.returncode != 0:
 		return ["- Release preparation (no git history available)"]
 	lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
@@ -133,20 +106,9 @@ def changelog_path(repo_root: Path, version: str) -> Path:
 	return repo_root / "readme" / "changelogs" / f"{version}.md"
 
 
-def build_changelog_body(
-	repo_root: Path,
-	version: str,
-	title: str,
-	notes: str | None,
-) -> str:
+def build_changelog_body(repo_root: Path, version: str, title: str, notes: str | None) -> str:
 	bullets = git_log_bullets(repo_root, version)
-	sections = [
-		f"# {version} - {title}",
-		"",
-		"## Changelog",
-		"",
-		*bullets,
-	]
+	sections = [f"# {version} - {title}", "", "## Changelog", "", *bullets]
 	if notes and notes.strip():
 		sections.extend(["", *notes.strip().splitlines()])
 	sections.append("")
@@ -183,10 +145,12 @@ def prepare_release(
 
 def main(argv: list[str] | None = None) -> int:
 	parser = argparse.ArgumentParser(
-		description="Prepare release: sync pyproject version and create changelog from git log.",
+		description="Prepare release: sync pyproject version and create changelog from git log."
 	)
 	parser.add_argument("--version", required=True, help="Target release version (X.Y.Z)")
-	parser.add_argument("--repo-root", default=None, help="Repository root (default: parent of scripts/)")
+	parser.add_argument(
+		"--repo-root", default=None, help="Repository root (default: parent of scripts/)"
+	)
 	parser.add_argument(
 		"--changelog-title",
 		default="",
@@ -198,9 +162,7 @@ def main(argv: list[str] | None = None) -> int:
 		help="Additional markdown lines appended after auto-generated bullets",
 	)
 	parser.add_argument(
-		"--print-version",
-		action="store_true",
-		help="Print current pyproject version and exit",
+		"--print-version", action="store_true", help="Print current pyproject version and exit"
 	)
 	args = parser.parse_args(argv)
 

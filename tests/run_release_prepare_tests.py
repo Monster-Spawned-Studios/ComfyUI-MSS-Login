@@ -34,10 +34,7 @@ def _init_git(repo: Path) -> None:
 		capture_output=True,
 	)
 	subprocess.run(
-		["git", "config", "user.name", "Test User"],
-		cwd=repo,
-		check=True,
-		capture_output=True,
+		["git", "config", "user.name", "Test User"], cwd=repo, check=True, capture_output=True
 	)
 
 
@@ -74,8 +71,7 @@ def run_tests() -> int:
 		repo = Path(tmp)
 		(repo / "readme" / "changelogs").mkdir(parents=True)
 		(repo / "pyproject.toml").write_text(
-			'[project]\nname = "test"\nversion = "0.0.1"\n',
-			encoding="utf-8",
+			'[project]\nname = "test"\nversion = "0.0.1"\n', encoding="utf-8"
 		)
 		_init_git(repo)
 		_commit_all(repo, "initial commit")
@@ -85,7 +81,10 @@ def run_tests() -> int:
 		print("[release_prepare] bumps pyproject and creates changelog")
 		changed = rp.prepare_release(repo, "0.0.2", changelog_title="Test release")
 		ok(changed, "prepare_release reports changes")
-		ok(rp.read_pyproject_version(repo / "pyproject.toml") == "0.0.2", "pyproject version updated")
+		ok(
+			rp.read_pyproject_version(repo / "pyproject.toml") == "0.0.2",
+			"pyproject version updated",
+		)
 		cl = repo / "readme" / "changelogs" / "0.0.2.md"
 		ok(cl.is_file(), "changelog file created")
 		body = cl.read_text(encoding="utf-8")
@@ -102,8 +101,7 @@ def run_tests() -> int:
 		print("[release_prepare] respects existing changelog file")
 		cl.write_text("# 0.0.2 - Manual\n\n## Changelog\n\n- custom\n", encoding="utf-8")
 		(repo / "pyproject.toml").write_text(
-			'[project]\nname = "test"\nversion = "0.0.1"\n',
-			encoding="utf-8",
+			'[project]\nname = "test"\nversion = "0.0.1"\n', encoding="utf-8"
 		)
 		rp.prepare_release(repo, "0.0.2")
 		ok("custom" in cl.read_text(encoding="utf-8"), "manual changelog preserved")
