@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>Version 0.0.1</strong> — Latest release includes Extension Tabs API, IP filtering improvements, and performance optimizations
+  <strong>Version 0.0.3</strong> — Latest release includes Extension Tabs API, IP filtering improvements, and performance optimizations
 </p>
 
 ---
