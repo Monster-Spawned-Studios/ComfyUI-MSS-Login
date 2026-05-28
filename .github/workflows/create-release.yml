@@ -10,6 +10,14 @@ on:
         description: "Release version (X.X.X). Leave empty to auto-increment patch from latest tag"
         required: false
         default: ""
+      changelog_title:
+        description: "Changelog title suffix (optional; default from latest commit subject)"
+        required: false
+        default: ""
+      changelog_notes:
+        description: "Additional changelog notes (markdown, appended after auto-generated bullets)"
+        required: false
+        default: ""
       pre-release:
         description: "Whether to create a pre-release"
         required: false
@@ -65,8 +73,7 @@ jobs:
             echo "version=${GITHUB_REF_NAME#release/}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate version format (manual run)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Validate version format
         run: |
           v="${{ steps.version.outputs.version }}"
           if [[ ! "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$ ]]; then
@@ -75,13 +82,47 @@ jobs:
           fi
           echo "Version format OK: $v"
 
-      - name: Create and push release branch
-        if: github.event_name == 'workflow_dispatch'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Prepare release files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          CHANGELOG_TITLE: ${{ inputs.changelog_title }}
+          CHANGELOG_NOTES: ${{ inputs.changelog_notes }}
         run: |
-          BRANCH="release/${{ steps.version.outputs.version }}"
+          set -euo pipefail
+          ARGS=(--version "$VERSION")
+          if [ -n "${CHANGELOG_TITLE// /}" ]; then
+            ARGS+=(--changelog-title "$CHANGELOG_TITLE")
+          fi
+          if [ -n "${CHANGELOG_NOTES}" ]; then
+            ARGS+=(--changelog-notes "$CHANGELOG_NOTES")
+          fi
+          python3 scripts/release_prepare.py "${ARGS[@]}"
+
+      - name: Commit and push release branch
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
+          BRANCH="release/${VERSION}"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            git checkout -b "$BRANCH"
+          fi
+
+          git add pyproject.toml "readme/changelogs/${VERSION}.md"
+          if git diff --staged --quiet; then
+            echo "No release file changes to commit."
+          else
+            git commit -m "chore(release): prepare v${VERSION}"
+          fi
+
           git push -u origin "$BRANCH"
 
       - name: Compress Node Files
@@ -92,8 +133,19 @@ jobs:
       - name: Test Changelog
         run: cat "readme/changelogs/${{ steps.version.outputs.version }}.md"
 
+      - name: Check if release tag exists
+        id: tag_check
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          if git rev-parse "refs/tags/${V}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${V} already exists; skipping GitHub release creation."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Release
-        if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+        if: steps.tag_check.outputs.exists != 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -103,6 +155,6 @@ jobs:
           name: "Release v${{ steps.version.outputs.version }}"
           tag_name: "${{ steps.version.outputs.version }}"
           make_latest: true
-          draft: ${{ inputs.draft }}
-          prerelease: ${{ inputs.pre-release }}
+          draft: ${{ inputs.draft || false }}
+          prerelease: ${{ inputs.pre-release || false }}
           body_path: readme/changelogs/${{ steps.version.outputs.version }}.md
