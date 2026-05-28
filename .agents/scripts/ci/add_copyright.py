@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
@@ -10,9 +11,6 @@ from pathlib import Path
 from typing import Optional
 from urllib.error import URLError
 from urllib.request import urlopen
-
-from rich.console import Console
-from rich.traceback import install
 
 
 class CopyrightInstaller:
@@ -42,10 +40,9 @@ class CopyrightInstaller:
 		".psm1",
 	)
 	SHEBANG_EXTENSIONS = {".py", ".sh"}
+	SKIP_DIRECTORIES = {".git", ".venv", "node_modules", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache"}
 
 	def __init__(self) -> None:
-		self.console = Console()
-		install(show_locals=True)
 		self.args = self._parse_args()
 		self.notice_path = Path(self.args.copyright_notice).resolve()
 		self.notice_loaded_from_file = self.notice_path.exists()
@@ -101,11 +98,11 @@ class CopyrightInstaller:
 
 	def _log(self, message: str) -> None:
 		if not self.args.silent:
-			self.console.print(message)
+			print(message)
 
 	def _verbose(self, message: str) -> None:
 		if self.args.verbose and not self.args.silent:
-			self.console.print(message)
+			print(message)
 
 	def _read_notice_text(self, notice_path: Path) -> str:
 		if not notice_path.exists():
@@ -163,7 +160,7 @@ class CopyrightInstaller:
 			case ".html" | ".xml":
 				return ["<!--", "{copyright_notice}", "-->"]
 			case ".yaml" | ".yml":
-				return ["---", "{copyright_notice}", "---"]
+				return ["#", "{copyright_notice}", "#"]
 			case ".toml" | ".sh":
 				return ["#", "{copyright_notice}", "#"]
 			case ".bat" | ".cmd":
@@ -300,7 +297,10 @@ class CopyrightInstaller:
 
 	def _iter_target_files(self, root: Path):
 		if self.args.recursive:
-			yield from (path for path in root.rglob("*") if path.is_file())
+			for current_root, directory_names, file_names in os.walk(root):
+				directory_names[:] = [name for name in directory_names if name not in self.SKIP_DIRECTORIES]
+				for file_name in file_names:
+					yield Path(current_root) / file_name
 			return
 		yield from (path for path in root.iterdir() if path.is_file())
 
