@@ -5,6 +5,7 @@ Constants for the MSS-Login server.
 # --- START OF FILE constants.py ---
 import json
 import os
+import sys
 import uuid
 import warnings
 from datetime import datetime, timezone
@@ -475,28 +476,34 @@ DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in (
 DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(config_data.get("debug_mode", False))
 DEBUG_LOG_PATH = os.path.join(CURRENT_DIR, "logs", "debug.log")
 
-AUTO_INSTALL_DEPS = config_data.get("auto_install_deps", True)
-AUTO_INSTALL_DEPS_FROM_ENV = os.environ.get("AUTO_INSTALL_DEPS", "1").strip().lower() in (
-	"1",
-	"true",
-	"yes",
-)
-if AUTO_INSTALL_DEPS and AUTO_INSTALL_DEPS_FROM_ENV in ("1", "true", "yes"):
+AUTO_INSTALL_DEPS = bool(config_data.get("auto_install_deps", True))
+_auto_install_env = str(os.environ.get("AUTO_INSTALL_DEPS", "")).strip().lower()
+if _auto_install_env in ("0", "false", "no"):
+	AUTO_INSTALL_DEPS_ENABLED = False
+elif _auto_install_env in ("1", "true", "yes"):
+	AUTO_INSTALL_DEPS_ENABLED = True
+else:
+	# Env unset: follow config.json / defaults
+	AUTO_INSTALL_DEPS_ENABLED = AUTO_INSTALL_DEPS
+
+if AUTO_INSTALL_DEPS_ENABLED:
 	if DEBUG_MODE:
-		print("[mss_login::DEBUG] Auto-installing dependencies...")
-		try:
-			if not install_dependencies():
-				print(
-					"[mss_login::DEBUG] Auto-installing dependencies failed.\n\nPlease install the dependencies manually using your package manager of choice and by following the instructions available in the README.md file."
-				)
-			else:
-				print(
-					"[mss_login::DEBUG] Auto-installing dependencies succeeded. You can now start ComfyUI and use the extension."
-				)
-		except Exception as e:
+		print("[mss-login] Auto-installing dependencies (uv-first, pip fallback)...")
+	try:
+		if not install_dependencies():
 			print(
-				f"[mss_login::DEBUG] Auto-installing dependencies failed: '{e}'.\n\nPlease install the dependencies manually using your package manager of choice and by following the instructions available in the README.md file."
+				"[mss-login] Auto-installing dependencies failed. "
+				"Install manually with uv or pip; see README.md and docs/guide/installation.md.",
+				file=sys.stderr,
 			)
+		elif DEBUG_MODE:
+			print("[mss-login] Auto-installing dependencies succeeded.")
+	except Exception as e:
+		print(
+			f"[mss-login] Auto-installing dependencies failed: {e}. "
+			"Install manually with uv or pip; see README.md.",
+			file=sys.stderr,
+		)
 
 
 # Experimental features: master switch + per-feature (one-by-one; env overrides: EXPERIMENTAL_*)
