@@ -71,12 +71,7 @@ def _platform_requirements_rel() -> Optional[tuple[str, bool]]:
 
 
 def _run_subprocess(
-	argv: list[str],
-	*,
-	cwd: str,
-	env: Optional[dict[str, str]] = None,
-	timeout: int,
-	label: str,
+	argv: list[str], *, cwd: str, env: Optional[dict[str, str]] = None, timeout: int, label: str
 ) -> bool:
 	try:
 		merged_env = os.environ.copy()
@@ -145,10 +140,7 @@ def _install_with_uv(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
 
 def _install_with_pip(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
 	if req_rel is None:
-		_log(
-			"[mss-login] No platform requirements file found; skipping pip fallback.",
-			error=True,
-		)
+		_log("[mss-login] No platform requirements file found; skipping pip fallback.", error=True)
 		return False
 
 	req_file, needs_cuda_index = req_rel
@@ -162,17 +154,11 @@ def _install_with_pip(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
 def _ensure_dotenvx_binary() -> bool:
 	"""Best-effort install of dotenvx CLI via python-dotenvx postinstall."""
 	if _run_subprocess(
-		["dotenvx", "--version"],
-		cwd=_install_deps_root,
-		timeout=30,
-		label="dotenvx --version",
+		["dotenvx", "--version"], cwd=_install_deps_root, timeout=30, label="dotenvx --version"
 	):
 		return True
 
-	_log(
-		"[mss-login] Dotenvx binary not found; running dotenvx-postinstall...",
-		error=True,
-	)
+	_log("[mss-login] Dotenvx binary not found; running dotenvx-postinstall...", error=True)
 	if _run_subprocess(
 		[sys.executable, "-m", "dotenvx_postinstall"],
 		cwd=_install_deps_root,
