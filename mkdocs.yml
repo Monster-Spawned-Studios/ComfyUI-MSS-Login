@@ -37,10 +37,19 @@ nav:
   - Guide:
       - Installation: guide/installation.md
       - Configuration: guide/configuration.md
+      - Authentication: guide/authentication.md
+      - Image generation pipeline: guide/image-generation.md
+      - Headless JWT session: guide/headless-jwt-session.md
+      - NSFW and outputs: guide/nsfw-and-outputs.md
+      - Model isolation: guide/model-isolation.md
+      - Model download API: guide/model-download-api.md
       - Extending the node: guide/extending.md
+  - Integrations:
+      - Mobile and Comfy Portal: integrations/comfy-portal.md
   - API Reference:
       - HTTP Endpoints: api-reference/endpoints.md
       - Workflow & intercepted: api-reference/workflow-endpoints.md
+      - ComfyUI client APIs: api-reference/comfyui-client-endpoints.md
   - Extension API:
       - NSFW Guard API: extension-api/nsfw-guard-api.md
 

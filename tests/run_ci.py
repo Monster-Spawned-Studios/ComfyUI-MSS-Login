@@ -84,9 +84,16 @@ def main() -> int:
 		steps.append(
 			("Model download queue", os.path.join(TESTS_DIR, "run_model_download_queue_tests.py"))
 		)
+		steps.append(
+			(
+				"Model download destination",
+				os.path.join(TESTS_DIR, "run_model_download_destination_tests.py"),
+			)
+		)
 		steps.append(("View path safety", os.path.join(TESTS_DIR, "run_view_path_safety_tests.py")))
 		steps.append(("Trash bin", os.path.join(TESTS_DIR, "run_trash_bin_tests.py")))
 		steps.append(("NTFY + quarantine", os.path.join(TESTS_DIR, "run_ntfy_quarantine_tests.py")))
+		steps.append(("Release prepare", os.path.join(TESTS_DIR, "run_release_prepare_tests.py")))
 	if not args.no_lint:
 		steps.append(("Ruff check", None))  # special
 		steps.append(("Ruff format", None))

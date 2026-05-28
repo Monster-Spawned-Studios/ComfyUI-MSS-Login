@@ -92,21 +92,12 @@ from aiohttp import web
 import json
 import os
 import sys
-import importlib.util
 from datetime import datetime, timezone
 from .utils.ntfy_notifier import notify_experimental_recovery
 from .utils.quarantine_store import quarantine_cleanup_loop
 from .utils.trash_store import trash_cleanup_loop, trash_deleted_history_images
 
-_root = os.path.dirname(os.path.abspath(__file__))
-_install_deps_path = os.path.join(_root, "utils", "install_deps.py")
-if os.path.isfile(_install_deps_path):
-	_spec = importlib.util.spec_from_file_location("install_deps", _install_deps_path)
-	if _spec and _spec.loader:
-		_mod = importlib.util.module_from_spec(_spec)
-		_spec.loader.exec_module(_mod)
-		_mod.install_dependencies()
-
+# Dependency auto-install runs once from constants.py (AUTO_INSTALL_DEPS), not here.
 
 if EXPERIMENTAL_FEATURES:
 	from .routes import s3 as _s3_routes  # noqa: F401

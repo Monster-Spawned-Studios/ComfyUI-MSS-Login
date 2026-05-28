@@ -4,6 +4,7 @@ Standalone tests for queued model-download helpers and RBAC gating.
 
 import asyncio
 import importlib.util
+import json
 import os
 import sys
 import types
@@ -80,8 +81,13 @@ def _install_stubs():
 	globals_mod.users_db = _UsersDb()
 	sys.modules["mss_login.globals"] = globals_mod
 
+	class _Cache:
+		def list_folders(self):
+			return ["checkpoints", "loras"]
+
 	cache_mod = types.ModuleType("mss_login.utils.model_cache")
-	cache_mod.get_model_cache = lambda _cfg: None
+	cache_mod.get_model_cache = lambda _cfg: _Cache()
+	cache_mod.ASSET_FOLDERS_FALLBACK = frozenset({"checkpoints", "loras"})
 	sys.modules["mss_login.utils.model_cache"] = cache_mod
 
 	download_mod = types.ModuleType("mss_login.utils.model_download")
@@ -186,6 +192,38 @@ def run_tests():
 	resp = asyncio.run(mod.api_model_download_cancel(_Req(job_id=job_id)))
 	ok(resp.status == 400, "running job cancel is rejected safely")
 	mod._JOBS_BY_ID.clear()
+
+	print("TestMobileClientEndpoints")
+	mod._role_and_perms = lambda _request: ("user", {"can_download_models": True}, "alice")
+	resp = asyncio.run(mod.api_model_download_sources(_Req()))
+	ok(resp.status == 200, "sources endpoint ok for permitted user")
+	body = json.loads(resp.text)
+	ok("capabilities" in body, "sources includes capabilities for mobile bootstrap")
+	resp = asyncio.run(mod.api_model_download_folders(_Req()))
+	ok(resp.status == 200, "folders endpoint ok")
+	folders_body = json.loads(resp.text)
+	ok("checkpoints" in folders_body.get("folders", []), "folders lists checkpoint type")
+	job_id = "job-poll"
+	mod._JOBS_BY_ID[job_id] = {
+		"job_id": job_id,
+		"user_id": "uid-alice",
+		"source": "civitai",
+		"status": "queued",
+		"model_version_id": "99",
+		"bytes_done": 0,
+		"progress_pct": 0.0,
+		"elapsed": 0.0,
+		"speed_bps": 0.0,
+		"eta_seconds": 0.0,
+		"destination": "",
+		"error": "",
+	}
+	resp = asyncio.run(mod.api_model_download_job_get(_Req(job_id=job_id)))
+	ok(resp.status == 200, "single job GET ok for owner")
+	job_body = json.loads(resp.text)
+	ok(job_body.get("job", {}).get("job_id") == job_id, "job payload returned")
+	resp = asyncio.run(mod.api_model_download_job_get(_Req(job_id="missing")))
+	ok(resp.status == 404, "unknown job returns 404")
 
 	print()
 	if failed:

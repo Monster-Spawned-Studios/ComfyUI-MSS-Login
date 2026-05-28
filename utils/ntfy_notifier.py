@@ -95,6 +95,7 @@ EVENT_KEYS: List[str] = [
 	"server_stopped",
 	"update_available",
 	"shared_items_added",
+	"shared_items_removed",
 	"experimental_recovery",
 ]
 """All recognized event keys that admins can toggle on/off."""
@@ -219,7 +220,10 @@ def _validate_ntfy_base_url(url: str) -> str:
 
 
 def save_ntfy_config(
-	topic: str, enabled_events: List[str], base_url: str = "", api_token: Optional[str] = None
+	topic: str,
+	enabled_events: List[str],
+	base_url: Optional[str] = None,
+	api_token: Optional[str] = None,
 ) -> None:
 	"""
 	Persist ntfy config to config.json.
@@ -230,8 +234,9 @@ def save_ntfy_config(
 	    The ntfy topic name (acts as a channel/password).
 	enabled_events : list[str]
 	    Which EVENT_KEYS should trigger a notification.
-	base_url : str, optional
-	    Custom ntfy server URL. Defaults to ``DEFAULT_BASE_URL``.
+	base_url : str | None, optional
+	    Custom ntfy server URL. If None, keep the existing value in config.json.
+	    If provided (including empty string), validate and save (empty -> DEFAULT_BASE_URL).
 	    Must use HTTPS for non-local hosts.
 	api_token : str | None
 	    Optional ntfy bearer token stored in config. If None, keep existing token.
@@ -244,13 +249,16 @@ def save_ntfy_config(
 	from ..constants import CONFIG_FILE_PATH
 	from ..utils.json_utils import load_json_file, save_json_file
 
-	validated_url = _validate_ntfy_base_url(base_url)
 	cfg = load_json_file(CONFIG_FILE_PATH, {})
 	if not isinstance(cfg, dict):
 		cfg = {}
 	current_ntfy = cfg.get("ntfy") or {}
 	if not isinstance(current_ntfy, dict):
 		current_ntfy = {}
+	if base_url is None:
+		validated_url = _validate_ntfy_base_url(current_ntfy.get("base_url") or "")
+	else:
+		validated_url = _validate_ntfy_base_url(base_url)
 	resolved_token = (
 		current_ntfy.get("api_token", "") if api_token is None else str(api_token or "").strip()
 	)

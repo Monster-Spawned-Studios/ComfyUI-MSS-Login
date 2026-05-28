@@ -91,6 +91,53 @@ Under `config.json` → `auto_update` you can set:
 - **check_mode**: `"releases"` (default) uses the release-tag API (e.g. GitHub `releases/latest`); `"branch"` uses an interval-based check against a branch. For branch mode, set `check_url` to a URL that returns a version (e.g. raw `pyproject.toml` or `version.json` from that branch).
 - **check_url**, **check_interval_hours**, **branch**, **changelog_url**: See `config.defaults.json`. Changelog text is loaded first from `readme/changelogs/X.X.X.md` (by version); if missing, the release body from the provider API is used.
 
+## Push notifications (ntfy)
+
+MSS-Login can send push notifications via [ntfy](https://ntfy.sh) or a **self-hosted** ntfy server. Configuration lives in `config.json` under the MSS-Login data directory (`MSS_LOGIN_DATA_DIR`, default `~/.comfyui-mss-login/`):
+
+```json
+{
+	"ntfy": {
+		"topic": "my-secret-topic",
+		"base_url": "https://ntfy.example.com",
+		"api_token": "",
+		"enabled_events": ["image_generated", "nsfw_block", "user_login"]
+	}
+}
+```
+
+| Key | Purpose |
+|-----|---------|
+| `topic` | ntfy topic (channel name); required to send |
+| `base_url` | Server root URL without trailing slash (default `https://ntfy.sh`) |
+| `api_token` | Bearer token for authenticated ntfy servers (optional) |
+| `enabled_events` | List of event keys to notify (see admin UI or `EVENT_KEYS` in code) |
+
+### Self-hosted ntfy
+
+Set `base_url` to your instance, for example `https://ntfy.example.com`. Remote hosts must use **HTTPS** (HTTP is allowed only for `localhost` / `127.0.0.1`).
+
+### Environment fallback
+
+If `api_token` is empty in config, the server uses the `NTFY_API_KEY` environment variable (see `.env.example`).
+
+### Admin UI vs manual edit
+
+- **Settings → mss-login** (admin): topic, server URL, API token, and event checkboxes. Saving preserves an existing token unless you enter a new one or check **Clear stored API token**.
+- **Manual `config.json`**: safe for automation; partial API updates that omit `base_url` or `api_token` preserve existing values.
+
+### Notable events
+
+| Event | When fired |
+|-------|------------|
+| `image_generated` | Owner: image saved after generation (may attach file via PUT) |
+| `nsfw_block` | NSFW content blocked; may include quarantine action button |
+| `user_login` / `user_logout` | Session events |
+| `api_token_created` | New API token issued |
+| `login_failure` | Failed login attempt |
+
+Quarantine actions in notifications call back to your ComfyUI server (`/mss-login/api/ntfy/quarantine`), not to the ntfy host.
+
 ## S3 model storage
 
 S3 is an experimental feature; enable `EXPERIMENTAL_FEATURES` (see above) to use it.

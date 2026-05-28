@@ -3,7 +3,7 @@ on:
     workflow_dispatch:
     push:
         branches:
-            - "release/*.*.*"
+            - "release/*"
 
 permissions:
     contents: read
@@ -31,10 +31,6 @@ jobs:
                   python-version: "3.13"
                   cache: "pip"
                   cache-dependency-path: ComfyUI-MSS-Login/pyproject.toml
-            - name: Install uv
-              run: pip install -U uv
-            - run: uv sync --group comfyui
-              working-directory: ComfyUI-MSS-Login
             - name: Validate release branch
               if: github.event_name == 'push'
               run: |
@@ -43,6 +39,22 @@ jobs:
                       exit 1
                   fi
                   echo "Release branch OK: ${GITHUB_REF_NAME}"
+            - name: Verify pyproject version matches release branch
+              if: github.event_name == 'push'
+              working-directory: ComfyUI-MSS-Login
+              run: |
+                  set -euo pipefail
+                  BRANCH_VERSION="${GITHUB_REF_NAME#release/}"
+                  PYPROJECT_VERSION="$(python3 scripts/release_prepare.py --print-version)"
+                  if [ "$PYPROJECT_VERSION" != "$BRANCH_VERSION" ]; then
+                      echo "::error::pyproject.toml version ($PYPROJECT_VERSION) does not match release branch ($BRANCH_VERSION)."
+                      exit 1
+                  fi
+                  echo "Version OK: $PYPROJECT_VERSION"
+            - name: Install uv
+              run: pip install -U uv
+            - run: uv sync --group comfyui
+              working-directory: ComfyUI-MSS-Login
             - name: Publish ComfyUI Node
               working-directory: ${{ github.workspace }}/ComfyUI-MSS-Login
               env:

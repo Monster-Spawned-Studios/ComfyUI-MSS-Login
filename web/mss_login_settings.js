@@ -3814,6 +3814,37 @@ app.ui.settings.addSetting({
         ntfyTopicInput.style.marginLeft = "6px";
         ntfyTopicLabel.appendChild(ntfyTopicInput);
         ntfySection.appendChild(ntfyTopicLabel);
+        const ntfyBaseUrlLabel = document.createElement("label");
+        ntfyBaseUrlLabel.style.display = "block";
+        ntfyBaseUrlLabel.style.marginTop = "8px";
+        ntfyBaseUrlLabel.textContent = "Server URL: ";
+        const ntfyBaseUrlInput = document.createElement("input");
+        ntfyBaseUrlInput.type = "url";
+        ntfyBaseUrlInput.placeholder = "https://ntfy.sh";
+        ntfyBaseUrlInput.style.width = "min(100%, 320px)";
+        ntfyBaseUrlInput.style.marginLeft = "6px";
+        ntfyBaseUrlLabel.appendChild(ntfyBaseUrlInput);
+        ntfySection.appendChild(ntfyBaseUrlLabel);
+        const ntfyTokenLabel = document.createElement("label");
+        ntfyTokenLabel.style.display = "block";
+        ntfyTokenLabel.style.marginTop = "8px";
+        ntfyTokenLabel.textContent = "API token (optional): ";
+        const ntfyTokenInput = document.createElement("input");
+        ntfyTokenInput.type = "password";
+        ntfyTokenInput.autocomplete = "off";
+        ntfyTokenInput.placeholder = "leave blank to keep existing";
+        ntfyTokenInput.style.width = "min(100%, 320px)";
+        ntfyTokenInput.style.marginLeft = "6px";
+        ntfyTokenLabel.appendChild(ntfyTokenInput);
+        ntfySection.appendChild(ntfyTokenLabel);
+        const ntfyClearTokenLabel = document.createElement("label");
+        ntfyClearTokenLabel.style.display = "block";
+        ntfyClearTokenLabel.style.marginTop = "4px";
+        const ntfyClearTokenCheck = document.createElement("input");
+        ntfyClearTokenCheck.type = "checkbox";
+        ntfyClearTokenLabel.appendChild(ntfyClearTokenCheck);
+        ntfyClearTokenLabel.appendChild(document.createTextNode(" Clear stored API token on save"));
+        ntfySection.appendChild(ntfyClearTokenLabel);
         const ntfyCheckWrap = document.createElement("div");
         ntfyCheckWrap.style.marginTop = "8px";
         ntfyCheckWrap.id = "mss-login-ntfy-checks";
@@ -3826,11 +3857,23 @@ app.ui.settings.addSetting({
             try {
                 const enabled = [];
                 ntfyCheckWrap.querySelectorAll("input[type=checkbox]:checked").forEach(cb => enabled.push(cb.value));
+                const payload = {
+                    topic: ntfyTopicInput.value.trim(),
+                    base_url: ntfyBaseUrlInput.value.trim(),
+                    enabled_events: enabled
+                };
+                if (ntfyClearTokenCheck.checked) {
+                    payload.api_token = "";
+                } else if (ntfyTokenInput.value.trim()) {
+                    payload.api_token = ntfyTokenInput.value.trim();
+                }
                 const res = await api.fetchApi("/mss-login/api/settings/ntfy", {
                     method: "PUT",
-                    body: JSON.stringify({ topic: ntfyTopicInput.value.trim(), enabled_events: enabled })
+                    body: JSON.stringify(payload)
                 });
                 if (res && res.ok) {
+                    ntfyTokenInput.value = "";
+                    ntfyClearTokenCheck.checked = false;
                     if (window.showToast) window.showToast("ntfy settings saved.");
                 }
             } catch (_) {}
@@ -3844,6 +3887,10 @@ app.ui.settings.addSetting({
                     const cfg = await getData("/mss-login/api/settings/ntfy");
                     ntfySection.style.display = "block";
                     ntfyTopicInput.value = cfg.topic || "";
+                    ntfyBaseUrlInput.value = cfg.base_url || "https://ntfy.sh";
+                    if (cfg.has_api_token) {
+                        ntfyTokenInput.placeholder = "token configured (enter new to replace)";
+                    }
                     const eventLabels = {
                         nsfw_block: "Notify when user blocked for NSFW",
                         user_created: "Notify when new user created",
@@ -3851,6 +3898,8 @@ app.ui.settings.addSetting({
                         user_logout: "Notify when user logs out",
                         api_token_created: "Notify when API/JWT token created",
                         login_failure: "Notify on login failure",
+                        shared_items_added: "Notify when shared model/item added",
+                        shared_items_removed: "Notify when shared model/item removed",
                         experimental_recovery: "Notify when experimental failsafe/recovery runs"
                     };
                     const keys = cfg.event_keys || ["nsfw_block", "user_created", "user_login", "user_logout", "api_token_created", "login_failure"];

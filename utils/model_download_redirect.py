@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from ..constants import CONFIG_FILE_PATH
+from .folder_paths_compat import get_models_root
 from .model_isolation import isolation_models_base, sanitize_user_segment
 from .json_utils import load_json_file, save_json_file
 
@@ -150,17 +151,7 @@ def should_try_model_download_redirect(path: str) -> bool:
 
 
 def _global_models_root() -> str:
-	try:
-		import folder_paths  # pyright: ignore[reportMissingImports]
-
-		root = getattr(folder_paths, "models_dir", None) or getattr(
-			folder_paths, "models_path", None
-		)
-		if root:
-			return os.path.abspath(str(root))
-	except Exception:
-		pass
-	return ""
+	return get_models_root()
 
 
 def _to_isolated_path(value: str, user_id: str) -> str:

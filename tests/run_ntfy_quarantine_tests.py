@@ -114,6 +114,65 @@ def run_tests():
 	)
 	ok(ntfy_notifier.verify_signed_action_token(expired) is None, "expired token rejected")
 
+	print("TestNtfyConfigPersistence")
+	config_path = const_mod.CONFIG_FILE_PATH
+	os.makedirs(os.path.dirname(config_path), exist_ok=True)
+	try:
+		with open(config_path, "w", encoding="utf-8") as f:
+			json.dump({}, f)
+		ntfy_notifier.save_ntfy_config(
+			"topic-a",
+			["image_generated"],
+			base_url="https://ntfy.example.com",
+			api_token="cfg-token",
+		)
+		cfg = ntfy_notifier._load_ntfy_config()
+		ok(cfg.get("base_url") == "https://ntfy.example.com", "custom base_url saved")
+		ok(cfg.get("api_token") == "cfg-token", "api_token saved")
+		ntfy_notifier.save_ntfy_config(
+			"topic-a", ["image_generated"], base_url=None, api_token=None
+		)
+		cfg2 = ntfy_notifier._load_ntfy_config()
+		ok(
+			cfg2.get("base_url") == "https://ntfy.example.com",
+			"partial save preserves base_url when omitted",
+		)
+		ok(cfg2.get("api_token") == "cfg-token", "partial save preserves api_token when omitted")
+		ntfy_notifier.save_ntfy_config("topic-a", [], base_url="")
+		cfg3 = ntfy_notifier._load_ntfy_config()
+		ok(cfg3.get("base_url") == "https://ntfy.sh", "explicit empty base_url resets to default")
+		req = ntfy_notifier._build_request(
+			base_url=cfg.get("base_url", ""),
+			topic="my-topic",
+			event_key="image_generated",
+			title="t",
+			message="m",
+			priority="default",
+			tags=None,
+			click="",
+			icon="",
+			markdown=False,
+			attachment_url="",
+			attachment_file_path="",
+			attachment_filename="",
+			actions=None,
+			delay="",
+			email="",
+			api_key="",
+			timeout=5,
+		)
+		ok(
+			req.get("url") == "https://ntfy.example.com/my-topic",
+			"_build_request uses custom base_url in publish URL",
+		)
+		ok(
+			"shared_items_removed" in ntfy_notifier.EVENT_KEYS,
+			"shared_items_removed is a toggleable event key",
+		)
+	finally:
+		if os.path.isfile(config_path):
+			os.remove(config_path)
+
 	print("TestQuarantineRetentionCleanup")
 	tmp_root = tempfile.mkdtemp(prefix="mss_quarantine_test_")
 	try:

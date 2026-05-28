@@ -223,16 +223,22 @@ async def api_put_ntfy_settings(request):
 		return web.json_response({"error": "Admin only"}, status=403)
 	try:
 		data = await request.json()
+		if not isinstance(data, dict):
+			return web.json_response({"error": "JSON object required"}, status=400)
 		topic = (data.get("topic") or "").strip()
-		base_url = (data.get("base_url") or "").strip()
-		api_token = data.get("api_token")
 		enabled = data.get("enabled_events")
 		if not isinstance(enabled, list):
 			enabled = []
+		base_url = None
+		if "base_url" in data:
+			base_url = (data.get("base_url") or "").strip()
+		api_token = data.get("api_token") if "api_token" in data else None
 		if api_token is not None and not isinstance(api_token, str):
 			return web.json_response({"error": "api_token must be a string"}, status=400)
 		save_ntfy_config(topic, enabled, base_url=base_url, api_token=api_token)
 		return web.json_response({"status": "ok"})
+	except ValueError as e:
+		return web.json_response({"error": str(e)}, status=400)
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
 

@@ -212,14 +212,16 @@ ComfyUI
 1. Extract mss_login into:
 
 ```text
-ComfyUI/custom_nodes/mss-login/
+ComfyUI/custom_nodes/ComfyUI-MSS-Login/
 ```
 
-1. Restart ComfyUI.
+2. Restart ComfyUI. On first load, dependencies are installed automatically (**UV first**, **pip fallback**) into ComfyUI's Python environment when `auto_install_deps` is enabled (default). Set `AUTO_INSTALL_DEPS=0` or `"auto_install_deps": false` in `config.json` to disable.
 
-2. On first launch, register the initial admin.
+3. On first launch, register the initial admin.
 
-3. Open settings → **mss_login** to configure.
+4. Open settings → **mss-login** to configure.
+
+See [docs/guide/installation.md](docs/guide/installation.md) for manual install commands and platform-specific requirements files.
 
 ---
 
@@ -657,6 +659,25 @@ Please refer to the license file found under the [readme](./readme/) folder, her
 
 All notable changes to the **MSS-Login** project are documented here.
 This project follows a semantic-style versioning flow adapted for active development.
+
+Per-version notes live under [`readme/changelogs/`](./readme/changelogs/).
+
+### Automated releases (CI)
+
+The [**Create Release**](.github/workflows/create-release.yml) workflow prepares each publish:
+
+1. Resolves the version (manual input, auto patch bump from the latest tag, or `release/X.Y.Z` branch name).
+2. Runs [`scripts/release_prepare.py`](./scripts/release_prepare.py) to sync [`pyproject.toml`](./pyproject.toml) and create `readme/changelogs/X.Y.Z.md` when missing.
+3. Builds bullets from `git log` since the previous semver tag (plus optional workflow inputs).
+4. Commits to `release/X.Y.Z`, creates the GitHub release, and triggers [**Publish to ComfyUI registry**](.github/workflows/publish.yml).
+
+Optional **workflow_dispatch** inputs: `changelog_title`, `changelog_notes`. You do not need to pre-create changelog files; if one already exists for that version, CI leaves it unchanged.
+
+[`publish.yml`](.github/workflows/publish.yml) verifies `pyproject.toml` matches the release branch before registry publish so version detection stays aligned with tags.
+
+## 0.0.3 - **Foundational work**
+
+- Changelog can be viewed here: [v0.0.3 Changelog](./readme/changelogs/0.0.3.md)
 
 ## 0.0.2 - **Security updates/enhancements**
 
