@@ -73,7 +73,6 @@ def latest_semver_tag(repo_root: Path) -> str | None:
 
 def git_log_bullets(repo_root: Path, version: str) -> list[str]:
 	prev = latest_semver_tag(repo_root)
-	range_arg: str
 	if prev:
 		if prev == version:
 			result = _run_git(["log", "-1", "--no-merges", "--pretty=format:%s (%h)"], repo_root)
