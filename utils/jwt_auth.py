@@ -209,49 +209,48 @@ class JWTAuth:
 					request["user"] = username
 					set_fallback = request.path in ["/api/prompt"]
 					self.access_control.set_current_user_id(user_id, set_fallback)
-					return await handler(request)
-
-				# API token not found: if token doesn't look like a JWT (no dots), return clear message
-				if token.count(".") < 2:
-					return await handle_unauthorized_access(
-						request,
-						"/login",
-						message="API token not found or expired. Generate a new token on this server (Settings → mss-login → Generate Token).",
-					)
-
-				user = self.decode_access_token(token)
-				user_id = user.get("id")
-				username = user.get("username")
-				jti = user.get("jti")
-				if not user_id == self.users_db.get_user(username)[0]:
-					raise ValueError(f"User with username: {username} is not in the database")
-				# Session JWT blocklist check (revoked tokens) and idle revocation
-				if jti:
-					try:
-						from ..constants import (
-							SESSION_IDLE_REVOKE_MINUTES,
-							SESSION_TOKEN_STORE_CONFIG,
+				else:
+					# API token not found: if token doesn't look like a JWT (no dots), return clear message
+					if token.count(".") < 2:
+						return await handle_unauthorized_access(
+							request,
+							"/login",
+							message="API token not found or expired. Generate a new token on this server (Settings → mss-login → Generate Token).",
 						)
 
-						store = get_session_token_store(
-							SESSION_TOKEN_STORE_CONFIG,
-							idle_revoke_minutes=SESSION_IDLE_REVOKE_MINUTES,
-						)
-						if store.is_revoked(jti):
-							return await handle_unauthorized_access(
-								request, "/login", message="Token has been revoked"
+					user = self.decode_access_token(token)
+					user_id = user.get("id")
+					username = user.get("username")
+					jti = user.get("jti")
+					if not user_id == self.users_db.get_user(username)[0]:
+						raise ValueError(f"User with username: {username} is not in the database")
+					# Session JWT blocklist check (revoked tokens) and idle revocation
+					if jti:
+						try:
+							from ..constants import (
+								SESSION_IDLE_REVOKE_MINUTES,
+								SESSION_TOKEN_STORE_CONFIG,
 							)
-						store.update_last_used(jti)
-						if store.revoke_idle_sessions() > 0:
-							store.prune_old_sessions()
-					except Exception:
-						pass
 
-				request["user_id"] = user_id
-				request["user"] = username
+							store = get_session_token_store(
+								SESSION_TOKEN_STORE_CONFIG,
+								idle_revoke_minutes=SESSION_IDLE_REVOKE_MINUTES,
+							)
+							if store.is_revoked(jti):
+								return await handle_unauthorized_access(
+									request, "/login", message="Token has been revoked"
+								)
+							store.update_last_used(jti)
+							if store.revoke_idle_sessions() > 0:
+								store.prune_old_sessions()
+						except Exception:
+							pass
 
-				set_fallback = request.path in ["/api/prompt"]
-				self.access_control.set_current_user_id(user_id, set_fallback)
+					request["user_id"] = user_id
+					request["user"] = username
+
+					set_fallback = request.path in ["/api/prompt"]
+					self.access_control.set_current_user_id(user_id, set_fallback)
 
 			except jwt.ExpiredSignatureError:
 				debug_write(
