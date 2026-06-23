@@ -446,11 +446,8 @@ def _user_can_have_non_expiring_jwt(username: str) -> bool:
 
 @routes.get("/mss-login/generate_token")
 async def get_generate_token(request: web.Request) -> web.Response:
-	"""Serve the generate API token page (public)."""
-	path = os.path.join(HTML_DIR, "generate_token.html")
-	if not os.path.exists(path):
-		return web.Response(text="generate_token.html not found", status=404)
-	return web.FileResponse(path)
+	"""Redirect standalone token page requests to the login page."""
+	return web.HTTPFound("/login")
 
 
 @routes.post("/mss-login/generate_token")

@@ -21,7 +21,53 @@ _install_deps_root = os.path.dirname(_install_deps_this_dir)
 
 _install_attempted = False
 
-_PYTORCH_CUDA_INDEX = "https://download.pytorch.org/whl/cu128"
+
+def _detect_pytorch_cuda_index() -> str:
+	"""Detect if CUDA 13 support is possible using nvidia-smi or CUDA driver library,
+	and return the appropriate PyTorch extra index URL.
+	"""
+	cu130_index = "https://download.pytorch.org/whl/cu130"
+	cu128_index = "https://download.pytorch.org/whl/cu128"
+
+	# Method 1: Check via ctypes
+	import ctypes
+	import platform
+
+	system = platform.system()
+	try:
+		cuda_lib = None
+		if system == "Windows":
+			cuda_lib = ctypes.WinDLL("nvcuda.dll")
+		elif system == "Linux":
+			cuda_lib = ctypes.CDLL("libcuda.so")
+		if cuda_lib is not None:
+			version = ctypes.c_int()
+			if cuda_lib.cuDriverGetVersion(ctypes.byref(version)) == 0:
+				major = version.value // 1000
+				if major >= 13:
+					return cu130_index
+	except Exception:
+		pass
+
+	# Method 2: Check via nvidia-smi command line
+	try:
+		res = subprocess.run(
+			["nvidia-smi"], capture_output=True, text=True, timeout=10, check=False
+		)
+		if res.returncode == 0 and res.stdout:
+			import re
+
+			match = re.search(r"CUDA Version:\s*(\d+)", res.stdout)
+			if match:
+				major = int(match.group(1))
+				if major >= 13:
+					return cu130_index
+	except Exception:
+		pass
+
+	return cu128_index
+
+
 _UV_TIMEOUT_SECONDS = 1200
 _PIP_TIMEOUT_SECONDS = 600
 _DOTENVX_TIMEOUT_SECONDS = 300
@@ -124,7 +170,7 @@ def _install_with_uv(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
 		_log(f"[mss-login] Installing dependencies with uv ({req_file})...")
 		uv_args = ["-r", req_file]
 		if needs_cuda_index:
-			uv_args.extend(["--extra-index-url", _PYTORCH_CUDA_INDEX])
+			uv_args.extend(["--extra-index-url", _detect_pytorch_cuda_index()])
 		if _run_uv_pip(uv_args, cwd=root):
 			return True
 		_log("[mss-login] uv requirements install failed; trying pyproject.toml.", error=True)
@@ -133,12 +179,35 @@ def _install_with_uv(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
 	if os.path.isfile(pyproject):
 		_log("[mss-login] Installing dependencies with uv (pyproject.toml)...")
 		# Install [project.dependencies] without packaging the custom-node tree as a wheel.
-		return _run_uv_pip(["-r", "pyproject.toml"], cwd=root)
+		uv_args = ["-r", "pyproject.toml"]
+		system = platform.system()
+		if system in ("Windows", "Linux"):
+			uv_args.extend(["--extra-index-url", _detect_pytorch_cuda_index()])
+		return _run_uv_pip(uv_args, cwd=root)
 
 	return False
 
 
 def _install_with_pip(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
+	pyproject = join(root, "pyproject.toml")
+	if os.path.isfile(pyproject):
+		_log("[mss-login] Installing dependencies with pip (pyproject.toml)...")
+		try:
+			import tomllib
+
+			with open(pyproject, "rb") as f:
+				data = tomllib.load(f)
+			deps = data.get("project", {}).get("dependencies", [])
+			if deps:
+				system = platform.system()
+				pip_args = list(deps)
+				if system in ("Windows", "Linux"):
+					pip_args.extend(["--extra-index-url", _detect_pytorch_cuda_index()])
+				if _run_pip(pip_args, cwd=root):
+					return True
+		except Exception as exc:
+			_log(f"[mss-login] Parsing pyproject.toml failed for pip: {exc}", error=True)
+
 	if req_rel is None:
 		_log("[mss-login] No platform requirements file found; skipping pip fallback.", error=True)
 		return False
@@ -147,7 +216,7 @@ def _install_with_pip(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
 	_log(f"[mss-login] Falling back to pip ({req_file})...")
 	pip_args = ["-r", req_file]
 	if needs_cuda_index:
-		pip_args.extend(["--extra-index-url", _PYTORCH_CUDA_INDEX])
+		pip_args.extend(["--extra-index-url", _detect_pytorch_cuda_index()])
 	return _run_pip(pip_args, cwd=root)
 
 

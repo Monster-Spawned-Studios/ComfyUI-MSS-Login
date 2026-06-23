@@ -2,7 +2,7 @@
 license = { file = "readme/LICENSE.md" }
 name = "MSS-Login"
 description = "A ComfyUI node to enhance the security of the overall ComfyUI experience, for both private and public-facing servers, adding more features, while still allowing ComfyUI to be usable."
-version = "0.0.3"
+version = "0.0.4"
 requires-python = ">=3.13"
 classifiers = [
 	# For OS-independent nodes (works on all operating systems)
@@ -90,21 +90,26 @@ default-groups = ["production", "documentation"]
 
 [tool.uv.sources]
 torch = [
-	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = "pytorch-cuda-128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
 ]
 torchvision = [
-	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = "pytorch-cuda-128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
 ]
 torchaudio = [
-	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = "pytorch-cuda-128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cuda"
+name = "pytorch-cuda-128"
 url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda-130"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [[tool.uv.index]]

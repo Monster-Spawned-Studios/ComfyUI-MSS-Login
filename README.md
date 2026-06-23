@@ -157,14 +157,14 @@ if is_sfw_enforced_for_user():
 ```javascript
 // Mark an image as NSFW from gallery UI
 fetch("/mss-login-gallery/mark-nsfw", {
- method: "POST",
- headers: { "Content-Type": "application/json" },
- body: JSON.stringify({
-  filename: "image.png",
-  is_nsfw: true,
-  score: 1.0,
-  label: "manual",
- }),
+	method: "POST",
+	headers: { "Content-Type": "application/json" },
+	body: JSON.stringify({
+		filename: "image.png",
+		is_nsfw: true,
+		score: 1.0,
+		label: "manual",
+	}),
 });
 ```
 
@@ -403,14 +403,14 @@ Other ComfyUI extensions can register custom tabs in the mss_login admin panel t
 
 ```javascript
 window.mss_loginAdminTabs.register({
- id: "myextension",
- label: "My Extension",
- order: 50,
- render: async (container, context) => {
-  const { usersList, groupsConfig, currentUser } = context;
-  container.innerHTML = `<h3>My Extension Settings</h3>`;
-  // Render your content here
- },
+	id: "myextension",
+	label: "My Extension",
+	order: 50,
+	render: async (container, context) => {
+		const { usersList, groupsConfig, currentUser } = context;
+		container.innerHTML = `<h3>My Extension Settings</h3>`;
+		// Render your content here
+	},
 });
 ```
 
@@ -447,10 +447,10 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 
 ```json
 {
- "filename": "image.png",
- "is_nsfw": true,
- "score": 1.0, // optional, default 1.0
- "label": "manual" // optional, default "manual"
+	"filename": "image.png",
+	"is_nsfw": true,
+	"score": 1.0, // optional, default 1.0
+	"label": "manual" // optional, default "manual"
 }
 ```
 
@@ -458,10 +458,10 @@ Manually mark an image as NSFW or SFW. Designed for integration with gallery ext
 
 ```json
 {
- "status": "ok",
- "message": "Image marked as NSFW",
- "filename": "image.png",
- "is_nsfw": true
+	"status": "ok",
+	"message": "Image marked as NSFW",
+	"filename": "image.png",
+	"is_nsfw": true
 }
 ```
 
@@ -675,16 +675,10 @@ Optional **workflow_dispatch** inputs: `changelog_title`, `changelog_notes`. You
 
 [`publish.yml`](.github/workflows/publish.yml) verifies `pyproject.toml` matches the release branch before registry publish so version detection stays aligned with tags.
 
-## 0.0.3 - **Foundational work**
+### Changlog
 
-- Changelog can be viewed here: [v0.0.3 Changelog](./readme/changelogs/0.0.3.md)
+A changelog can be found in the corresponding '[CHANGES.md](./readme/CHANGES.md)' file in the [readme](./readme/) folder. All changes are documented there.
 
-## 0.0.2 - **Security updates/enhancements**
-
-- Changelog can be viewed here: [v0.0.2 Changelog](./readme/changelogs/0.0.2.md)
-
-## 0.0.1 - **Initial release**
-
-- Changelog can be viewed here: [v0.0.1 Changelog](./readme/changelogs/0.0.1.md)
+Changelogs are dynamically generated and put in a subfolder 'changelogs' in the [readme](./readme/) folder, in versioned order by the version number (e.g. '[0.0.3.md](./readme/changelogs/0.0.3.md)', '[0.0.2.md](./readme/changelogs/0.0.2.md)', etc.)
 
 ---
