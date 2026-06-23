@@ -42,65 +42,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Resolve version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            v="${{ inputs.version }}"
-            v="${v// /}"
-            if [ -n "$v" ]; then
-              echo "version=$v" >> "$GITHUB_OUTPUT"
-              echo "Resolved version (from input): $v"
-            else
-              # Auto-increment: latest tag (e.g. v1.2.3 or 1.2.3) -> bump patch
-              latest=$(git tag -l --sort=-v:refname 2>/dev/null | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-              if [ -z "$latest" ]; then
-                echo "version=0.0.1" >> "$GITHUB_OUTPUT"
-                echo "Resolved version (no tags): 0.0.1"
-              else
-                latest=${latest#v}
-                maj=${latest%%.*}; rest=${latest#*.}
-                min=${rest%%.*}; patch=${rest#*.}
-                patch=${patch%%-*}; patch=${patch%%+*}
-                patch=$((patch + 1))
-                next="${maj}.${min}.${patch}"
-                echo "version=$next" >> "$GITHUB_OUTPUT"
-                echo "Resolved version (auto-incremented from $latest): $next"
-              fi
-            fi
-          else
-            # Push to release/*: use branch name e.g. release/1.2.3 -> 1.2.3
-            echo "version=${GITHUB_REF_NAME#release/}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Validate version format
-        run: |
-          v="${{ steps.version.outputs.version }}"
-          if [[ ! "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$ ]]; then
-            echo "::error::Version must look like X.X.X (e.g. 1.2.3). Got: $v"
-            exit 1
-          fi
-          echo "Version format OK: $v"
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
-      - name: Prepare release files
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          CHANGELOG_TITLE: ${{ inputs.changelog_title }}
-          CHANGELOG_NOTES: ${{ inputs.changelog_notes }}
+      - name: Resolve and prepare version
+        id: version
         run: |
           set -euo pipefail
-          ARGS=(--version "$VERSION")
-          if [ -n "${CHANGELOG_TITLE// /}" ]; then
-            ARGS+=(--changelog-title "$CHANGELOG_TITLE")
+          ARGS=()
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Extract inputs
+            V="${{ inputs.version }}"
+            # Remove whitespace
+            V="${V// /}"
+            if [ -n "$V" ]; then
+              ARGS+=(--version "$V")
+            fi
+            
+            TITLE="${{ inputs.changelog_title }}"
+            if [ -n "${TITLE// /}" ]; then
+              ARGS+=(--changelog-title "$TITLE")
+            fi
+            
+            NOTES="${{ inputs.changelog_notes }}"
+            if [ -n "$NOTES" ]; then
+              ARGS+=(--changelog-notes "$NOTES")
+            fi
+          else
+            # Push to release/*: use branch name e.g. release/1.2.3 -> 1.2.3
+            VERSION_NAME="${GITHUB_REF_NAME#release/}"
+            ARGS+=(--version "$VERSION_NAME")
           fi
-          if [ -n "${CHANGELOG_NOTES}" ]; then
-            ARGS+=(--changelog-notes "$CHANGELOG_NOTES")
-          fi
+          
           python3 scripts/release_prepare.py "${ARGS[@]}"
 
       - name: Commit and push release branch
@@ -116,7 +91,7 @@ jobs:
             git checkout -b "$BRANCH"
           fi
 
-          git add pyproject.toml "readme/changelogs/${VERSION}.md"
+          git add pyproject.toml README.md readme/CHANGES.md "readme/changelogs/${VERSION}.md"
           if git diff --staged --quiet; then
             echo "No release file changes to commit."
           else
