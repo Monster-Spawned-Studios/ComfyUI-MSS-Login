@@ -90,21 +90,26 @@ default-groups = ["production", "documentation"]
 
 [tool.uv.sources]
 torch = [
-	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = "pytorch-cuda-128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
 ]
 torchvision = [
-	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = "pytorch-cuda-128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
 ]
 torchaudio = [
-	{ index = "pytorch-cuda", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+	{ index = "pytorch-cuda-128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
 ]
 
 [[tool.uv.index]]
-name = "pytorch-cuda"
+name = "pytorch-cuda-128"
 url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cuda-130"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [[tool.uv.index]]

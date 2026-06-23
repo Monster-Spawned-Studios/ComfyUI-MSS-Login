@@ -1,5 +1,14 @@
 # --- START OF FILE __init__.py ---
 # Auto-install dependencies before any package imports
+try:
+	from .utils.install_deps import install_dependencies
+
+	install_dependencies()
+except Exception as e:
+	import sys
+
+	print(f"[mss-login] Auto-dependency installation failed: {e}", file=sys.stderr)
+
 from .globals import routes
 from server import PromptServer  # pyright: ignore[reportMissingImports]
 import server  # pyright: ignore[reportMissingImports]

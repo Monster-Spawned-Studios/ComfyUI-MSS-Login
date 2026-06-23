@@ -5,9 +5,7 @@
 from aiohttp import web
 
 # Paths that serve HTML pages loading scripts; add CSP so script-src can be strict (no 'unsafe-inline').
-_CSP_HTML_PATHS = frozenset(
-	{"/login", "/register", "/loading", "/mfa", "/mss-login/generate_token"}
-)
+_CSP_HTML_PATHS = frozenset({"/login", "/register", "/loading", "/mfa"})
 
 # script-src: self + cdnjs (DOMPurify, qrcode). style-src: self + unsafe-inline for existing <style> blocks.
 # connect-src: self + tunnel/subdomain URLs so Cloudflare Tunnel (cloudflared) and same-site requests work
