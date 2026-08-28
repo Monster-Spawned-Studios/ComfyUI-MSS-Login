@@ -1,0 +1,28 @@
+# Add copyright headers to the project
+name: Add copyright headers
+
+on:
+  push:
+    branches: [development, production]
+  pull_request:
+    branches: [development, production]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  add-copyright-headers:
+    name: Add copyright headers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Add copyright headers
+        run: python scripts/add_copyright.py --directory . --copyright-notice docs/COPYRIGHT --recursive --update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
