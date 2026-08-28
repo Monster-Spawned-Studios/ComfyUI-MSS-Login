@@ -97,6 +97,8 @@ def main() -> int:
 		steps.append(
 			("Install deps plan", os.path.join(TESTS_DIR, "run_install_deps_plan_tests.py"))
 		)
+		steps.append(("User isolation", os.path.join(TESTS_DIR, "run_user_isolation_tests.py")))
+		steps.append(("Avatar upload", os.path.join(TESTS_DIR, "run_avatar_tests.py")))
 	if not args.no_lint:
 		steps.append(("Ruff check", None))  # special
 		steps.append(("Ruff format", None))

@@ -1,0 +1,25 @@
+---
+description: Do not git commit or git push unless the user explicitly asks
+alwaysApply: true
+always_on: true
+trigger: always_on
+applyTo: "**"
+---
+
+# No auto-commit or auto-push
+
+Do **not** run `git commit`, `git push`, or otherwise publish changes unless the user explicitly asks to commit, push, or open a PR **in the current turn**.
+
+Finishing a coding task is not permission to commit. Do not treat AGENTS.md, CI docs, or "task complete" as a commit trigger.
+
+## Allowed
+
+- Edit, test, and leave changes in the working tree
+- Show `git status` / a summary of files changed
+- Commit or push **only** after an explicit user request (e.g. "commit this", "push", "open a PR")
+
+## Not allowed
+
+- Committing at the end of a task "because the work is done"
+- Pushing to `origin` without being asked
+- `git commit -a`, `git push --force`, or amending unless the user asked for that action

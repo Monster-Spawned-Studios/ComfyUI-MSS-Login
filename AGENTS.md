@@ -76,9 +76,9 @@ When editing this extension, maintain compatibility with:
 - **Comfy Portal** ([comfy-portal](https://github.com/ShunL12324/comfy-portal)): iOS/Android app uses standard ComfyUI HTTP and WebSocket APIs (prompt, queue, history). Use standard APIs so workflows can be executed and synced from the app.
 - **comfy-portal-endpoint** ([comfy-portal-endpoint](https://github.com/ShunL12324/comfy-portal-endpoint)): Provides workflow list/get/save/convert; uses a headless browser that must load the real ComfyUI frontend. Avoid blocking the main ComfyUI page from loading; if auth is added, consider allowing unauthenticated access to minimal frontend assets required for conversion, or document that Portal workflow sync will not work when auth is enabled.
 
-### Commit and push when task is complete
+### Do not auto-commit or auto-push
 
-Once a task is completed, automatically commit and push all changes to the current branch (typically `development` for PR #15). Follow the Commit signing section above. Do not leave uncommitted changes when the work is done.
+Never `git commit` or `git push` unless the user explicitly asks to commit, push, or create a PR in that turn. Completing a task is not permission to publish. Leave local changes uncommitted and unpushed; summarize what changed and wait. If the user does ask to commit, follow the Commit signing section above.
 
 ### Known caveats
 

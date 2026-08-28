@@ -31,6 +31,8 @@ These run without loading ComfyUI or `folder_paths`, so they work in CI and on m
 | `run_sanitizer_tests.py` | `utils.input_sanitizer` and `utils.validate`: username/password sanitization and validation. |
 | `run_cpe_workflow_tests.py` | Per-user Comfy Portal Endpoint workflow list/get/save helpers (no ComfyUI). |
 | `run_install_deps_plan_tests.py` | PyTorch backend detection (Metal / cu130 / cu128 / CPU). |
+| `run_user_isolation_tests.py` | Per-user output-dir segments, `/prompt` vs `/api/prompt`, queue user stamps. |
+| `run_avatar_tests.py` | Avatar upload sanitization (PNG re-encode, SVG/HTML reject, guest block). |
 
 Examples:
 

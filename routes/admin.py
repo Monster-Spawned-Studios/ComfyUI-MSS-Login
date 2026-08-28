@@ -556,6 +556,13 @@ async def api_update_user_route(request: web.Request) -> web.Response:
 
 	success = patch_user_group(target, groups, is_admin_flag, sfw_check)
 	if success:
+		if sfw_check is not None:
+			try:
+				from ..utils.sfw_intercept.nsfw_guard import clear_sfw_cache
+
+				clear_sfw_cache(target)
+			except Exception:
+				pass
 		return web.json_response({"status": "ok"})
 	return web.Response(status=404)
 

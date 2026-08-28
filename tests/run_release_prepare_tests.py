@@ -36,6 +36,10 @@ def _init_git(repo: Path) -> None:
 	subprocess.run(
 		["git", "config", "user.name", "Test User"], cwd=repo, check=True, capture_output=True
 	)
+	# Host git may have commit.gpgsign=true; temp fixtures must not require a signing key.
+	subprocess.run(
+		["git", "config", "commit.gpgsign", "false"], cwd=repo, check=True, capture_output=True
+	)
 
 
 def _commit_all(repo: Path, message: str) -> None:

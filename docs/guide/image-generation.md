@@ -91,7 +91,7 @@ The `prompt` object is standard ComfyUI workflow JSON (node IDs → class type, 
 1. **JWT middleware** — resolves user from Bearer token, cookie, or query.
 2. **Workflow interceptor** — records the username for NSFW policy in worker threads; runs **model validation** (`validate_prompt_models`). If the workflow references a checkpoint/LoRA/etc. the user cannot use, response is **403** with `MODEL_NOT_ALLOWED`.
 3. **RBAC** — denies if `can_run` is false.
-4. **Queue patch** (when `SEPERATE_USERS=true`) — stamps `user_id` on queue items; filters history/queue per user.
+4. **Queue patch** (when `SEPERATE_USERS=true`) — stamps `user_id` on queue items; filters history/queue per user. When the worker dequeues a job it restores that user so `SaveImage` / `LoadImage` write and read the submitter's output/input folders (required for Comfy Portal `POST /prompt`, which is not `/api/prompt`).
 
 ComfyUI then queues and executes the graph normally.
 
@@ -127,7 +127,16 @@ Authorization: Bearer <token>
 | **403** | NSFW blocked for this user (SFW enforced and image flagged) |
 | **401** | Missing or invalid token |
 
-If `SEPERATE_USERS=true`, outputs are stored under per-user prefixes; use the `filename` / `subfolder` values from **your** history entry.
+If `SEPERATE_USERS=true` (default), non-admin users get isolated directories under the MSS-Login data dir:
+
+- outputs: `<data_dir>/output/<user_id>/`
+- temp: `<data_dir>/temp/<user_id>/`
+- inputs: `<data_dir>/input/<user_id>/`
+- workflows: `<data_dir>/Users/<username>/workflows/` (also used by `/api/cpe/workflow/*`)
+
+Admin/owner accounts use the same folder layout for their own jobs; they can still see everyone's queue/history. Use the `filename` / `subfolder` values from **your** history entry when calling `/view`.
+
+Model **files** stay in the shared ComfyUI `models/` tree unless experimental `model_isolation` is enabled. With isolation off, Portal and the desktop UI can still list and run checkpoints. With isolation on, non-owner users only see/use models explicitly granted in Shared Models.
 
 ## Workflows (save / load)
 

@@ -431,13 +431,37 @@ async def post_login(request: web.Request) -> web.Response:
 	return web.json_response({"error": "Invalid credentials"}, status=401)
 
 
-@routes.get("/logout")
-async def get_logout(request: web.Request) -> web.Response:
+def _end_session(request: web.Request) -> None:
+	"""Revoke the current device JWT (jti) if present. Best-effort."""
+	token = jwt_auth.get_token_from_request(request)
+	if not token or token.count(".") < 2:
+		return
+	try:
+		payload = jwt_auth.decode_access_token(token)
+	except Exception:
+		try:
+			payload = jwt.decode(token, options={"verify_signature": False, "verify_exp": False})
+		except Exception:
+			return
+	jti = payload.get("jti")
+	if not jti:
+		return
+	try:
+		get_session_token_store(SESSION_TOKEN_STORE_CONFIG).revoke_session(jti)
+	except Exception as e:
+		logger.error(f"[auth.py] _end_session: revoke_session: {e}")
+
+
+def _logout_redirect(request: web.Request) -> web.Response:
 	username = None
 	try:
+		_end_session(request)
 		token = jwt_auth.get_token_from_request(request)
 		if token and token.count(".") >= 2:
-			payload = jwt_auth.decode_access_token(token)
+			try:
+				payload = jwt_auth.decode_access_token(token)
+			except Exception:
+				payload = {}
 			username = payload.get("username")
 			if username:
 				ip = get_ip(request)
@@ -450,8 +474,23 @@ async def get_logout(request: web.Request) -> web.Response:
 	except Exception as e:
 		logger.error(f"[auth.py] get_logout: send_notification: {e!s}")
 	resp = web.HTTPFound("/login")
+	_secure = is_https_request(request)
 	resp.del_cookie("jwt_token", path="/")
+	resp.set_cookie(
+		"jwt_token", "", max_age=0, path="/", httponly=True, samesite="Strict", secure=_secure
+	)
 	return resp
+
+
+@routes.get("/logout")
+async def get_logout(request: web.Request) -> web.Response:
+	return _logout_redirect(request)
+
+
+@routes.post("/logout")
+async def post_logout(request: web.Request) -> web.Response:
+	"""Same as GET /logout; used by the in-app profile menu so the JWT is revoked first."""
+	return _logout_redirect(request)
 
 
 def _role_requires_mfa(username: str) -> bool:

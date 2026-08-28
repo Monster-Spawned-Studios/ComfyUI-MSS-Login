@@ -112,6 +112,49 @@ def run_tests():
 		"grant filtering works",
 	)
 
+	print("TestViewAllWhenIsolationOff")
+	_install_fake_constants(enabled=False)
+	policy_off = _load_module(
+		"mss_login.utils.model_visibility_policy_off",
+		os.path.join(_UTILS_DIR, "model_visibility_policy.py"),
+		"mss_login.utils",
+	)
+	ok(
+		policy_off.user_can_view_all_models("user", {"can_view_all_comfyui_items": False}) is True,
+		"isolation off: standard users still see the shared model library",
+	)
+	ok(
+		policy_off.user_can_view_all_models("guest", {}) is True,
+		"isolation off: guests are not locked out of local models",
+	)
+	ok(
+		policy_off.user_can_view_all_models("admin", {}) is True,
+		"isolation off: admin sees all models",
+	)
+
+	print("TestViewAllWhenIsolationOn")
+	_install_fake_constants(enabled=True)
+	policy_on = _load_module(
+		"mss_login.utils.model_visibility_policy_on",
+		os.path.join(_UTILS_DIR, "model_visibility_policy.py"),
+		"mss_login.utils",
+	)
+	ok(
+		policy_on.user_can_view_all_models("owner", {}) is True,
+		"isolation on: owner bypasses grants",
+	)
+	ok(
+		policy_on.user_can_view_all_models("user", {"can_view_all_comfyui_items": True}) is False,
+		"isolation on: standard users require explicit grants",
+	)
+	ok(
+		policy_on.user_can_view_all_models(
+			"admin", {"can_view_all_comfyui_items": True, "can_manage_model_sharing": True}
+		)
+		is True,
+		"isolation on: admin with both flags bypasses grants",
+	)
+
 	print("TestModelIsolationPaths")
 	_install_fake_constants(enabled=True)
 	paths = _load_module(

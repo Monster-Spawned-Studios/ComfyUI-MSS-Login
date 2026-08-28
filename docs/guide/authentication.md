@@ -59,7 +59,7 @@ For mobile, **always use the Bearer header** on REST. For WebSocket, append `?to
 | Endpoint | Purpose |
 |----------|---------|
 | `POST /login` | Username/password → `jwt_token` cookie or JSON |
-| `GET /logout` | End session |
+| `GET`/`POST` `/logout` | End session: revoke the current JWT `jti`, clear the `jwt_token` cookie, redirect to login |
 | `POST /register` | New user. Public **only** for the first admin (empty user database). After that, an authenticated admin session is required (Settings → MSS-Login → Register a New User). |
 
 Public paths (no token required) include `/login`, `/mfa`, `/mss-login/*` static pages, and assets. `/register` is public only until the first admin exists. **Not** public: `/prompt`, `/queue`, `/history`, `/view`, `/object_info`, `/ws`, `/api/cpe/*`.
