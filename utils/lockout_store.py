@@ -467,8 +467,7 @@ class _MySQLLockoutStore:
 			)
 			if device_id:
 				cur.execute(
-					f"INSERT IGNORE INTO {TABLE_DEVICES} (device_id) VALUES (%s)",
-					(device_id,),
+					f"INSERT IGNORE INTO {TABLE_DEVICES} (device_id) VALUES (%s)", (device_id,)
 				)
 			self._conn.commit()
 			cur.close()
@@ -478,9 +477,7 @@ class _MySQLLockoutStore:
 	def add_whitelist_entry(self, entry: str) -> None:
 		try:
 			cur = self._conn.cursor()
-			cur.execute(
-				f"INSERT IGNORE INTO {TABLE_WHITELIST} (`entry`) VALUES (%s)", (entry,)
-			)
+			cur.execute(f"INSERT IGNORE INTO {TABLE_WHITELIST} (`entry`) VALUES (%s)", (entry,))
 			self._conn.commit()
 			cur.close()
 		except Exception:
@@ -533,8 +530,7 @@ class _MySQLLockoutStore:
 				entry = (entry or "").strip()
 				if entry:
 					cur.execute(
-						f"INSERT IGNORE INTO {TABLE_WHITELIST} (`entry`) VALUES (%s)",
-						(entry,),
+						f"INSERT IGNORE INTO {TABLE_WHITELIST} (`entry`) VALUES (%s)", (entry,)
 					)
 			self._conn.commit()
 			cur.close()
@@ -549,8 +545,7 @@ class _MySQLLockoutStore:
 				ip = (ip or "").strip()
 				if ip:
 					cur.execute(
-						f"INSERT INTO {TABLE_IP} (ip, expires_at) VALUES (%s, %s)",
-						(ip, expires_at),
+						f"INSERT INTO {TABLE_IP} (ip, expires_at) VALUES (%s, %s)", (ip, expires_at)
 					)
 			self._conn.commit()
 			cur.close()

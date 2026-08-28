@@ -50,9 +50,12 @@ async def download_civitai_async(
 	try:
 		headers = {"Authorization": f"Bearer {token}"} if token else {}
 		timeout = aiohttp.ClientTimeout(total=None, sock_read=300)
-		async with aiohttp.ClientSession(timeout=timeout) as session, session.get(
-			url, params=params or None, headers=headers or None, allow_redirects=True
-		) as resp:
+		async with (
+			aiohttp.ClientSession(timeout=timeout) as session,
+			session.get(
+				url, params=params or None, headers=headers or None, allow_redirects=True
+			) as resp,
+		):
 			if resp.status != 200:
 				return False, f"CivitAI returned {resp.status}"
 			content_disp = resp.headers.get("Content-Disposition")
@@ -90,9 +93,7 @@ async def download_civitai_async(
 				if os.path.abspath(common) != os.path.abspath(dest_resolved):
 					return False, "Path traversal prevented"
 			out.parent.mkdir(parents=True, exist_ok=True)
-			raw_len = getattr(resp, "content_length", None) or resp.headers.get(
-				"Content-Length"
-			)
+			raw_len = getattr(resp, "content_length", None) or resp.headers.get("Content-Length")
 			total_bytes = None
 			if raw_len is not None:
 				try:

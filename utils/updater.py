@@ -102,9 +102,10 @@ async def check_for_update(
 	try:
 		import aiohttp
 
-		async with aiohttp.ClientSession() as session, session.get(
-			check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)
-		) as resp:
+		async with (
+			aiohttp.ClientSession() as session,
+			session.get(check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)) as resp,
+		):
 			if resp.status != 200:
 				return False, ""
 			body = await resp.text()
@@ -174,9 +175,10 @@ async def check_for_update_branch(
 	try:
 		import aiohttp
 
-		async with aiohttp.ClientSession() as session, session.get(
-			check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)
-		) as resp:
+		async with (
+			aiohttp.ClientSession() as session,
+			session.get(check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)) as resp,
+		):
 			if resp.status != 200:
 				return False, ""
 			body = await resp.text()
@@ -242,9 +244,10 @@ async def _fetch_changelog_markdown(
 	try:
 		import aiohttp
 
-		async with aiohttp.ClientSession() as session, session.get(
-			raw_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)
-		) as resp:
+		async with (
+			aiohttp.ClientSession() as session,
+			session.get(raw_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)) as resp,
+		):
 			if resp.status == 200:
 				body = await resp.text()
 				if body and body.strip():

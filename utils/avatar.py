@@ -72,7 +72,7 @@ def _looks_like_svg_or_html(data: bytes) -> bool:
 	)
 
 
-def process_avatar_bytes(data: bytes) -> tuple[Optional[bytes], Optional[str]]:
+def process_avatar_bytes(data: bytes) -> tuple[bytes | None, str | None]:
 	"""Validate and re-encode an upload. Returns (png_bytes, error_message)."""
 	if not data or not isinstance(data, bytes):
 		return None, "No image data"
@@ -90,9 +90,7 @@ def process_avatar_bytes(data: bytes) -> tuple[Optional[bytes], Optional[str]]:
 			fmt = (img.format or "").upper()
 			if fmt not in ALLOWED_FORMATS:
 				return None, "Unsupported image type"
-			if img.mode not in ALLOWED_MODES:
-				img = img.convert("RGBA")
-			elif img.mode in ("P", "LA", "L"):
+			if img.mode not in ALLOWED_MODES or img.mode in ("P", "LA", "L"):
 				img = img.convert("RGBA")
 			elif img.mode != "RGBA":
 				img = img.convert("RGB")

@@ -137,9 +137,7 @@ class _MySQLAppSettingsStore:
 		cur.close()
 
 
-_store: _SqliteAppSettingsStore | _PostgresAppSettingsStore | _MySQLAppSettingsStore | None = (
-	None
-)
+_store: _SqliteAppSettingsStore | _PostgresAppSettingsStore | _MySQLAppSettingsStore | None = None
 
 
 def get_app_settings_store(config: dict):

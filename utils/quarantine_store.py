@@ -118,9 +118,7 @@ def quarantine_image_file(
 	record_id = hashlib.sha1(
 		f"{dest_path}|{quarantined_at}|{username}|{workflow_name}".encode()
 	).hexdigest()
-	delete_after_ts = int(datetime.now(UTC).timestamp()) + (
-		max(1, int(retention_days)) * 86400
-	)
+	delete_after_ts = int(datetime.now(UTC).timestamp()) + (max(1, int(retention_days)) * 86400)
 	record = {
 		"id": record_id,
 		"file_name": base_name,

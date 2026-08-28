@@ -220,10 +220,7 @@ def _validate_ntfy_base_url(url: str) -> str:
 
 
 def save_ntfy_config(
-	topic: str,
-	enabled_events: list[str],
-	base_url: str | None = None,
-	api_token: str | None = None,
+	topic: str, enabled_events: list[str], base_url: str | None = None, api_token: str | None = None
 ) -> None:
 	"""
 	Persist ntfy config to config.json.
@@ -779,9 +776,7 @@ def notify_user_created(
 	)
 
 
-def notify_user_deleted(
-	username: str, deleted_by: str, **kwargs
-) -> NotificationResult | bool:
+def notify_user_deleted(username: str, deleted_by: str, **kwargs) -> NotificationResult | bool:
 	"""Notify that a user was deleted."""
 	return send_notification(
 		"user_deleted",
