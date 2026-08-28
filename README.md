@@ -667,9 +667,11 @@ Per-version notes live under [`readme/changelogs/`](./readme/changelogs/).
 The [**Create Release**](.github/workflows/create-release.yml) workflow prepares each publish:
 
 1. Resolves the version (manual input, auto patch bump from the latest tag, or `release/X.Y.Z` branch name).
-2. Runs [`scripts/release_prepare.py`](./scripts/release_prepare.py) to sync [`pyproject.toml`](./pyproject.toml) and create `readme/changelogs/X.Y.Z.md` when missing.
+2. Runs [`scripts/release_prepare.py`](./scripts/release_prepare.py) to sync [`pyproject.toml`](./pyproject.toml), [`README.md`](./README.md), [`uv.lock`](./uv.lock), the login page (`web/html/login.html`), [`readme/CHANGES.md`](./readme/CHANGES.md), and `readme/changelogs/X.Y.Z.md` when missing.
 3. Builds bullets from `git log` since the previous semver tag (plus optional workflow inputs).
-4. Commits to `release/X.Y.Z`, creates the GitHub release, and triggers [**Publish to ComfyUI registry**](.github/workflows/publish.yml).
+4. Commits those version fields to `release/X.Y.Z` and copies the same files onto `production` and `development`.
+5. Stages the node files, runs [`scripts/add_copyright.py`](./scripts/add_copyright.py) on that tree, then compresses the copyright-stamped files into the release zip.
+6. Creates the GitHub release and triggers [**Publish to ComfyUI registry**](.github/workflows/publish.yml).
 
 Optional **workflow_dispatch** inputs: `changelog_title`, `changelog_notes`. You do not need to pre-create changelog files; if one already exists for that version, CI leaves it unchanged.
 
