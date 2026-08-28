@@ -9,108 +9,110 @@ except Exception as e:
 
 	print(f"[mss-login] Auto-dependency installation failed: {e}", file=sys.stderr)
 
-from .globals import routes
-from server import PromptServer  # pyright: ignore[reportMissingImports]
-import server  # pyright: ignore[reportMissingImports]
 import asyncio
-from .utils.updater import (
-	get_cached_status,
-	perform_recovery_update,
-	run_update_check,
-	update_check_loop,
+import json
+import os
+import sys
+from datetime import UTC, datetime, timezone
+
+import folder_paths  # pyright: ignore[reportMissingImports]
+import server  # pyright: ignore[reportMissingImports]
+from aiohttp import web
+from server import PromptServer  # pyright: ignore[reportMissingImports]
+
+from .constants import (
+	CLOUDFLARE_PROXY,
+	CLOUDFLARED_LOCAL_BYPASS,
+	CONFIG_FILE_PATH,
+	CURRENT_DIR,
+	DATA_DIR,
+	EXPERIMENTAL_FAILSAFE_ENABLED,
+	EXPERIMENTAL_FAILSAFE_ESCALATE,
+	EXPERIMENTAL_FEATURES,
+	FORCE_HTTPS,
+	LOCAL_NETWORK_CIDRS,
+	MATCH_HEADERS,
+	REQUIRE_AUTH_FOR_REMOTE_API,
+	S3_MOUNT_CONFIG,
+	S3_STORAGE_CONFIG,
+	S3_WORKFLOW_SYNC_CONFIG,
+	SEPERATE_USERS,
+	USERS_DB_CONFIG,
+	apply_experimental_safety_reset,
+	clear_host_base_url_cache,
+	experimental_model_isolation_enabled,
 )
+from .globals import (
+	access_control,
+	app,
+	current_username_var,
+	instance,
+	ip_filter,
+	jwt_auth,
+	logger,
+	routes,
+	sanitizer,
+	timeout,
+	users_db,
+)
+from .nodes import NODE_CLASS_MAPPINGS
+from .routes import (
+	admin,
+	auth,
+	cpe,
+	debug,
+	me,
+	mfa,
+	model_download,
+	news,
+	recovery,
+	static,
+	user,
+	workflow_routes,
+)
+from .utils import watcher
+from .utils.api_browser_redirect import create_api_browser_redirect_middleware
+from .utils.bootstrap import ensure_groups_config
+from .utils.csp import create_csp_middleware
 from .utils.json_utils import load_json_file
 from .utils.model_cache import get_model_cache
-from .utils.prompt_model_validator import validate_prompt_models
-from .utils.shared_items_store import get_shared_items_store
-from .utils.path_safety import is_safe_filename, resolve_path_under
-from .utils.csp import create_csp_middleware
-from .utils.model_filter_middleware import create_model_filter_middleware
 from .utils.model_download_redirect import (
 	initialize_redirect_pattern_cache,
 	is_civicomfy_present,
 	rewrite_download_payload_for_user,
 	should_try_model_download_redirect,
 )
+from .utils.model_filter_middleware import create_model_filter_middleware
 from .utils.model_isolation import isolation_models_base
 from .utils.model_visibility_policy import (
 	allowed_set_from_grants,
 	get_effective_model_grants_for_user,
 	user_can_view_all_models,
 )
+from .utils.ntfy_notifier import notify_experimental_recovery
+from .utils.path_safety import is_safe_filename, resolve_path_under
+from .utils.prompt_model_validator import validate_prompt_models
+from .utils.quarantine_store import quarantine_cleanup_loop
 from .utils.remote_api_guard import create_remote_api_guard_middleware
-from .utils.api_browser_redirect import create_api_browser_redirect_middleware
 from .utils.sfw_intercept.node_interceptor import install_node_interceptor
 from .utils.sfw_intercept.nsfw_guard import (
-	should_block_image_for_current_user,
 	set_latest_prompt_user,
+	should_block_image_for_current_user,
 )
 from .utils.sfw_intercept.reactor_sfw_intercept import _load_reactor_module
-from .routes import (
-	static,
-	auth,
-	admin,
-	user,
-	workflow_routes,
-	cpe,
-	me,
-	mfa,
-	recovery,
-	debug,
-	model_download,
-	news,
-)
-from .utils.bootstrap import ensure_groups_config
-from .utils import watcher
-from .globals import (
-	app,
-	ip_filter,
-	sanitizer,
-	timeout,
-	jwt_auth,
-	access_control,
-	instance,
-	current_username_var,
-	logger,
-	users_db,
-)
-from .constants import (
-	FORCE_HTTPS,
-	CLOUDFLARE_PROXY,
-	CLOUDFLARED_LOCAL_BYPASS,
-	SEPERATE_USERS,
-	MATCH_HEADERS,
-	REQUIRE_AUTH_FOR_REMOTE_API,
-	LOCAL_NETWORK_CIDRS,
-	USERS_DB_CONFIG,
-	CONFIG_FILE_PATH,
-	EXPERIMENTAL_FEATURES,
-	S3_STORAGE_CONFIG,
-	S3_MOUNT_CONFIG,
-	S3_WORKFLOW_SYNC_CONFIG,
-	DATA_DIR,
-	CURRENT_DIR,
-	EXPERIMENTAL_FAILSAFE_ENABLED,
-	EXPERIMENTAL_FAILSAFE_ESCALATE,
-	apply_experimental_safety_reset,
-	clear_host_base_url_cache,
-	experimental_model_isolation_enabled,
-)
-from .nodes import NODE_CLASS_MAPPINGS
-import folder_paths  # pyright: ignore[reportMissingImports]
-from aiohttp import web
-import json
-import os
-import sys
-from datetime import datetime, timezone
-from .utils.ntfy_notifier import notify_experimental_recovery
-from .utils.quarantine_store import quarantine_cleanup_loop
+from .utils.shared_items_store import get_shared_items_store
 from .utils.trash_store import trash_cleanup_loop, trash_deleted_history_images
+from .utils.updater import (
+	get_cached_status,
+	perform_recovery_update,
+	run_update_check,
+	update_check_loop,
+)
 
 # Dependency auto-install runs once from constants.py (AUTO_INSTALL_DEPS), not here.
 
 if EXPERIMENTAL_FEATURES:
-	from .routes import s3 as _s3_routes  # noqa: F401
+	from .routes import s3 as _s3_routes
 
 
 WEB_DIRECTORY = "web"
@@ -537,7 +539,7 @@ def _handle_experimental_critical_failure(reason: str) -> None:
 				reason=reason,
 				recovery_action=action,
 				failure_count=failure_count,
-				occurred_at=datetime.now(timezone.utc).isoformat(),
+				occurred_at=datetime.now(UTC).isoformat(),
 				details=details,
 			)
 		except Exception as _ntfy_exc:
@@ -569,8 +571,8 @@ def _handle_experimental_critical_failure(reason: str) -> None:
 _s3_runtime = None
 if EXPERIMENTAL_FEATURES:
 	try:
-		from .utils.s3_mounter import init_s3_manager
 		from .globals import users_db as _users_db_for_sync
+		from .utils.s3_mounter import init_s3_manager
 
 		_s3_runtime = init_s3_manager(DATA_DIR, users_db=_users_db_for_sync)
 		if _s3_runtime.mount_or_sync():

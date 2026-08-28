@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import jwt
 from aiohttp import web
@@ -47,7 +47,7 @@ class JWTAuth:
 		try:
 			query = request.rel_url.query
 			for key in ("token", "access_token"):
-				if key in query and query[key]:
+				if query.get(key):
 					return (query[key] or "").strip()
 		except Exception:
 			pass
@@ -64,7 +64,7 @@ class JWTAuth:
 		else:
 			if not expire_minutes:
 				expire_minutes = self.expire_minutes
-			expire = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
+			expire = datetime.now(UTC) + timedelta(minutes=expire_minutes)
 			to_encode["exp"] = expire
 		return jwt.encode(to_encode, self.__secret_key, algorithm=self.algorithm)
 

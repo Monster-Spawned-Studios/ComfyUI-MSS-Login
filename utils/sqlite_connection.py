@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-_sqlcipher_available: Optional[bool] = None
+_sqlcipher_available: bool | None = None
 
 
 def _check_sqlcipher() -> bool:

@@ -8,7 +8,8 @@ count as auth; if not provided, any present token is treated as valid.
 """
 
 import ipaddress
-from typing import Callable, Optional
+from collections.abc import Callable
+from typing import Optional
 
 from aiohttp import web
 
@@ -102,7 +103,7 @@ def _is_cloudflared_local_request(request: web.Request, client_ip: str, local_ci
 def create_remote_api_guard_middleware(
 	require_auth_for_remote_api: bool = True,
 	local_network_cidrs: list = None,
-	token_validator: Optional[Callable[[web.Request], bool]] = None,
+	token_validator: Callable[[web.Request], bool] | None = None,
 	cloudflare_proxy: bool = False,
 	cloudflared_local_bypass: bool = False,
 ):

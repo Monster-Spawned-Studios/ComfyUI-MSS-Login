@@ -12,12 +12,12 @@ from ..constants import (
 	GROUPS_CONFIG_FILE,
 	USERS_DB_CONFIG,
 	get_domain,
-	get_experimental_flags,
 	get_experimental_failsafe_settings,
+	get_experimental_flags,
 	reload_allow_guest_jwt,
 	reload_api_token_store_config,
-	reload_experimental_features,
 	reload_experimental_failsafe,
+	reload_experimental_features,
 	reload_users_db_config,
 	save_experimental_failsafe_settings,
 )
@@ -27,6 +27,12 @@ from ..utils.api_token_store import reset_api_token_store
 from ..utils.bootstrap import _apply_owner_max_merge, load_default_groups
 from ..utils.json_utils import load_json_file, save_json_file
 from ..utils.model_cache import get_model_cache
+from ..utils.model_download_redirect import (
+	get_configured_route_patterns,
+	get_effective_route_patterns,
+	save_configured_route_patterns,
+)
+from ..utils.model_visibility_policy import user_can_manage_model_sharing
 from ..utils.ntfy_notifier import (
 	EVENT_KEYS,
 	get_ntfy_config,
@@ -45,12 +51,6 @@ from ..utils.shared_items_store import get_shared_items_store
 from ..utils.updater import get_cached_status
 from ..utils.user_console_log import get_lines as get_user_console_lines
 from ..utils.user_console_log import list_users as list_console_users
-from ..utils.model_download_redirect import (
-	get_configured_route_patterns,
-	get_effective_route_patterns,
-	save_configured_route_patterns,
-)
-from ..utils.model_visibility_policy import user_can_manage_model_sharing
 
 
 def is_admin(request):
@@ -253,7 +253,9 @@ def _resolve_ntfy_quarantine_source_path(raw_path: str) -> str | None:
 		return None
 	try:
 		import os
+
 		import folder_paths  # type: ignore[import-untyped]
+
 		from ..utils.data_dir import get_data_subdir
 
 		candidate = os.path.realpath(raw_path)
@@ -647,7 +649,7 @@ async def api_put_users_db_config(request):
 			{"status": "ok", "message": "Restart required for new backend to take effect."}
 		)
 	except Exception as e:
-		logger.error(f"[admin.py] api_put_users_db_config: {str(e)}")
+		logger.error(f"[admin.py] api_put_users_db_config: {e!s}")
 		return web.json_response({"error": "Internal server error"}, status=500)
 
 

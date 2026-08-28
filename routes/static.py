@@ -1,8 +1,10 @@
 # --- START OF FILE routes/static.py ---
 import os
+
 from aiohttp import web
+
+from ..constants import ASSETS_DIR, CSS_DIR, HTML_DIR, JS_DIR
 from ..globals import routes
-from ..constants import CSS_DIR, JS_DIR, ASSETS_DIR, HTML_DIR
 
 # Subfolder under assets for background music; only these extensions are listed.
 BG_MUSIC_SUBDIR = "bgMusic"

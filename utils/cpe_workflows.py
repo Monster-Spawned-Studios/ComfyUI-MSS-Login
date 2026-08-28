@@ -12,7 +12,8 @@ from __future__ import annotations
 import json
 import os
 import time
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from .path_safety import is_safe_relative_path, path_under, resolve_path_under
 

@@ -1,15 +1,16 @@
 # --- START OF FILE routes/workflow_routes.py ---
-import os
-import json
-import time
 import asyncio
+import json
+import os
+import time
+
+import folder_paths
 from aiohttp import web
 
-from ..globals import jwt_auth, current_username_var, users_db
+from ..globals import current_username_var, jwt_auth, users_db
 from ..utils import user_env
 from ..utils.path_safety import is_safe_filename, resolve_path_under
 from ..utils.sfw_intercept.nsfw_guard import should_block_image_for_current_user
-import folder_paths
 
 
 def _sanitize_view_subfolder(subfolder: str | None) -> str | None:
@@ -81,8 +82,8 @@ def get_current_user(request):
 	if not token:
 		return "guest"
 	try:
-		from ..utils.api_token_store import get_api_token_store
 		from ..constants import API_TOKEN_STORE_CONFIG
+		from ..utils.api_token_store import get_api_token_store
 
 		api_store = get_api_token_store(API_TOKEN_STORE_CONFIG)
 		api_user = api_store.get_user_for_token(token)
@@ -483,8 +484,7 @@ async def middleware_dispatch(request):
 	if "userdata/workflows" in path:
 		parts = path.split("/workflows")
 		suffix = parts[1] if len(parts) > 1 else ""
-		if suffix.startswith("/"):
-			suffix = suffix[1:]
+		suffix = suffix.removeprefix("/")
 
 		if method == "GET":
 			if suffix:

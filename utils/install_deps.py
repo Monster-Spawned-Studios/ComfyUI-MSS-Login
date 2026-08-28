@@ -78,7 +78,7 @@ def detect_cuda_major() -> int | None:
 
 def detect_torch_install_plan(
 	*, system: str | None = None, cuda_major: int | None = None, env: dict[str, str] | None = None
-) -> dict[str, Optional[str]]:
+) -> dict[str, str | None]:
 	"""Choose the PyTorch backend for this host.
 
 	Preference order:
@@ -176,7 +176,7 @@ def _log(message: str, *, error: bool = False) -> None:
 		print(message, file=stream)
 
 
-def _platform_requirements_rel() -> Optional[tuple[str, Optional[str]]]:
+def _platform_requirements_rel() -> tuple[str, str | None] | None:
 	"""Return (requirements file relative to extension root, extra_index_url) or None.
 
 	extra_index_url is the PyTorch wheel index for CUDA/CPU hosts, or None for
@@ -196,7 +196,7 @@ def _platform_requirements_rel() -> Optional[tuple[str, Optional[str]]]:
 
 
 def _run_subprocess(
-	argv: list[str], *, cwd: str, env: Optional[dict[str, str]] = None, timeout: int, label: str
+	argv: list[str], *, cwd: str, env: dict[str, str] | None = None, timeout: int, label: str
 ) -> bool:
 	try:
 		merged_env = os.environ.copy()
@@ -242,7 +242,7 @@ def _run_pip(args: list[str], *, cwd: str, timeout: int = _PIP_TIMEOUT_SECONDS) 
 	return _run_subprocess(argv, cwd=cwd, timeout=timeout, label="pip install")
 
 
-def _install_with_uv(root: str, req_rel: Optional[tuple[str, Optional[str]]]) -> bool:
+def _install_with_uv(root: str, req_rel: tuple[str, str | None] | None) -> bool:
 	# Platform requirements (torch, etc.) first — avoids building this repo as a wheel.
 	if req_rel is not None:
 		req_file, extra_index_url = req_rel
@@ -267,7 +267,7 @@ def _install_with_uv(root: str, req_rel: Optional[tuple[str, Optional[str]]]) ->
 	return False
 
 
-def _install_with_pip(root: str, req_rel: Optional[tuple[str, Optional[str]]]) -> bool:
+def _install_with_pip(root: str, req_rel: tuple[str, str | None] | None) -> bool:
 	pyproject = join(root, "pyproject.toml")
 	plan = detect_torch_install_plan()
 	if os.path.isfile(pyproject):

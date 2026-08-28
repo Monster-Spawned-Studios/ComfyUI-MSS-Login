@@ -13,8 +13,8 @@ Permission logic:
 
 import os
 
-from aiohttp import web
 import folder_paths  # pyright: ignore[reportMissingImports]
+from aiohttp import web
 
 from .model_visibility_policy import (
 	filter_items_by_grants,
@@ -24,7 +24,6 @@ from .model_visibility_policy import (
 	user_can_view_all_models,
 )
 from .path_safety import is_safe_folder_segment
-
 
 # Folder names we treat as "asset" lists (models, loras, vae, embeddings, etc.)
 # Includes ComfyUI Model Library folders: ultralytics, mmdets, sams, classifiers, configs.

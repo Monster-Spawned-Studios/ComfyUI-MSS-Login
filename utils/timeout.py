@@ -1,6 +1,7 @@
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Optional
+
 from aiohttp import web
-from datetime import datetime, timezone, timedelta
 
 from .ip_filter import IPFilter, get_ip
 
@@ -39,7 +40,7 @@ class Timeout:
 			timeout_duration = 60
 
 		if timeout_duration > 0:
-			self._timeout_end_time_ip[ip] = datetime.now(timezone.utc) + timedelta(
+			self._timeout_end_time_ip[ip] = datetime.now(UTC) + timedelta(
 				seconds=timeout_duration
 			)
 
@@ -48,7 +49,7 @@ class Timeout:
 		self._failed_attempts_ip.pop(ip, None)
 		self._timeout_end_time_ip.pop(ip, None)
 
-	def get_timeout_end_time(self, ip: str) -> Optional[datetime]:
+	def get_timeout_end_time(self, ip: str) -> datetime | None:
 		"""Get the timeout end time for a given IP."""
 		return self._timeout_end_time_ip.get(ip)
 
@@ -56,9 +57,9 @@ class Timeout:
 		"""Check if a given IP is currently timed out."""
 		timeout_end_time = self.get_timeout_end_time(ip)
 
-		if timeout_end_time and datetime.now(timezone.utc) < timeout_end_time:
+		if timeout_end_time and datetime.now(UTC) < timeout_end_time:
 			remaining_seconds = round(
-				(timeout_end_time - datetime.now(timezone.utc)).total_seconds()
+				(timeout_end_time - datetime.now(UTC)).total_seconds()
 			)
 			return True, self.get_failed_attempts(ip), remaining_seconds
 

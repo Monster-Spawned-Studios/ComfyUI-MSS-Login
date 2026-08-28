@@ -1,13 +1,15 @@
 # --- START OF FILE routes/user.py ---
+import os
+import shutil
+
+import folder_paths
 from aiohttp import web
+
 from ..constants import EXPERIMENTAL_FEATURES, get_experimental_flags
-from ..globals import routes, jwt_auth, users_db
+from ..globals import jwt_auth, routes, users_db
 from ..utils import user_env
 from ..utils.path_safety import is_safe_filename, resolve_path_under
 from ..utils.trash_store import empty_trash, list_trash_items, restore_trash_item
-import folder_paths
-import os
-import shutil
 
 # Root of ComfyUI
 COMFY_ROOT = folder_paths.base_path
@@ -103,7 +105,7 @@ async def api_me(request: web.Request) -> web.Response:
 	# Capture host base URL from first admin/owner connection when not set by env or DB
 	if username and (is_admin or "owner" in groups):
 		try:
-			from ..constants import clear_host_base_url_cache, USERS_DB_CONFIG, _is_safe_base_url
+			from ..constants import USERS_DB_CONFIG, _is_safe_base_url, clear_host_base_url_cache
 			from ..utils.app_settings_store import get_app_settings_store
 
 			if not (os.getenv("HOST_BASE_URL") or "").strip():

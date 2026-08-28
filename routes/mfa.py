@@ -1,20 +1,23 @@
 # --- START OF FILE routes/mfa.py ---
 """MFA: setup, verify-setup, verify (login second step)."""
 
+from datetime import UTC
+
 from aiohttp import web
-from ..globals import routes, users_db, jwt_auth, access_control
+
 from ..constants import (
 	MFA_DISABLED,
 	SESSION_TOKEN_STORE_CONFIG,
 	experimental_loading_screen_enabled,
 	experimental_mfa_enabled,
 )
-from ..utils.session_token_store import get_session_token_store
-from ..utils.user_console_log import append as user_console_append
+from ..globals import access_control, jwt_auth, routes, users_db
+from ..utils.ip_filter import get_ip, is_https_request
 from ..utils.mfa_temp_store import consume_mfa_temp_token, get_username_for_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
-from ..utils.ip_filter import get_ip, is_https_request
 from ..utils.request_navigation import is_browser_navigation
+from ..utils.session_token_store import get_session_token_store
+from ..utils.user_console_log import append as user_console_append
 
 
 async def _get_request_data(request: web.Request) -> dict:
@@ -127,9 +130,10 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
 		)
 	if MFA_DISABLED:
 		return web.json_response({"error": "MFA is disabled."}, status=403)
-	from ..globals import logger
-	from ..constants import DEBUG_MODE
 	from datetime import datetime, timezone
+
+	from ..constants import DEBUG_MODE
+	from ..globals import logger
 
 	data = await _get_request_data(request)
 	mfa_temp = (data.get("mfa_temp_token") or "").strip()
@@ -164,7 +168,7 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
 		payload = jwt_auth.decode_access_token(token)
 		jti = payload.get("jti")
 		exp = payload.get("exp")
-		exp_at_iso = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat() if exp else None
+		exp_at_iso = datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
 		if jti:
 			get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
 				jti, user_id, username, exp_at_iso

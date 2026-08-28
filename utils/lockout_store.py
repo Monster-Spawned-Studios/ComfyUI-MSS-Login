@@ -5,9 +5,9 @@ Tables: ip_blacklist (ip TEXT PRIMARY KEY, expires_at INTEGER NULL), ip_whitelis
 expires_at is Unix timestamp; NULL = permanent ban (permaban).
 """
 
+import time
 from pathlib import Path
 from typing import Optional
-import time
 
 TABLE_IP = "ip_blacklist"
 TABLE_WHITELIST = "ip_whitelist"
@@ -162,7 +162,7 @@ class _SqliteLockoutStore:
 		).fetchall()
 		return {r[0] for r in rows}
 
-	def get_blacklist_with_expiry(self) -> list[tuple[str, Optional[int]]]:
+	def get_blacklist_with_expiry(self) -> list[tuple[str, int | None]]:
 		"""Return list of (ip, expires_at_ts or None for permanent)."""
 		rows = self._conn.execute(f"SELECT ip, expires_at FROM {TABLE_IP}").fetchall()
 		return [(r[0], r[1]) for r in rows]
@@ -172,7 +172,7 @@ class _SqliteLockoutStore:
 		return {r[0] for r in rows}
 
 	def add_lockout(
-		self, ip: str, device_id: Optional[str] = None, expiry_hours: Optional[float] = None
+		self, ip: str, device_id: str | None = None, expiry_hours: float | None = None
 	) -> None:
 		expires_at = None
 		if expiry_hours is not None and expiry_hours >= 0:
@@ -204,7 +204,7 @@ class _SqliteLockoutStore:
 		self._conn.commit()
 		return cur.rowcount > 0
 
-	def add_blacklist_entry(self, ip: str, expires_at: Optional[int] = None) -> None:
+	def add_blacklist_entry(self, ip: str, expires_at: int | None = None) -> None:
 		try:
 			self._conn.execute(
 				f"INSERT OR REPLACE INTO {TABLE_IP} (ip, expires_at) VALUES (?, ?)",
@@ -240,7 +240,7 @@ class _SqliteLockoutStore:
 		except Exception:
 			self._conn.rollback()
 
-	def set_blacklist(self, entries: list[tuple[str, Optional[int]]]) -> None:
+	def set_blacklist(self, entries: list[tuple[str, int | None]]) -> None:
 		"""Replace blacklist with list of (ip, expires_at_ts or None)."""
 		try:
 			self._conn.execute(f"DELETE FROM {TABLE_IP}")
@@ -277,7 +277,7 @@ class _PostgresLockoutStore:
 		cur.close()
 		return out
 
-	def get_blacklist_with_expiry(self) -> list[tuple[str, Optional[int]]]:
+	def get_blacklist_with_expiry(self) -> list[tuple[str, int | None]]:
 		cur = self._conn.cursor()
 		cur.execute(f"SELECT ip, expires_at FROM {TABLE_IP}")
 		rows = cur.fetchall()
@@ -296,7 +296,7 @@ class _PostgresLockoutStore:
 		return out
 
 	def add_lockout(
-		self, ip: str, device_id: Optional[str] = None, expiry_hours: Optional[float] = None
+		self, ip: str, device_id: str | None = None, expiry_hours: float | None = None
 	) -> None:
 		try:
 			cur = self._conn.cursor()
@@ -341,7 +341,7 @@ class _PostgresLockoutStore:
 		cur.close()
 		return n > 0
 
-	def add_blacklist_entry(self, ip: str, expires_at: Optional[int] = None) -> None:
+	def add_blacklist_entry(self, ip: str, expires_at: int | None = None) -> None:
 		try:
 			cur = self._conn.cursor()
 			if expires_at is not None:
@@ -394,7 +394,7 @@ class _PostgresLockoutStore:
 		except Exception:
 			self._conn.rollback()
 
-	def set_blacklist(self, entries: list[tuple[str, Optional[int]]]) -> None:
+	def set_blacklist(self, entries: list[tuple[str, int | None]]) -> None:
 		try:
 			cur = self._conn.cursor()
 			cur.execute(f"DELETE FROM {TABLE_IP}")
@@ -437,7 +437,7 @@ class _MySQLLockoutStore:
 		cur.close()
 		return out
 
-	def get_blacklist_with_expiry(self) -> list[tuple[str, Optional[int]]]:
+	def get_blacklist_with_expiry(self) -> list[tuple[str, int | None]]:
 		cur = self._conn.cursor()
 		cur.execute(f"SELECT ip, expires_at FROM {TABLE_IP}")
 		rows = cur.fetchall()
@@ -452,7 +452,7 @@ class _MySQLLockoutStore:
 		return out
 
 	def add_lockout(
-		self, ip: str, device_id: Optional[str] = None, expiry_hours: Optional[float] = None
+		self, ip: str, device_id: str | None = None, expiry_hours: float | None = None
 	) -> None:
 		try:
 			cur = self._conn.cursor()
@@ -462,14 +462,12 @@ class _MySQLLockoutStore:
 				else None
 			)
 			cur.execute(
-				"INSERT INTO {} (ip, expires_at) VALUES (%s, %s) ON DUPLICATE KEY UPDATE expires_at = VALUES(expires_at)".format(
-					TABLE_IP
-				),
+				f"INSERT INTO {TABLE_IP} (ip, expires_at) VALUES (%s, %s) ON DUPLICATE KEY UPDATE expires_at = VALUES(expires_at)",
 				(ip, exp_val),
 			)
 			if device_id:
 				cur.execute(
-					"INSERT IGNORE INTO {} (device_id) VALUES (%s)".format(TABLE_DEVICES),
+					f"INSERT IGNORE INTO {TABLE_DEVICES} (device_id) VALUES (%s)",
 					(device_id,),
 				)
 			self._conn.commit()
@@ -481,7 +479,7 @@ class _MySQLLockoutStore:
 		try:
 			cur = self._conn.cursor()
 			cur.execute(
-				"INSERT IGNORE INTO {} (`entry`) VALUES (%s)".format(TABLE_WHITELIST), (entry,)
+				f"INSERT IGNORE INTO {TABLE_WHITELIST} (`entry`) VALUES (%s)", (entry,)
 			)
 			self._conn.commit()
 			cur.close()
@@ -490,19 +488,17 @@ class _MySQLLockoutStore:
 
 	def remove_whitelist_entry(self, entry: str) -> bool:
 		cur = self._conn.cursor()
-		cur.execute("DELETE FROM {} WHERE `entry` = %s".format(TABLE_WHITELIST), (entry,))
+		cur.execute(f"DELETE FROM {TABLE_WHITELIST} WHERE `entry` = %s", (entry,))
 		n = cur.rowcount
 		self._conn.commit()
 		cur.close()
 		return n > 0
 
-	def add_blacklist_entry(self, ip: str, expires_at: Optional[int] = None) -> None:
+	def add_blacklist_entry(self, ip: str, expires_at: int | None = None) -> None:
 		try:
 			cur = self._conn.cursor()
 			cur.execute(
-				"INSERT INTO {} (ip, expires_at) VALUES (%s, %s) ON DUPLICATE KEY UPDATE expires_at = VALUES(expires_at)".format(
-					TABLE_IP
-				),
+				f"INSERT INTO {TABLE_IP} (ip, expires_at) VALUES (%s, %s) ON DUPLICATE KEY UPDATE expires_at = VALUES(expires_at)",
 				(ip, expires_at),
 			)
 			self._conn.commit()
@@ -515,7 +511,7 @@ class _MySQLLockoutStore:
 
 	def remove_ip(self, ip: str) -> bool:
 		cur = self._conn.cursor()
-		cur.execute("DELETE FROM {} WHERE ip = %s".format(TABLE_IP), (ip,))
+		cur.execute(f"DELETE FROM {TABLE_IP} WHERE ip = %s", (ip,))
 		n = cur.rowcount
 		self._conn.commit()
 		cur.close()
@@ -523,7 +519,7 @@ class _MySQLLockoutStore:
 
 	def remove_device(self, device_id: str) -> bool:
 		cur = self._conn.cursor()
-		cur.execute("DELETE FROM {} WHERE device_id = %s".format(TABLE_DEVICES), (device_id,))
+		cur.execute(f"DELETE FROM {TABLE_DEVICES} WHERE device_id = %s", (device_id,))
 		n = cur.rowcount
 		self._conn.commit()
 		cur.close()
@@ -532,12 +528,12 @@ class _MySQLLockoutStore:
 	def set_whitelist(self, entries: list[str]) -> None:
 		try:
 			cur = self._conn.cursor()
-			cur.execute("DELETE FROM {}".format(TABLE_WHITELIST))
+			cur.execute(f"DELETE FROM {TABLE_WHITELIST}")
 			for entry in entries:
 				entry = (entry or "").strip()
 				if entry:
 					cur.execute(
-						"INSERT IGNORE INTO {} (`entry`) VALUES (%s)".format(TABLE_WHITELIST),
+						f"INSERT IGNORE INTO {TABLE_WHITELIST} (`entry`) VALUES (%s)",
 						(entry,),
 					)
 			self._conn.commit()
@@ -545,15 +541,15 @@ class _MySQLLockoutStore:
 		except Exception:
 			self._conn.rollback()
 
-	def set_blacklist(self, entries: list[tuple[str, Optional[int]]]) -> None:
+	def set_blacklist(self, entries: list[tuple[str, int | None]]) -> None:
 		try:
 			cur = self._conn.cursor()
-			cur.execute("DELETE FROM {}".format(TABLE_IP))
+			cur.execute(f"DELETE FROM {TABLE_IP}")
 			for ip, expires_at in entries:
 				ip = (ip or "").strip()
 				if ip:
 					cur.execute(
-						"INSERT INTO {} (ip, expires_at) VALUES (%s, %s)".format(TABLE_IP),
+						f"INSERT INTO {TABLE_IP} (ip, expires_at) VALUES (%s, %s)",
 						(ip, expires_at),
 					)
 			self._conn.commit()
@@ -562,7 +558,7 @@ class _MySQLLockoutStore:
 			self._conn.rollback()
 
 
-_store: Optional[_SqliteLockoutStore | _PostgresLockoutStore | _MySQLLockoutStore] = None
+_store: _SqliteLockoutStore | _PostgresLockoutStore | _MySQLLockoutStore | None = None
 
 
 def get_lockout_store(config: dict):

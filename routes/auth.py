@@ -3,7 +3,7 @@ import json
 import os
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import jwt
 from aiohttp import web
@@ -42,8 +42,8 @@ from ..utils.mfa_temp_store import create_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
 from ..utils.request_navigation import is_browser_navigation
 from ..utils.session_token_store import get_session_token_store
-from ..utils.user_console_log import append as user_console_append
 from ..utils.updater import get_local_version
+from ..utils.user_console_log import append as user_console_append
 from ..utils.validate import validate_password, validate_username
 
 
@@ -294,7 +294,7 @@ async def post_login(request: web.Request) -> web.Response:
 			payload = jwt_auth.decode_access_token(token)
 			jti = payload.get("jti")
 			exp = payload.get("exp")
-			exp_at_iso = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat() if exp else None
+			exp_at_iso = datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
 			if jti:
 				get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
 					jti, guest_id, "guest", exp_at_iso
@@ -382,7 +382,7 @@ async def post_login(request: web.Request) -> web.Response:
 			payload = jwt_auth.decode_access_token(token)
 			jti = payload.get("jti")
 			exp = payload.get("exp")
-			exp_at_iso = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat() if exp else None
+			exp_at_iso = datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
 			if jti:
 				get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
 					jti, user_id, username, exp_at_iso
@@ -427,7 +427,7 @@ async def post_login(request: web.Request) -> web.Response:
 			f"Failed login attempt for username '{username}' from IP: {ip}",
 		)
 	except Exception as e:
-		logger.error(f"[auth.py] post_login: send_notification: {str(e)}")
+		logger.error(f"[auth.py] post_login: send_notification: {e!s}")
 	return web.json_response({"error": "Invalid credentials"}, status=401)
 
 
@@ -448,7 +448,7 @@ async def get_logout(request: web.Request) -> web.Response:
 				)
 				logger.logout(ip, username)
 	except Exception as e:
-		logger.error(f"[auth.py] get_logout: send_notification: {str(e)}")
+		logger.error(f"[auth.py] get_logout: send_notification: {e!s}")
 	resp = web.HTTPFound("/login")
 	resp.del_cookie("jwt_token", path="/")
 	return resp

@@ -12,9 +12,9 @@ from typing import Optional
 # Fernet is part of cryptography package
 try:
 	from cryptography.fernet import Fernet
+	from cryptography.hazmat.backends import default_backend
 	from cryptography.hazmat.primitives import hashes
 	from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-	from cryptography.hazmat.backends import default_backend
 
 	_CRYPTO_AVAILABLE = True
 except ImportError:
@@ -40,7 +40,7 @@ def _derive_key(secret_key: str) -> bytes:
 	return base64.urlsafe_b64encode(key_bytes)
 
 
-def encrypt_value(secret_key: str, plaintext: str) -> Optional[str]:
+def encrypt_value(secret_key: str, plaintext: str) -> str | None:
 	"""Encrypt a string; return base64-encoded ciphertext or None on failure."""
 	if not plaintext:
 		return None
@@ -55,7 +55,7 @@ def encrypt_value(secret_key: str, plaintext: str) -> Optional[str]:
 		return None
 
 
-def decrypt_value(secret_key: str, ciphertext: str) -> Optional[str]:
+def decrypt_value(secret_key: str, ciphertext: str) -> str | None:
 	"""Decrypt a base64-encoded ciphertext; return plaintext or None on failure."""
 	if not ciphertext:
 		return None

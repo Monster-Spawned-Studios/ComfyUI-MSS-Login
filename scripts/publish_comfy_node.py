@@ -188,9 +188,7 @@ def publish_node() -> bool:
 			== 0
 		)
 	except CalledProcessError as e:
-		if args.debug:
-			print(f"Error publishing node: {e.returncode}", file=stderr)
-		elif not args.quiet:
+		if args.debug or not args.quiet:
 			print(f"Error publishing node: {e.returncode}", file=stderr)
 		return False
 

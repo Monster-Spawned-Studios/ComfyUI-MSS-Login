@@ -2,12 +2,12 @@
 Standalone tests for ntfy token precedence, signed actions, and quarantine retention.
 """
 
+import hashlib
+import hmac
+import importlib.util
+import json
 import os
 import shutil
-import json
-import hmac
-import hashlib
-import importlib.util
 import sys
 import tempfile
 import types

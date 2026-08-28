@@ -32,7 +32,7 @@ def compute_file_hash(path: str) -> str:
 			for chunk in iter(lambda: f.read(8192), b""):
 				sha.update(chunk)
 		return sha.hexdigest()
-	except (OSError, IOError):
+	except OSError:
 		return ""
 
 

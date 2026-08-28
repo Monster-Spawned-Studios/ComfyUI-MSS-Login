@@ -2,8 +2,9 @@
 """API endpoints for current user: sessions (JWT list), current-token (reveal), revoke."""
 
 from aiohttp import web
-from ..globals import routes, jwt_auth, users_db
+
 from ..constants import SESSION_TOKEN_STORE_CONFIG
+from ..globals import jwt_auth, routes, users_db
 from ..utils.session_token_store import get_session_token_store
 from ..utils.user_console_log import get_lines as get_user_console_lines
 

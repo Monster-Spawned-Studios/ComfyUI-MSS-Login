@@ -79,7 +79,7 @@ def _looks_like_model_file(value: str) -> bool:
 
 
 def extract_model_references(
-	prompt: dict[str, Any], known_models: Optional[set[tuple[str, str]]] = None
+	prompt: dict[str, Any], known_models: set[tuple[str, str]] | None = None
 ) -> set[tuple[str, str]]:
 	"""
 	Extract (folder, item_name) from a ComfyUI API-format prompt.
@@ -125,8 +125,8 @@ def validate_prompt_models(
 	allowed_set: set[tuple[str, str]],
 	allow_all: bool,
 	prompt: dict[str, Any],
-	known_models: Optional[set[tuple[str, str]]] = None,
-) -> tuple[bool, Optional[str]]:
+	known_models: set[tuple[str, str]] | None = None,
+) -> tuple[bool, str | None]:
 	"""
 	Validate that every model reference in the prompt is in the allowed set.
 	allowed_set: set of (folder, item_name) the user may use.
