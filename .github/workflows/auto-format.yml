@@ -21,14 +21,14 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Run Ruff format check
-        uses: astral-sh/ruff-action@v4
+        uses: astral-sh/ruff-action@latest
         with:
           args: "format --check --diff"
           src: "."
           version: "latest"
 
       - name: Run Ruff lint check
-        uses: astral-sh/ruff-action@v4
+        uses: astral-sh/ruff-action@latest
         with:
           args: "check --output-format=github"
           src: "."
@@ -46,7 +46,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Ruff format
-        uses: astral-sh/ruff-action@v4
+        uses: astral-sh/ruff-action@latest
         with:
           args: "format"
           src: "."
@@ -54,7 +54,7 @@ jobs:
         continue-on-error: true
 
       - name: Run Ruff lint fix
-        uses: astral-sh/ruff-action@v4
+        uses: astral-sh/ruff-action@latest
         with:
           args: "check --fix"
           src: "."
