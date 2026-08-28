@@ -1,6 +1,7 @@
 # --- START OF FILE routes/auth.py ---
 import json
 import os
+import re
 import sqlite3
 import uuid
 from datetime import UTC, datetime, timezone
@@ -45,6 +46,18 @@ from ..utils.session_token_store import get_session_token_store
 from ..utils.updater import get_local_version
 from ..utils.user_console_log import append as user_console_append
 from ..utils.validate import validate_password, validate_username
+
+_LOGIN_VERSION_RE = re.compile(
+	r"(MSS-Login - v)(?:\{\{VERSION\}\}|[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.]+)*)"
+)
+
+
+def _inject_login_version(html: str, version: str) -> str:
+	"""Fill the login-page version from pyproject (placeholder or previously stamped semver)."""
+	if "{{VERSION}}" in html:
+		html = html.replace("{{VERSION}}", version)
+	updated, replaced = _LOGIN_VERSION_RE.subn(rf"\g<1>{version}", html, count=1)
+	return updated if replaced else html
 
 
 def _authenticated_admin_username(request: web.Request) -> str | None:
@@ -252,7 +265,7 @@ async def get_login(request: web.Request) -> web.Response:
 	except OSError:
 		return web.Response(text="login.html not found", status=404)
 	version = get_local_version()
-	html = html.replace("{{VERSION}}", version)
+	html = _inject_login_version(html, version)
 	return web.Response(text=html, content_type="text/html")
 
 

@@ -78,32 +78,77 @@ jobs:
           
           python3 scripts/release_prepare.py "${ARGS[@]}"
 
-      - name: Commit and push release branch
+      - name: Commit version files and sync production, development, and release branch
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          BRANCH="release/${VERSION}"
+          git fetch origin production development --update-head-ok || true
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            git checkout -b "$BRANCH"
+          mapfile -t VERSION_FILES < <(
+            python3 scripts/release_prepare.py --print-version-files --version "$VERSION"
+          )
+          if [ "${#VERSION_FILES[@]}" -eq 0 ]; then
+            echo "::error::No version files reported by release_prepare.py"
+            exit 1
           fi
 
-          git add pyproject.toml README.md readme/CHANGES.md "readme/changelogs/${VERSION}.md"
+          BRANCH="release/${VERSION}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            git checkout -B "$BRANCH"
+          fi
+
+          git add -- "${VERSION_FILES[@]}"
           if git diff --staged --quiet; then
-            echo "No release file changes to commit."
+            echo "No release file changes to commit on ${BRANCH}."
           else
             git commit -m "chore(release): prepare v${VERSION}"
           fi
-
           git push -u origin "$BRANCH"
 
-      - name: Compress Node Files
+          SNAP="$(mktemp -d)"
+          for f in "${VERSION_FILES[@]}"; do
+            if [ -f "$f" ]; then
+              mkdir -p "$SNAP/$(dirname "$f")"
+              cp "$f" "$SNAP/$f"
+            fi
+          done
+          RELEASE_SHA="$(git rev-parse HEAD)"
+
+          for TARGET in production development; do
+            if [ "$TARGET" = "$BRANCH" ]; then
+              continue
+            fi
+            if ! git rev-parse --verify "origin/${TARGET}" >/dev/null 2>&1; then
+              echo "::warning::Skipping missing branch ${TARGET}"
+              continue
+            fi
+            git checkout -B "$TARGET" "origin/${TARGET}"
+            for f in "${VERSION_FILES[@]}"; do
+              if [ -f "$SNAP/$f" ]; then
+                mkdir -p "$(dirname "$f")"
+                cp "$SNAP/$f" "$f"
+              fi
+            done
+            git add -- "${VERSION_FILES[@]}"
+            if git diff --staged --quiet; then
+              echo "v${VERSION} already synced on ${TARGET}."
+            else
+              git commit -m "chore(release): sync v${VERSION} version fields"
+              git push origin "$TARGET"
+            fi
+          done
+
+          git checkout "$RELEASE_SHA"
+
+      - name: Add copyright headers and compress node files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          V="${{ steps.version.outputs.version }}"
-          zip -r "MSS-Login-v${V}.zip" readme/*.md "readme/changelogs/${V}.md" routes scripts users web utils __init__.py .env.example api.py config.default.json constants.py globals.py mss_login.py nodes.py pyproject.toml requirements.txt requirements_cuda.txt requirements_metal.txt README.md
+          set -euo pipefail
+          python3 scripts/release_prepare.py --version "$VERSION" --package-zip "MSS-Login-v${VERSION}.zip"
 
       - name: Test Changelog
         run: cat "readme/changelogs/${{ steps.version.outputs.version }}.md"
