@@ -6,7 +6,7 @@ import os
 import time
 import uuid
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from aiohttp import web
 
@@ -16,9 +16,9 @@ from ..constants import (
 	experimental_s3_enabled,
 )
 from ..globals import jwt_auth, logger, routes, users_db
+from ..utils.folder_paths_compat import resolve_local_model_destination
 from ..utils.model_cache import ASSET_FOLDERS_FALLBACK, get_model_cache
 from ..utils.model_download import download_civitai_async, download_huggingface
-from ..utils.folder_paths_compat import resolve_local_model_destination
 from ..utils.model_isolation import sanitize_user_segment
 from ..utils.model_source_api_keys_store import SOURCES, get_model_source_api_keys_store
 from ..utils.model_visibility_policy import user_can_download_models, user_can_manage_model_sharing
@@ -111,7 +111,7 @@ _RUNNING_BY_PROVIDER = {"civitai": 0, "huggingface": 0}
 
 
 def _utc_now() -> str:
-	return datetime.now(timezone.utc).isoformat()
+	return datetime.now(UTC).isoformat()
 
 
 def _job_public_view(job: dict) -> dict:

@@ -10,8 +10,8 @@ Responsible for:
 - Workflow storage under MSS_LOGIN_DATA_DIR (see get_user_workflow_dir)
 """
 
-import os
 import json
+import os
 import shutil
 from typing import Any, Dict, List
 
@@ -120,7 +120,7 @@ def _save_json_file(path: str, data: Any) -> None:
 # -----------------------
 
 
-def load_user_settings(username: str) -> Dict[str, Any]:
+def load_user_settings(username: str) -> dict[str, Any]:
 	"""
 	Load per-user settings JSON. Returns {} if missing or invalid.
 	"""
@@ -129,7 +129,7 @@ def load_user_settings(username: str) -> Dict[str, Any]:
 	return data if isinstance(data, dict) else {}
 
 
-def save_user_settings(username: str, settings: Dict[str, Any]) -> None:
+def save_user_settings(username: str, settings: dict[str, Any]) -> None:
 	"""
 	Save per-user settings JSON. Non-dicts are ignored.
 	"""
@@ -199,7 +199,7 @@ def set_gallery_root_user(username: str | None) -> None:
 	_save_json_file(path, {"user": username})
 
 
-def list_user_files(username: str, max_files: int = 500) -> List[str]:
+def list_user_files(username: str, max_files: int = 500) -> list[str]:
 	"""
 	Return a relative list of files under the user's root directory.
 
@@ -208,7 +208,7 @@ def list_user_files(username: str, max_files: int = 500) -> List[str]:
 	Limited to max_files entries to avoid insane payloads.
 	"""
 	root = get_user_root(username)
-	collected: List[str] = []
+	collected: list[str] = []
 
 	for dirpath, _, filenames in os.walk(root):
 		for fn in filenames:
@@ -286,7 +286,7 @@ def get_user_workflow_dir(username: str) -> str:
 	return data_wf_dir
 
 
-def list_user_workflows(username: str) -> List[str]:
+def list_user_workflows(username: str) -> list[str]:
 	"""
 	Returns a list of workflow filenames (relative paths) for the user.
 	"""

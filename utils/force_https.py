@@ -15,7 +15,6 @@ from aiohttp import web
 
 from .ip_filter import is_https_request
 
-
 _BROWSER_REDIRECT_PATHS = frozenset({"/", "/login", "/register", "/loading", "/mfa"})
 
 

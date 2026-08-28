@@ -1,6 +1,7 @@
+import html
 import re
 import unicodedata
-import html
+
 from aiohttp import web
 from bleach import clean
 

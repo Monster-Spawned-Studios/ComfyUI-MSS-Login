@@ -84,7 +84,7 @@ class _SqliteAppSettingsStore:
 	def __init__(self, conn):
 		self._conn = conn
 
-	def get(self, key: str) -> Optional[str]:
+	def get(self, key: str) -> str | None:
 		row = self._conn.execute(f"SELECT value FROM {TABLE} WHERE key = ?", (key,)).fetchone()
 		return row[0] if row else None
 
@@ -99,7 +99,7 @@ class _PostgresAppSettingsStore:
 	def __init__(self, conn):
 		self._conn = conn
 
-	def get(self, key: str) -> Optional[str]:
+	def get(self, key: str) -> str | None:
 		cur = self._conn.cursor()
 		cur.execute(f"SELECT value FROM {TABLE} WHERE key = %s", (key,))
 		row = cur.fetchone()
@@ -120,7 +120,7 @@ class _MySQLAppSettingsStore:
 	def __init__(self, conn):
 		self._conn = conn
 
-	def get(self, key: str) -> Optional[str]:
+	def get(self, key: str) -> str | None:
 		cur = self._conn.cursor()
 		cur.execute(f"SELECT value FROM {TABLE} WHERE `key` = %s", (key,))
 		row = cur.fetchone()
@@ -137,9 +137,7 @@ class _MySQLAppSettingsStore:
 		cur.close()
 
 
-_store: Optional[_SqliteAppSettingsStore | _PostgresAppSettingsStore | _MySQLAppSettingsStore] = (
-	None
-)
+_store: _SqliteAppSettingsStore | _PostgresAppSettingsStore | _MySQLAppSettingsStore | None = None
 
 
 def get_app_settings_store(config: dict):

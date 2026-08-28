@@ -19,24 +19,63 @@ permissions:
 jobs:
     secrets:
         name: Secrets scan (Gitleaks)
-        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, macos-latest, windows-latest]
+        runs-on: ${{ matrix.os }}
         steps:
             - name: Checkout (full history for push)
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
               with:
                   fetch-depth: 0
-            - name: Run Gitleaks
-              uses: gitleaks/gitleaks-action@v2
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                  GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+            - name: Set up Python
+              uses: actions/setup-python@v7
+              with:
+                  python-version: "3.13"
+            - name: Install and Run Gitleaks
+              shell: python
+              run: |
+                  import os, urllib.request, json, sys, platform, subprocess, tarfile, zipfile
+
+                  dl_os = {'linux': 'linux', 'darwin': 'darwin', 'windows': 'windows'}.get(platform.system().lower(), 'linux')
+                  machine = platform.machine().lower()
+                  dl_arch = 'arm64' if machine in ('arm64', 'aarch64') else 'x64'
+                  ext = 'zip' if dl_os == 'windows' else 'tar.gz'
+                  target = f"{dl_os}_{dl_arch}.{ext}"
+
+                  url = "https://api.github.com/repos/gitleaks/gitleaks/releases/latest"
+                  req = urllib.request.urlopen(url)
+                  assets = json.loads(req.read().decode())['assets']
+                  dl_url = next(a['browser_download_url'] for a in assets if target in a['name'])
+
+                  print(f"Downloading {dl_url}")
+                  archive, _ = urllib.request.urlretrieve(dl_url)
+
+                  if ext == 'zip':
+                      with zipfile.ZipFile(archive, 'r') as z:
+                          z.extractall(".")
+                  else:
+                      with tarfile.open(archive, 'r:gz') as t:
+                          t.extractall(".")
+
+                  bin_name = "gitleaks.exe" if dl_os == 'windows' else "gitleaks"
+                  bin_path = os.path.abspath(bin_name)
+                  if dl_os != 'windows':
+                      os.chmod(bin_path, 0o755)
+                  
+                  sys.exit(subprocess.call([bin_path, "detect", "--source", ".", "-v"]))
 
     dependencies:
         name: Dependency audit (pip-audit)
-        runs-on: ubuntu-latest
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest, macos-latest, windows-latest]
+        runs-on: ${{ matrix.os }}
         steps:
             - name: Checkout
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
             - name: Set up Python
               uses: actions/setup-python@v6
               with:

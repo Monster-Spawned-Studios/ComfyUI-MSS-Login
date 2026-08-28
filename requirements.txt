@@ -14,3 +14,4 @@ numpy
 uv
 transformers
 boto3
+comfyui-frontend-package>=1.40.0

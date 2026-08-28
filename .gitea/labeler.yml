@@ -1,0 +1,107 @@
+# Labels applied to PRs based on changed files.
+# Used by .github/workflows/pull-request.yml (actions/labeler@v6).
+# https://github.com/actions/labeler
+# v5/v6 config: use any-glob-to-any-file (not "any") under changed-files.
+
+documentation:
+    - changed-files:
+          - any-glob-to-any-file: ["**/*.md", "**/README*", "**/docs/**", "**/readme/**"]
+
+python:
+    - changed-files:
+          - any-glob-to-any-file: ["**/*.py", "pyproject.toml", "**/requirements*.txt"]
+
+frontend:
+    - changed-files:
+          - any-glob-to-any-file: ["web/**/*.js", "web/**/*.css", "web/**/*.html"]
+
+config:
+    - changed-files:
+          - any-glob-to-any-file: ["config.json", ".env.example", "**/defaults/**"]
+
+ci:
+    - changed-files:
+          - any-glob-to-any-file: [".github/**", ".gitlab/**", ".gitea/**", "scripts/**"]
+
+agent:
+    - changed-files:
+          - any-glob-to-any-file: [".agent/**", ".gemini/**", ".cursor/**", ".claude/**"]
+
+vscode:
+    - changed-files:
+          - any-glob-to-any-file: [".vscode/**"]
+
+docker:
+    - changed-files:
+          - any-glob-to-any-file: ["docker/**"]
+
+docker-compose:
+    - changed-files:
+          - any-glob-to-any-file: ["docker-compose.yml"]
+
+web:
+    - changed-files:
+          - any-glob-to-any-file: ["web/**"]
+
+gitignore:
+    - changed-files:
+          - any-glob-to-any-file: [".gitignore"]
+
+license:
+    - changed-files:
+          - any-glob-to-any-file: ["**/LICENSE*", "**/license*"]
+
+security:
+    - changed-files:
+          - any-glob-to-any-file:
+                [
+                    "**/security/**",
+                    "**/auth*.py",
+                    "**/jwt*.py",
+                    "**/access_control*.py",
+                    "**/ip_filter*.py",
+                    "**/timeout*.py",
+                    "**/logger*.py",
+                    "**/sanitizer*.py",
+                    "**/install_deps*.py",
+                    "**/sqlite_connection*.py",
+                    "**/migrate_api_tokens_to_unified*.py",
+                    "**/model_cache*.py",
+                    "**/shared_items_store*.py",
+                    "**/api_token_store*.py",
+                    "**/users_db*.py",
+                    "**/mfa_temp_store*.py",
+                    "**/encryption*.py",
+                    "**/db_key_derivation*.py",
+                    "**/watcher*.py",
+                    "**/api*.py",
+                ]
+
+docs:
+    - changed-files:
+          - any-glob-to-any-file: ["docs/**"]
+
+workflows:
+    - changed-files:
+          - any-glob-to-any-file: [".github/workflows/**"]
+
+issue-template:
+    - changed-files:
+          - any-glob-to-any-file: [".github/ISSUE_TEMPLATE/**"]
+
+pull-request-template:
+    - changed-files:
+          - any-glob-to-any-file: [".github/PULL_REQUEST_TEMPLATE/**"]
+
+changelog:
+    - changed-files:
+          - any-glob-to-any-file: ["readme/changelogs/*.md"]
+
+contributor-addition:
+    - changed-files:
+          - any-glob-to-any-file:
+                [
+                    ".github/CODEOWNERS",
+                    ".github/funding.yml",
+                    ".github/config.yml",
+                ]

@@ -1,17 +1,20 @@
 # --- START OF FILE utils/access_control.py ---
-import os
-import json
-import heapq
-import copy
 import contextvars
-from aiohttp import web
+import copy
+import heapq
+import json
+import os
+
 import folder_paths
+from aiohttp import web
+from execution import MAXIMUM_HISTORY_SIZE, PromptQueue
 from server import PromptServer
-from execution import PromptQueue, MAXIMUM_HISTORY_SIZE
-from .users_db import UsersDB
+
 from .api_token_store import get_api_token_store
 from .data_dir import get_data_subdir
 from .debug_log import debug_write
+from .user_isolation import safe_user_dir_segment, user_id_from_queue_item, username_from_queue_item
+from .users_db import UsersDB
 
 # Map Permission Keys -> URL Paths to Block
 EXTENSION_BLOCK_MAP = {
@@ -163,6 +166,8 @@ class AccessControl:
 			is_userdata_workflow = path.startswith(
 				("/api/userdata/workflows", "/api/userdata/workflows:")
 			)
+			is_cpe_workflow = path.startswith(("/api/cpe/workflow", "/cpe/workflow"))
+			is_cpe_api = path.startswith(("/api/cpe/", "/cpe/"))
 
 			if is_queue and perms.get("can_run") is False:
 				debug_write(
@@ -186,7 +191,12 @@ class AccessControl:
 				)
 				return web.json_response({"error": "MSS-Login: Upload Denied"}, status=403)
 
-			if is_userdata_workflow and request.method in ("POST", "PUT", "DELETE", "PATCH"):
+			if (is_userdata_workflow or is_cpe_workflow) and request.method in (
+				"POST",
+				"PUT",
+				"DELETE",
+				"PATCH",
+			):
 				can_modify = perms.get("can_modify_workflows")
 				if can_modify is None:
 					can_modify = role != "guest"
@@ -223,7 +233,7 @@ class AccessControl:
 						{"error": "MSS-Login: S3 Storage Access Denied"}, status=403
 					)
 
-			if not is_queue and not is_upload and path.startswith("/api/"):
+			if not is_queue and not is_upload and (path.startswith("/api/") or is_cpe_api):
 				if perms.get("can_access_api") is False:
 					debug_write(
 						{
@@ -249,19 +259,29 @@ class AccessControl:
 	def get_current_user_id(self):
 		return self._current_user.get() or self.__current_user_id
 
+	def _lookup_user_record(self, user_key: str | None) -> dict | None:
+		"""Resolve a users_db record from a user_id (UUID) or username."""
+		if not user_key or user_key == "public":
+			return None
+		try:
+			_uid, rec = self.users_db.get_user(user_id=user_key)
+			if rec:
+				return rec
+			_uid, rec = self.users_db.get_user(username=user_key)
+			if rec:
+				return rec
+		except Exception:
+			return None
+		return None
+
 	def _is_current_user_admin_or_owner(self) -> bool:
 		"""Return True if the current user has admin or owner role."""
 		user_id = self.get_current_user_id()
-		if not user_id or user_id == "public":
+		user_rec = self._lookup_user_record(user_id)
+		if not user_rec:
 			return False
-		try:
-			_, user_rec = self.users_db.get_user(user_id)
-			if not user_rec:
-				return False
-			groups = [g.lower() for g in user_rec.get("groups", [])]
-			return "admin" in groups or "owner" in groups or bool(user_rec.get("admin"))
-		except Exception:
-			return False
+		groups = [g.lower() for g in user_rec.get("groups", [])]
+		return "admin" in groups or "owner" in groups or bool(user_rec.get("admin"))
 
 	def _get_output_base(self):
 		"""Base directory for user output under MSS_LOGIN_DATA_DIR."""
@@ -276,18 +296,28 @@ class AccessControl:
 		return get_data_subdir("input")
 
 	def get_user_output_directory(self):
-		return os.path.join(self._get_output_base(), self.get_current_user_id() or "public")
+		directory = os.path.join(
+			self._get_output_base(), safe_user_dir_segment(self.get_current_user_id())
+		)
+		os.makedirs(directory, exist_ok=True)
+		return directory
 
 	def get_user_temp_directory(self):
-		return os.path.join(self._get_temp_base(), self.get_current_user_id() or "public")
+		directory = os.path.join(
+			self._get_temp_base(), safe_user_dir_segment(self.get_current_user_id())
+		)
+		os.makedirs(directory, exist_ok=True)
+		return directory
 
 	def get_user_input_directory(self):
-		directory = os.path.join(self._get_input_base(), self.get_current_user_id() or "public")
+		directory = os.path.join(
+			self._get_input_base(), safe_user_dir_segment(self.get_current_user_id())
+		)
 		os.makedirs(directory, exist_ok=True)
 		return directory
 
 	def add_user_specific_folder_paths(self, json_data):
-		user_id = self.get_current_user_id() or "public"
+		user_id = safe_user_dir_segment(self.get_current_user_id())
 		if isinstance(json_data, dict):
 			for k, v in json_data.items():
 				if k == "filename_prefix":
@@ -339,7 +369,7 @@ class AccessControl:
 
 	def user_queue_put(self, item):
 		current_user_id = self.get_current_user_id()
-		_, user_rec = self.users_db.get_user(current_user_id)
+		user_rec = self._lookup_user_record(current_user_id)
 
 		if user_rec:
 			if os.path.exists(self.groups_config_file):
@@ -355,10 +385,14 @@ class AccessControl:
 				except Exception:
 					pass
 
+		stamp_username = None
+		if user_rec:
+			stamp_username = user_rec.get("username")
+		stamp = {"user_id": current_user_id, "username": stamp_username}
 		if isinstance(item, tuple):
-			new_item = (*item, {"user_id": current_user_id})
+			new_item = (*item, stamp)
 		else:
-			new_item = (item, {"user_id": current_user_id})
+			new_item = (item, stamp)
 		self.__prompt_queue_put(new_item)
 
 	def user_queue_get(self, timeout=None):
@@ -371,6 +405,26 @@ class AccessControl:
 			task_id = self.__prompt_queue.task_counter
 			self.__prompt_queue.currently_running[task_id] = entry
 			self.__prompt_queue.task_counter += 1
+			# Worker threads do not inherit the HTTP request ContextVar. Stamp
+			# this job's user onto the worker so SaveImage/LoadImage and
+			# get_output_directory() resolve the submitter's isolated folders.
+			job_user = user_id_from_queue_item(entry)
+			if job_user:
+				self.set_current_user_id(job_user, set_fallback=True)
+			job_name = username_from_queue_item(entry)
+			if job_name:
+				try:
+					from ..globals import current_username_var
+
+					current_username_var.set(job_name)
+				except Exception:
+					pass
+				try:
+					from .sfw_intercept.nsfw_guard import set_latest_prompt_user
+
+					set_latest_prompt_user(job_name)
+				except Exception:
+					pass
 			self.server.queue_updated()
 			return (entry, task_id)
 

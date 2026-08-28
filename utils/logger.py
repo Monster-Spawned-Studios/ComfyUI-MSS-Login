@@ -8,10 +8,10 @@ import os
 import tarfile
 import threading
 import time
-
-from pathlib import Path
+from collections.abc import Callable
 from datetime import datetime
-from typing import List, Optional, Callable
+from pathlib import Path
+from typing import List, Optional
 
 LEVELS = {"INFO", "WARNING", "ERROR", "DEBUG"}
 
@@ -26,11 +26,11 @@ class Logger:
 	def __init__(
 		self,
 		log_file: str | Path,
-		log_levels: List[str],
-		callback: Optional[Callable[[str], None]] = None,
-		rotation_max_bytes: Optional[int] = None,
-		rotation_interval_hours: Optional[float] = None,
-		rotation_archive_dir: Optional[str] = None,
+		log_levels: list[str],
+		callback: Callable[[str], None] | None = None,
+		rotation_max_bytes: int | None = None,
+		rotation_interval_hours: float | None = None,
+		rotation_archive_dir: str | None = None,
 	):
 		if not all(level in LEVELS for level in log_levels):
 			raise ValueError(f"Invalid log levels provided. Valid levels are: {LEVELS}")

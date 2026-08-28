@@ -8,7 +8,7 @@ import os
 import sys
 import uuid
 import warnings
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 # External data directory (~/.comfyui-mss-login or MSS_LOGIN_DATA_DIR); untouched by git pull.
 from .utils.data_dir import ensure_data_dir, get_data_dir
@@ -701,7 +701,7 @@ def apply_experimental_safety_reset(reason: str, recovery_action: str = "config_
 		failsafe = {}
 	failsafe["failure_count"] = int(failsafe.get("failure_count", 0) or 0) + 1
 	failsafe["last_failure_reason"] = (reason or "unknown_failure").strip()[:500]
-	failsafe["last_failure_at"] = datetime.now(timezone.utc).isoformat()
+	failsafe["last_failure_at"] = datetime.now(UTC).isoformat()
 	failsafe["last_recovery_action"] = (recovery_action or "config_reset").strip()
 	if "enabled" not in failsafe:
 		failsafe["enabled"] = True

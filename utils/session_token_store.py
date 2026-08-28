@@ -10,10 +10,9 @@ The legacy JSON backend is retained only for automatic one-time migration.
 
 import json
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
-
 
 DEFAULT_IDLE_REVOKE_MINUTES = 5
 
@@ -31,20 +30,20 @@ CREATE TABLE IF NOT EXISTS session_tokens (
 
 
 def _iso_now() -> str:
-	return datetime.now(timezone.utc).isoformat()
+	return datetime.now(UTC).isoformat()
 
 
-def _is_expired(exp_at_iso: Optional[str]) -> bool:
+def _is_expired(exp_at_iso: str | None) -> bool:
 	if not exp_at_iso:
 		return False
 	try:
 		t = datetime.fromisoformat(exp_at_iso.replace("Z", "+00:00"))
-		return datetime.now(timezone.utc) >= t
+		return datetime.now(UTC) >= t
 	except Exception:
 		return False
 
 
-def _parse_iso(iso_str: Optional[str]) -> Optional[datetime]:
+def _parse_iso(iso_str: str | None) -> datetime | None:
 	if not iso_str:
 		return None
 	try:
@@ -81,7 +80,7 @@ class _SqliteSessionStore:
 		self._idle_revoke_minutes = idle_revoke_minutes
 
 	def register_session(
-		self, jti: str, user_id: str, username: str, exp_at_iso: Optional[str] = None
+		self, jti: str, user_id: str, username: str, exp_at_iso: str | None = None
 	) -> None:
 		now = _iso_now()
 		self._conn.execute(
@@ -109,9 +108,9 @@ class _SqliteSessionStore:
 			return False
 		return bool(row[0])
 
-	def revoke_idle_sessions(self, idle_minutes: Optional[int] = None) -> int:
+	def revoke_idle_sessions(self, idle_minutes: int | None = None) -> int:
 		minutes = idle_minutes if idle_minutes is not None else self._idle_revoke_minutes
-		cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+		cutoff = (datetime.now(UTC) - timedelta(minutes=minutes)).isoformat()
 		cur = self._conn.execute(
 			"UPDATE session_tokens SET revoked = 1 WHERE revoked = 0 AND last_used_at_iso < ?",
 			(cutoff,),
@@ -129,7 +128,7 @@ class _SqliteSessionStore:
 		self._conn.commit()
 		return cur.rowcount
 
-	def list_sessions_for_user(self, username: str) -> List[dict]:
+	def list_sessions_for_user(self, username: str) -> list[dict]:
 		rows = self._conn.execute(
 			"SELECT jti, created_at_iso, last_used_at_iso, exp_at_iso "
 			"FROM session_tokens WHERE username = ? AND revoked = 0",
@@ -203,7 +202,7 @@ def _get_postgres_session_store(
 			return self._conn.cursor(cursor_factory=RealDictCursor)
 
 		def register_session(
-			self, jti: str, user_id: str, username: str, exp_at_iso: Optional[str] = None
+			self, jti: str, user_id: str, username: str, exp_at_iso: str | None = None
 		) -> None:
 			now = _iso_now()
 			with self._conn.cursor() as cur:
@@ -237,9 +236,9 @@ def _get_postgres_session_store(
 				return False
 			return bool(row["revoked"])
 
-		def revoke_idle_sessions(self, idle_minutes: Optional[int] = None) -> int:
+		def revoke_idle_sessions(self, idle_minutes: int | None = None) -> int:
 			minutes = idle_minutes if idle_minutes is not None else self._idle_revoke_minutes
-			cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+			cutoff = (datetime.now(UTC) - timedelta(minutes=minutes)).isoformat()
 			with self._conn.cursor() as cur:
 				cur.execute(
 					"UPDATE session_tokens SET revoked = 1 "
@@ -260,7 +259,7 @@ def _get_postgres_session_store(
 				self._conn.commit()
 				return cur.rowcount
 
-		def list_sessions_for_user(self, username: str) -> List[dict]:
+		def list_sessions_for_user(self, username: str) -> list[dict]:
 			with self._cursor() as cur:
 				cur.execute(
 					"SELECT jti, created_at_iso, last_used_at_iso, exp_at_iso "
@@ -333,7 +332,7 @@ def _get_mysql_session_store(
 			return self._conn.cursor(DictCursor)
 
 		def register_session(
-			self, jti: str, user_id: str, username: str, exp_at_iso: Optional[str] = None
+			self, jti: str, user_id: str, username: str, exp_at_iso: str | None = None
 		) -> None:
 			now = _iso_now()
 			cur = self._conn.cursor()
@@ -371,9 +370,9 @@ def _get_mysql_session_store(
 				return False
 			return bool(row["revoked"])
 
-		def revoke_idle_sessions(self, idle_minutes: Optional[int] = None) -> int:
+		def revoke_idle_sessions(self, idle_minutes: int | None = None) -> int:
 			minutes = idle_minutes if idle_minutes is not None else self._idle_revoke_minutes
-			cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+			cutoff = (datetime.now(UTC) - timedelta(minutes=minutes)).isoformat()
 			cur = self._conn.cursor()
 			cur.execute(
 				"UPDATE session_tokens SET revoked = 1 WHERE revoked = 0 AND last_used_at_iso < %s",
@@ -397,7 +396,7 @@ def _get_mysql_session_store(
 			cur.close()
 			return n
 
-		def list_sessions_for_user(self, username: str) -> List[dict]:
+		def list_sessions_for_user(self, username: str) -> list[dict]:
 			cur = self._cursor()
 			cur.execute(
 				"SELECT jti, created_at_iso, last_used_at_iso, exp_at_iso "
@@ -479,7 +478,7 @@ _session_store = None
 
 
 def get_session_token_store(
-	config: Optional[dict] = None, idle_revoke_minutes: Optional[int] = None
+	config: dict | None = None, idle_revoke_minutes: int | None = None
 ) -> "_SqliteSessionStore":
 	"""
 	Build or return the singleton session token store from config.

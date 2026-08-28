@@ -35,7 +35,7 @@ def get_unlock_devices(security_json_path: str | Path) -> set[str]:
 	return set(cfg.get("unlock_devices") or [])
 
 
-def is_lockout_disabled_until(security_json_path: str | Path) -> Optional[float]:
+def is_lockout_disabled_until(security_json_path: str | Path) -> float | None:
 	"""Return Unix timestamp until which lockout checks are disabled, or None."""
 	cfg = load_security_config(security_json_path)
 	t = cfg.get("disable_lockout_until")

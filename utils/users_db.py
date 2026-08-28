@@ -40,7 +40,7 @@ def _groups_to_json(groups: list) -> str:
 	return json.dumps([str(g) for g in groups])
 
 
-def _json_to_groups(s: Optional[str]) -> list:
+def _json_to_groups(s: str | None) -> list:
 	if not s:
 		return ["user"]
 	try:
@@ -639,7 +639,7 @@ def migrate_totp_to_new_key(config: dict, old_key: str, new_key: str) -> bool:
 class UsersDB:
 	"""Users database (unified API)."""
 
-	def __init__(self, config: dict, secret_key: str, legacy_json_path: Optional[str] = None):
+	def __init__(self, config: dict, secret_key: str, legacy_json_path: str | None = None):
 		"""Initialize the users database."""
 		self._config = config
 		self._secret_key = secret_key
@@ -674,7 +674,7 @@ class UsersDB:
 				encryption_level=config.get("encryption_level", ""),
 			)
 		self.users: dict = {}
-		self.admin_user: tuple[Optional[str], dict] = (None, {})
+		self.admin_user: tuple[str | None, dict] = (None, {})
 		if legacy_json_path:
 			self._backend.migrate_from_json(legacy_json_path)
 		self.load_users()
@@ -721,7 +721,7 @@ class UsersDB:
 			self._backend.update(admin_uid, admin_user, self._secret_key)
 			self.users[admin_uid] = admin_user
 
-	def _find_admin_in_loaded_users(self) -> tuple[Optional[str], dict]:
+	def _find_admin_in_loaded_users(self) -> tuple[str | None, dict]:
 		"""Find the first admin in the already-loaded self.users without reloading."""
 		for uid, user_data in self.users.items():
 			groups = [g.lower() for g in user_data.get("groups", [])]
@@ -772,7 +772,7 @@ class UsersDB:
 		except Exception as e:
 			_get_logger().error(f"[MSS-Login] Failed to add user: {user_id}: {e}")
 
-	def get_user(self, username: str = "", user_id: str = "") -> tuple[Optional[str], dict]:
+	def get_user(self, username: str = "", user_id: str = "") -> tuple[str | None, dict]:
 		"""Get a user by username or user_id."""
 		self.load_users()
 		if user_id:
@@ -795,7 +795,7 @@ class UsersDB:
 		pw = user_data.get("password", "")
 		return bcrypt.checkpw(password.encode("utf-8"), pw.encode("utf-8"))
 
-	def get_admin_user(self) -> tuple[Optional[str], dict] | None:
+	def get_admin_user(self) -> tuple[str | None, dict] | None:
 		"""Get the admin user."""
 		self.load_users()
 		self.admin_user = (None, {})
@@ -821,7 +821,7 @@ class UsersDB:
 			)
 		return out
 
-	def get_owner_username(self) -> Optional[str]:
+	def get_owner_username(self) -> str | None:
 		"""Return the username of the user who has 'owner' in groups, or None if no owner."""
 		self.load_users()
 		for _uid, u in self.users.items():
@@ -831,7 +831,7 @@ class UsersDB:
 		return None
 
 	def update_user(
-		self, username: str, groups: list, is_admin: bool, sfw_check: Optional[bool] = None
+		self, username: str, groups: list, is_admin: bool, sfw_check: bool | None = None
 	) -> bool:
 		"""Update groups, admin, and optionally sfw_check for a user. Returns True if found and updated."""
 		user_id, user = self.get_user(username=username)
@@ -875,7 +875,7 @@ class UsersDB:
 			return False
 		return bool(user.get("mfa_enabled", False))
 
-	def mfa_setup_start(self, username: str) -> Optional[Tuple[str, str]]:
+	def mfa_setup_start(self, username: str) -> tuple[str, str] | None:
 		"""
 		Start MFA setup: generate TOTP secret and backup code, store encrypted/hashed, return (provisioning_uri, backup_code).
 		Returns None if user not found. Call mfa_verify_setup after user scans QR and enters first code.

@@ -4,11 +4,12 @@ Download models from CivitAI and HuggingFace to a local path or S3 mount path.
 
 import asyncio
 import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Awaitable, Callable, Optional, Union
+from typing import Optional, Union
 
 # Type for progress callback: (bytes_done, total_bytes) -> None or awaitable
-ProgressCallback = Optional[Callable[[int, Optional[int]], Union[None, Awaitable[None]]]]
+ProgressCallback = Optional[Callable[[int, int | None], None | Awaitable[None]]]
 
 # CivitAI: HTTP stream with token
 CIVITAI_DOWNLOAD_BASE = "https://civitai.com/api/download/models"
@@ -18,10 +19,10 @@ async def download_civitai_async(
 	model_version_id: str,
 	token: str,
 	dest_path: str | Path,
-	type_param: Optional[str] = None,
-	format_param: Optional[str] = None,
-	size_param: Optional[str] = None,
-	fp_param: Optional[str] = None,
+	type_param: str | None = None,
+	format_param: str | None = None,
+	size_param: str | None = None,
+	fp_param: str | None = None,
 	progress_callback: ProgressCallback = None,
 ) -> tuple[bool, str]:
 	"""
@@ -49,78 +50,78 @@ async def download_civitai_async(
 	try:
 		headers = {"Authorization": f"Bearer {token}"} if token else {}
 		timeout = aiohttp.ClientTimeout(total=None, sock_read=300)
-		async with aiohttp.ClientSession(timeout=timeout) as session:
-			async with session.get(
+		async with (
+			aiohttp.ClientSession(timeout=timeout) as session,
+			session.get(
 				url, params=params or None, headers=headers or None, allow_redirects=True
-			) as resp:
-				if resp.status != 200:
-					return False, f"CivitAI returned {resp.status}"
-				content_disp = resp.headers.get("Content-Disposition")
-				filename = None
-				if content_disp and "filename=" in content_disp:
-					part = content_disp.split("filename=")[-1].strip().strip("\"'")
-					if part:
-						# Use basename only; if Path.name is empty (e.g. input was "/" or ".."),
-						# discard the server-provided name entirely rather than falling back
-						# to the raw value, which could contain path traversal sequences.
-						_basename = Path(part).name
-						if _basename:
-							filename = _basename
-				if not filename and dest_path.suffix:
-					filename = dest_path.name
-				if not filename:
-					filename = f"model_{model_version_id}.safetensors"
-				out = dest_path if dest_path.suffix else dest_path / filename
-				if out.is_dir():
-					out = dest_path / filename
-				# Ensure final path stays under dest_path (defense in depth)
-				dest_resolved = dest_path.resolve()
+			) as resp,
+		):
+			if resp.status != 200:
+				return False, f"CivitAI returned {resp.status}"
+			content_disp = resp.headers.get("Content-Disposition")
+			filename = None
+			if content_disp and "filename=" in content_disp:
+				part = content_disp.split("filename=")[-1].strip().strip("\"'")
+				if part:
+					# Use basename only; if Path.name is empty (e.g. input was "/" or ".."),
+					# discard the server-provided name entirely rather than falling back
+					# to the raw value, which could contain path traversal sequences.
+					_basename = Path(part).name
+					if _basename:
+						filename = _basename
+			if not filename and dest_path.suffix:
+				filename = dest_path.name
+			if not filename:
+				filename = f"model_{model_version_id}.safetensors"
+			out = dest_path if dest_path.suffix else dest_path / filename
+			if out.is_dir():
+				out = dest_path / filename
+			# Ensure final path stays under dest_path (defense in depth)
+			dest_resolved = dest_path.resolve()
+			out_resolved = out.resolve()
+			try:
+				common = os.path.commonpath([out_resolved, dest_resolved])
+			except ValueError:
+				return False, "Path traversal prevented"
+			if os.path.abspath(common) != os.path.abspath(dest_resolved):
+				out = dest_path / Path(filename).name
 				out_resolved = out.resolve()
 				try:
 					common = os.path.commonpath([out_resolved, dest_resolved])
 				except ValueError:
 					return False, "Path traversal prevented"
 				if os.path.abspath(common) != os.path.abspath(dest_resolved):
-					out = dest_path / Path(filename).name
-					out_resolved = out.resolve()
-					try:
-						common = os.path.commonpath([out_resolved, dest_resolved])
-					except ValueError:
-						return False, "Path traversal prevented"
-					if os.path.abspath(common) != os.path.abspath(dest_resolved):
-						return False, "Path traversal prevented"
-				out.parent.mkdir(parents=True, exist_ok=True)
-				raw_len = getattr(resp, "content_length", None) or resp.headers.get(
-					"Content-Length"
-				)
-				total_bytes = None
-				if raw_len is not None:
-					try:
-						total_bytes = int(raw_len)
-					except (TypeError, ValueError):
-						pass
-				bytes_done = 0
+					return False, "Path traversal prevented"
+			out.parent.mkdir(parents=True, exist_ok=True)
+			raw_len = getattr(resp, "content_length", None) or resp.headers.get("Content-Length")
+			total_bytes = None
+			if raw_len is not None:
 				try:
-					with open(out, "wb") as f:
-						while True:
-							chunk = await resp.content.read(1024 * 1024)
-							if not chunk:
-								break
-							f.write(chunk)
-							bytes_done += len(chunk)
-							if progress_callback:
-								cb = progress_callback(bytes_done, total_bytes)
-								if asyncio.iscoroutine(cb):
-									await cb
-				except Exception:
-					# Remove partial file so a failed download doesn't leave corrupt data
-					try:
-						if out.exists():
-							out.unlink()
-					except OSError:
-						pass
-					raise
-				return True, ""
+					total_bytes = int(raw_len)
+				except (TypeError, ValueError):
+					pass
+			bytes_done = 0
+			try:
+				with open(out, "wb") as f:
+					while True:
+						chunk = await resp.content.read(1024 * 1024)
+						if not chunk:
+							break
+						f.write(chunk)
+						bytes_done += len(chunk)
+						if progress_callback:
+							cb = progress_callback(bytes_done, total_bytes)
+							if asyncio.iscoroutine(cb):
+								await cb
+			except Exception:
+				# Remove partial file so a failed download doesn't leave corrupt data
+				try:
+					if out.exists():
+						out.unlink()
+				except OSError:
+					pass
+				raise
+			return True, ""
 	except Exception as e:
 		return False, str(e)
 
@@ -130,8 +131,8 @@ def download_huggingface(
 	filename: str,
 	token: str,
 	dest_dir: str | Path,
-	subfolder: Optional[str] = None,
-	progress_dict: Optional[dict] = None,
+	subfolder: str | None = None,
+	progress_dict: dict | None = None,
 ) -> tuple[bool, str]:
 	"""
 	Download a file from HuggingFace Hub to dest_dir. Uses huggingface_hub if available.

@@ -10,7 +10,7 @@ import time
 def debug_write(payload: dict) -> None:
 	"""Write a debug payload to file when DEBUG_MODE, and to stdout when DEBUG_MODE_FROM_ENV."""
 	try:
-		from ..constants import DEBUG_MODE, DEBUG_MODE_FROM_ENV, DEBUG_LOG_PATH
+		from ..constants import DEBUG_LOG_PATH, DEBUG_MODE, DEBUG_MODE_FROM_ENV
 
 		if not DEBUG_MODE:
 			return

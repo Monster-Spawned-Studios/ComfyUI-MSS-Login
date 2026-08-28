@@ -1,0 +1,93 @@
+# Auto-format Python files with ruff and commit the result.
+# Triggers on pushes to development / production and on PRs targeting them.
+name: Auto-format (ruff)
+
+on:
+  push:
+    branches: [development, production]
+  pull_request:
+    branches: [development, production]
+
+permissions:
+  contents: write
+
+jobs:
+  format-check:
+    name: Format check (dry-run)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Run Ruff format check
+        uses: astral-sh/ruff-action@v4.1.0
+        with:
+          args: "format --check --diff"
+          src: "."
+          version: "latest"
+
+      - name: Run Ruff lint check
+        uses: astral-sh/ruff-action@v4.1.0
+        with:
+          args: "check --output-format=github"
+          src: "."
+          version: "latest"
+
+  auto-format:
+    name: Auto-format and commit
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Ruff format
+        uses: astral-sh/ruff-action@v4.1.0
+        with:
+          args: "format"
+          src: "."
+          version: "latest"
+        continue-on-error: true
+
+      - name: Run Ruff lint fix
+        uses: astral-sh/ruff-action@v4.1.0
+        with:
+          args: "check --fix"
+          src: "."
+          version: "latest"
+        continue-on-error: true
+
+      - name: Commit changes
+        env:
+          MSS_SSH_PRIV_KEY: ${{ secrets.MSS_SSH_PRIV_KEY }}
+          MSS_SSH_PASS: ${{ secrets.MSS_SSH_PASS }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No formatting changes to commit."
+          else
+            if [ -n "$MSS_SSH_PRIV_KEY" ] && [ -n "$MSS_SSH_PASS" ]; then
+              KEY_FILE="$(mktemp)"
+              printf '%s\n' "$MSS_SSH_PRIV_KEY" > "$KEY_FILE"
+              chmod 600 "$KEY_FILE"
+              eval "$(ssh-agent -s)"
+              echo "$MSS_SSH_PASS" | ssh-add -q "$KEY_FILE"
+              git config gpg.format ssh
+              git config user.signingKey "$KEY_FILE"
+              git config commit.gpgsign true
+              git commit -S -m "style: auto-format with ruff"
+              git push
+              ssh-agent -k
+              shred -u "$KEY_FILE"
+            else
+              echo "SSH signing secrets not set; committing without signature."
+              git commit -m "style: auto-format with ruff"
+              git push
+            fi
+          fi

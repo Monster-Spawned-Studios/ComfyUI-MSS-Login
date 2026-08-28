@@ -61,6 +61,17 @@ Implemented or wrapped by `routes/workflow_routes.py`:
 
 See [Workflow & intercepted endpoints](workflow-endpoints.md).
 
+## Comfy Portal Endpoint (per-user)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/api/cpe/workflow/list` | Auth + `can_access_api`; lists the caller's workflows |
+| GET | `/api/cpe/workflow/get?filename=` | Auth; user file first, then shared |
+| POST | `/api/cpe/workflow/save` | Auth + `can_modify_workflows` |
+| GET | `/api/cpe/health` | Auth for remote clients |
+
+Response format matches [comfy-portal-endpoint](https://github.com/ShunL12324/comfy-portal-endpoint).
+
 ## MSS-Login-specific (not ComfyUI core)
 
 | Method | Path | Purpose |

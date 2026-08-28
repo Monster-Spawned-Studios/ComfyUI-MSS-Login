@@ -28,7 +28,7 @@ Owner API:
 
 - `GET /mss-login/api/settings/model-isolation-download-patterns`
 - `PUT /mss-login/api/settings/model-isolation-download-patterns` with `{ "patterns": ["..."] }`
-- Non-privileged users only see models explicitly granted to them.
+- Non-privileged users only see models explicitly granted to them. This restriction applies **only while `experimental.model_isolation` is on**. When it is off, `SEPERATE_USERS` still isolates output/input/workflow folders, but the shared model library remains visible so ComfyUI and Comfy Portal can generate images.
 - Owner users can grant/revoke model visibility.
 - Admin users can grant/revoke only when their role includes `can_manage_model_sharing: true`.
 - S3-backed and local-backed grants are tracked separately (`source_backend`) so S3 restrictions remain consistent.

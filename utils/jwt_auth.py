@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import jwt
 from aiohttp import web
@@ -10,6 +10,7 @@ from .api_token_store import get_api_token_store
 from .debug_log import debug_write
 from .logger import Logger
 from .session_token_store import get_session_token_store
+from .user_isolation import is_prompt_execution_path
 from .users_db import UsersDB
 
 
@@ -47,7 +48,7 @@ class JWTAuth:
 		try:
 			query = request.rel_url.query
 			for key in ("token", "access_token"):
-				if key in query and query[key]:
+				if query.get(key):
 					return (query[key] or "").strip()
 		except Exception:
 			pass
@@ -64,7 +65,7 @@ class JWTAuth:
 		else:
 			if not expire_minutes:
 				expire_minutes = self.expire_minutes
-			expire = datetime.now(timezone.utc) + timedelta(minutes=expire_minutes)
+			expire = datetime.now(UTC) + timedelta(minutes=expire_minutes)
 			to_encode["exp"] = expire
 		return jwt.encode(to_encode, self.__secret_key, algorithm=self.algorithm)
 
@@ -207,7 +208,7 @@ class JWTAuth:
 					user_id, username = api_user
 					request["user_id"] = user_id
 					request["user"] = username
-					set_fallback = request.path in ["/api/prompt"]
+					set_fallback = is_prompt_execution_path(request.path)
 					self.access_control.set_current_user_id(user_id, set_fallback)
 				else:
 					# API token not found: if token doesn't look like a JWT (no dots), return clear message
@@ -249,7 +250,7 @@ class JWTAuth:
 					request["user_id"] = user_id
 					request["user"] = username
 
-					set_fallback = request.path in ["/api/prompt"]
+					set_fallback = is_prompt_execution_path(request.path)
 					self.access_control.set_current_user_id(user_id, set_fallback)
 
 			except jwt.ExpiredSignatureError:

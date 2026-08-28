@@ -32,7 +32,7 @@ class S3StorageClient:
 		return self._manager.test_connection()
 
 
-def get_s3_client(config: Optional[dict] = None) -> S3StorageClient:
+def get_s3_client(config: dict | None = None) -> S3StorageClient:
 	del config
 	global _s3_client
 	if _s3_client is not None:

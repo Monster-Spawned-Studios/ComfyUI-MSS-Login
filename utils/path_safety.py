@@ -29,6 +29,26 @@ def is_safe_folder_segment(folder: str) -> bool:
 	return True
 
 
+def is_safe_relative_path(rel_path: str) -> bool:
+	"""
+	Return True if rel_path is a nested relative path with no traversal.
+
+	Allows ``subdir/file.json`` (unlike is_safe_filename) but rejects ``..``,
+	absolute paths, and empty segments.
+	"""
+	if not rel_path or not isinstance(rel_path, str):
+		return False
+	clean = rel_path.replace("\\", "/").strip()
+	if not clean or clean.startswith("/") or ".." in clean:
+		return False
+	if os.path.isabs(rel_path) or (len(clean) >= 2 and clean[1] == ":"):
+		return False
+	parts = [segment for segment in clean.split("/") if segment]
+	if not parts:
+		return False
+	return all(segment not in (".", "..") for segment in parts)
+
+
 def is_safe_filename(name: str) -> bool:
 	"""
 	Return True if name is a safe filename (no path components, no traversal).

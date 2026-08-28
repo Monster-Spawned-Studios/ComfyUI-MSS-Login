@@ -48,10 +48,12 @@ dependencies = [
 [dependency-groups]
 # Run/launch ComfyUI (e.g. `uv run --group comfyui comfy --workspace /path launch`). Separate from dev.
 comfyui = ["comfy-cli"]
-# Apple M-based computer dependencies are here:
-m-deps = []
-# CUDA computer/GPU dependencies are here:
-cuda-deps = []
+# Apple Silicon / macOS Metal (MPS): torch comes from PyPI (CUDA indexes are not published for macOS).
+m-deps = ["torch", "torchvision", "torchaudio"]
+# NVIDIA CUDA wheels (Linux/Windows). The auto-installer prefers cu130 when the driver supports it.
+cuda-deps = ["torch", "torchvision", "torchaudio"]
+# CPU-only wheels from the PyTorch CPU index (Linux/Windows without a usable NVIDIA driver).
+cpu-deps = ["torch", "torchvision", "torchaudio"]
 # Testing/development: add tools with `uv add --dev pytest` etc.
 dev = ["pytest", "pip-audit", "ruff", "uv"]
 # Production dependency group:
@@ -82,24 +84,23 @@ documentation = ["mkdocs", "mkdocs-material", "uv"]
 [tool.uv]
 default-groups = ["production", "documentation"]
 
-# PyTorch with CUDA: PEP 621 does not define extra-index-url. For pip, use:
-#   pip install --extra-index-url https://download.pytorch.org/whl/cu124 .
-# (Use cu121, cu118, etc. for other CUDA versions; see https://download.pytorch.org/whl/)
-# For uv: use CUDA wheels on Linux/Windows (e.g. Docker on NAS); on macOS (e.g. M1) use PyPI (CPU/Metal).
-# See: https://docs.astral.sh/uv/guides/integration/pytorch/#configuring-accelerators-with-environment-markers
+# PyTorch indexes (https://docs.astral.sh/uv/guides/integration/pytorch/):
+# - macOS (darwin): no source override — PyPI wheels include Metal/MPS. Do NOT use the
+#   pytorch-cpu index on macOS; that index is Linux/Windows CPU-only and lacks MPS.
+# - Linux / Windows: prefer CUDA 13.0 wheels. utils/install_deps.py checks the NVIDIA
+#   driver first and falls back to cu128 or CPU when cu130 is not supported.
+# Runtime auto-install (utils/install_deps.py) always re-detects; uv.sources is the
+# lockfile default for `uv sync` on CUDA hosts.
 
 [tool.uv.sources]
 torch = [
-	{ index = "pytorch-cuda-128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
+	{ index = "pytorch-cuda-130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchvision = [
-	{ index = "pytorch-cuda-128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
+	{ index = "pytorch-cuda-130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 torchaudio = [
-	{ index = "pytorch-cuda-128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-	{ index = 'pytorch-cpu', marker = "sys_platform == 'darwin'" },
+	{ index = "pytorch-cuda-130", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
 ]
 
 [[tool.uv.index]]

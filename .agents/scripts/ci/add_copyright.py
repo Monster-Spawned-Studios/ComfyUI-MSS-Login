@@ -123,11 +123,11 @@ class CopyrightInstaller:
 			return f"Copyright (c) {datetime.now().year} All Rights Reserved."
 		return text or f"Copyright (c) {datetime.now().year} All Rights Reserved."
 
-	def _extract_latest_year(self, text: str) -> Optional[int]:
+	def _extract_latest_year(self, text: str) -> int | None:
 		years = [int(match.group(0)) for match in self.YEAR_PATTERN.finditer(text or "")]
 		return max(years) if years else None
 
-	def _fetch_year_from_internet(self) -> Optional[int]:
+	def _fetch_year_from_internet(self) -> int | None:
 		# Read-only year lookup with short timeout for CI stability.
 		url = "https://worldtimeapi.org/api/timezone/Etc/UTC"
 		try:
@@ -141,7 +141,7 @@ class CopyrightInstaller:
 			return None
 		return None
 
-	def _resolve_target_year(self, saved_year: Optional[int]) -> int:
+	def _resolve_target_year(self, saved_year: int | None) -> int:
 		# Ordered fallback: notice file -> internet -> local system.
 		notice_year = self.notice_year_hint
 		if notice_year is not None and (saved_year is None or notice_year > saved_year):
@@ -211,7 +211,7 @@ class CopyrightInstaller:
 			index += 1
 		return sum(len(line) for line in lines[:index])
 
-	def _find_first_copyright_match(self, text: str) -> Optional[re.Match[str]]:
+	def _find_first_copyright_match(self, text: str) -> re.Match[str] | None:
 		return self.COPYRIGHT_LINE_PATTERN.search(text)
 
 	def _update_copyright_line_if_needed(self, text: str) -> tuple[str, bool]:

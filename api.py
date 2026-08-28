@@ -32,8 +32,8 @@ Example usage in another extension:
         pass
 """
 
-import sys
 import os
+import sys
 from typing import Optional, Union
 
 # Optional dependencies - will be imported when needed
@@ -89,17 +89,17 @@ def _try_imports():
 
 	# Strategy 1: Relative import (when imported as a package from __init__.py)
 	try:
+		from .globals import current_username_var, users_db
 		from .utils.sfw_intercept.nsfw_guard import (
-			is_sfw_enforced_for_current_session,
-			should_block_image_for_current_user,
-			set_latest_prompt_user,
 			_get_nsfw_pipeline,
 			_get_nsfw_tag,
-			clear_nsfw_tag,
 			clear_all_nsfw_tags,
+			clear_nsfw_tag,
+			is_sfw_enforced_for_current_session,
+			set_latest_prompt_user,
 			set_nsfw_tag_manual,
+			should_block_image_for_current_user,
 		)
-		from .globals import users_db, current_username_var
 
 		_is_sfw_enforced_for_current_session = is_sfw_enforced_for_current_session
 		_should_block_image_for_current_user = should_block_image_for_current_user
@@ -122,17 +122,17 @@ def _try_imports():
 		sys.path.insert(0, current_dir)
 
 	try:
+		from globals import current_username_var, users_db
 		from utils.sfw_intercept.nsfw_guard import (
-			is_sfw_enforced_for_current_session,
-			should_block_image_for_current_user,
-			set_latest_prompt_user,
 			_get_nsfw_pipeline,
 			_get_nsfw_tag,
-			clear_nsfw_tag,
 			clear_all_nsfw_tags,
+			clear_nsfw_tag,
+			is_sfw_enforced_for_current_session,
+			set_latest_prompt_user,
 			set_nsfw_tag_manual,
+			should_block_image_for_current_user,
 		)
-		from globals import users_db, current_username_var
 
 		_is_sfw_enforced_for_current_session = is_sfw_enforced_for_current_session
 		_should_block_image_for_current_user = should_block_image_for_current_user
@@ -235,7 +235,7 @@ def is_available() -> bool:
 	return _NSFW_GUARD_AVAILABLE
 
 
-def is_sfw_enforced_for_user(username: Optional[str] = None) -> bool:
+def is_sfw_enforced_for_user(username: str | None = None) -> bool:
 	"""
 	Check if SFW (Safe For Work) restrictions are enforced for a user.
 
@@ -359,7 +359,7 @@ def check_tensor_nsfw(images_tensor, threshold: float = 0.5) -> bool:
 		return False  # Fail open on error
 
 
-def check_image_path_nsfw(image_path: str, username: Optional[str] = None) -> bool:
+def check_image_path_nsfw(image_path: str, username: str | None = None) -> bool:
 	"""
 	Check if an image file contains NSFW content.
 
@@ -529,7 +529,7 @@ def check_pil_image_nsfw(image, threshold: float = 0.5) -> bool:
 		return False  # Fail open on error
 
 
-def set_user_context(username: Optional[str]):
+def set_user_context(username: str | None):
 	"""
 	Set the user context for the current execution thread.
 
@@ -551,7 +551,7 @@ def set_user_context(username: Optional[str]):
 		_set_latest_prompt_user(username)
 
 
-def get_current_user() -> Optional[str]:
+def get_current_user() -> str | None:
 	"""
 	Get the current user from the context.
 
@@ -574,7 +574,7 @@ def get_current_user() -> Optional[str]:
 	return None
 
 
-def check_image_path_nsfw_fast(image_path: str, username: Optional[str] = None) -> Optional[bool]:
+def check_image_path_nsfw_fast(image_path: str, username: str | None = None) -> bool | None:
 	"""
 	Fast tag-only check for NSFW content. Only checks cache, never scans.
 	Use this for bulk operations where you want instant results.
@@ -683,15 +683,15 @@ def set_image_nsfw_tag(
 
 # Export the public API
 __all__ = [
-	"is_available",
-	"is_sfw_enforced_for_user",
-	"check_tensor_nsfw",
 	"check_image_path_nsfw",
 	"check_image_path_nsfw_fast",
 	"check_pil_image_nsfw",
-	"set_user_context",
-	"get_current_user",
-	"clear_image_nsfw_tag",
+	"check_tensor_nsfw",
 	"clear_all_nsfw_tags",
+	"clear_image_nsfw_tag",
+	"get_current_user",
+	"is_available",
+	"is_sfw_enforced_for_user",
 	"set_image_nsfw_tag",
+	"set_user_context",
 ]

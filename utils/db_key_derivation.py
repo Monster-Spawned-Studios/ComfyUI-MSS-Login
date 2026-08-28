@@ -21,7 +21,7 @@ ARGON2_PRESETS = {
 ARGON2_PRESETS["medium"] = ARGON2_PRESETS["standard"]
 ARGON2_PRESETS["high"] = ARGON2_PRESETS["secure"]
 
-_argon2_available: Optional[bool] = None
+_argon2_available: bool | None = None
 
 
 def _argon2_available_check() -> bool:
@@ -56,7 +56,7 @@ def derive_db_key(secret_key: str, level: str) -> bytes:
 		raise RuntimeError(
 			"argon2-cffi is required for database key derivation; pip install argon2-cffi"
 		)
-	from argon2.low_level import hash_secret_raw, Type
+	from argon2.low_level import Type, hash_secret_raw
 
 	time_cost, memory_cost_kib, parallelism = ARGON2_PRESETS[level]
 	salt = DB_KEY_SALT_PREFIX + level.encode("utf-8")

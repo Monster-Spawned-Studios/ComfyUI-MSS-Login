@@ -1,6 +1,6 @@
 # --- START OF FILE utils/json_utils.py ---
-import os
 import json
+import os
 
 
 def load_json_file(path, default=None):

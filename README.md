@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>Version 0.0.3</strong> — Latest release includes Extension Tabs API, IP filtering improvements, and performance optimizations
+  <strong>Version 0.0.4</strong> — Latest release includes Extension Tabs API, IP filtering improvements, and performance optimizations
 </p>
 
 ---
@@ -147,9 +147,9 @@ from api import check_tensor_nsfw, is_sfw_enforced_for_user
 
 # In your custom node
 if is_sfw_enforced_for_user():
-    if check_tensor_nsfw(image_tensor):
-        # Block or replace NSFW content
-        image_tensor = torch.zeros_like(image_tensor)
+	if check_tensor_nsfw(image_tensor):
+		# Block or replace NSFW content
+		image_tensor = torch.zeros_like(image_tensor)
 ```
 
 **Gallery Integration:**

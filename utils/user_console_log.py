@@ -4,9 +4,9 @@ Per-user console log buffer for isolating JWT and other user-specific messages.
 Admin can read all users' logs via API.
 """
 
+import threading
 from collections import defaultdict
 from typing import List
-import threading
 
 MAX_LINES_PER_USER = 500
 _lock = threading.Lock()
@@ -22,13 +22,13 @@ def append(username: str, line: str) -> None:
 			del buf[: len(buf) - MAX_LINES_PER_USER]
 
 
-def get_lines(username: str) -> List[str]:
+def get_lines(username: str) -> list[str]:
 	"""Return the log lines for the given user (copy)."""
 	with _lock:
 		return list(_buffers.get(username, []))
 
 
-def list_users() -> List[str]:
+def list_users() -> list[str]:
 	"""Return list of usernames that have at least one log line (for Admin)."""
 	with _lock:
 		return [u for u, buf in _buffers.items() if buf]

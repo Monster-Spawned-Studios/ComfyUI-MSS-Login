@@ -7,10 +7,10 @@ Runs in background on startup; does not block ComfyUI. Compatible with ComfyUI M
 import asyncio
 import json
 import os
-from os.path import join
 import shutil
 import subprocess
 import sys
+from os.path import join
 from time import time
 from typing import Any
 
@@ -102,13 +102,13 @@ async def check_for_update(
 	try:
 		import aiohttp
 
-		async with aiohttp.ClientSession() as session:
-			async with session.get(
-				check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)
-			) as resp:
-				if resp.status != 200:
-					return False, ""
-				body = await resp.text()
+		async with (
+			aiohttp.ClientSession() as session,
+			session.get(check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)) as resp,
+		):
+			if resp.status != 200:
+				return False, ""
+			body = await resp.text()
 		data = json.loads(body)
 		release_url = ""
 
@@ -175,14 +175,14 @@ async def check_for_update_branch(
 	try:
 		import aiohttp
 
-		async with aiohttp.ClientSession() as session:
-			async with session.get(
-				check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)
-			) as resp:
-				if resp.status != 200:
-					return False, ""
-				body = await resp.text()
-				ct = resp.headers.get("Content-Type") or ""
+		async with (
+			aiohttp.ClientSession() as session,
+			session.get(check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)) as resp,
+		):
+			if resp.status != 200:
+				return False, ""
+			body = await resp.text()
+			ct = resp.headers.get("Content-Type") or ""
 		latest = _parse_version_from_content(body, ct)
 		if not latest:
 			return False, ""
@@ -244,14 +244,14 @@ async def _fetch_changelog_markdown(
 	try:
 		import aiohttp
 
-		async with aiohttp.ClientSession() as session:
-			async with session.get(
-				raw_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)
-			) as resp:
-				if resp.status == 200:
-					body = await resp.text()
-					if body and body.strip():
-						return body.strip()
+		async with (
+			aiohttp.ClientSession() as session,
+			session.get(raw_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)) as resp,
+		):
+			if resp.status == 200:
+				body = await resp.text()
+				if body and body.strip():
+					return body.strip()
 	except Exception:
 		pass
 	return _CACHE.get("release_body", "")

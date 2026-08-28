@@ -301,8 +301,8 @@ class _MySQLModelCache:
 				try:
 					cur = self._conn.cursor()
 					cur.execute(
-						"INSERT INTO {} (folder, item_name, updated_at) VALUES (%s, %s, %s) "
-						"ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)".format(TABLE),
+						f"INSERT INTO {TABLE} (folder, item_name, updated_at) VALUES (%s, %s, %s) "
+						"ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)",
 						(folder, item_name, now),
 					)
 					total += 1
@@ -345,7 +345,7 @@ class _MySQLModelCache:
 		return row is None
 
 
-_store: Optional[_SqliteModelCache | _PostgresModelCache | _MySQLModelCache] = None
+_store: _SqliteModelCache | _PostgresModelCache | _MySQLModelCache | None = None
 
 
 def get_model_cache(config: dict):

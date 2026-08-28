@@ -20,7 +20,7 @@ def create_mfa_temp_token(username: str) -> str:
 	return token
 
 
-def consume_mfa_temp_token(token: str) -> Optional[str]:
+def consume_mfa_temp_token(token: str) -> str | None:
 	"""Return username if token valid and not expired; remove token. Return None otherwise."""
 	if not token:
 		return None
@@ -33,7 +33,7 @@ def consume_mfa_temp_token(token: str) -> Optional[str]:
 	return username
 
 
-def get_username_for_mfa_temp_token(token: str) -> Optional[str]:
+def get_username_for_mfa_temp_token(token: str) -> str | None:
 	"""Return username if token valid and not expired; do not remove token (for setup flow)."""
 	if not token:
 		return None

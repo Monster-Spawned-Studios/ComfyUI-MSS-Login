@@ -25,7 +25,23 @@ MSS-Login does not require a proprietary Portal protocol. Configure Portal with 
 
 3. Configure Portal to send `Authorization: Bearer <token>` (or the token mechanism Portal supports).
 
-Ensure the user's role has `can_run` and `can_access_api`.
+Ensure the user's role has `can_run` and `can_access_api`. Remote clients (including cellular / non-LAN IPs) must send a **valid** token; the remote API guard allows `/api/cpe/*` only when the token is present and valid.
+
+### Per-user workflow list (CPE paths)
+
+Comfy Portal calls [comfy-portal-endpoint](https://github.com/ShunL12324/comfy-portal-endpoint) paths such as `GET /api/cpe/workflow/list`. MSS-Login intercepts those routes and serves **that user's** stored workflows (plus any shared/global JSON files), using the same response shape as CPE:
+
+| Method | Path | Body / query | Notes |
+|--------|------|----------------|-------|
+| GET | `/cpe/workflow/list` and `/api/cpe/workflow/list` | — | `{ "status": "success", "workflows": [ { "filename", "size", "modified" } ] }` |
+| GET | `/cpe/workflow/get` | `?filename=` | `{ "status": "success", "filename", "workflow": "<raw JSON string>" }` |
+| POST | `/cpe/workflow/save` | `{ "workflow": "<json string>", "name": "optional.json" }` | Writes into the authenticated user's workflow dir |
+| GET | `/cpe/workflow/get-and-convert` | `?filename=` | Returns API-format graphs; UI-format graphs need CPE's headless browser (`503` otherwise) |
+| GET | `/cpe/health` | — | `{ "status": "success", "browser": { "status": "ready" } }` |
+
+`POST /cpe/workflow/convert` is left to comfy-portal-endpoint when that extension is installed.
+
+Saving through CPE requires `can_modify_workflows` (defaults to allowed for every role except guest).
 
 ## comfy-portal-endpoint
 
@@ -59,6 +75,8 @@ Avoid scraping HTML login pages or cookies unless you control a WebView session.
 | 403 `MODEL_NOT_ALLOWED` | Workflow references models user cannot access |
 | 403 on `/view` | NSFW policy blocked output |
 | Portal cannot sync workflows | Frontend blocked by auth; see comfy-portal-endpoint section |
+| 401 on `/api/cpe/workflow/list` | Missing/invalid token, or remote API guard (non-LAN IP without Bearer) |
+| Empty workflow list in Portal | No JSON files in that user's data-dir workflow folder yet; save one or copy into `Users/<name>/workflows/` |
 | HTML redirect to `/login` instead of JSON | Client sent `Accept: text/html`; use Bearer header and expect JSON 401 |
 
 ### Debug tips

@@ -1,6 +1,8 @@
-# Merged from requirements.txt, requirements_cuda.txt, and requirements_metal.txt
-# for CI dependency audit (pip-audit). Use --extra-index-url https://download.pytorch.org/whl/cu128
-# when installing or auditing to resolve PyTorch CUDA wheels.
+# Merged from requirements.txt, requirements_cuda.txt, requirements_metal.txt, and
+# requirements_cpu.txt for CI dependency audit (pip-audit).
+# CUDA hosts: --extra-index-url https://download.pytorch.org/whl/cu130 (fallback cu128).
+# CPU-only Linux/Windows: --extra-index-url https://download.pytorch.org/whl/cpu
+# macOS: PyPI (Metal/MPS). Do not use the pytorch-cpu index on darwin.
 aiohttp
 argon2-cffi
 bcrypt

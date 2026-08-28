@@ -14,7 +14,7 @@ import shutil
 import subprocess
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger("S3Mounter")
@@ -79,7 +79,7 @@ def _resolve_under(base_dir: str, rel_path: str) -> str | None:
 
 
 def _format_iso(ts: float) -> str:
-	return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+	return datetime.fromtimestamp(ts, tz=UTC).isoformat()
 
 
 def _sanitize_username(username: str) -> str:
@@ -303,8 +303,8 @@ class S3MountManager:
 		self._users_db = users_db
 		self._lock = threading.RLock()
 		self._stop_event = threading.Event()
-		self._workflow_thread: Optional[threading.Thread] = None
-		self._mount_proc: Optional[subprocess.Popen] = None
+		self._workflow_thread: threading.Thread | None = None
+		self._mount_proc: subprocess.Popen | None = None
 		self._last_error = ""
 		self._active_mode = "idle"
 		self._registered_folders: list[str] = []
@@ -852,8 +852,8 @@ class S3MountManager:
 			self._last_sync_times[username] = time.time()
 
 	def get_s3_only_workflows(self, username: str) -> list[dict]:
-		from . import user_env
 		from ..routes.workflow_routes import get_file_info
+		from . import user_env
 
 		if not self._is_s3_active() or not username or username == "guest":
 			return []
@@ -942,7 +942,7 @@ class S3MountManager:
 		self.unmount()
 
 
-_s3_manager: Optional[S3MountManager] = None
+_s3_manager: S3MountManager | None = None
 
 
 def init_s3_manager(data_dir: str, users_db=None) -> S3MountManager:
@@ -951,7 +951,7 @@ def init_s3_manager(data_dir: str, users_db=None) -> S3MountManager:
 	return _s3_manager
 
 
-def get_s3_manager() -> Optional[S3MountManager]:
+def get_s3_manager() -> S3MountManager | None:
 	return _s3_manager
 
 
@@ -966,11 +966,11 @@ def init_mount_manager(
 	return init_s3_manager(data_dir)
 
 
-def get_mount_manager() -> Optional[S3MountManager]:
+def get_mount_manager() -> S3MountManager | None:
 	return get_s3_manager()
 
 
-def get_workflow_sync() -> Optional[S3MountManager]:
+def get_workflow_sync() -> S3MountManager | None:
 	return get_s3_manager()
 
 

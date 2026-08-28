@@ -9,7 +9,6 @@ from typing import Optional
 
 from aiohttp import web
 
-
 # Cookie name for device ID (set by client or server on first visit)
 DEVICE_ID_COOKIE = "mss_login_device_id"
 DEVICE_ID_HEADER = "X-Device-ID"
@@ -79,7 +78,7 @@ def is_https_request(request: web.Request) -> bool:
 	return False
 
 
-def get_device_id(request: web.Request) -> Optional[str]:
+def get_device_id(request: web.Request) -> str | None:
 	"""Extract device identifier from request (X-Device-ID header or cookie). Used for lockout across IP changes."""
 	did = request.headers.get(DEVICE_ID_HEADER)
 	if did:
@@ -111,7 +110,7 @@ class IPFilter:
 		self,
 		lockout_store,
 		blacklist_expiry_hours: float = 24,
-		security_json_path: Optional[str] = None,
+		security_json_path: str | None = None,
 	):
 		self.lockout_store = lockout_store
 		self.blacklist_expiry_hours = blacklist_expiry_hours
@@ -145,7 +144,7 @@ class IPFilter:
 				return True
 		return False
 
-	def is_allowed(self, ip: str, request: Optional[web.Request] = None) -> bool:
+	def is_allowed(self, ip: str, request: web.Request | None = None) -> bool:
 		"""
 		Check if the given IP (and optional request for device ID) is allowed.
 		Order: 1) security.json unlock_ips / unlock_devices -> allow
@@ -172,9 +171,7 @@ class IPFilter:
 			disable_until = is_lockout_disabled_until(self.security_json_path)
 			if disable_until is not None and time.time() < disable_until:
 				pass
-			elif ip in unlock_ips:
-				return True
-			elif request and get_device_id(request) in unlock_devices:
+			elif ip in unlock_ips or request and get_device_id(request) in unlock_devices:
 				return True
 
 		# 2) Lockout: DB blacklist and locked devices (unless disabled above)

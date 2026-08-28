@@ -2,6 +2,20 @@
 
 This page describes endpoints that are **intercepted or implemented** by the workflow middleware (`routes/workflow_routes.py`), rather than registered as direct routes.
 
+## Comfy Portal Endpoint (`/cpe/workflow/*`)
+
+Per-user workflow list/get/save using the [comfy-portal-endpoint](https://github.com/ShunL12324/comfy-portal-endpoint) response format. Paths work with and without the `/api` prefix. Authenticated users (JWT or API token) receive **their** stored workflows, not the shared `user/default/workflows` directory only.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/cpe/workflow/list` | List `.json` files in the user's workflow dir (plus shared/global). |
+| GET | `/api/cpe/workflow/get?filename=` | Read one workflow as a raw JSON string. |
+| POST | `/api/cpe/workflow/save` | Save to the user's workflow dir. Body: `{ "workflow": "<string>", "name": "optional.json" }`. |
+| GET | `/api/cpe/workflow/get-and-convert?filename=` | Read + return API-format prompt when the file is already API format. |
+| GET | `/api/cpe/health` | Health payload compatible with CPE. |
+
+Requires a valid token for remote clients (`REQUIRE_AUTH_FOR_REMOTE_API`) and `can_access_api`. POST save also requires `can_modify_workflows`.
+
 ## Userdata workflows
 
 Per-user workflow list, save, load, and delete (compatible with Comfy Portal and API token/JWT):

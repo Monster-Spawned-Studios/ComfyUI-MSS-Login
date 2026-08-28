@@ -1,7 +1,11 @@
+# macOS Metal / MPS. Install torch from PyPI (no CUDA index — PyTorch does not
+# publish CUDA wheels for darwin). Official PyPI wheels include MPS on Apple Silicon.
+#   pip install -r requirements_metal.txt
 aiohttp
 PyJWT
 bleach
 psycopg2-binary
+pymysql
 bcrypt
 cryptography
 python-dotenvx>=0.3.0
@@ -10,6 +14,10 @@ sqlcipher3
 argon2-cffi
 pillow
 numpy
+torch
+torchvision
+torchaudio
 uv
 transformers
 boto3
+comfyui-frontend-package>=1.40.0

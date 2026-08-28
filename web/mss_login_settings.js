@@ -133,17 +133,28 @@ const USER_ENV_API_ENDPOINT = "/mss-login/api/user-env";
 // --- 1. BLOCKING MAP (The Enforcer) ---
 // If a user lacks permission for the Key, these CSS selectors are hidden via !important
 const CSS_BLOCK_MAP = {
-    // --- Built-in Console (bottom-left panel): global can_view_console permission ---
+    // --- Built-in Console / Logs / Terminal (sidebar toggle + bottom panel) ---
     "can_view_console": [
         ".comfy-console",
         "#comfy-console",
         "[data-panel-id='console']",
         "[aria-label='Console']",
+        "[aria-label='Logs']",
         ".comfy-log-panel",
         ".comfy-bottom-panel [data-tab='console']",
         ".p-panel-content .comfy-console",
         "button[aria-label='Console']",
-        ".comfy-ui-panel-console"
+        "button[aria-label='Logs']",
+        ".comfy-ui-panel-console",
+        ".side-bar-button:has(.icon-\\[ph--terminal-bold\\])",
+        ".side-bar-button:has([class*='ph--terminal'])",
+        ".side-bar-button[aria-label*='Console' i]",
+        ".side-bar-button[aria-label*='Logs' i]",
+        ".side-bar-button[aria-label*='bottom panel' i]",
+        ".side-bar-button[aria-label*='Bottom Panel' i]",
+        ".xterm",
+        ".xterm-viewport",
+        ".xterm-screen"
     ],
     // --- Core UI ---
     "ui_queue_button": ["#queue-button", ".queue-button", "button.queue-button"],
@@ -219,39 +230,56 @@ const CSS_BLOCK_MAP = {
     // --- Extensions (Hotbars, Overlays, & Settings Menu) ---
     "settings_comfy": [
         "li[aria-label='Comfy']",
-        "li.p-listbox-option[aria-label='Comfy']"
+        "li.p-listbox-option[aria-label='Comfy']",
+        "[data-testid='settings-dialog'] [data-nav-id='Comfy']"
     ],
     "settings_extension": [
         "li[aria-label='Extension']",
-        "li.p-listbox-option[aria-label='Extension']"
+        "li.p-listbox-option[aria-label='Extension']",
+        "[data-testid='settings-dialog'] [data-nav-id='extension']"
     ],
     "settings_user": [
         "li[aria-label='User']",
-        "li.p-listbox-option[aria-label='User']"
+        "li.p-listbox-option[aria-label='User']",
+        "[data-testid='settings-dialog'] [data-nav-id='user']"
     ],
     "settings_keybinding": [
         "li[aria-label='Keybinding']",
-        "li.p-listbox-option[aria-label='Keybinding']"
+        "li.p-listbox-option[aria-label='Keybinding']",
+        "[data-testid='settings-dialog'] [data-nav-id='keybinding']"
     ],
     "settings_appearance": [
         "li[aria-label='Appearance']",
-        "li.p-listbox-option[aria-label='Appearance']"
+        "li.p-listbox-option[aria-label='Appearance']",
+        "[data-testid='settings-dialog'] [data-nav-id='Appearance']"
     ],
     "settings_litegraph": [
         "li[aria-label='Lite Graph']",
-        "li.p-listbox-option[aria-label='Lite Graph']"
+        "li.p-listbox-option[aria-label='Lite Graph']",
+        "li[aria-label='LiteGraph']",
+        "li.p-listbox-option[aria-label='LiteGraph']",
+        "[data-testid='settings-dialog'] [data-nav-id='LiteGraph']"
     ],
-    "Settings_3D": [
+    "settings_3d": [
         "li[aria-label='3D']",
-        "li.p-listbox-option[aria-label='3D']"
+        "li.p-listbox-option[aria-label='3D']",
+        "[data-testid='settings-dialog'] [data-nav-id='3D']"
     ],
     "settings_maskeditor": [
         "li[aria-label='Mask Editor']",
-        "li.p-listbox-option[aria-label='Mask Editor']"
+        "li.p-listbox-option[aria-label='Mask Editor']",
+        "[data-testid='settings-dialog'] [data-nav-id='Mask Editor']"
+    ],
+    "settings_about": [
+        "li[aria-label='About']",
+        "li.p-listbox-option[aria-label='About']",
+        "[data-testid='settings-dialog'] [data-nav-id='about']"
     ],
     "settings_mss_loginsettings": [
         "li[aria-label='mss-login']",
-        "li.p-listbox-option[aria-label='mss-login']"
+        "li.p-listbox-option[aria-label='mss-login']",
+        "[data-testid='settings-dialog'] [data-nav-id='mss-login']",
+        "[data-testid='settings-dialog'] [data-nav-id='MSS-Login']"
     ],
 
     // iTools
@@ -2946,11 +2974,16 @@ async renderS3Settings(container) {
 
         //  Section 3: Settings Menu Options
         html += drawRow("Settings Menu", null, true);
+        html += drawRow("Settings Menu: Comfy", "settings_comfy");
+        html += drawRow("Settings Menu: Lite Graph", "settings_litegraph");
+        html += drawRow("Settings Menu: Appearance", "settings_appearance");
+        html += drawRow("Settings Menu: 3D", "settings_3d");
         html += drawRow("Settings Menu: User", "settings_user");
-        html += drawRow("Settings Menu: mss-login", "settings_mss_loginsettings");
-        html += drawRow("Settings Menu: Mask Editor", "settings_maskeditor");
         html += drawRow("Settings Menu: Keybinding", "settings_keybinding");
-        html += drawRow("Settings Menu: Appearance", "settings_makadiappearance");
+        html += drawRow("Settings Menu: Extension", "settings_extension");
+        html += drawRow("Settings Menu: Mask Editor", "settings_maskeditor");
+        html += drawRow("Settings Menu: About", "settings_about");
+        html += drawRow("Settings Menu: mss-login", "settings_mss_loginsettings");
         
         // Section 4: Extensions
         html += drawRow("Extension UI & Settings Categories", null, true);
@@ -2990,6 +3023,49 @@ async renderS3Settings(container) {
 
 // --- 4. ENFORCEMENT ENGINE (CSS INJECTION) ---
 
+const SETTINGS_NAV_KEY_ALIASES = {
+    comfy: "settings_comfy",
+    litegraph: "settings_litegraph",
+    "lite graph": "settings_litegraph",
+    appearance: "settings_appearance",
+    "3d": "settings_3d",
+    "mask editor": "settings_maskeditor",
+    user: "settings_user",
+    keybinding: "settings_keybinding",
+    extension: "settings_extension",
+    about: "settings_about",
+    "mss-login": "settings_mss_loginsettings",
+    "mss-login.configuration": "settings_mss_loginsettings"
+};
+
+function settingsKeyFromNav(navId, label) {
+    const raw = String(navId || label || "").trim();
+    const lower = raw.toLowerCase();
+    if (SETTINGS_NAV_KEY_ALIASES[lower]) return SETTINGS_NAV_KEY_ALIASES[lower];
+    if (lower.startsWith("mss-login")) return "settings_mss_loginsettings";
+    return getSanitizedId(raw);
+}
+
+function isPermissionAllowed(cfg, role, key) {
+    if (role === "owner") return true;
+    let val = cfg ? cfg[key] : undefined;
+    if (val === undefined && key === "settings_appearance") {
+        val = cfg ? cfg["settings_makadiappearance"] : undefined;
+    }
+    if (val === undefined && key === "settings_3d") {
+        val = cfg ? cfg["Settings_3D"] : undefined;
+    }
+    if (val === undefined) {
+        return role !== "guest";
+    }
+    return val === true;
+}
+
+function isMssLoginSettingsNav(key, navId, label) {
+    const blob = `${key || ""} ${navId || ""} ${label || ""}`.toLowerCase();
+    return blob.includes("mss-login") || key === "settings_mss_loginsettings";
+}
+
 async function updateEnforcementStyles() {
     if (!currentUser) currentUser = await getData("/mss-login/api/me");
     if (!currentUser) return;
@@ -3017,8 +3093,9 @@ async function updateEnforcementStyles() {
         //guestCfgKeys: Object.keys(groupsConfig["guest"] || {})
     //});
 
-    // --- BYPASS ADMIN COMPLETELY ---
-    if (currentUser.is_admin) {
+    // Owner sees every UI control. Other roles, including admin, follow
+    // their permission flags (e.g. admin can_view_console defaults to false).
+    if (role === "owner") {
         const style = document.getElementById("mss-login-css-block");
         if (style) style.textContent = "";
         return;
@@ -3031,12 +3108,12 @@ async function updateEnforcementStyles() {
         const guestCfg = groupsConfig["guest"] || {};
 
         for (const [key, selectors] of Object.entries(CSS_BLOCK_MAP)) {
-            // Always allow mss-login settings menu and logout for guests
-            if (key === "settings_mss_loginsettings" || key === "settings_mss_loginsettings") {
-                continue; // Skip blocking this menu item
+            // Always allow mss-login settings so guests can log out / register
+            if (key === "settings_mss_loginsettings") {
+                continue;
             }
-            
-            const allowed = guestCfg[key] === true; // only explicit true is allowed
+
+            const allowed = isPermissionAllowed(guestCfg, "guest", key);
             if (!allowed) {
                 css +=
                     selectors.join(", ") +
@@ -3059,6 +3136,7 @@ async function updateEnforcementStyles() {
 
         enforceSidebar(guestCfg, role);
         enforceMenus(guestCfg, role);
+        enforceConsole(guestCfg, role);
         patchSaveConfirmDialog(guestCfg, role);
         
         // Ensure logout button is always visible for guests
@@ -3085,15 +3163,10 @@ async function updateEnforcementStyles() {
 
     // --- A. BLOCK GLOBAL UI ELEMENTS (Fastest) ---
     for (const [key, selectors] of Object.entries(CSS_BLOCK_MAP)) {
-        let val = cfg[key];
-
-        // ⚠️ Do NOT touch this default – it works for you:
-        // undefined = allowed by default for non-guest
-        if (val === undefined) {
-            val = true;
+        if (key === "settings_mss_loginsettings") {
+            continue;
         }
-
-        if (val === false) {
+        if (!isPermissionAllowed(cfg, role, key)) {
             const rule =
                 selectors.join(", ") +
                 " { display: none !important; opacity: 0 !important; pointer-events: none !important; } \n";
@@ -3117,6 +3190,7 @@ async function updateEnforcementStyles() {
     // Trigger the JS sidebar scanner immediately
     enforceSidebar(cfg, role);
     enforceMenus(cfg, role);
+    enforceConsole(cfg, role);
     patchSaveConfirmDialog(cfg, role);
     
     // Ensure logout button is always visible
@@ -3129,77 +3203,101 @@ async function updateEnforcementStyles() {
     }
 }
 
-// Sidebar Scanner: Runs periodically to hide settings menu buttons by text content
+function hideEl(el) {
+    if (!el) return;
+    el.classList.add("mss-login-blocked-item");
+    el.style.setProperty("display", "none", "important");
+    el.style.setProperty("visibility", "hidden", "important");
+    el.style.setProperty("pointer-events", "none", "important");
+}
+
+function showEl(el) {
+    if (!el) return;
+    el.classList.remove("mss-login-blocked-item");
+    el.style.removeProperty("display");
+    el.style.removeProperty("visibility");
+    el.style.removeProperty("pointer-events");
+}
+
+// Sidebar Scanner: hide settings categories in both legacy and current dialogs
 function enforceSidebar(cfg, role) {
-    const modal = document.querySelector(".comfy-modal");
-    if (!modal) return;
+    const roots = [
+        document.querySelector(".comfy-modal"),
+        document.querySelector("[data-testid='settings-dialog']")
+    ].filter(Boolean);
+    if (!roots.length) return;
 
-    const items = modal.querySelectorAll(
-        "button, .comfy-settings-btn, tr, .pysssss-settings-category"
-    );
+    roots.forEach((root) => {
+        const items = root.querySelectorAll(
+            "button, [role='button'], [data-nav-id], .comfy-settings-btn, tr, .pysssss-settings-category"
+        );
 
-    items.forEach(el => {
-        // Never hide the logout button - it should always be visible
-        if (el.id === "mss-login-settings-logout-btn" || 
-            el.innerText?.includes("Logout current user") ||
-            el.querySelector("#mss-login-settings-logout-btn")) {
-            el.classList.remove("mss-login-blocked-item");
-            el.style.display = "";
-            return;
+        items.forEach(el => {
+            if (el.id === "mss-login-settings-logout-btn" ||
+                el.innerText?.includes("Logout current user") ||
+                el.querySelector("#mss-login-settings-logout-btn")) {
+                showEl(el);
+                return;
+            }
+
+            const navId = el.getAttribute("data-nav-id") || "";
+            const ariaLabel = el.getAttribute("aria-label") || "";
+            const txt = (el.innerText || "").trim();
+            if (!navId && (!txt || txt.length > 40 || txt === "Close" || txt === "Back")) return;
+
+            const catId = settingsKeyFromNav(navId || ariaLabel, txt);
+
+            if (isMssLoginSettingsNav(catId, navId, txt) || ariaLabel.toLowerCase() === "mss-login") {
+                showEl(el);
+                return;
+            }
+
+            if (!isPermissionAllowed(cfg, role, catId)) {
+                hideEl(el);
+            } else {
+                showEl(el);
+            }
+        });
+    });
+}
+
+function enforceConsole(cfg, role) {
+    if (isPermissionAllowed(cfg, role, "can_view_console")) return;
+
+    document.querySelectorAll(".side-bar-button").forEach((el) => {
+        const label = `${el.getAttribute("aria-label") || ""} ${el.textContent || ""}`.toLowerCase();
+        const hasTerminalIcon = !!el.querySelector("[class*='ph--terminal'], [class*='terminal-bold']");
+        if (
+            hasTerminalIcon ||
+            label.includes("console") ||
+            label.includes("logs") ||
+            label.includes("terminal") ||
+            label.includes("bottom panel")
+        ) {
+            hideEl(el);
         }
-        
-        // Never hide the mss-login menu item - guests need it to logout
-        const ariaLabel = el.getAttribute('aria-label');
-        if (ariaLabel && (ariaLabel.toLowerCase() === 'mss-login' || ariaLabel === 'mss-login')) {
-            el.classList.remove("mss-login-blocked-item");
-            el.style.display = "";
-            return;
-        }
-        
-        const txt = (el.innerText || "").trim();
-        if (!txt || txt.length > 30 || txt === "Close" || txt === "Back") return;
+    });
 
-        const catId = getSanitizedId(txt);
-
-        let val = cfg[catId];
-        
-        // Always allow mss-login menu for guests
-        if (catId === "mss_loginsettings" || catId === "mss-login" || txt.toLowerCase() === "mss-login") {
-            el.classList.remove("mss-login-blocked-item");
-            el.style.display = "";
-            return;
+    document.querySelectorAll("[role='tab'], .p-tab").forEach((tab) => {
+        const title = (tab.textContent || "").trim().toUpperCase();
+        if (title === "LOGS" || title === "TERMINAL" || title === "CONSOLE") {
+            hideEl(tab);
+            const panel = tab.closest(".p-splitterpanel") ||
+                tab.closest("[class*='bottom-panel']") ||
+                tab.closest(".flex.h-full.flex-col");
+            if (panel) hideEl(panel);
         }
+    });
 
-        // Default logic:
-        //  - guest: undefined = BLOCK
-        //  - others: undefined = ALLOW
-        if (val === undefined) {
-            val = (role !== "guest");
-        }
-
-        if (val === false) {
-            el.classList.add("mss-login-blocked-item");
-            el.style.display = "none"; // Inline force
-        } else {
-            el.classList.remove("mss-login-blocked-item");
-            el.style.display = "";
-        }
+    document.querySelectorAll(".xterm, .xterm-screen, .xterm-viewport").forEach((el) => {
+        const pane = el.closest(".p-splitterpanel") || el.closest(".flex.h-full.flex-col") || el;
+        hideEl(pane);
     });
 }
 
 // Top menu enforcement: runs on the PrimeVue menubar
 function enforceMenus(cfg, role) {
-    const shouldBlock = (key) => {
-        let val = cfg[key];
-
-        // Same semantics as elsewhere:
-        //  - guest: undefined = BLOCK
-        //  - others: undefined = ALLOW
-        if (val === undefined) {
-            val = (role !== "guest");
-        }
-        return val === false;
-    };
+    const shouldBlock = (key) => !isPermissionAllowed(cfg, role, key);
 
     // Block "Browse Templates"
     if (shouldBlock("ui_menu_templates")) {
@@ -3597,6 +3695,18 @@ window.addEventListener("keydown", (ev) => {
             return;
         }
     }
+
+    // Ctrl/Cmd+` toggles the Logs/Terminal bottom panel
+    if ((ev.ctrlKey || ev.metaKey) && (key === "`" || ev.code === "Backquote")) {
+        const role = currentUser?.role || "user";
+        const cfg = groupsConfig[role] || {};
+        if (role !== "owner" && !isPermissionAllowed(cfg, role, "can_view_console")) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            console.warn("[mss-login] Blocked console/terminal shortcut for this role");
+            return;
+        }
+    }
 }, true); // use capture so we beat downstream listeners
 
 // --- 5. INITIALIZATION ---
@@ -3636,7 +3746,6 @@ app.registerExtension({
         setTimeout(updateEnforcementStyles, 500);
 
         // Cache DOM queries to avoid repeated lookups
-        let cachedModal = null;
         let cachedLogoutBtn = null;
         let cachedMenuItems = null;
         let lastMenuCheck = 0;
@@ -3648,21 +3757,14 @@ app.registerExtension({
 
             const role = currentUser.role || "user";
             const cfg = groupsConfig[role] || {};
-
-            // Cache modal query - only update if needed
             const now = Date.now();
-            if (!cachedModal || !cachedModal.isConnected) {
-                cachedModal = document.querySelector(".comfy-modal");
-            }
 
-            // Settings modal - only run expensive operations when modal is open
-            if (cachedModal) {
+            if (role !== "owner") {
                 enforceSidebar(cfg, role);
+                enforceMenus(cfg, role);
+                enforceConsole(cfg, role);
+                patchSaveConfirmDialog(cfg, role);
             }
-
-            // Menus & save-confirm popup
-            enforceMenus(cfg, role);
-            patchSaveConfirmDialog(cfg, role);
             
             // Ensure logout button is always visible for all users - cache the query
             if (!cachedLogoutBtn || !cachedLogoutBtn.isConnected) {
@@ -3677,7 +3779,7 @@ app.registerExtension({
             
             // Ensure mss-login menu item is always visible - cache query results
             if (now - lastMenuCheck > MENU_CACHE_DURATION || !cachedMenuItems || cachedMenuItems.length === 0) {
-                cachedMenuItems = document.querySelectorAll('li[aria-label="mss-login"], li.p-listbox-option[aria-label="mss-login"]');
+                cachedMenuItems = document.querySelectorAll('li[aria-label="mss-login"], li.p-listbox-option[aria-label="mss-login"], [data-testid="settings-dialog"] [data-nav-id="mss-login"], [data-testid="settings-dialog"] [data-nav-id="MSS-Login"]');
                 lastMenuCheck = now;
             }
             cachedMenuItems.forEach(item => {
@@ -3744,7 +3846,20 @@ app.ui.settings.addSetting({
         btn.style.minWidth = "260px";
         btn.onclick = () => new mss_loginDialog().show();
 
+        // Register a new user (admins only). Kept out of the public login page
+        // to reduce brute-force exposure of the registration form.
+        const registerBtn = document.createElement("button");
+        registerBtn.innerText = "Register a New User";
+        registerBtn.className = "mss-login-launch-btn";
+        registerBtn.style.minWidth = "260px";
+        registerBtn.style.display = "none";
+        registerBtn.setAttribute("data-mss-login-admin-only", "true");
+        registerBtn.onclick = () => {
+            window.location.href = "/register";
+        };
+
         actionsWrap.appendChild(btn);
+        actionsWrap.appendChild(registerBtn);
         actionsWrap.appendChild(logoutBtn);
         wrapper.appendChild(actionsWrap);
 
@@ -3787,6 +3902,7 @@ app.ui.settings.addSetting({
             try {
                 const me = await getData("/mss-login/api/me");
                 if (me && me.is_admin) {
+                    registerBtn.style.display = "block";
                     const cfg = await getData("/mss-login/api/settings/guest-jwt");
                     guestJwtRow.style.display = "flex";
                     guestJwtCheck.checked = !!cfg.allow_guest_jwt;

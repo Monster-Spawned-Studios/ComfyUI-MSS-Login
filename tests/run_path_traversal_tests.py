@@ -18,6 +18,7 @@ _path_safety = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_path_safety)
 
 is_safe_filename = _path_safety.is_safe_filename
+is_safe_relative_path = _path_safety.is_safe_relative_path
 is_safe_folder_segment = _path_safety.is_safe_folder_segment
 safe_basename = _path_safety.safe_basename
 resolve_path_under = _path_safety.resolve_path_under
@@ -49,6 +50,16 @@ def run_tests():
 	ok(not is_safe_filename(""), "rejects empty")
 	ok(not is_safe_filename(None), "rejects None")
 	ok(not is_safe_filename(123), "rejects non-string")
+
+	print("TestIsSafeRelativePath")
+	ok(is_safe_relative_path("workflow.json"), "allows simple name")
+	ok(is_safe_relative_path("folder/workflow.json"), "allows nested relative path")
+	ok(not is_safe_relative_path("../secret.json"), "rejects parent traversal")
+	ok(not is_safe_relative_path("a/../b.json"), "rejects embedded ..")
+	ok(not is_safe_relative_path("/etc/passwd"), "rejects absolute")
+	ok(not is_safe_relative_path("C:/windows/x.json"), "rejects drive-letter path")
+	ok(not is_safe_relative_path(""), "rejects empty")
+	ok(not is_safe_relative_path(None), "rejects None")
 
 	print("TestIsSafeFolderSegment")
 	ok(is_safe_folder_segment("checkpoints"), "allows checkpoints")

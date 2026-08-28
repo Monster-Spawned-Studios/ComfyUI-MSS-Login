@@ -1,164 +1,256 @@
-import { $el } from "/scripts/ui.js";
+import { app } from "/scripts/app.js";
 
-/** DOMPurify for sanitizing the logout button (loaded dynamically when run inside ComfyUI). */
-const DOMPURIFY_CDN = "https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js";
+const AVATAR_URL = "/mss-login/api/me/avatar";
+const LOGOUT_URL = "/logout";
+const DEFAULT_ICON = "pi pi-user";
+const PROFILE_CSS = `
+.mss-login-profile-btn { position: relative; }
+.mss-login-avatar-img { width: 22px; height: 22px; border-radius: 999px; object-fit: cover; display: block; }
+.mss-login-profile-menu { position: fixed; z-index: 12050; min-width: 180px; background: rgba(18,20,28,0.96); color: #f5f5f7; border: 1px solid rgba(255,255,255,0.16); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.45); padding: 6px; }
+.mss-login-profile-name { padding: 8px 10px 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.85; }
+.mss-login-profile-item { display: block; width: 100%; text-align: left; background: transparent; border: none; color: #f5f5f7; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.mss-login-profile-item:hover { background: rgba(255,255,255,0.08); }
+.mss-login-profile-logout { color: #fca5a5; }
+`;
 
-function loadDOMPurify() {
-  if (typeof window.DOMPurify !== "undefined") return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = DOMPURIFY_CDN;
-    s.onload = () => resolve();
-    s.onerror = () => reject(new Error("Failed to load DOMPurify"));
-    document.head.appendChild(s);
-  });
+function ensureProfileStyles() {
+  if (document.getElementById("mss-login-profile-css")) return;
+  const style = document.createElement("style");
+  style.id = "mss-login-profile-css";
+  style.textContent = PROFILE_CSS;
+  document.head.appendChild(style);
 }
 
-async function setupLogout() {
+function clearClientAuthState() {
   try {
-    await loadDOMPurify();
-    await new Promise((resolve) => {
-      const interval = setInterval(() => {
-        const sideBar = document.querySelector(".side-tool-bar-end");
-        if (sideBar) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, 100);
+    sessionStorage.removeItem("jwt_token");
+    sessionStorage.removeItem("mss-login-jwt");
+    localStorage.removeItem("jwt_token");
+  } catch (_) {}
+  try {
+    document.cookie.split(";").forEach((cookie) => {
+      const name = cookie.split("=")[0].trim();
+      if (!name) return;
+      const lower = name.toLowerCase();
+      if (lower === "jwt_token" || lower.includes("session") || lower === "mss_login_device_id") {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; samesite=strict`;
+      }
     });
+  } catch (_) {}
+}
 
-    function logoutAction() {
-      try {
-        localStorage.clear();
-        sessionStorage.clear();
-        document.cookie.split(";").forEach((cookie) => {
-          const cookieName = cookie.split("=")[0].trim();
-          document.cookie = `${DOMPurify.sanitize(cookieName)}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; secure; samesite=strict`;
-        });
-
-        window.location.href = "/logout";
-      } catch (error) {
-        console.error("Error during logout process:", error);
-      }
-    }
-
-    const sideBarEnd = document.querySelector(".side-tool-bar-end");
-    const comfyMenu = document.querySelector(".comfy-menu");
-    
-    if (sideBarEnd) {
-      try {
-        $el(
-          "button",
-          {
-            className:
-              "p-button p-component p-button-icon-only p-button-text comfy-settings-btn side-bar-button p-button-secondary mss-login-logout",
-            type: "button",
-            id: "logout-button",
-            ariaLabel: "Logout",
-            dataset: {
-              pcName: "button",
-              pDisabled: false,
-              pcSection: "root",
-              pdTooltip: false,
-              "v-6ab4daa6": "",
-              "v-33cac83a": "",
-            },
-            parent: sideBarEnd,
-            onclick: logoutAction,
-          },
-          [
-            $el("li", {
-              className: "pi pi-sign-out side-bar-button-icon",
-              dataset: {
-                "v-6ab4daa6": "",
-              },
-            }),
-          ]
-        );
-      } catch (err) {
-        console.error("Error creating sidebar logout button:", err);
-      }
-    }
-
-    if (comfyMenu) {
-      try {
-        $el(
-          "button",
-          {
-            textContent: "Logout",
-            id: "logout-menu-button",
-            parent: comfyMenu,
-            onclick: logoutAction,
-          },
-          [
-            $el("li", {
-              className: "pi pi-sign-out logout-icon",
-            }),
-          ]
-        );
-      } catch (err) {
-        console.error("Error creating menu logout button: ", err);
-      }
-    }
-
+async function logoutAction() {
+  try {
+    clearClientAuthState();
+    await fetch(LOGOUT_URL, { method: "POST", credentials: "same-origin" });
   } catch (error) {
-    console.error("Error setting up Logout button: ", error);
+    console.error("[mss-login] Logout request failed:", error);
+  }
+  window.location.href = LOGOUT_URL;
+}
+
+function closeProfileMenu() {
+  const menu = document.getElementById("mss-login-profile-menu");
+  if (menu) menu.remove();
+}
+
+function isGuestUser(me) {
+  const name = (me?.username || "").trim().toLowerCase();
+  return !name || name === "guest" || me?.role === "guest";
+}
+
+async function fetchMe() {
+  try {
+    const res = await fetch("/mss-login/api/me", { credentials: "same-origin" });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (_) {
+    return null;
   }
 }
 
-let isSettingUp = false;
-let logoutIntervalId = null;
-let logoutButtonExists = false;
-
-// Function to check and setup logout button
-async function checkAndSetupLogout() {
-  // Early exit if button already exists and is connected
-  if (logoutButtonExists) {
-    const btn = document.getElementById("logout-button");
-    if (btn && btn.isConnected) {
-      return; // Button exists and is valid
-    }
-    logoutButtonExists = false; // Button was removed, reset flag
-  }
-  
-  const logoutBtn = document.getElementById("logout-button");
-  if (logoutBtn === null && !isSettingUp) {
-    isSettingUp = true;
-    await setupLogout();
-    isSettingUp = false;
-    
-    // Check if button was successfully created
-    const newBtn = document.getElementById("logout-button");
-    if (newBtn) {
-      logoutButtonExists = true;
-      // Once button exists, we can stop the interval
-      if (logoutIntervalId) {
-        clearInterval(logoutIntervalId);
-        logoutIntervalId = null;
+function applyAvatarToButton(btn) {
+  if (!btn) return;
+  fetch(AVATAR_URL, { credentials: "same-origin" })
+    .then((res) => {
+      if (!res.ok) throw new Error("no avatar");
+      return res.blob();
+    })
+    .then((blob) => {
+      const url = URL.createObjectURL(blob);
+      let img = btn.querySelector("img.mss-login-avatar-img");
+      if (!img) {
+        img = document.createElement("img");
+        img.className = "mss-login-avatar-img";
+        img.alt = "";
+        const icon = btn.querySelector("i");
+        if (icon) icon.style.display = "none";
+        btn.prepend(img);
       }
-    }
-  }
+      img.src = url;
+    })
+    .catch(() => {
+      const img = btn.querySelector("img.mss-login-avatar-img");
+      if (img) img.remove();
+      const icon = btn.querySelector("i");
+      if (icon) icon.style.display = "";
+    });
 }
 
-// Register as ComfyUI extension to ensure it loads
-if (typeof app !== 'undefined' && app.registerExtension) {
+function openProfileMenu(anchor, me) {
+  closeProfileMenu();
+  const guest = isGuestUser(me);
+  const menu = document.createElement("div");
+  menu.id = "mss-login-profile-menu";
+  menu.className = "mss-login-profile-menu";
+  menu.setAttribute("role", "menu");
+
+  const nameRow = document.createElement("div");
+  nameRow.className = "mss-login-profile-name";
+  nameRow.textContent = me?.username || "Account";
+  menu.appendChild(nameRow);
+
+  if (!guest) {
+    const changeBtn = document.createElement("button");
+    changeBtn.type = "button";
+    changeBtn.className = "mss-login-profile-item";
+    changeBtn.textContent = "Change avatar";
+    changeBtn.setAttribute("role", "menuitem");
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/png,image/jpeg,image/webp";
+    fileInput.hidden = true;
+    changeBtn.appendChild(fileInput);
+    changeBtn.addEventListener("click", (ev) => {
+      if (ev.target === fileInput) return;
+      fileInput.click();
+    });
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files && fileInput.files[0];
+      fileInput.value = "";
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        if (app.extensionManager?.toast?.add) {
+          app.extensionManager.toast.add({
+            severity: "error",
+            summary: "Avatar too large",
+            detail: "Maximum size is 2 MB.",
+            life: 4000,
+          });
+        }
+        return;
+      }
+      const body = new FormData();
+      body.append("avatar", file, file.name);
+      try {
+        const res = await fetch("/mss-login/api/me/avatar", {
+          method: "POST",
+          credentials: "same-origin",
+          body,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        const btn = document.querySelector("[data-mss-login-profile='1']");
+        applyAvatarToButton(btn);
+        if (app.extensionManager?.toast?.add) {
+          app.extensionManager.toast.add({
+            severity: "success",
+            summary: "Avatar updated",
+            life: 2500,
+          });
+        }
+      } catch (err) {
+        if (app.extensionManager?.toast?.add) {
+          app.extensionManager.toast.add({
+            severity: "error",
+            summary: "Avatar rejected",
+            detail: err.message || "Could not use that image.",
+            life: 5000,
+          });
+        }
+      }
+      closeProfileMenu();
+    });
+    menu.appendChild(changeBtn);
+  }
+
+  const logoutBtn = document.createElement("button");
+  logoutBtn.type = "button";
+  logoutBtn.className = "mss-login-profile-item mss-login-profile-logout";
+  logoutBtn.textContent = "Log out";
+  logoutBtn.setAttribute("role", "menuitem");
+  logoutBtn.addEventListener("click", () => {
+    closeProfileMenu();
+    logoutAction();
+  });
+  menu.appendChild(logoutBtn);
+
+  document.body.appendChild(menu);
+  const rect = anchor.getBoundingClientRect();
+  menu.style.top = `${Math.round(rect.bottom + 6)}px`;
+  menu.style.right = `${Math.round(window.innerWidth - rect.right)}px`;
+
+  const dismiss = (ev) => {
+    if (menu.contains(ev.target) || anchor.contains(ev.target)) return;
+    closeProfileMenu();
+    document.removeEventListener("mousedown", dismiss, true);
+  };
+  document.addEventListener("mousedown", dismiss, true);
+}
+
+async function onProfileClick(event) {
+  const me = await fetchMe();
+  openProfileMenu(event.currentTarget, me);
+}
+
+const profileButtonSpec = {
+  icon: DEFAULT_ICON,
+  label: "",
+  tooltip: "Account",
+  class: "mss-login-profile-btn",
+  onClick: () => {},
+};
+
+function markProfileButton() {
+  const host = document.querySelector("[data-testid='action-bar-buttons']");
+  if (!host) return;
+  const btn = host.querySelector(".mss-login-profile-btn") || host.querySelector("button:last-of-type");
+  if (!btn) return;
+  btn.setAttribute("data-mss-login-profile", "1");
+  btn.setAttribute("aria-label", "Account menu");
+  btn.onclick = onProfileClick;
+  applyAvatarToButton(btn);
+}
+
+if (typeof app !== "undefined" && app.registerExtension) {
   app.registerExtension({
     name: "mss-login.Logout",
+    commands: [
+      {
+        id: "MSS-Login.Logout",
+        label: "Log Out",
+        icon: "pi pi-sign-out",
+        function: logoutAction,
+      },
+    ],
+    menuCommands: [
+      { path: ["File"], commands: ["MSS-Login.Logout"] },
+      { path: ["MSS-Login"], commands: ["MSS-Login.Logout"] },
+    ],
+    actionBarButtons: [profileButtonSpec],
     async setup() {
-      // Start the interval to check for logout button
-      // Only run if interval isn't already running (prevent duplicates)
-      if (!logoutIntervalId) {
-        logoutIntervalId = setInterval(checkAndSetupLogout, 500);
-        // Store for potential cleanup
-        window._mss_loginLogoutInterval = logoutIntervalId;
-      }
-    }
+      ensureProfileStyles();
+      window.mssLoginLogout = logoutAction;
+      const tryMark = () => markProfileButton();
+      setTimeout(tryMark, 400);
+      setTimeout(tryMark, 1200);
+      const obs = new MutationObserver(tryMark);
+      obs.observe(document.body, { childList: true, subtree: true });
+      setTimeout(() => obs.disconnect(), 15000);
+    },
   });
-} else {
-  // Fallback if app.registerExtension is not available
-  // Only run if interval isn't already running
-  if (!logoutIntervalId) {
-    logoutIntervalId = setInterval(checkAndSetupLogout, 500);
-    window._mss_loginLogoutInterval = logoutIntervalId;
-  }
 }
+
+export { logoutAction };
