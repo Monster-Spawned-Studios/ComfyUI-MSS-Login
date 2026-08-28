@@ -52,6 +52,7 @@ from .routes import (
 	admin,
 	user,
 	workflow_routes,
+	cpe,
 	me,
 	mfa,
 	recovery,

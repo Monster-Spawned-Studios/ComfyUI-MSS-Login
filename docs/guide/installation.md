@@ -9,10 +9,12 @@
 
 On startup, MSS-Login installs dependencies into **ComfyUI's Python environment** (`sys.executable`):
 
-1. **UV first** — `uv pip install` using `pyproject.toml` (respects CUDA vs Metal PyTorch indexes), or the platform requirements file:
-   - Linux / Windows: `requirements_cuda.txt` (CUDA wheels via PyTorch index)
-   - macOS: `requirements_metal.txt`
-2. **pip fallback** — if UV is missing or fails, the same requirements file is installed with `pip install -r`.
+1. **Detect the PyTorch backend** (before downloading wheels):
+   - **macOS:** Metal / MPS via PyPI (`requirements_metal.txt`). CUDA indexes are not used on darwin.
+   - **Linux / Windows:** read the NVIDIA driver (`libcuda` / `nvidia-smi`). Prefer **cu130** (`https://download.pytorch.org/whl/cu130`) when the driver reports CUDA 13+, otherwise **cu128**, otherwise **CPU** (`https://download.pytorch.org/whl/cpu`).
+   - Overrides: `USE_CPU=1` forces CPU wheels; `USE_CUDA=1` prefers CUDA even if auto-detect is inconclusive.
+2. **UV first** — `uv pip install` using the matching requirements file (`requirements_metal.txt`, `requirements_cuda.txt`, or `requirements_cpu.txt`), then `pyproject.toml` if needed.
+3. **pip fallback** — if UV is missing or fails, the same requirements file is installed with `pip install -r`.
 
 Optional **dotenvx** CLI is installed best-effort via `python-dotenvx` postinstall; failure does not block the node.
 
@@ -29,9 +31,20 @@ From the extension directory, using ComfyUI's Python:
 # Preferred (UV)
 /path/to/comfy/python -m uv pip install --python /path/to/comfy/python .
 
-# Fallback (pip)
+# macOS (Metal / MPS from PyPI)
+/path/to/comfy/python -m pip install -r requirements_metal.txt
+
+# Linux/Windows CUDA 13+
+/path/to/comfy/python -m pip install -r requirements_cuda.txt \
+  --extra-index-url https://download.pytorch.org/whl/cu130
+
+# Linux/Windows CUDA 12.x
 /path/to/comfy/python -m pip install -r requirements_cuda.txt \
   --extra-index-url https://download.pytorch.org/whl/cu128
+
+# Linux/Windows CPU only
+/path/to/comfy/python -m pip install -r requirements_cpu.txt \
+  --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 
 See [`utils/install_deps.py`](../../utils/install_deps.py) for the full install logic.

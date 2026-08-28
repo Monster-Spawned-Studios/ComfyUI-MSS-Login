@@ -22,50 +22,128 @@ _install_deps_root = os.path.dirname(_install_deps_this_dir)
 _install_attempted = False
 
 
-def _detect_pytorch_cuda_index() -> str:
-	"""Detect if CUDA 13 support is possible using nvidia-smi or CUDA driver library,
-	and return the appropriate PyTorch extra index URL.
-	"""
-	cu130_index = "https://download.pytorch.org/whl/cu130"
-	cu128_index = "https://download.pytorch.org/whl/cu128"
+PYTORCH_INDEX_CU130 = "https://download.pytorch.org/whl/cu130"
+PYTORCH_INDEX_CU128 = "https://download.pytorch.org/whl/cu128"
+PYTORCH_INDEX_CPU = "https://download.pytorch.org/whl/cpu"
 
-	# Method 1: Check via ctypes
+
+def detect_cuda_major() -> int | None:
+	"""Return the host CUDA driver major version, or None if CUDA is unavailable.
+
+	Checks the NVIDIA driver library first, then ``nvidia-smi``. Used to decide
+	whether cu130 wheels are supported before installing them.
+	"""
 	import ctypes
-	import platform
+	import re
 
 	system = platform.system()
+	if system == "Darwin":
+		return None
+
 	try:
 		cuda_lib = None
 		if system == "Windows":
 			cuda_lib = ctypes.WinDLL("nvcuda.dll")
 		elif system == "Linux":
-			cuda_lib = ctypes.CDLL("libcuda.so")
+			for soname in ("libcuda.so.1", "libcuda.so"):
+				try:
+					cuda_lib = ctypes.CDLL(soname)
+					break
+				except OSError:
+					continue
 		if cuda_lib is not None:
 			version = ctypes.c_int()
 			if cuda_lib.cuDriverGetVersion(ctypes.byref(version)) == 0:
-				major = version.value // 1000
-				if major >= 13:
-					return cu130_index
+				major = int(version.value) // 1000
+				if major > 0:
+					return major
 	except Exception:
 		pass
 
-	# Method 2: Check via nvidia-smi command line
 	try:
 		res = subprocess.run(
 			["nvidia-smi"], capture_output=True, text=True, timeout=10, check=False
 		)
 		if res.returncode == 0 and res.stdout:
-			import re
-
 			match = re.search(r"CUDA Version:\s*(\d+)", res.stdout)
 			if match:
 				major = int(match.group(1))
-				if major >= 13:
-					return cu130_index
+				if major > 0:
+					return major
 	except Exception:
 		pass
 
-	return cu128_index
+	return None
+
+
+def detect_torch_install_plan(
+	*, system: str | None = None, cuda_major: int | None = None, env: dict[str, str] | None = None
+) -> dict[str, Optional[str]]:
+	"""Choose the PyTorch backend for this host.
+
+	Preference order:
+	- macOS: Metal (PyPI wheels; CUDA indexes are not published for darwin)
+	- Linux/Windows: cu130 if the NVIDIA driver reports CUDA 13+, else cu128
+	  if any CUDA driver is present, else CPU
+	Env overrides: ``USE_CPU=1`` forces CPU; ``USE_CUDA=1`` prefers CUDA when a
+	driver is found (still requires a CUDA major >= 13 for cu130).
+	"""
+	system = system or platform.system()
+	environ = env if env is not None else os.environ
+	force_cpu = str(environ.get("USE_CPU", "")).strip() == "1"
+	force_cuda = str(environ.get("USE_CUDA", "")).strip() == "1"
+
+	if system == "Darwin":
+		return {
+			"backend": "metal",
+			"requirements_file": "requirements_metal.txt",
+			"extra_index_url": None,
+		}
+
+	if force_cpu:
+		return {
+			"backend": "cpu",
+			"requirements_file": "requirements_cpu.txt",
+			"extra_index_url": PYTORCH_INDEX_CPU,
+		}
+
+	if cuda_major is None:
+		cuda_major = detect_cuda_major()
+
+	if cuda_major is not None and cuda_major >= 13:
+		return {
+			"backend": "cuda130",
+			"requirements_file": "requirements_cuda.txt",
+			"extra_index_url": PYTORCH_INDEX_CU130,
+		}
+	if cuda_major is not None and cuda_major >= 11:
+		return {
+			"backend": "cuda128",
+			"requirements_file": "requirements_cuda.txt",
+			"extra_index_url": PYTORCH_INDEX_CU128,
+		}
+	if force_cuda:
+		# Caller asked for CUDA but no driver was detected; stay on cu128 rather
+		# than silently installing CPU wheels (matches previous auto-install).
+		return {
+			"backend": "cuda128",
+			"requirements_file": "requirements_cuda.txt",
+			"extra_index_url": PYTORCH_INDEX_CU128,
+		}
+	return {
+		"backend": "cpu",
+		"requirements_file": "requirements_cpu.txt",
+		"extra_index_url": PYTORCH_INDEX_CPU,
+	}
+
+
+def _detect_pytorch_cuda_index() -> str:
+	"""Return the CUDA wheel index after verifying driver support.
+
+	Prefers cu130 when the host CUDA driver is 13+. Falls back to cu128.
+	"""
+	plan = detect_torch_install_plan()
+	return plan.get("extra_index_url") or PYTORCH_INDEX_CU128
 
 
 _UV_TIMEOUT_SECONDS = 1200
@@ -98,21 +176,22 @@ def _log(message: str, *, error: bool = False) -> None:
 		print(message, file=stream)
 
 
-def _platform_requirements_rel() -> Optional[tuple[str, bool]]:
-	"""Return (requirements file relative to extension root, needs_cuda_index) or None."""
-	root = _install_deps_root
-	req_cuda = join(root, "requirements_cuda.txt")
-	req_metal = join(root, "requirements_metal.txt")
-	req_default = join(root, "requirements.txt")
-	system = platform.system()
+def _platform_requirements_rel() -> Optional[tuple[str, Optional[str]]]:
+	"""Return (requirements file relative to extension root, extra_index_url) or None.
 
-	use_cuda_env = str(os.environ.get("USE_CUDA", "")).strip() == "1"
-	if os.path.isfile(req_cuda) and (use_cuda_env or system in ("Windows", "Linux")):
-		return ("requirements_cuda.txt", True)
-	if system == "Darwin" and os.path.isfile(req_metal):
-		return ("requirements_metal.txt", False)
+	extra_index_url is the PyTorch wheel index for CUDA/CPU hosts, or None for
+	macOS Metal (PyPI). CUDA 13 is selected only after detect_cuda_major()
+	confirms driver support.
+	"""
+	root = _install_deps_root
+	plan = detect_torch_install_plan()
+	req_file = plan["requirements_file"]
+	req_path = join(root, req_file)
+	if os.path.isfile(req_path):
+		return (req_file, plan["extra_index_url"])
+	req_default = join(root, "requirements.txt")
 	if os.path.isfile(req_default):
-		return ("requirements.txt", False)
+		return ("requirements.txt", plan["extra_index_url"])
 	return None
 
 
@@ -163,14 +242,14 @@ def _run_pip(args: list[str], *, cwd: str, timeout: int = _PIP_TIMEOUT_SECONDS) 
 	return _run_subprocess(argv, cwd=cwd, timeout=timeout, label="pip install")
 
 
-def _install_with_uv(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
+def _install_with_uv(root: str, req_rel: Optional[tuple[str, Optional[str]]]) -> bool:
 	# Platform requirements (torch, etc.) first — avoids building this repo as a wheel.
 	if req_rel is not None:
-		req_file, needs_cuda_index = req_rel
+		req_file, extra_index_url = req_rel
 		_log(f"[mss-login] Installing dependencies with uv ({req_file})...")
 		uv_args = ["-r", req_file]
-		if needs_cuda_index:
-			uv_args.extend(["--extra-index-url", _detect_pytorch_cuda_index()])
+		if extra_index_url:
+			uv_args.extend(["--extra-index-url", extra_index_url])
 		if _run_uv_pip(uv_args, cwd=root):
 			return True
 		_log("[mss-login] uv requirements install failed; trying pyproject.toml.", error=True)
@@ -180,16 +259,17 @@ def _install_with_uv(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
 		_log("[mss-login] Installing dependencies with uv (pyproject.toml)...")
 		# Install [project.dependencies] without packaging the custom-node tree as a wheel.
 		uv_args = ["-r", "pyproject.toml"]
-		system = platform.system()
-		if system in ("Windows", "Linux"):
-			uv_args.extend(["--extra-index-url", _detect_pytorch_cuda_index()])
+		plan = detect_torch_install_plan()
+		if plan.get("extra_index_url"):
+			uv_args.extend(["--extra-index-url", plan["extra_index_url"]])
 		return _run_uv_pip(uv_args, cwd=root)
 
 	return False
 
 
-def _install_with_pip(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
+def _install_with_pip(root: str, req_rel: Optional[tuple[str, Optional[str]]]) -> bool:
 	pyproject = join(root, "pyproject.toml")
+	plan = detect_torch_install_plan()
 	if os.path.isfile(pyproject):
 		_log("[mss-login] Installing dependencies with pip (pyproject.toml)...")
 		try:
@@ -199,10 +279,9 @@ def _install_with_pip(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
 				data = tomllib.load(f)
 			deps = data.get("project", {}).get("dependencies", [])
 			if deps:
-				system = platform.system()
 				pip_args = list(deps)
-				if system in ("Windows", "Linux"):
-					pip_args.extend(["--extra-index-url", _detect_pytorch_cuda_index()])
+				if plan.get("extra_index_url"):
+					pip_args.extend(["--extra-index-url", plan["extra_index_url"]])
 				if _run_pip(pip_args, cwd=root):
 					return True
 		except Exception as exc:
@@ -212,11 +291,11 @@ def _install_with_pip(root: str, req_rel: Optional[tuple[str, bool]]) -> bool:
 		_log("[mss-login] No platform requirements file found; skipping pip fallback.", error=True)
 		return False
 
-	req_file, needs_cuda_index = req_rel
+	req_file, extra_index_url = req_rel
 	_log(f"[mss-login] Falling back to pip ({req_file})...")
 	pip_args = ["-r", req_file]
-	if needs_cuda_index:
-		pip_args.extend(["--extra-index-url", _detect_pytorch_cuda_index()])
+	if extra_index_url:
+		pip_args.extend(["--extra-index-url", extra_index_url])
 	return _run_pip(pip_args, cwd=root)
 
 
@@ -257,6 +336,11 @@ def install_dependencies() -> bool:
 
 	_install_attempted = True
 	root = _install_deps_root
+	plan = detect_torch_install_plan()
+	_log(
+		f"[mss-login] PyTorch install plan: backend={plan.get('backend')} "
+		f"index={plan.get('extra_index_url') or 'PyPI (Metal/default)'}"
+	)
 	req_rel = _platform_requirements_rel()
 
 	try:

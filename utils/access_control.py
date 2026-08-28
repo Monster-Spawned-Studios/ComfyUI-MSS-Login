@@ -163,6 +163,8 @@ class AccessControl:
 			is_userdata_workflow = path.startswith(
 				("/api/userdata/workflows", "/api/userdata/workflows:")
 			)
+			is_cpe_workflow = path.startswith(("/api/cpe/workflow", "/cpe/workflow"))
+			is_cpe_api = path.startswith(("/api/cpe/", "/cpe/"))
 
 			if is_queue and perms.get("can_run") is False:
 				debug_write(
@@ -186,7 +188,12 @@ class AccessControl:
 				)
 				return web.json_response({"error": "MSS-Login: Upload Denied"}, status=403)
 
-			if is_userdata_workflow and request.method in ("POST", "PUT", "DELETE", "PATCH"):
+			if (is_userdata_workflow or is_cpe_workflow) and request.method in (
+				"POST",
+				"PUT",
+				"DELETE",
+				"PATCH",
+			):
 				can_modify = perms.get("can_modify_workflows")
 				if can_modify is None:
 					can_modify = role != "guest"
@@ -223,7 +230,7 @@ class AccessControl:
 						{"error": "MSS-Login: S3 Storage Access Denied"}, status=403
 					)
 
-			if not is_queue and not is_upload and path.startswith("/api/"):
+			if not is_queue and not is_upload and (path.startswith("/api/") or is_cpe_api):
 				if perms.get("can_access_api") is False:
 					debug_write(
 						{

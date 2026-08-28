@@ -420,6 +420,21 @@ async def middleware_dispatch(request):
 	if path.startswith("/mss-login-gallery"):
 		return None
 
+	# Comfy Portal Endpoint paths: per-user workflow list/get/save (CPE format).
+	# Intercept even when comfy-portal-endpoint is installed so listings are not
+	# limited to ComfyUI's user/default/workflows directory.
+	try:
+		from .cpe import dispatch_cpe_request
+
+		cpe_response = await dispatch_cpe_request(request)
+		if isinstance(cpe_response, web.StreamResponse):
+			return cpe_response
+	except Exception as e:
+		print(f"[mss-login] CPE dispatch error for {path!r}: {e}")
+		return web.json_response(
+			{"status": "error", "message": "Internal server error"}, status=500
+		)
+
 	# Optional bypass
 	if request.query.get("bypass") == "true":
 		return None

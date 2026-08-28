@@ -47,15 +47,59 @@ from ..utils.updater import get_local_version
 from ..utils.validate import validate_password, validate_username
 
 
+def _authenticated_admin_username(request: web.Request) -> str | None:
+	"""Return the username if the request has a valid admin/owner session or API token."""
+	token = jwt_auth.get_token_from_request(request)
+	if not token:
+		return None
+	username = None
+	try:
+		api_store = get_api_token_store(API_TOKEN_STORE_CONFIG)
+		api_user = api_store.get_user_for_token(token)
+		if api_user is not None:
+			_user_id, username = api_user
+		else:
+			payload = jwt_auth.decode_access_token(token)
+			username = payload.get("username")
+	except Exception:
+		return None
+	if not username:
+		return None
+	try:
+		_uid, rec = users_db.get_user(username)
+	except Exception:
+		return None
+	if not rec:
+		return None
+	groups = [str(g).lower() for g in rec.get("groups", [])]
+	if rec.get("admin") or "admin" in groups or "owner" in groups:
+		return username
+	return None
+
+
 @routes.get("/register")
 async def get_register(request: web.Request) -> web.Response:
-	"""Serve the register page."""
+	"""Serve the register page.
+
+	Public only for the first admin (empty user database). After that, an
+	authenticated admin session is required so the form is not a brute-force
+	target from the login page.
+	"""
+	has_users = bool(users_db.load_users())
+	session_admin = _authenticated_admin_username(request)
+	if has_users and not session_admin:
+		if is_browser_navigation(request):
+			return web.HTTPFound("/login")
+		return web.json_response(
+			{"error": "Admin authentication required to register users"}, status=403
+		)
 	path = os.path.join(HTML_DIR, "register.html")
 	if not os.path.exists(path):
 		return web.Response(text="register.html not found", status=404)
 	with open(path, "r", encoding="utf-8") as f:
 		html_content = f.read()
-	if not users_db.load_users():
+	# Hide admin credential fields for first-run bootstrap and for already-authed admins.
+	if not has_users or session_admin:
 		html_content = html_content.replace("{{ X-Admin-User }}", "true")
 	else:
 		html_content = html_content.replace("{{ X-Admin-User }}", "false")
@@ -70,7 +114,6 @@ async def post_register(request: web.Request) -> web.Response:
 	new_username = sanitize_username(sanitized_data.get("new_user_username"))
 	new_password = sanitize_password_input(sanitized_data.get("new_user_password"))
 	username = sanitize_username(sanitized_data.get("username"))
-	password = sanitize_password_input(sanitized_data.get("password"))
 
 	ok, msg = validate_username(new_username)
 	if not ok:
@@ -81,11 +124,16 @@ async def post_register(request: web.Request) -> web.Response:
 
 	admin_user = users_db.get_admin_user()
 	is_first_admin = admin_user[0] is None
+	session_admin = _authenticated_admin_username(request)
 
 	if not is_first_admin:
-		if not users_db.check_username_password(username, password):
+		if session_admin:
+			username = session_admin
+		else:
 			timeout.add_failed_attempt(ip)
-			return web.json_response({"error": "Invalid admin credentials"}, status=403)
+			return web.json_response(
+				{"error": "Admin authentication required to register users"}, status=403
+			)
 
 	if None not in users_db.get_user(new_username):
 		return web.json_response({"error": "Username exists"}, status=400)

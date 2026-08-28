@@ -3744,7 +3744,20 @@ app.ui.settings.addSetting({
         btn.style.minWidth = "260px";
         btn.onclick = () => new mss_loginDialog().show();
 
+        // Register a new user (admins only). Kept out of the public login page
+        // to reduce brute-force exposure of the registration form.
+        const registerBtn = document.createElement("button");
+        registerBtn.innerText = "Register a New User";
+        registerBtn.className = "mss-login-launch-btn";
+        registerBtn.style.minWidth = "260px";
+        registerBtn.style.display = "none";
+        registerBtn.setAttribute("data-mss-login-admin-only", "true");
+        registerBtn.onclick = () => {
+            window.location.href = "/register";
+        };
+
         actionsWrap.appendChild(btn);
+        actionsWrap.appendChild(registerBtn);
         actionsWrap.appendChild(logoutBtn);
         wrapper.appendChild(actionsWrap);
 
@@ -3787,6 +3800,7 @@ app.ui.settings.addSetting({
             try {
                 const me = await getData("/mss-login/api/me");
                 if (me && me.is_admin) {
+                    registerBtn.style.display = "block";
                     const cfg = await getData("/mss-login/api/settings/guest-jwt");
                     guestJwtRow.style.display = "flex";
                     guestJwtCheck.checked = !!cfg.allow_guest_jwt;

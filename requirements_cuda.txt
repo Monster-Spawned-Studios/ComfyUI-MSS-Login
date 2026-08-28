@@ -1,7 +1,11 @@
+# Linux / Windows with an NVIDIA driver. The auto-installer passes
+# --extra-index-url https://download.pytorch.org/whl/cu130 (or cu128) after
+# checking the host CUDA version. Do not use this file on macOS.
 aiohttp
 PyJWT
 bleach
 psycopg2-binary
+pymysql
 bcrypt
 cryptography
 python-dotenvx>=0.3.0
@@ -11,8 +15,9 @@ argon2-cffi
 pillow
 numpy
 torch
-torchvision 
+torchvision
 torchaudio
 uv
 transformers
 boto3
+comfyui-frontend-package>=1.40.0

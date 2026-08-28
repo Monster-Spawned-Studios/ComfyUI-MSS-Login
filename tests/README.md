@@ -29,6 +29,8 @@ These run without loading ComfyUI or `folder_paths`, so they work in CI and on m
 |--------|----------------|
 | `run_path_traversal_tests.py` | `utils.path_safety`: path traversal prevention, safe filenames/folders, `resolve_path_under`, attack vectors. |
 | `run_sanitizer_tests.py` | `utils.input_sanitizer` and `utils.validate`: username/password sanitization and validation. |
+| `run_cpe_workflow_tests.py` | Per-user Comfy Portal Endpoint workflow list/get/save helpers (no ComfyUI). |
+| `run_install_deps_plan_tests.py` | PyTorch backend detection (Metal / cu130 / cu128 / CPU). |
 
 Examples:
 
