@@ -54,7 +54,7 @@ jobs:
         continue-on-error: true
 
       - name: Run Ruff lint fix
-        uses: astral-sh/ruff-action@v4.1.0
+        uses: astral-sh/ruff-action@v4.1.0  
         with:
           args: "check --fix"
           src: "."
