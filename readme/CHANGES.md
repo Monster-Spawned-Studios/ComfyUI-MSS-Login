@@ -1,5 +1,9 @@
 # Changes
 
+## 0.0.8 - **chore(release): prepare v0.0.7**
+
+- Changelog can be viewed here: [v0.0.8 Changelog](./readme/changelogs/0.0.8.md)
+
 ## 0.0.7 - **General System Stability Improvements**
 
 - Changelog can be viewed here: [v0.0.7 Changelog](./readme/changelogs/0.0.7.md)

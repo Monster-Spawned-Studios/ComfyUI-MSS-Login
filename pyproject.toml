@@ -2,7 +2,7 @@
 license = { file = "readme/LICENSE.md" }
 name = "MSS-Login"
 description = "A ComfyUI node to enhance the security of the overall ComfyUI experience, for both private and public-facing servers, adding more features, while still allowing ComfyUI to be usable."
-version = "0.0.7"
+version = "0.0.8"
 requires-python = ">=3.13"
 classifiers = [
 	# For OS-independent nodes (works on all operating systems)
