@@ -9,8 +9,11 @@ from aiohttp import web
 from ..constants import (
 	CONFIG_FILE_PATH,
 	DEFAULT_GROUP_CONFIG_PATH,
+	DEFAULT_LOCAL_PRIVATE_CIDRS,
 	GROUPS_CONFIG_FILE,
+	TAILSCALE_CIDRS,
 	USERS_DB_CONFIG,
+	experimental_tailscale_local_auth_enabled,
 	get_domain,
 	get_experimental_failsafe_settings,
 	get_experimental_flags,
@@ -18,11 +21,14 @@ from ..constants import (
 	reload_api_token_store_config,
 	reload_experimental_failsafe,
 	reload_experimental_features,
+	reload_local_network_cidrs,
 	reload_users_db_config,
 	save_experimental_failsafe_settings,
 )
 from ..globals import ip_filter, jwt_auth, logger, routes, users_db
 from ..utils.admin_logic import delete_user_record, patch_user_group
+from ..utils.tailscale_network import detect_network_info
+
 from ..utils.api_token_store import reset_api_token_store
 from ..utils.bootstrap import _apply_owner_max_merge, load_default_groups
 from ..utils.json_utils import load_json_file, save_json_file
@@ -345,6 +351,8 @@ async def api_get_experimental(request):
 			"s3": bool(block.get("s3", False)),
 			"loading_screen": bool(block.get("loading_screen", False)),
 			"news": bool(block.get("news", False)),
+			"model_isolation": bool(block.get("model_isolation", False)),
+			"tailscale_local_auth": bool(block.get("tailscale_local_auth", False)),
 		}
 		return web.json_response({"experimental_features": master, "experimental": experimental})
 	except Exception as e:
@@ -353,7 +361,84 @@ async def api_get_experimental(request):
 
 @routes.put("/mss-login/api/settings/experimental")
 async def api_put_experimental(request):
-	"""Update experimental per-feature flags (Admin only). Body: { experimental: { mfa?, s3?, loading_screen?, news? } }."""
+	"""Update experimental master switch and per-feature flags (Admin only)."""
+	if not is_admin(request):
+		return web.json_response({"error": "Admin only"}, status=403)
+	try:
+		data = await request.json()
+		if not isinstance(data, dict):
+			return web.json_response({"error": "Invalid body"}, status=400)
+		cfg = load_json_file(CONFIG_FILE_PATH, {})
+		if not isinstance(cfg, dict):
+			cfg = {}
+		if "experimental_features" in data:
+			cfg["experimental_features"] = bool(data["experimental_features"])
+		block = cfg.get("experimental")
+		if not isinstance(block, dict):
+			block = {}
+		incoming = data.get("experimental")
+		if isinstance(incoming, dict):
+			for key in (
+				"mfa",
+				"s3",
+				"loading_screen",
+				"news",
+				"model_isolation",
+				"tailscale_local_auth",
+			):
+				if key in incoming:
+					block[key] = bool(incoming[key])
+		cfg["experimental"] = block
+		save_json_file(CONFIG_FILE_PATH, cfg)
+		reload_experimental_features()
+		return web.json_response(
+			{
+				"status": "ok",
+				"experimental_features": bool(cfg.get("experimental_features", False)),
+				"experimental": get_experimental_flags(),
+			}
+		)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/experimental")(api_get_experimental)
+routes.put("/api/mss-login/api/settings/experimental")(api_put_experimental)
+
+
+@routes.get("/mss-login/api/settings/tailscale-auth")
+async def api_get_tailscale_auth(request):
+	"""Return Tailscale/Local network authentication status and diagnostic info."""
+	token = jwt_auth.get_token_from_request(request)
+	if not token or not jwt_auth.is_token_valid(token):
+		return web.json_response({"error": "Authentication required"}, status=401)
+	try:
+		cfg = load_json_file(CONFIG_FILE_PATH, {})
+		master = bool(cfg.get("experimental_features", False))
+		block = cfg.get("experimental") or {}
+		enabled = bool(block.get("tailscale_local_auth", False))
+		net_info = detect_network_info(request)
+		return web.json_response(
+			{
+				"enabled": enabled,
+				"experimental_features": master,
+				"is_active": bool(master and enabled),
+				"client_ip": net_info.get("client_ip", ""),
+				"peer_ip": net_info.get("peer_ip", ""),
+				"network_type": net_info.get("network_type", "remote"),
+				"is_trusted_network": bool(net_info.get("is_trusted")),
+				"tailscale_cidrs": list(TAILSCALE_CIDRS),
+				"default_local_cidrs": list(DEFAULT_LOCAL_PRIVATE_CIDRS),
+				"custom_local_cidrs": list(cfg.get("local_network_cidrs") or []),
+			}
+		)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+@routes.put("/mss-login/api/settings/tailscale-auth")
+async def api_put_tailscale_auth(request):
+	"""Update Tailscale/Local network authentication toggle (Admin only)."""
 	if not is_admin(request):
 		return web.json_response({"error": "Admin only"}, status=403)
 	try:
@@ -366,21 +451,100 @@ async def api_put_experimental(request):
 		block = cfg.get("experimental")
 		if not isinstance(block, dict):
 			block = {}
-		incoming = data.get("experimental")
-		if isinstance(incoming, dict):
-			for key in ("mfa", "s3", "loading_screen", "news"):
-				if key in incoming:
-					block[key] = bool(incoming[key])
+
+		if "enabled" in data:
+			val = bool(data["enabled"])
+			block["tailscale_local_auth"] = val
+			if val and data.get("enable_master"):
+				cfg["experimental_features"] = True
+
+		if "experimental_features" in data:
+			cfg["experimental_features"] = bool(data["experimental_features"])
+
 		cfg["experimental"] = block
 		save_json_file(CONFIG_FILE_PATH, cfg)
 		reload_experimental_features()
-		return web.json_response({"status": "ok", "experimental": get_experimental_flags()})
+
+		return web.json_response(
+			{
+				"status": "ok",
+				"enabled": bool(block.get("tailscale_local_auth", False)),
+				"experimental_features": bool(cfg.get("experimental_features", False)),
+				"is_active": experimental_tailscale_local_auth_enabled(),
+			}
+		)
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
 
 
-routes.get("/api/mss-login/api/settings/experimental")(api_get_experimental)
-routes.put("/api/mss-login/api/settings/experimental")(api_put_experimental)
+routes.get("/api/mss-login/api/settings/tailscale-auth")(api_get_tailscale_auth)
+routes.put("/api/mss-login/api/settings/tailscale-auth")(api_put_tailscale_auth)
+
+
+@routes.get("/mss-login/api/settings/local-cidrs")
+async def api_get_local_cidrs(request):
+	"""Return configured local network CIDRs. Accessible to authenticated users."""
+	token = jwt_auth.get_token_from_request(request)
+	if not token or not jwt_auth.is_token_valid(token):
+		return web.json_response({"error": "Authentication required"}, status=401)
+	cfg = load_json_file(CONFIG_FILE_PATH, {})
+	return web.json_response(
+		{
+			"local_network_cidrs": list(cfg.get("local_network_cidrs") or []),
+			"tailscale_cidrs": list(TAILSCALE_CIDRS),
+			"default_local_cidrs": list(DEFAULT_LOCAL_PRIVATE_CIDRS),
+		}
+	)
+
+
+@routes.put("/mss-login/api/settings/local-cidrs")
+async def api_put_local_cidrs(request):
+	"""Update custom local network CIDRs (Owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	try:
+		import ipaddress
+
+		data = await request.json()
+		if not isinstance(data, dict):
+			return web.json_response({"error": "Invalid body"}, status=400)
+		cidrs_in = data.get("local_network_cidrs")
+		if not isinstance(cidrs_in, list):
+			return web.json_response({"error": "local_network_cidrs must be a list"}, status=400)
+
+		valid_cidrs = []
+		for entry in cidrs_in:
+			entry_str = str(entry).strip()
+			if not entry_str:
+				continue
+			try:
+				ipaddress.ip_network(entry_str, strict=False)
+				valid_cidrs.append(entry_str)
+			except ValueError:
+				return web.json_response(
+					{"error": f"Invalid IP address or CIDR format: '{entry_str}'"}, status=400
+				)
+
+		cfg = load_json_file(CONFIG_FILE_PATH, {})
+		if not isinstance(cfg, dict):
+			cfg = {}
+		cfg["local_network_cidrs"] = valid_cidrs
+		save_json_file(CONFIG_FILE_PATH, cfg)
+		reload_local_network_cidrs()
+
+		return web.json_response(
+			{
+				"status": "ok",
+				"local_network_cidrs": valid_cidrs,
+			}
+		)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/local-cidrs")(api_get_local_cidrs)
+routes.put("/api/mss-login/api/settings/local-cidrs")(api_put_local_cidrs)
+
 
 
 @routes.get("/mss-login/api/settings/experimental-failsafe")

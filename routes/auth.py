@@ -24,11 +24,18 @@ from ..constants import (
 	WEB_DIR,
 	experimental_loading_screen_enabled,
 	experimental_mfa_enabled,
+	experimental_tailscale_local_auth_enabled,
 )
 from ..globals import access_control, jwt_auth, logger, routes, timeout, users_db
 from ..utils import user_env
 from ..utils.api_token_store import get_api_token_store
 from ..utils.bootstrap import ensure_groups_config, ensure_guest_user
+from ..utils.tailscale_network import (
+	detect_network_info,
+	is_trusted_tailscale_or_local,
+	user_can_login_locally_without_auth,
+)
+
 from ..utils.input_sanitizer import (
 	sanitize_backup_code_input,
 	sanitize_label,
@@ -256,6 +263,49 @@ async def get_login(request: web.Request) -> web.Response:
 		return web.HTTPFound("/register")
 	if jwt_auth.get_token_from_request(request):
 		return web.HTTPFound("/logout")
+
+	# Check for Tailscale / reverse proxy identity headers on trusted local/Tailscale connections
+	if experimental_tailscale_local_auth_enabled() and is_trusted_tailscale_or_local(request):
+		for header in (
+			"Tailscale-User-Login",
+			"Remote-User",
+			"X-Remote-User",
+			"X-Forwarded-User",
+			"X-Webauth-User",
+		):
+			hdr_val = request.headers.get(header)
+			if hdr_val:
+				candidate = sanitize_username(hdr_val.strip().split("@")[0])
+				groups_cfg = access_control._load_group_config()
+				if user_can_login_locally_without_auth(candidate, users_db, groups_cfg):
+					user_id, _ = users_db.get_user(candidate)
+					if user_id:
+						user_env.get_user_workflow_dir(candidate)
+						no_exp = _user_can_have_non_expiring_jwt(candidate)
+						token = jwt_auth.create_access_token(
+							{"id": user_id, "username": candidate}, no_expiration=no_exp
+						)
+						try:
+							payload = jwt_auth.decode_access_token(token)
+							jti = payload.get("jti")
+							exp = payload.get("exp")
+							exp_at_iso = (
+								datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
+							)
+							if jti:
+								get_session_token_store(
+									SESSION_TOKEN_STORE_CONFIG
+								).register_session(jti, user_id, candidate, exp_at_iso)
+						except Exception:
+							pass
+						redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+						_secure = is_https_request(request)
+						resp = web.HTTPFound(redirect_url)
+						resp.set_cookie(
+							"jwt_token", token, httponly=True, samesite="Strict", secure=_secure
+						)
+						return resp
+
 	path = os.path.join(HTML_DIR, "login.html")
 	if not os.path.exists(path):
 		return web.Response(text="login.html not found", status=404)
@@ -267,6 +317,7 @@ async def get_login(request: web.Request) -> web.Response:
 	version = get_local_version()
 	html = _inject_login_version(html, version)
 	return web.Response(text=html, content_type="text/html")
+
 
 
 @routes.get("/mfa")
@@ -442,6 +493,120 @@ async def post_login(request: web.Request) -> web.Response:
 	except Exception as e:
 		logger.error(f"[auth.py] post_login: send_notification: {e!s}")
 	return web.json_response({"error": "Invalid credentials"}, status=401)
+
+
+@routes.get("/mss-login/api/auth/local-login-status")
+async def api_local_login_status(request: web.Request) -> web.Response:
+	"""Return status of local login capability for the calling client."""
+	is_enabled = experimental_tailscale_local_auth_enabled()
+	net_info = detect_network_info(request)
+	is_local = bool(net_info.get("is_trusted"))
+	eligible_users = []
+	if is_enabled and is_local:
+		groups_cfg = access_control._load_group_config()
+		all_users = users_db.load_users() or {}
+		for u in sorted(all_users.keys()):
+			if user_can_login_locally_without_auth(u, users_db, groups_cfg):
+				eligible_users.append(u)
+	return web.json_response(
+		{
+			"enabled": is_enabled,
+			"is_local": is_local,
+			"network_type": net_info.get("network_type", "remote"),
+			"client_ip": net_info.get("client_ip", ""),
+			"eligible_users": eligible_users,
+		}
+	)
+
+
+routes.get("/api/mss-login/api/auth/local-login-status")(api_local_login_status)
+
+
+@routes.post("/mss-login/api/auth/local-login")
+async def api_local_login(request: web.Request) -> web.Response:
+	"""One-click local login without authentication for permitted roles (Owner/Admin)."""
+	ip = get_ip(request)
+	if not experimental_tailscale_local_auth_enabled():
+		return web.json_response(
+			{"error": "Tailscale/Local network authentication is not enabled."}, status=403
+		)
+	if not is_trusted_tailscale_or_local(request):
+		return web.json_response(
+			{
+				"error": "Local login without authentication is only permitted from Tailscale or local networks."
+			},
+			status=403,
+		)
+
+	# Extract requested username
+	sanitized_data = request.get("_sanitized_data", {})
+	username = sanitize_username(sanitized_data.get("username"))
+	if not username:
+		try:
+			body = await request.json()
+			if isinstance(body, dict):
+				username = sanitize_username(body.get("username"))
+		except Exception:
+			pass
+
+	if not username:
+		return web.json_response({"error": "Username is required for local login."}, status=400)
+
+	groups_cfg = access_control._load_group_config()
+	if not user_can_login_locally_without_auth(username, users_db, groups_cfg):
+		logger.login_failed(ip, username)
+		return web.json_response(
+			{"error": f"User '{username}' is not permitted to log in locally without authentication."},
+			status=403,
+		)
+
+	user_id, user_rec = users_db.get_user(username)
+	if not user_id:
+		return web.json_response({"error": "User not found."}, status=404)
+
+	user_env.get_user_workflow_dir(username)
+	no_exp = _user_can_have_non_expiring_jwt(username)
+	token = jwt_auth.create_access_token(
+		{"id": user_id, "username": username}, no_expiration=no_exp
+	)
+
+	try:
+		payload = jwt_auth.decode_access_token(token)
+		jti = payload.get("jti")
+		exp = payload.get("exp")
+		exp_at_iso = datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
+		if jti:
+			get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
+				jti, user_id, username, exp_at_iso
+			)
+	except Exception as e:
+		logger.error(f"[auth.py] api_local_login: register_session: {e}")
+
+	if DEBUG_MODE:
+		logger.log_jwt_if_debug(token, username)
+	else:
+		logger.log_jwt_created_console_only(username)
+
+	user_console_append(username, f"Local JWT token created for user: {username}")
+	logger.login_success(ip, username)
+	timeout.remove_failed_attempts(ip)
+	redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+	_secure = is_https_request(request)
+
+	if is_browser_navigation(request):
+		resp = web.HTTPFound(redirect_url)
+		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+		return resp
+
+	resp = web.json_response(
+		{"message": "Local login successful", "jwt_token": token, "redirect_url": redirect_url}
+	)
+	resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+	return resp
+
+
+routes.post("/api/mss-login/api/auth/local-login")(api_local_login)
+
 
 
 def _end_session(request: web.Request) -> None:
