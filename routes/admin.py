@@ -17,6 +17,8 @@ from ..constants import (
 	get_domain,
 	get_experimental_failsafe_settings,
 	get_experimental_flags,
+	_normalize_encryption_level,
+	filter_debug_messages_enabled,
 	reload_allow_guest_jwt,
 	reload_api_token_store_config,
 	reload_experimental_failsafe,
@@ -119,6 +121,14 @@ def _get_caller_role_and_permissions(request):
 def _can_manage_model_sharing(request) -> bool:
 	role, perms, _ = _get_caller_role_and_permissions(request)
 	return user_can_manage_model_sharing(role, perms)
+
+
+def can_access_console(request) -> bool:
+	"""True if caller is admin, owner, or has can_view_console permission."""
+	if is_admin(request) or is_owner(request):
+		return True
+	role, perms, _ = _get_caller_role_and_permissions(request)
+	return perms.get("can_view_console", False) is True
 
 
 @routes.get("/mss-login/api/settings/guest-jwt")
@@ -600,11 +610,77 @@ async def api_admin_consoles_user(request):
 		return web.json_response({"error": "Admin only"}, status=403)
 	username = request.match_info.get("username", "")
 	lines = get_user_console_lines(username)
+	if filter_debug_messages_enabled():
+		markers = ("[DEBUG]", "DEBUG:", "[mss-login::DEBUG]", "DEBUG_MODE")
+		lines = [line for line in lines if not any(m in line for m in markers)]
 	return web.json_response({"username": username, "lines": lines})
 
 
 routes.get("/api/mss-login/api/admin/consoles")(api_admin_consoles_list)
 routes.get("/api/mss-login/api/admin/consoles/{username}")(api_admin_consoles_user)
+
+
+@routes.get("/mss-login/api/settings/debug-filter")
+async def api_get_debug_filter(request):
+	"""Return current debug filter setting (Owner, Admin, or users with can_view_console)."""
+	if not can_access_console(request):
+		return web.json_response({"error": "Unauthorized"}, status=403)
+	return web.json_response({"filter_debug_messages": filter_debug_messages_enabled()})
+
+
+@routes.put("/mss-login/api/settings/debug-filter")
+async def api_put_debug_filter(request):
+	"""Update debug filter setting (Owner, Admin, or users with can_view_console)."""
+	if not can_access_console(request):
+		return web.json_response({"error": "Unauthorized"}, status=403)
+	try:
+		data = await request.json()
+		val = bool(data.get("filter_debug_messages", False))
+		cfg = load_json_file(CONFIG_FILE_PATH, {})
+		cfg["filter_debug_messages"] = val
+		save_json_file(CONFIG_FILE_PATH, cfg)
+		return web.json_response({"status": "ok", "filter_debug_messages": val})
+	except Exception as e:
+		logger.error(f"[admin.py] api_put_debug_filter: {e}")
+		return web.json_response({"error": "Internal error"}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/debug-filter")(api_get_debug_filter)
+routes.put("/api/mss-login/api/settings/debug-filter")(api_put_debug_filter)
+
+
+@routes.post("/mss-login/api/admin/install-node-deps")
+async def api_admin_install_node_deps(request: web.Request) -> web.Response:
+	"""Scan and install custom node dependencies (Admin only)."""
+	if not is_admin(request):
+		return web.json_response({"error": "Admin only"}, status=403)
+	try:
+		from ..utils.node_deps_installer import scan_and_install_node_dependencies
+
+		data = {}
+		try:
+			data = await request.json()
+			if not isinstance(data, dict):
+				data = {}
+		except Exception:
+			data = {}
+
+		dry_run = bool(data.get("dry_run", False))
+		custom_nodes_dir = data.get("custom_nodes_dir")
+		if custom_nodes_dir and not isinstance(custom_nodes_dir, str):
+			custom_nodes_dir = None
+
+		result = scan_and_install_node_dependencies(
+			custom_nodes_dir=custom_nodes_dir,
+			dry_run=dry_run,
+		)
+		return web.json_response(result)
+	except Exception as e:
+		logger.error(f"[admin.py] api_admin_install_node_deps: {e}")
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.post("/api/mss-login/api/admin/install-node-deps")(api_admin_install_node_deps)
 
 
 @routes.get("/mss-login/api/groups")
@@ -810,9 +886,8 @@ async def api_put_users_db_config(request):
 		udb["mysql_port"] = data.get("mysql_port", udb.get("mysql_port", 3306))
 		udb["mysql_database"] = data.get("mysql_database", udb.get("mysql_database", "mss_login"))
 		udb["mysql_user"] = data.get("mysql_user", udb.get("mysql_user", "mss_login"))
-		udb["encryption_level"] = (
-			data.get("encryption_level") or udb.get("encryption_level") or ""
-		).strip()
+		raw_enc = (data.get("encryption_level") or udb.get("encryption_level") or "").strip()
+		udb["encryption_level"] = _normalize_encryption_level(raw_enc)
 		cfg["users_db"] = udb
 		save_json_file(CONFIG_FILE_PATH, cfg)
 		reload_users_db_config()

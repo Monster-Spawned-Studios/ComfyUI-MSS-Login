@@ -2250,6 +2250,14 @@ async renderUsersDbConfig(container) {
                 <label class="mss-login-field-label">SQLite path</label>
                 <input type="text" id="mss-login-usersdb-sqlite-path" class="mss-login-input" value="${escapeHtml(cfg.sqlite_path || "data/mss_login_data.db")}" style="min-width:240px;">
             </div>
+            <div id="mss-login-usersdb-sqlite-enc" class="mss-login-row" style="margin-top:8px; gap:8px; align-items:center; ${backend !== "sqlite" ? "display:none;" : ""}">
+                <label class="mss-login-field-label">SQLite Encryption</label>
+                <select id="mss-login-usersdb-sqlite-encryption" class="mss-login-select">
+                    <option value="" ${(!cfg.encryption_level || cfg.encryption_level === "disabled") ? "selected" : ""}>Disabled</option>
+                    <option value="standard" ${cfg.encryption_level === "standard" ? "selected" : ""}>Standard (Recommended)</option>
+                    <option value="secure" ${cfg.encryption_level === "secure" ? "selected" : ""}>Secure</option>
+                </select>
+            </div>
             <div id="mss-login-usersdb-postgres-fields" style="margin-top:8px; ${backend !== "postgresql" ? "display:none;" : ""}">
                 <div class="mss-login-row" style="gap:8px; align-items:center; margin-bottom:6px;">
                     <label class="mss-login-field-label">Host</label>
@@ -2288,20 +2296,24 @@ async renderUsersDbConfig(container) {
     `;
     const backendSelect = container.querySelector("#mss-login-usersdb-backend");
     const sqliteFields = container.querySelector("#mss-login-usersdb-sqlite-fields");
+    const sqliteEnc = container.querySelector("#mss-login-usersdb-sqlite-enc");
     const postgresFields = container.querySelector("#mss-login-usersdb-postgres-fields");
     const mysqlFields = container.querySelector("#mss-login-usersdb-mysql-fields");
     const statusEl = container.querySelector("#mss-login-usersdb-status");
     function showFields() {
         const b = (backendSelect.value || "sqlite").toLowerCase();
         sqliteFields.style.display = b === "sqlite" ? "" : "none";
+        if (sqliteEnc) sqliteEnc.style.display = b === "sqlite" ? "" : "none";
         postgresFields.style.display = b === "postgresql" ? "" : "none";
         mysqlFields.style.display = b === "mysql" ? "" : "none";
     }
     backendSelect.onchange = showFields;
     container.querySelector("#mss-login-usersdb-save").onclick = async () => {
         const b = (backendSelect.value || "sqlite").toLowerCase();
+        const encEl = container.querySelector("#mss-login-usersdb-sqlite-encryption");
         const body = {
             backend: b,
+            encryption_level: encEl ? encEl.value : "",
             sqlite_path: container.querySelector("#mss-login-usersdb-sqlite-path").value.trim() || "data/mss_login_data.db",
             postgres_host: container.querySelector("#mss-login-usersdb-pg-host").value.trim() || "localhost",
             postgres_port: parseInt(container.querySelector("#mss-login-usersdb-pg-port").value, 10) || 5432,
@@ -3920,8 +3932,19 @@ app.ui.settings.addSetting({
             window.location.href = "/register";
         };
 
+        // Export redacted debug log (for GitHub issues and troubleshooting)
+        const exportLogBtn = document.createElement("button");
+        exportLogBtn.innerText = "Export Redacted Debug Log";
+        exportLogBtn.className = "mss-login-launch-btn";
+        exportLogBtn.style.minWidth = "260px";
+        exportLogBtn.title = "Download sanitized debug log with secrets and credentials masked for GitHub troubleshooting.";
+        exportLogBtn.onclick = () => {
+            window.open("/mss-login/api/debug-log/export", "_blank");
+        };
+
         actionsWrap.appendChild(btn);
         actionsWrap.appendChild(registerBtn);
+        actionsWrap.appendChild(exportLogBtn);
         actionsWrap.appendChild(logoutBtn);
         wrapper.appendChild(actionsWrap);
 
@@ -3960,6 +3983,43 @@ app.ui.settings.addSetting({
             }
         };
         wrapper.appendChild(guestJwtRow);
+
+        // Debug message filter toggle (Owner, Admin, or users with can_view_console)
+        const debugFilterRow = document.createElement("div");
+        debugFilterRow.id = "mss-login-debug-filter-row";
+        debugFilterRow.style.display = "none";
+        debugFilterRow.style.alignItems = "center";
+        debugFilterRow.style.justifyContent = "center";
+        debugFilterRow.style.gap = "8px";
+        debugFilterRow.style.marginTop = "6px";
+        const debugFilterLabel = document.createElement("label");
+        debugFilterLabel.style.display = "flex";
+        debugFilterLabel.style.alignItems = "center";
+        debugFilterLabel.style.gap = "8px";
+        debugFilterLabel.style.cursor = "pointer";
+        const debugFilterCheck = document.createElement("input");
+        debugFilterCheck.type = "checkbox";
+        debugFilterCheck.id = "mss-login-filter-debug-messages";
+        debugFilterLabel.appendChild(debugFilterCheck);
+        debugFilterLabel.appendChild(document.createTextNode("Filter debug messages (suppress verbose DEBUG output from console)"));
+        debugFilterRow.appendChild(debugFilterLabel);
+        debugFilterCheck.onchange = async () => {
+            try {
+                const res = await api.fetchApi("/mss-login/api/settings/debug-filter", {
+                    method: "PUT",
+                    body: JSON.stringify({ filter_debug_messages: debugFilterCheck.checked })
+                });
+                if (res && res.ok) {
+                    if (window.showToast) window.showToast(debugFilterCheck.checked ? "Debug messages filtered (hidden)." : "Debug message filtering disabled (verbose output enabled).");
+                } else {
+                    debugFilterCheck.checked = !debugFilterCheck.checked;
+                }
+            } catch (e) {
+                debugFilterCheck.checked = !debugFilterCheck.checked;
+            }
+        };
+        wrapper.appendChild(debugFilterRow);
+
         (async () => {
             try {
                 const me = await getData("/mss-login/api/me");
@@ -3968,6 +4028,11 @@ app.ui.settings.addSetting({
                     const cfg = await getData("/mss-login/api/settings/guest-jwt");
                     guestJwtRow.style.display = "flex";
                     guestJwtCheck.checked = !!cfg.allow_guest_jwt;
+                }
+                const filterCfg = await getData("/mss-login/api/settings/debug-filter");
+                if (filterCfg && filterCfg.filter_debug_messages !== undefined) {
+                    debugFilterRow.style.display = "flex";
+                    debugFilterCheck.checked = !!filterCfg.filter_debug_messages;
                 }
             } catch (_) {}
         })();
@@ -4142,14 +4207,15 @@ app.ui.settings.addSetting({
         experimentalChecks.style.marginTop = "8px";
         experimentalSection.appendChild(experimentalChecks);
 
-        const expFeatureKeys = ["mfa", "s3", "loading_screen", "news", "model_isolation", "tailscale_local_auth"];
+        const expFeatureKeys = ["mfa", "s3", "loading_screen", "news", "model_isolation", "tailscale_local_auth", "install_other_nodes_deps"];
         const expLabels = {
             mfa: "MFA (two-factor authentication)",
             s3: "S3 storage (mount & sync)",
             loading_screen: "Loading screen (post-login)",
             news: "News / RSS feed",
             model_isolation: "Model isolation (per-user model folders)",
-            tailscale_local_auth: "Tailscale & Local Network Authentication"
+            tailscale_local_auth: "Tailscale & Local Network Authentication",
+            install_other_nodes_deps: "Auto-install dependencies for other custom nodes"
         };
 
         const experimentalSaveBtn = document.createElement("button");
@@ -4179,6 +4245,69 @@ app.ui.settings.addSetting({
             }
         };
         experimentalSection.appendChild(experimentalSaveBtn);
+
+        // Dedicated Custom Node Dependencies Installer Card
+        const nodeDepsCard = document.createElement("div");
+        nodeDepsCard.id = "mss-login-node-deps-card";
+        nodeDepsCard.style.marginTop = "14px";
+        nodeDepsCard.style.padding = "14px";
+        nodeDepsCard.style.background = "rgba(16, 185, 129, 0.05)";
+        nodeDepsCard.style.border = "1px solid rgba(16, 185, 129, 0.25)";
+        nodeDepsCard.style.borderRadius = "8px";
+        nodeDepsCard.style.width = "min(100%, 560px)";
+        nodeDepsCard.style.textAlign = "left";
+        nodeDepsCard.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:240px;">
+                    <h4 style="margin:0 0 6px 0; color:#10b981; display:flex; align-items:center; gap:8px;">
+                        <span>📦</span> Other Custom Nodes Dependency Installer
+                    </h4>
+                    <p style="margin:0 0 6px 0; font-size:0.9em; color:#a0aec0;">
+                        Scans sibling folders in <code>custom_nodes/</code>, resolves version conflicts, relaxes incompatible strict pins, shields host PyTorch/ComfyUI core packages, and installs missing requirements safely via UV/pip.
+                    </p>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:6px; min-width:200px;">
+                    <button type="button" id="mss-login-install-node-deps-btn" class="mss-login-launch-btn" style="min-width:200px;">
+                        Scan & Install Node Deps Now
+                    </button>
+                    <button type="button" id="mss-login-check-node-deps-btn" class="mss-login-launch-btn" style="min-width:200px; background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.2);">
+                        Dry Run Check Only
+                    </button>
+                </div>
+            </div>
+            <div id="mss-login-node-deps-result" style="display:none; margin-top:10px; font-size:0.85em; color:#e2e8f0; background:rgba(0,0,0,0.3); padding:8px 12px; border-radius:6px; max-height:160px; overflow-y:auto; white-space:pre-wrap;"></div>
+        `;
+        experimentalSection.appendChild(nodeDepsCard);
+
+        const runDepsInstall = async (dryRun) => {
+            const resultEl = nodeDepsCard.querySelector("#mss-login-node-deps-result");
+            const btn = nodeDepsCard.querySelector(dryRun ? "#mss-login-check-node-deps-btn" : "#mss-login-install-node-deps-btn");
+            resultEl.style.display = "block";
+            resultEl.textContent = dryRun ? "Running dry-run scan on custom_nodes..." : "Scanning and installing dependencies (this may take a few moments)...";
+            btn.disabled = true;
+            try {
+                const res = await api.fetchApi("/mss-login/api/admin/install-node-deps", {
+                    method: "POST",
+                    body: JSON.stringify({ dry_run: dryRun })
+                });
+                const data = await res.json().catch(() => ({}));
+                btn.disabled = false;
+                if (res.ok && data.success) {
+                    const msg = `Scan complete.\nNodes scanned: ${data.nodes_scanned}\nConflicts resolved: ${data.conflicts_resolved_count}\n` +
+                        (data.results || []).map(r => `• ${r.node}: ${r.status}${r.conflicts_resolved && r.conflicts_resolved.length ? ` (${r.conflicts_resolved.length} conflict(s) fixed)` : ""}`).join("\n");
+                    resultEl.textContent = msg;
+                    if (window.showToast) window.showToast(dryRun ? "Dependency check completed." : "Node dependencies installed.");
+                } else {
+                    resultEl.textContent = `Error: ${data.error || res.statusText || res.status}`;
+                }
+            } catch (err) {
+                btn.disabled = false;
+                resultEl.textContent = `Failed: ${err.message || err}`;
+            }
+        };
+
+        nodeDepsCard.querySelector("#mss-login-install-node-deps-btn").onclick = () => runDepsInstall(false);
+        nodeDepsCard.querySelector("#mss-login-check-node-deps-btn").onclick = () => runDepsInstall(true);
 
         // Dedicated Tailscale / Local Network Auth Card
         const tailscaleCard = document.createElement("div");
