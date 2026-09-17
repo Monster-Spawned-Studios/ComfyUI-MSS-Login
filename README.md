@@ -677,7 +677,7 @@ Optional **workflow_dispatch** inputs: `changelog_title`, `changelog_notes`. You
 
 [`publish.yml`](.github/workflows/publish.yml) verifies `pyproject.toml` matches the release branch before registry publish so version detection stays aligned with tags.
 
-### Changlog
+### Changelog
 
 A changelog can be found in the corresponding '[CHANGES.md](./readme/CHANGES.md)' file in the [readme](./readme/) folder. All changes are documented there.
 
