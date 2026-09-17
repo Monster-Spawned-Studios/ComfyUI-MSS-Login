@@ -1,5 +1,8 @@
-# Linux / Windows CPU-only (no usable NVIDIA driver). Install with:
-#   pip install -r requirements_cpu.txt --extra-index-url https://download.pytorch.org/whl/cpu
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+# Linux / Windows CPU-only (no usable NVIDIA driver). PyTorch CPU wheels
+# are downloaded from the official PyTorch CPU wheel index using --index-url,
+# while general dependencies are resolved from PyPI via --extra-index-url.
 # Do not use this file on macOS; use requirements_metal.txt (PyPI MPS wheels) instead.
 aiohttp
 PyJWT

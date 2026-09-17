@@ -76,8 +76,11 @@ def detect_cuda_major() -> int | None:
 	return None
 
 
+_UNSET = object()
+
+
 def detect_torch_install_plan(
-	*, system: str | None = None, cuda_major: int | None = None, env: dict[str, str] | None = None
+	*, system: str | None = None, cuda_major: int | None | object = _UNSET, env: dict[str, str] | None = None
 ) -> dict[str, str | None]:
 	"""Choose the PyTorch backend for this host.
 
@@ -107,7 +110,7 @@ def detect_torch_install_plan(
 			"extra_index_url": PYTORCH_INDEX_CPU,
 		}
 
-	if cuda_major is None:
+	if cuda_major is _UNSET:
 		cuda_major = detect_cuda_major()
 
 	if cuda_major is not None and cuda_major >= 13:
@@ -176,15 +179,38 @@ def _log(message: str, *, error: bool = False) -> None:
 		print(message, file=stream)
 
 
+def _is_torch_installed() -> bool:
+	"""Check if torch, torchvision, and torchaudio are already installed and importable."""
+	try:
+		import torch  # noqa: F401
+		import torchvision  # noqa: F401
+		import torchaudio  # noqa: F401
+
+		return True
+	except Exception:
+		return False
+
+
 def _platform_requirements_rel() -> tuple[str, str | None] | None:
 	"""Return (requirements file relative to extension root, extra_index_url) or None.
 
 	extra_index_url is the PyTorch wheel index for CUDA/CPU hosts, or None for
 	macOS Metal (PyPI). CUDA 13 is selected only after detect_cuda_major()
 	confirms driver support.
+
+	If PyTorch is already installed and working in the environment (e.g. from
+	ComfyUI's host setup), requirements.txt is used to install extension dependencies
+	without risking overriding or corrupting ComfyUI's graphics setup.
 	"""
 	root = _install_deps_root
 	plan = detect_torch_install_plan()
+
+	force_reinstall = str(os.environ.get("FORCE_REINSTALL_TORCH", "")).strip() == "1"
+	if not force_reinstall and _is_torch_installed():
+		req_default = join(root, "requirements.txt")
+		if os.path.isfile(req_default):
+			return ("requirements.txt", plan["extra_index_url"])
+
 	req_file = plan["requirements_file"]
 	req_path = join(root, req_file)
 	if os.path.isfile(req_path):
@@ -268,6 +294,17 @@ def _install_with_uv(root: str, req_rel: tuple[str, str | None] | None) -> bool:
 
 
 def _install_with_pip(root: str, req_rel: tuple[str, str | None] | None) -> bool:
+	# Platform requirements (with --index-url / --extra-index-url) first
+	if req_rel is not None:
+		req_file, extra_index_url = req_rel
+		_log(f"[mss-login] Installing dependencies with pip ({req_file})...")
+		pip_args = ["-r", req_file]
+		if extra_index_url:
+			pip_args.extend(["--extra-index-url", extra_index_url])
+		if _run_pip(pip_args, cwd=root):
+			return True
+		_log("[mss-login] pip requirements install failed; trying pyproject.toml.", error=True)
+
 	pyproject = join(root, "pyproject.toml")
 	plan = detect_torch_install_plan()
 	if os.path.isfile(pyproject):
@@ -287,16 +324,7 @@ def _install_with_pip(root: str, req_rel: tuple[str, str | None] | None) -> bool
 		except Exception as exc:
 			_log(f"[mss-login] Parsing pyproject.toml failed for pip: {exc}", error=True)
 
-	if req_rel is None:
-		_log("[mss-login] No platform requirements file found; skipping pip fallback.", error=True)
-		return False
-
-	req_file, extra_index_url = req_rel
-	_log(f"[mss-login] Falling back to pip ({req_file})...")
-	pip_args = ["-r", req_file]
-	if extra_index_url:
-		pip_args.extend(["--extra-index-url", extra_index_url])
-	return _run_pip(pip_args, cwd=root)
+	return False
 
 
 def _ensure_dotenvx_binary() -> bool:

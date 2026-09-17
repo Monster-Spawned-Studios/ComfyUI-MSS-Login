@@ -1,6 +1,10 @@
-# Linux / Windows with an NVIDIA driver. The auto-installer passes
-# --extra-index-url https://download.pytorch.org/whl/cu130 (or cu128) after
-# checking the host CUDA version. Do not use this file on macOS.
+--index-url https://download.pytorch.org/whl/cu128
+--extra-index-url https://download.pytorch.org/whl/cu130
+--extra-index-url https://pypi.org/simple
+# Linux / Windows with an NVIDIA driver. PyTorch CUDA wheels are downloaded
+# from the official PyTorch wheel index using --index-url (cu128 with cu130 fallback),
+# while general dependencies are resolved from PyPI via --extra-index-url.
+# This prevents pip from overriding ComfyUI's CUDA PyTorch with an incompatible build.
 aiohttp
 PyJWT
 bleach

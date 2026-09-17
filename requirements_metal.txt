@@ -1,3 +1,4 @@
+--index-url https://pypi.org/simple
 # macOS Metal / MPS. Install torch from PyPI (no CUDA index — PyTorch does not
 # publish CUDA wheels for darwin). Official PyPI wheels include MPS on Apple Silicon.
 #   pip install -r requirements_metal.txt
