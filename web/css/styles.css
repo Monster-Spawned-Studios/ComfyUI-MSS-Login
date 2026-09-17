@@ -800,3 +800,45 @@ a:active {
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
     padding: 6px;
 }
+
+/* Tailscale / Local Network Quick Login Card */
+.local-login-card {
+    margin-bottom: 1rem;
+    padding: 0.85rem;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    text-align: left;
+}
+
+.local-login-header {
+    font-size: 0.85rem;
+    color: #60a5fa;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.local-login-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.local-login-quick-btn {
+    background: #2563eb;
+    color: #ffffff;
+    border: 1px solid #3b82f6;
+    border-radius: 6px;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.local-login-quick-btn:hover {
+    background: #1d4ed8;
+}

@@ -51,6 +51,14 @@
         <h1 class="title login mss-auth-title">Login</h1>
         <!-- method="post" and action prevent credentials from ever being sent in the URL (e.g. if JS is disabled). -->
         <form id="login-form" method="post" action="/login">
+            <!-- Local / Tailscale quick login (experimental, local/tailscale only) -->
+            <div id="local-login-section" class="local-login-card" style="display: none;">
+                <div class="local-login-header">
+                    <span>🛡️ <strong id="local-net-label">Tailscale/Local Network Detected</strong></span>
+                    <span id="local-client-ip" style="font-size: 0.75rem; opacity: 0.8;"></span>
+                </div>
+                <div id="local-login-actions" class="local-login-actions"></div>
+            </div>
             <div class="form-field mss-auth-field">
                 <label class="mss-auth-label" for="username">Username:</label>
                 <input class="mss-auth-input" type="text" id="username" name="username" required>

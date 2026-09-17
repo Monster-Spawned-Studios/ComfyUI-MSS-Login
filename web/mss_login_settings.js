@@ -1245,8 +1245,21 @@ renderUsers(list, container) {
                     <button class="mss-login-btn secondary" id="mss-login-ip-refresh">Reload</button>
                     <button class="mss-login-btn" id="mss-login-ip-save">Save Rules</button>
                 </div>
+
+                <div id="mss-login-owner-local-cidrs-section" style="display:none; margin-top:24px; border-top:1px solid rgba(255,255,255,0.12); padding-top:16px;">
+                    <h3>Trusted Local & Tailscale Networks (Owner Only)</h3>
+                    <p class="mss-login-note" style="margin-bottom:8px;">
+                        Tailscale ranges (<code>100.64.0.0/10</code>, <code>fd7a:115c:a1e0::/48</code>) and private subnets (<code>192.168.0.0/16</code>, <code>10.0.0.0/8</code>, <code>172.16.0.0/12</code>, <code>127.0.0.0/8</code>) are automatically trusted. Owners can specify additional local IP addresses or CIDR blocks below.
+                    </p>
+                    <label class="mss-login-field-label">Custom Local CIDRs or IPs (one per line)</label>
+                    <textarea class="mss-login-textarea" id="mss-login-local-cidrs" placeholder="192.168.2.0/24&#10;10.50.0.0/16" style="min-height:80px;"></textarea>
+                    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+                        <button type="button" class="mss-login-btn" id="mss-login-local-cidrs-save">Save Local CIDRs</button>
+                    </div>
+                </div>
             </div>
         `;
+
 
         const wlEl = container.querySelector("#mss-login-ip-whitelist");
         const blEntriesEl = container.querySelector("#mss-login-ip-blacklist-entries");
@@ -1358,7 +1371,55 @@ renderUsers(list, container) {
                 saveBtn.disabled = false;
             }
         };
+
+        // Owner-only Local CIDRs configuration
+        const isOwner = currentUser && (currentUser.role === "owner" || (Array.isArray(currentUser.groups) && currentUser.groups.map(g => String(g).toLowerCase()).includes("owner")));
+        const ownerCidrsSection = container.querySelector("#mss-login-owner-local-cidrs-section");
+        const localCidrsEl = container.querySelector("#mss-login-local-cidrs");
+        const saveLocalCidrsBtn = container.querySelector("#mss-login-local-cidrs-save");
+
+        if (isOwner && ownerCidrsSection && localCidrsEl && saveLocalCidrsBtn) {
+            ownerCidrsSection.style.display = "block";
+            try {
+                const cidrsData = await getData("/mss-login/api/settings/local-cidrs");
+                if (cidrsData && Array.isArray(cidrsData.local_network_cidrs)) {
+                    localCidrsEl.value = cidrsData.local_network_cidrs.join("\n");
+                }
+            } catch (_) {}
+
+            saveLocalCidrsBtn.onclick = async () => {
+                const lines = localCidrsEl.value
+                    .split(/\r?\n/)
+                    .map(l => l.trim())
+                    .filter(l => l.length > 0);
+                saveLocalCidrsBtn.disabled = true;
+                saveLocalCidrsBtn.textContent = "Saving...";
+                try {
+                    const res = await api.fetchApi("/mss-login/api/settings/local-cidrs", {
+                        method: "PUT",
+                        body: JSON.stringify({ local_network_cidrs: lines })
+                    });
+                    if (res && res.ok) {
+                        saveLocalCidrsBtn.textContent = "Saved";
+                        if (window.showToast) window.showToast("Local CIDRs saved.");
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        if (window.showToast) window.showToast(err.error || "Save failed");
+                        saveLocalCidrsBtn.textContent = "Error";
+                    }
+                } catch (e) {
+                    if (window.showToast) window.showToast("Save failed: " + (e.message || "Error"));
+                    saveLocalCidrsBtn.textContent = "Error";
+                } finally {
+                    setTimeout(() => {
+                        saveLocalCidrsBtn.disabled = false;
+                        saveLocalCidrsBtn.textContent = "Save Local CIDRs";
+                    }, 1500);
+                }
+            };
+        }
     }
+
 
 renderUserEnv(container, usersList) {
     const users = usersList || [];
@@ -2953,6 +3014,7 @@ async renderS3Settings(container) {
         html += drawRow("View all ComfyUI items (models, LoRAs, VAEs, embeddings)", "can_view_all_comfyui_items");
         html += drawRow("Access S3 Storage (mount, sync, API)", "can_access_s3_storage");
         html += drawRow("Download models (queue, view, cancel own jobs)", "can_download_models");
+        html += drawRow("Login locally without authentication (Tailscale / Local Network)", "can_login_locally_without_auth");
 
         // Section 2: Global UI
         html += drawRow("Interface Elements", null, true);
@@ -4036,7 +4098,7 @@ app.ui.settings.addSetting({
             } catch (_) {}
         })();
 
-        // Experimental features (per-feature toggles) - Admin only, shown when master experimental_features is on
+        // Experimental features (per-feature toggles) - Admin only
         const experimentalSection = document.createElement("div");
         experimentalSection.id = "mss-login-experimental-section";
         experimentalSection.style.display = "none";
@@ -4051,20 +4113,56 @@ app.ui.settings.addSetting({
         experimentalSubtext.style.margin = "0 0 8px 0";
         experimentalSubtext.style.fontSize = "0.9em";
         experimentalSubtext.style.color = "#888";
-        experimentalSubtext.textContent = "Enable experimental features one by one. Master switch is in config (experimental_features).";
+        experimentalSubtext.textContent = "Enable experimental features one by one or via master switch.";
         experimentalSection.appendChild(experimentalSubtext);
+
+        const masterSwitchWrap = document.createElement("div");
+        masterSwitchWrap.style.marginBottom = "10px";
+        masterSwitchWrap.style.padding = "8px 10px";
+        masterSwitchWrap.style.background = "rgba(255, 255, 255, 0.05)";
+        masterSwitchWrap.style.border = "1px solid rgba(255, 255, 255, 0.1)";
+        masterSwitchWrap.style.borderRadius = "6px";
+        const masterSwitchLabel = document.createElement("label");
+        masterSwitchLabel.style.display = "flex";
+        masterSwitchLabel.style.alignItems = "center";
+        masterSwitchLabel.style.gap = "8px";
+        masterSwitchLabel.style.cursor = "pointer";
+        const masterSwitchCb = document.createElement("input");
+        masterSwitchCb.type = "checkbox";
+        masterSwitchCb.id = "mss-login-exp-master-switch";
+        masterSwitchLabel.appendChild(masterSwitchCb);
+        const masterSwitchText = document.createElement("span");
+        masterSwitchText.innerHTML = "<strong>Enable experimental features (Master Switch)</strong>";
+        masterSwitchLabel.appendChild(masterSwitchText);
+        masterSwitchWrap.appendChild(masterSwitchLabel);
+        experimentalSection.appendChild(masterSwitchWrap);
+
         const experimentalChecks = document.createElement("div");
         experimentalChecks.id = "mss-login-experimental-checks";
         experimentalChecks.style.marginTop = "8px";
         experimentalSection.appendChild(experimentalChecks);
+
+        const expFeatureKeys = ["mfa", "s3", "loading_screen", "news", "model_isolation", "tailscale_local_auth"];
+        const expLabels = {
+            mfa: "MFA (two-factor authentication)",
+            s3: "S3 storage (mount & sync)",
+            loading_screen: "Loading screen (post-login)",
+            news: "News / RSS feed",
+            model_isolation: "Model isolation (per-user model folders)",
+            tailscale_local_auth: "Tailscale & Local Network Authentication"
+        };
+
         const experimentalSaveBtn = document.createElement("button");
         experimentalSaveBtn.className = "mss-login-launch-btn";
         experimentalSaveBtn.textContent = "Save experimental settings";
         experimentalSaveBtn.style.marginTop = "8px";
         experimentalSaveBtn.onclick = async () => {
             try {
-                const payload = { experimental: {} };
-                ["mfa", "s3", "loading_screen", "news"].forEach(k => {
+                const payload = {
+                    experimental_features: !!masterSwitchCb.checked,
+                    experimental: {}
+                };
+                expFeatureKeys.forEach(k => {
                     const cb = document.getElementById("mss-login-exp-" + k);
                     if (cb) payload.experimental[k] = !!cb.checked;
                 });
@@ -4074,33 +4172,142 @@ app.ui.settings.addSetting({
                 });
                 if (res && res.ok) {
                     if (window.showToast) window.showToast("Experimental settings saved.");
+                    refreshTailscaleCard();
                 }
             } catch (e) {
                 if (window.showToast) window.showToast("Save failed: " + (e.message || "Unknown error"));
             }
         };
         experimentalSection.appendChild(experimentalSaveBtn);
+
+        // Dedicated Tailscale / Local Network Auth Card
+        const tailscaleCard = document.createElement("div");
+        tailscaleCard.id = "mss-login-tailscale-auth-card";
+        tailscaleCard.style.marginTop = "14px";
+        tailscaleCard.style.padding = "14px";
+        tailscaleCard.style.background = "rgba(59, 130, 246, 0.05)";
+        tailscaleCard.style.border = "1px solid rgba(59, 130, 246, 0.25)";
+        tailscaleCard.style.borderRadius = "8px";
+        tailscaleCard.style.width = "min(100%, 560px)";
+        tailscaleCard.style.textAlign = "left";
+
+        tailscaleCard.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <h4 style="margin:0; font-size:0.95rem; color:#60a5fa;">Tailscale & Local Network Authentication</h4>
+                <span id="mss-login-tailscale-badge" class="mss-login-badge" style="font-size:11px; padding:2px 8px; border-radius:4px; font-weight:600; background:#475569; color:#f8fafc;">Checking...</span>
+            </div>
+            <p style="font-size:0.85rem; color:#a1a1aa; margin:0 0 8px 0; line-height:1.4;">
+                Allows permitted roles (Owner and Admin by default) to log in locally without authentication when connecting from Tailscale (100.64.0.0/10, fd7a:115c:a1e0::/48) or local private networks. Remote public IPs are always rejected and must authenticate.
+            </p>
+            <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:10px; padding:6px 8px; background:rgba(0,0,0,0.25); border-radius:4px;">
+                <span>Detected Network: </span><strong id="mss-login-tailscale-diag-net" style="color:#e2e8f0;">Detecting...</strong>
+                <span style="margin-left:8px; opacity:0.8;" id="mss-login-tailscale-diag-ip"></span>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button type="button" id="mss-login-tailscale-toggle-btn" class="mss-login-launch-btn" style="min-width:200px;">Toggle Local Auth</button>
+                <span id="mss-login-tailscale-toggle-status" style="font-size:0.8rem; color:#94a3b8;"></span>
+            </div>
+        `;
+        experimentalSection.appendChild(tailscaleCard);
         wrapper.appendChild(experimentalSection);
+
+        let tailscaleEnabled = false;
+
+        async function refreshTailscaleCard() {
+            try {
+                const tsData = await getData("/mss-login/api/settings/tailscale-auth");
+                if (!tsData) return;
+                tailscaleEnabled = !!tsData.enabled;
+                const badge = document.getElementById("mss-login-tailscale-badge");
+                const toggleBtn = document.getElementById("mss-login-tailscale-toggle-btn");
+                const diagNet = document.getElementById("mss-login-tailscale-diag-net");
+                const diagIp = document.getElementById("mss-login-tailscale-diag-ip");
+                const statusText = document.getElementById("mss-login-tailscale-toggle-status");
+
+                if (diagIp) diagIp.textContent = tsData.client_ip ? "(" + tsData.client_ip + ")" : "";
+                if (diagNet) {
+                    diagNet.textContent = tsData.is_trusted_network
+                        ? (tsData.network_type === "tailscale" ? "Tailscale Network (Trusted)" : "Local Private Network (Trusted)")
+                        : "Remote Internet (Untrusted - Standard Auth Required)";
+                    diagNet.style.color = tsData.is_trusted_network ? "#4ade80" : "#f87171";
+                }
+
+                if (badge) {
+                    if (tsData.is_active) {
+                        badge.textContent = "ACTIVE";
+                        badge.style.background = "#15803d";
+                        badge.style.color = "#f0fdf4";
+                    } else if (tsData.enabled && !tsData.experimental_features) {
+                        badge.textContent = "ENABLED (MASTER OFF)";
+                        badge.style.background = "#b45309";
+                        badge.style.color = "#fffbeb";
+                    } else {
+                        badge.textContent = "DISABLED";
+                        badge.style.background = "#3f3f46";
+                        badge.style.color = "#e4e4e7";
+                    }
+                }
+
+                if (toggleBtn) {
+                    toggleBtn.textContent = tsData.enabled ? "Disable Local Network Auth" : "Enable Local Network Auth";
+                }
+                if (statusText) {
+                    statusText.textContent = tsData.enabled ? "Feature is enabled." : "Feature is disabled.";
+                }
+
+                const tsCb = document.getElementById("mss-login-exp-tailscale_local_auth");
+                if (tsCb) tsCb.checked = !!tsData.enabled;
+                if (masterSwitchCb) masterSwitchCb.checked = !!tsData.experimental_features;
+            } catch (_) {}
+        }
+
+        const tsToggleBtn = tailscaleCard.querySelector("#mss-login-tailscale-toggle-btn");
+        if (tsToggleBtn) {
+            tsToggleBtn.onclick = async () => {
+                try {
+                    tsToggleBtn.disabled = true;
+                    tsToggleBtn.textContent = "Saving...";
+                    const nextVal = !tailscaleEnabled;
+                    const res = await api.fetchApi("/mss-login/api/settings/tailscale-auth", {
+                        method: "PUT",
+                        body: JSON.stringify({ enabled: nextVal, enable_master: true })
+                    });
+                    if (res && res.ok) {
+                        if (window.showToast) window.showToast(nextVal ? "Tailscale & Local Auth Enabled." : "Tailscale & Local Auth Disabled.");
+                        await refreshTailscaleCard();
+                    }
+                } catch (e) {
+                    if (window.showToast) window.showToast("Toggle failed: " + (e.message || "Error"));
+                } finally {
+                    tsToggleBtn.disabled = false;
+                }
+            };
+        }
+
         (async () => {
             try {
                 const me = await getData("/mss-login/api/me");
-                if (me && me.is_admin && me.experimental_features) {
+                if (me && me.is_admin) {
                     const cfg = await getData("/mss-login/api/settings/experimental");
                     experimentalSection.style.display = "block";
-                    const labels = { mfa: "MFA (two-factor authentication)", s3: "S3 storage", loading_screen: "Loading screen (post-login)", news: "News / RSS feed" };
+                    masterSwitchCb.checked = !!cfg.experimental_features;
+
                     experimentalChecks.innerHTML = "";
-                    ["mfa", "s3", "loading_screen", "news"].forEach(k => {
+                    expFeatureKeys.forEach(k => {
                         const label = document.createElement("label");
                         label.style.display = "block";
-                        label.style.marginBottom = "4px";
+                        label.style.marginBottom = "6px";
+                        label.style.cursor = "pointer";
                         const cb = document.createElement("input");
                         cb.type = "checkbox";
                         cb.id = "mss-login-exp-" + k;
                         cb.checked = !!(cfg.experimental && cfg.experimental[k]);
                         label.appendChild(cb);
-                        label.appendChild(document.createTextNode(" " + (labels[k] || k)));
+                        label.appendChild(document.createTextNode(" " + (expLabels[k] || k)));
                         experimentalChecks.appendChild(label);
                     });
+
+                    await refreshTailscaleCard();
                 }
             } catch (_) {}
         })();

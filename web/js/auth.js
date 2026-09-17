@@ -64,6 +64,71 @@ if (window.location.pathname === "/login") {
         section.style.display = "block";
       })
       .catch(function () {});
+
+    // Check Tailscale / Local Network authentication status (experimental)
+    const localSection = document.getElementById("local-login-section");
+    const localLabel = document.getElementById("local-net-label");
+    const localIp = document.getElementById("local-client-ip");
+    const localActions = document.getElementById("local-login-actions");
+
+    if (localSection && localActions) {
+      fetch("/mss-login/api/auth/local-login-status", { credentials: "same-origin" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data || !data.enabled || !data.is_local) return;
+
+          localSection.style.display = "block";
+          if (localIp) localIp.textContent = data.client_ip ? "(" + data.client_ip + ")" : "";
+          if (localLabel) {
+            localLabel.textContent = data.network_type === "tailscale"
+              ? "Tailscale Network Detected"
+              : "Local Network Detected";
+          }
+
+          localActions.innerHTML = "";
+          const eligible = data.eligible_users || [];
+          if (eligible.length > 0) {
+            eligible.forEach(function (username) {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "local-login-quick-btn";
+              btn.textContent = "Quick Login: " + username;
+              btn.onclick = async function () {
+                btn.disabled = true;
+                btn.textContent = "Logging in...";
+                try {
+                  const res = await fetch("/mss-login/api/auth/local-login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "same-origin",
+                    body: JSON.stringify({ username: username })
+                  });
+                  const json = await res.json();
+                  if (res.ok && json.redirect_url) {
+                    window.location.href = json.redirect_url;
+                  } else {
+                    addToast(json.error || "Local login failed", "error");
+                    btn.disabled = false;
+                    btn.textContent = "Quick Login: " + username;
+                  }
+                } catch (e) {
+                  addToast(e.message || "Network error", "error");
+                  btn.disabled = false;
+                  btn.textContent = "Quick Login: " + username;
+                }
+              };
+              localActions.appendChild(btn);
+            });
+          } else {
+            const note = document.createElement("span");
+            note.style.fontSize = "0.8rem";
+            note.style.color = "#94a3b8";
+            note.textContent = "Connected via trusted network. Sign in with standard credentials.";
+            localActions.appendChild(note);
+          }
+        })
+        .catch(function () {});
+    }
   });
 }
 
