@@ -40,6 +40,7 @@ from .constants import (
 	USERS_DB_CONFIG,
 	apply_experimental_safety_reset,
 	clear_host_base_url_cache,
+	experimental_install_other_nodes_deps_enabled,
 	experimental_model_isolation_enabled,
 )
 from .globals import (
@@ -627,6 +628,29 @@ except Exception:
 		app.add_routes(routes)
 	except Exception:
 		pass  # ComfyUI may handle route registration automatically
+
+if experimental_install_other_nodes_deps_enabled():
+	try:
+		import threading
+		from .utils.node_deps_installer import scan_and_install_node_dependencies
+
+		def _bg_installer():
+			try:
+				print("[MSS-Login] Starting background installation of other custom node dependencies...")
+				res = scan_and_install_node_dependencies()
+				print(
+					f"[MSS-Login] Node dependency installer completed. "
+					f"Nodes scanned: {res.get('nodes_scanned', 0)}, "
+					f"conflicts resolved: {res.get('conflicts_resolved_count', 0)}"
+				)
+			except Exception as e:
+				print(f"[MSS-Login] Node dependency installer error: {e}", file=sys.stderr)
+
+		threading.Thread(
+			target=_bg_installer, daemon=True, name="mss_login_node_deps_installer"
+		).start()
+	except Exception as e:
+		print(f"[MSS-Login] Failed to start node dependency installer: {e}", file=sys.stderr)
 
 print("------------------------------------------")
 print("[MSS-Login] Security System Initialized.")
