@@ -1,11 +1,24 @@
 import re
 
-# Usernames that cannot be registered: they conflict with paths or special logic.
+# Usernames that cannot be registered: they conflict with paths, roles, or special logic.
 # - "guest": used as fallback for unauthenticated users (e.g. in get_user_root).
 # - "default": ComfyUI uses user/default/workflows; reserving avoids confusion.
-# - "defaults": on case-insensitive filesystems, Users/defaults collides with
-#   repo path users/defaults/ (DEFAULT_GROUP_CONFIG_PATH); would break group config.
-RESERVED_USERNAMES = frozenset({"guest", "default", "defaults"})
+# - "defaults": collides with repo path users/defaults/ (DEFAULT_GROUP_CONFIG_PATH).
+# - "admin", "administrator", "owner": built-in administrative roles/groups.
+# - "root", "system", "api": reserved system-level identifiers.
+RESERVED_USERNAMES = frozenset(
+	{
+		"guest",
+		"default",
+		"defaults",
+		"admin",
+		"administrator",
+		"owner",
+		"root",
+		"system",
+		"api",
+	}
+)
 
 
 def validate_username(username: str) -> tuple[bool, str]:
@@ -14,7 +27,7 @@ def validate_username(username: str) -> tuple[bool, str]:
 	- Only letters, numbers, and underscores.
 	- No spaces.
 	- At least 3 characters long.
-	- Not a reserved name (guest, default, defaults).
+	- Not a reserved name (guest, default, defaults, admin, owner, etc.).
 	"""
 	if not username or not isinstance(username, str):
 		return False, "Username is required."

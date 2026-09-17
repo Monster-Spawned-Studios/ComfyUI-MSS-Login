@@ -63,10 +63,15 @@ def run_tests():
 	ok(validate.validate_username("user name")[0] is False, "space fails")
 	ok(validate.validate_username("user@")[0] is False, "invalid char fails")
 	ok(validate.validate_username("abc")[0] is True, "min length passes")
-	# Reserved usernames must not break user account system (path/config conflicts)
+	# Reserved usernames must not break user account system (path/config/role conflicts)
 	ok(validate.validate_username("guest")[0] is False, "reserved 'guest' rejected")
 	ok(validate.validate_username("default")[0] is False, "reserved 'default' rejected")
 	ok(validate.validate_username("defaults")[0] is False, "reserved 'defaults' rejected")
+	ok(validate.validate_username("admin")[0] is False, "reserved 'admin' rejected")
+	ok(validate.validate_username("owner")[0] is False, "reserved 'owner' rejected")
+	ok(validate.validate_username("root")[0] is False, "reserved 'root' rejected")
+	ok(validate.validate_username("system")[0] is False, "reserved 'system' rejected")
+	ok(validate.validate_username("api")[0] is False, "reserved 'api' rejected")
 	ok(
 		validate.validate_username("Default")[0] is False,
 		"reserved 'Default' (case-insensitive) rejected",
@@ -74,6 +79,14 @@ def run_tests():
 	ok(
 		validate.validate_username("DEFAULTS")[0] is False,
 		"reserved 'DEFAULTS' (case-insensitive) rejected",
+	)
+	ok(
+		validate.validate_username("Admin")[0] is False,
+		"reserved 'Admin' (case-insensitive) rejected",
+	)
+	ok(
+		validate.validate_username("OWNER")[0] is False,
+		"reserved 'OWNER' (case-insensitive) rejected",
 	)
 
 	# --- validate_password ---
