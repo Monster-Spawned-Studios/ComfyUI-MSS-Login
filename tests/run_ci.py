@@ -105,6 +105,12 @@ def main() -> int:
 				os.path.join(TESTS_DIR, "run_tailscale_network_tests.py"),
 			)
 		)
+		steps.append(
+			(
+				"New features (workflows, debug filter, sqlite encryption, models, node deps, log redaction)",
+				os.path.join(TESTS_DIR, "run_new_features_tests.py"),
+			)
+		)
 	if not args.no_lint:
 		steps.append(("Ruff check", None))  # special
 		steps.append(("Ruff format", None))
