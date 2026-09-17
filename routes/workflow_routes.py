@@ -70,6 +70,9 @@ POTENTIAL_GLOBALS = [
 	os.path.join(COMFY_ROOT, "user", "default", "workflows"),
 	os.path.join(COMFY_ROOT, "user_data", "workflows"),
 ]
+_data_dir_env = os.environ.get("MSS_LOGIN_DATA_DIR", "").strip()
+if _data_dir_env:
+	POTENTIAL_GLOBALS.append(os.path.join(os.path.abspath(_data_dir_env), "workflows", "default"))
 
 
 def get_current_user(request):

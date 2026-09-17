@@ -244,46 +244,74 @@ def _get_plugin_workflow_dir(username: str) -> str:
 	return os.path.join(user_root, "workflows")
 
 
-def _migrate_user_workflows_to_data_dir(username: str, data_wf_dir: str) -> None:
+def _copy_workflows_if_empty(sources: list[str], target_dir: str) -> None:
 	"""
-	One-time: copy workflows from plugin Users/<username>/workflows to data dir
-	if plugin has content and data dir is empty. Idempotent; skips if data dir has files.
+	One-time helper: copy workflows from the first non-empty source directory
+	into target_dir if target_dir is currently empty. Non-destructive.
 	"""
-	plugin_wf = _get_plugin_workflow_dir(username)
-	if not os.path.isdir(plugin_wf):
+	try:
+		if os.path.isdir(target_dir):
+			existing = [f for f in os.listdir(target_dir) if f != "default"]
+			if existing:
+				return
+	except OSError:
 		return
-	try:
-		existing = os.listdir(data_wf_dir)
-		if existing:
-			return
-	except OSError:
-		pass
-	try:
-		for name in os.listdir(plugin_wf):
-			src = os.path.join(plugin_wf, name)
-			dst = os.path.join(data_wf_dir, name)
-			if os.path.isfile(src):
-				shutil.copy2(src, dst)
-			elif os.path.isdir(src):
-				shutil.copytree(src, dst, dirs_exist_ok=True)
-	except OSError:
-		pass
+
+	for src in sources:
+		if not src or not os.path.isdir(src) or os.path.abspath(src) == os.path.abspath(target_dir):
+			continue
+		try:
+			items = os.listdir(src)
+			# Only consider it a source if it has files other than the target directory itself
+			valid_items = [item for item in items if item != "default"]
+			if not valid_items:
+				continue
+			os.makedirs(target_dir, exist_ok=True)
+			for name in valid_items:
+				src_item = os.path.join(src, name)
+				dst_item = os.path.join(target_dir, name)
+				if os.path.isfile(src_item) and not os.path.exists(dst_item):
+					shutil.copy2(src_item, dst_item)
+				elif os.path.isdir(src_item) and not os.path.exists(dst_item):
+					shutil.copytree(src_item, dst_item, dirs_exist_ok=True)
+			break
+		except OSError:
+			continue
 
 
 def get_user_workflow_dir(username: str) -> str:
 	"""
-	Per-user workflow directory under MSS_LOGIN_DATA_DIR:
-	  <data_dir>/Users/<username>/workflows/
+	Return the per-user workflow directory.
 
-	Migrates existing workflows from plugin Users/<username>/workflows/ once if present.
+	- If MSS_LOGIN_DATA_DIR is set:
+	  Stores workflows under <MSS_LOGIN_DATA_DIR>/workflows/<username>/
+	- If MSS_LOGIN_DATA_DIR is not set:
+	  Stores workflows in the configured user directory with a 'default' subfolder:
+	  <data_dir>/Users/<username>/workflows/default/
 	"""
 	safe = _sanitize_username_for_path(username)
-	data_users = get_data_subdir("Users")
-	os.makedirs(data_users, exist_ok=True)
-	data_wf_dir = get_data_subdir("Users", safe, "workflows")
-	os.makedirs(data_wf_dir, exist_ok=True)
-	_migrate_user_workflows_to_data_dir(username, data_wf_dir)
-	return data_wf_dir
+	raw_env = os.environ.get("MSS_LOGIN_DATA_DIR", "").strip()
+
+	if raw_env:
+		base = os.path.abspath(raw_env)
+		target_dir = os.path.join(base, "workflows", safe)
+		os.makedirs(target_dir, exist_ok=True)
+		sources = [
+			get_data_subdir("Users", safe, "workflows", "default"),
+			get_data_subdir("Users", safe, "workflows"),
+			_get_plugin_workflow_dir(safe),
+		]
+		_copy_workflows_if_empty(sources, target_dir)
+		return target_dir
+	else:
+		target_dir = get_data_subdir("Users", safe, "workflows", "default")
+		os.makedirs(target_dir, exist_ok=True)
+		sources = [
+			get_data_subdir("Users", safe, "workflows"),
+			_get_plugin_workflow_dir(safe),
+		]
+		_copy_workflows_if_empty(sources, target_dir)
+		return target_dir
 
 
 def list_user_workflows(username: str) -> list[str]:

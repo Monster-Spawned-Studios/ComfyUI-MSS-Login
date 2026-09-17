@@ -28,6 +28,9 @@ def get_global_workflows_root() -> str:
 		os.path.join(COMFY_ROOT, "user", "default", "workflows"),
 		os.path.join(COMFY_ROOT, "user_data", "workflows"),
 	]
+	data_dir_env = os.environ.get("MSS_LOGIN_DATA_DIR", "").strip()
+	if data_dir_env:
+		candidates.insert(0, os.path.join(os.path.abspath(data_dir_env), "workflows", "default"))
 	for p in candidates:
 		if os.path.isdir(p):
 			return p
