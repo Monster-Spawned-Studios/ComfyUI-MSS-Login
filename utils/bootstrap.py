@@ -22,6 +22,7 @@ def load_default_groups():
 				"can_have_api_tokens": True,
 				"can_have_non_expiring_jwt": True,
 				"can_view_console": True,
+				"can_login_locally_without_auth": True,
 			},
 			"admin": {
 				"can_run": True,
@@ -32,6 +33,7 @@ def load_default_groups():
 				"can_have_api_tokens": True,
 				"can_have_non_expiring_jwt": False,
 				"can_view_console": False,
+				"can_login_locally_without_auth": True,
 			},
 			"power": {
 				"can_run": True,
@@ -41,6 +43,7 @@ def load_default_groups():
 				"can_see_restricted_settings": False,
 				"can_have_api_tokens": True,
 				"can_have_non_expiring_jwt": False,
+				"can_login_locally_without_auth": False,
 			},
 			"user": {
 				"can_run": True,
@@ -50,6 +53,7 @@ def load_default_groups():
 				"can_see_restricted_settings": False,
 				"can_have_api_tokens": False,
 				"can_have_non_expiring_jwt": False,
+				"can_login_locally_without_auth": False,
 			},
 			"guest": {
 				"can_run": False,
@@ -59,6 +63,7 @@ def load_default_groups():
 				"can_see_restricted_settings": False,
 				"can_have_api_tokens": False,
 				"can_have_non_expiring_jwt": False,
+				"can_login_locally_without_auth": False,
 			},
 		}
 	return cfg

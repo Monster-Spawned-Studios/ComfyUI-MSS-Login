@@ -471,6 +471,30 @@ except (TypeError, ValueError):
 REQUIRE_AUTH_FOR_REMOTE_API = config_data.get("require_auth_for_remote_api", True)
 LOCAL_NETWORK_CIDRS = config_data.get("local_network_cidrs") or []
 
+# Tailscale and local private network CIDRs (RFC 6598 CGNAT, RFC 1918, loopback, ULA)
+TAILSCALE_IPV4_CIDR = "100.64.0.0/10"
+TAILSCALE_IPV6_CIDR = "fd7a:115c:a1e0::/48"
+TAILSCALE_CIDRS = [TAILSCALE_IPV4_CIDR, TAILSCALE_IPV6_CIDR]
+DEFAULT_LOCAL_PRIVATE_CIDRS = [
+	"127.0.0.0/8",
+	"::1/128",
+	"10.0.0.0/8",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"169.254.0.0/16",
+	"fe80::/10",
+	"fc00::/7",
+]
+
+
+def reload_local_network_cidrs() -> list:
+	"""Re-read config and refresh LOCAL_NETWORK_CIDRS."""
+	global LOCAL_NETWORK_CIDRS
+	cfg = _load_config(CONFIG_FILE_PATH)
+	LOCAL_NETWORK_CIDRS = cfg.get("local_network_cidrs") or []
+	return list(LOCAL_NETWORK_CIDRS)
+
+
 # DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
 DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
 DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(config_data.get("debug_mode", False))
@@ -576,6 +600,11 @@ def experimental_model_isolation_enabled() -> bool:
 	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("model_isolation"))
 
 
+def experimental_tailscale_local_auth_enabled() -> bool:
+	"""True if master experimental is on and tailscale_local_auth feature is enabled."""
+	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("tailscale_local_auth"))
+
+
 def get_experimental_flags() -> dict:
 	"""Return dict of per-feature flags for /me and settings."""
 	return {
@@ -584,6 +613,7 @@ def get_experimental_flags() -> dict:
 		"loading_screen": experimental_loading_screen_enabled(),
 		"news": experimental_news_enabled(),
 		"model_isolation": experimental_model_isolation_enabled(),
+		"tailscale_local_auth": experimental_tailscale_local_auth_enabled(),
 	}
 
 

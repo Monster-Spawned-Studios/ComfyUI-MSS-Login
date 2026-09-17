@@ -87,7 +87,8 @@
 		"s3": false,
 		"loading_screen": false,
 		"news": false,
-		"model_isolation": false
+		"model_isolation": false,
+		"tailscale_local_auth": false
 	},
 	"s3_storage": {
 		"enabled": false,

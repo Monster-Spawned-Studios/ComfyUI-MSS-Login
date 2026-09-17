@@ -16,7 +16,7 @@ from aiohttp import web
 from .debug_log import debug_write
 from .ip_filter import get_ip
 
-# Default CIDRs considered "local" (Docker-aware: 172.17.0.0/16 is default bridge)
+# Default CIDRs considered "local" (Docker-aware and Tailscale-aware)
 DEFAULT_LOCAL_CIDRS = [
 	"127.0.0.0/8",
 	"::1/128",
@@ -25,7 +25,10 @@ DEFAULT_LOCAL_CIDRS = [
 	"192.168.0.0/16",
 	"192.168.1.0/24",
 	"172.17.0.0/16",
+	"100.64.0.0/10",
+	"fd7a:115c:a1e0::/48",
 ]
+
 
 # Path prefixes that are considered "protected API" (require auth when remote)
 PROTECTED_API_PREFIXES = ("/prompt", "/api/prompt", "/api/queue", "/queue", "/api/", "/cpe")
