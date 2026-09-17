@@ -120,12 +120,16 @@ def run_tests():
 		"mss_login.utils",
 	)
 	ok(
-		policy_off.user_can_view_all_models("user", {"can_view_all_comfyui_items": False}) is True,
-		"isolation off: standard users still see the shared model library",
+		policy_off.user_can_view_all_models("user", {"can_view_all_comfyui_items": False}) is False,
+		"isolation off: user without permission has models hidden",
+	)
+	ok(
+		policy_off.user_can_view_all_models("user", {"can_view_all_comfyui_items": True}) is True,
+		"isolation off: standard users with permission see the shared model library",
 	)
 	ok(
 		policy_off.user_can_view_all_models("guest", {}) is True,
-		"isolation off: guests are not locked out of local models",
+		"isolation off: guests without explicit denial are not locked out of local models",
 	)
 	ok(
 		policy_off.user_can_view_all_models("admin", {}) is True,

@@ -40,18 +40,20 @@ def user_can_view_all_models(role: str, perms: dict) -> bool:
 	"""
 	Return True when user can bypass per-item grants.
 
-	When experimental model isolation is off, every role uses the shared
-	ComfyUI model library (S3 entries can still be stripped separately).
-	Per-user output/workflow folders (SEPERATE_USERS) do not hide checkpoints,
-	so ComfyUI and Comfy Portal generation keep working.
+	Owner always bypasses. Users with can_view_all_comfyui_items explicitly False
+	are restricted to explicit grants even if experimental isolation is off.
+	When experimental model isolation is off, roles without explicit restriction
+	use the shared ComfyUI model library (S3 entries can still be stripped separately).
 
 	In isolation mode, owner always bypasses; admin bypass requires both
 	can_view_all_comfyui_items and can_manage_model_sharing. Other roles see
 	only explicitly granted models.
 	"""
-	if not experimental_model_isolation_enabled():
-		return True
 	if role == "owner":
+		return True
+	if perms.get("can_view_all_comfyui_items") is False:
+		return False
+	if not experimental_model_isolation_enabled():
 		return True
 	if role == "admin":
 		return perms.get(
