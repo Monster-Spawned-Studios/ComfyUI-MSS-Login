@@ -495,10 +495,25 @@ def reload_local_network_cidrs() -> list:
 	return list(LOCAL_NETWORK_CIDRS)
 
 
-# DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
-DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
+# DEBUG_MODE: load from environment (LOGIN_DEBUG_MODE, DEBUG_MODE, MSS_LOGIN_DEBUG_MODE) then config.json for diagnosis
+DEBUG_MODE_FROM_ENV = (
+	str(os.environ.get("LOGIN_DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
+	or str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
+	or str(os.environ.get("MSS_LOGIN_DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
+)
 DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(config_data.get("debug_mode", False))
 DEBUG_LOG_PATH = os.path.join(CURRENT_DIR, "logs", "debug.log")
+
+
+def filter_debug_messages_enabled() -> bool:
+	"""True if debug messages should be filtered/suppressed in Web UI and CLI console."""
+	env_val = str(os.environ.get("FILTER_DEBUG_MESSAGES", "")).strip().lower()
+	if env_val in ("1", "true", "yes"):
+		return True
+	if env_val in ("0", "false", "no"):
+		return False
+	cfg = _load_config(CONFIG_FILE_PATH)
+	return bool(cfg.get("filter_debug_messages", False))
 
 AUTO_INSTALL_DEPS = bool(config_data.get("auto_install_deps", True))
 _auto_install_env = str(os.environ.get("AUTO_INSTALL_DEPS", "")).strip().lower()
@@ -605,6 +620,11 @@ def experimental_tailscale_local_auth_enabled() -> bool:
 	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("tailscale_local_auth"))
 
 
+def experimental_install_other_nodes_deps_enabled() -> bool:
+	"""True if master experimental is on and install_other_nodes_deps feature is enabled."""
+	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("install_other_nodes_deps"))
+
+
 def get_experimental_flags() -> dict:
 	"""Return dict of per-feature flags for /me and settings."""
 	return {
@@ -614,6 +634,7 @@ def get_experimental_flags() -> dict:
 		"news": experimental_news_enabled(),
 		"model_isolation": experimental_model_isolation_enabled(),
 		"tailscale_local_auth": experimental_tailscale_local_auth_enabled(),
+		"install_other_nodes_deps": experimental_install_other_nodes_deps_enabled(),
 	}
 
 

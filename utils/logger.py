@@ -126,6 +126,13 @@ class Logger:
 		elif level == "ERROR":
 			self.logger.error(message)
 		elif level == "DEBUG":
+			try:
+				from ..constants import filter_debug_messages_enabled
+
+				if filter_debug_messages_enabled():
+					return
+			except Exception:
+				pass
 			self.logger.debug(message)
 
 	def log_message(self, level: str, message: str) -> None:
@@ -213,11 +220,11 @@ class Logger:
 		self._log_console("INFO", f"User: '{username}' logged out from IP: {ip}")
 
 	def log_jwt_if_debug(self, token: str, username: str) -> None:
-		"""When DEBUG_MODE is on: write JWT token to log file and ComfyUI console. Do not call when DEBUG_MODE is off."""
+		"""When DEBUG_MODE is on: write JWT token to log file and ComfyUI console. Do not call when DEBUG_MODE is off or debug messages filtered."""
 		try:
-			from ..constants import DEBUG_MODE
+			from ..constants import DEBUG_MODE, filter_debug_messages_enabled
 
-			if not DEBUG_MODE:
+			if not DEBUG_MODE or filter_debug_messages_enabled():
 				return
 			msg = f"JWT token (DEBUG_MODE): {token}"
 			with self._lock:

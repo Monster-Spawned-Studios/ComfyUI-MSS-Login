@@ -56,6 +56,11 @@ async def get_me_console(request: web.Request) -> web.Response:
 	if not username:
 		return web.json_response({"error": "Authentication required"}, status=401)
 	lines = get_user_console_lines(username)
+	from ..constants import filter_debug_messages_enabled
+
+	if filter_debug_messages_enabled():
+		markers = ("[DEBUG]", "DEBUG:", "[mss-login::DEBUG]", "DEBUG_MODE")
+		lines = [line for line in lines if not any(m in line for m in markers)]
 	return web.json_response({"lines": lines})
 
 

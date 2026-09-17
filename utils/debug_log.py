@@ -10,7 +10,12 @@ import time
 def debug_write(payload: dict) -> None:
 	"""Write a debug payload to file when DEBUG_MODE, and to stdout when DEBUG_MODE_FROM_ENV."""
 	try:
-		from ..constants import DEBUG_LOG_PATH, DEBUG_MODE, DEBUG_MODE_FROM_ENV
+		from ..constants import (
+			DEBUG_LOG_PATH,
+			DEBUG_MODE,
+			DEBUG_MODE_FROM_ENV,
+			filter_debug_messages_enabled,
+		)
 
 		if not DEBUG_MODE:
 			return
@@ -20,7 +25,7 @@ def debug_write(payload: dict) -> None:
 		os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
 		with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
 			f.write(line + "\n")
-		if DEBUG_MODE_FROM_ENV:
+		if DEBUG_MODE_FROM_ENV and not filter_debug_messages_enabled():
 			print(f"[mss-login::DEBUG] {line}", flush=True)
 	except Exception:
 		pass
