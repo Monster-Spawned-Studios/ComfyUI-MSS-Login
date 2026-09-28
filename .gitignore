@@ -95,3 +95,9 @@ web/frontend/package-lock.json
 
 # Compressed node file:
 node.zip
+
+# Gallery root file:
+[Uu]sers/gallery_root.json
+
+# Cursor files:
+.cursor/
