@@ -199,6 +199,65 @@ def run_tests():
 		"configured route pattern triggers redirect matching",
 	)
 
+	print("TestModelFilterPathNormalizeAndObjectInfo")
+	# Stub folder_paths so middleware module can import
+	fp = types.ModuleType("folder_paths")
+	fp.folder_names_and_paths = {"checkpoints": ([], {".safetensors"})}
+	fp.get_filename_list = lambda folder: []
+	fp.map_legacy = lambda n: n
+	sys.modules["folder_paths"] = fp
+	aiohttp_mod = types.ModuleType("aiohttp")
+
+	class _Web:
+		@staticmethod
+		def middleware(fn):
+			return fn
+
+		@staticmethod
+		def json_response(data, status=200):
+			return ("json", data, status)
+
+		class Request:
+			pass
+
+		class Response:
+			pass
+
+		class StreamResponse:
+			pass
+
+	aiohttp_mod.web = _Web
+	sys.modules["aiohttp"] = aiohttp_mod
+	# path_safety is required by middleware
+	_load_module(
+		"mss_login.utils.path_safety", os.path.join(_UTILS_DIR, "path_safety.py"), "mss_login.utils"
+	)
+	sys.modules["mss_login.utils.model_visibility_policy"] = policy_on
+	mw = _load_module(
+		"mss_login.utils.model_filter_middleware",
+		os.path.join(_UTILS_DIR, "model_filter_middleware.py"),
+		"mss_login.utils",
+	)
+	ok(mw._normalize_request_path("/api/models/") == "/models", "strips /api and trailing slash")
+	ok(
+		mw._normalize_request_path("/api/experiment/models") == "/experiment/models",
+		"normalizes experiment path under /api",
+	)
+	ok(mw._normalize_request_path("/models") == "/models", "bare /models unchanged")
+	grants_oi = [
+		policy_on._normalized_record({"folder": "checkpoints", "item_name": "allowed.safetensors"})
+	]
+	oi = {
+		"CheckpointLoaderSimple": {
+			"input": {
+				"required": {"ckpt_name": [["allowed.safetensors", "secret.safetensors"], {}]}
+			}
+		}
+	}
+	filtered_oi = mw._filter_object_info_combos(oi, grants_oi)
+	combo = filtered_oi["CheckpointLoaderSimple"]["input"]["required"]["ckpt_name"][0]
+	ok(combo == ["allowed.safetensors"], "object_info combo filtered to grants")
+
 	print()
 	try:
 		if os.path.isfile(_TMP_CONFIG):
