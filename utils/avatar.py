@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import os
+import shutil
 from typing import Optional
 
 from PIL import Image, ImageFile, UnidentifiedImageError
@@ -32,7 +33,16 @@ def avatar_dir(username: str) -> str:
 	safe = _sanitize_username_for_path(username)
 	if not is_safe_folder_segment(safe) or safe.lower() == "guest":
 		raise ValueError("Invalid username for avatar storage")
-	path = get_data_subdir("Users", safe)
+	# Prefer lowercase users/; fall back to legacy capital Users/ if avatar already there.
+	path = get_data_subdir("users", safe)
+	legacy = get_data_subdir("Users", safe)
+	legacy_avatar = os.path.join(legacy, AVATAR_FILENAME)
+	if not os.path.isfile(os.path.join(path, AVATAR_FILENAME)) and os.path.isfile(legacy_avatar):
+		os.makedirs(path, exist_ok=True)
+		try:
+			shutil.copy2(legacy_avatar, os.path.join(path, AVATAR_FILENAME))
+		except OSError:
+			pass
 	os.makedirs(path, exist_ok=True)
 	return path
 

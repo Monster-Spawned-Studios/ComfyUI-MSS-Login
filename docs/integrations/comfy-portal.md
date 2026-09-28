@@ -72,11 +72,11 @@ Avoid scraping HTML login pages or cookies unless you control a WebView session.
 | 401 on `/prompt` from mobile network | Missing token, or `REQUIRE_AUTH_FOR_REMOTE_API=true` without Bearer auth |
 | 401 on `/prompt` with token | Revoked token, wrong server, or clock skew on JWT sessions |
 | 403 on `/prompt` | `can_run` false for role |
-| 403 `MODEL_NOT_ALLOWED` | Workflow references models user cannot access |
+| 403 `MODEL_NOT_ALLOWED` | Workflow references models user cannot access (also on CPE save / get-and-convert for API-format graphs) |
 | 403 on `/view` | NSFW policy blocked output |
 | Portal cannot sync workflows | Frontend blocked by auth; see comfy-portal-endpoint section |
 | 401 on `/api/cpe/workflow/list` | Missing/invalid token, or remote API guard (non-LAN IP without Bearer) |
-| Empty workflow list in Portal | No JSON files in that user's data-dir workflow folder yet; save one or copy into `Users/<name>/workflows/` |
+| Empty workflow list in Portal | No JSON files in that user's data-dir workflow folder yet; save one or copy into `users/<name>/workflows/` |
 | HTML redirect to `/login` instead of JSON | Client sent `Accept: text/html`; use Bearer header and expect JSON 401 |
 
 ### Debug tips

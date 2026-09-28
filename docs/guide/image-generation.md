@@ -132,7 +132,7 @@ If `SEPERATE_USERS=true` (default), non-admin users get isolated directories und
 - outputs: `<data_dir>/output/<user_id>/`
 - temp: `<data_dir>/temp/<user_id>/`
 - inputs: `<data_dir>/input/<user_id>/`
-- workflows: `<data_dir>/Users/<username>/workflows/` (also used by `/api/cpe/workflow/*`)
+- workflows: `<data_dir>/users/<username>/workflows/` (also used by `/api/cpe/workflow/*`)
 
 Admin/owner accounts use the same folder layout for their own jobs; they can still see everyone's queue/history. Use the `filename` / `subfolder` values from **your** history entry when calling `/view`.
 

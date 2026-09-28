@@ -74,8 +74,8 @@ def run_tests():
 			del os.environ["MSS_LOGIN_DATA_DIR"]
 		wf_dir_default = user_env_mod.get_user_workflow_dir("alice")
 		ok(
-			wf_dir_default.replace("\\", "/").endswith("Users/alice/workflows/default"),
-			f"default workflow dir ends with Users/alice/workflows/default: {wf_dir_default}",
+			wf_dir_default.replace("\\", "/").endswith("users/alice/workflows/default"),
+			f"default workflow dir ends with users/alice/workflows/default: {wf_dir_default}",
 		)
 
 		# Test with MSS_LOGIN_DATA_DIR set

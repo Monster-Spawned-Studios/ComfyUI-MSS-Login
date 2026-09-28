@@ -80,12 +80,21 @@ def ensure_data_dir(repo_root: str | None = None) -> str:
 	backups_sub = os.path.join(data_dir, "backups")
 	os.makedirs(data_sub, exist_ok=True)
 	os.makedirs(backups_sub, exist_ok=True)
+	os.makedirs(os.path.join(data_dir, "users"), exist_ok=True)
 
 	# One-time migration from repo to data dir before touching config
 	migrate_from_repo_if_needed(root)
 
 	# One-time migration: users.db -> mss_login_data.db and update config
 	_migrate_users_db_to_mss_login_data(data_dir)
+
+	# Legacy capital Users/ (extension root + DATA_DIR) -> DATA_DIR/users/
+	try:
+		from .user_env import migrate_users_dir_if_needed
+
+		migrate_users_dir_if_needed()
+	except Exception:
+		pass
 
 	defaults_path = os.path.join(root, "config.defaults.json")
 	if not os.path.isfile(defaults_path):

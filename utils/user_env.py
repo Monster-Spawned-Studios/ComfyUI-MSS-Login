@@ -3,8 +3,8 @@ ComfyUI-MSS-Login per-user environment helpers.
 
 Responsible for:
 - Resolving the extension root
-- Managing the shared Users/ directory (plugin) and data-dir Users/ (workflows)
-- Creating / locating per-user folders (Users/<username>/...)
+- Managing the shared users/ directory under DATA_DIR (not the repo)
+- Creating / locating per-user folders (users/<username>/...)
 - Loading / saving per-user settings JSON
 - Centralizing paths for user_db.json and (renamed) mss_login_settings.js
 - Workflow storage under MSS_LOGIN_DATA_DIR (see get_user_workflow_dir)
@@ -16,6 +16,8 @@ import shutil
 from typing import Any, Dict, List
 
 from .data_dir import get_data_dir, get_data_subdir
+
+_USERS_MIGRATED_MARKER = ".migrated_users_to_data_dir"
 
 # -----------------------
 # Path helpers
@@ -31,12 +33,72 @@ def get_extension_root() -> str:
 	return os.path.abspath(os.path.join(here, ".."))
 
 
+def _copy_tree_missing(src: str, dst: str) -> bool:
+	"""Copy files/dirs from src into dst without overwriting existing entries."""
+	if not src or not os.path.isdir(src):
+		return False
+	if os.path.abspath(src) == os.path.abspath(dst):
+		return False
+	copied = False
+	os.makedirs(dst, exist_ok=True)
+	try:
+		for name in os.listdir(src):
+			src_item = os.path.join(src, name)
+			dst_item = os.path.join(dst, name)
+			if os.path.exists(dst_item):
+				continue
+			try:
+				if os.path.isfile(src_item):
+					shutil.copy2(src_item, dst_item)
+					copied = True
+				elif os.path.isdir(src_item):
+					shutil.copytree(src_item, dst_item, dirs_exist_ok=True)
+					copied = True
+			except OSError:
+				continue
+	except OSError:
+		return False
+	return copied
+
+
+def migrate_users_dir_if_needed() -> bool:
+	"""
+	One-time migrate legacy capital Users/ trees into DATA_DIR/users/.
+
+	Sources (copied, not deleted):
+	  - <ext_root>/Users/
+	  - <DATA_DIR>/Users/
+	"""
+	data_dir = get_data_dir()
+	marker = os.path.join(data_dir, _USERS_MIGRATED_MARKER)
+	dest = get_data_subdir("users")
+	os.makedirs(dest, exist_ok=True)
+	if os.path.isfile(marker):
+		return False
+
+	migrated = False
+	legacy_ext = os.path.join(get_extension_root(), "Users")
+	legacy_data = os.path.join(data_dir, "Users")
+	if _copy_tree_missing(legacy_ext, dest):
+		migrated = True
+	if _copy_tree_missing(legacy_data, dest):
+		migrated = True
+
+	try:
+		with open(marker, "w", encoding="utf-8") as f:
+			f.write("migrated")
+	except OSError:
+		pass
+	return migrated
+
+
 def get_users_root() -> str:
 	"""
 	Root folder for all MSS-Login user-related files:
-	  <ext_root>/Users/
+	  <DATA_DIR>/users/
 	"""
-	root = os.path.join(get_extension_root(), "Users")
+	migrate_users_dir_if_needed()
+	root = get_data_subdir("users")
 	os.makedirs(root, exist_ok=True)
 	return root
 
@@ -44,7 +106,7 @@ def get_users_root() -> str:
 def get_user_db_path() -> str:
 	"""
 	Global user database JSON.
-	  <ext_root>/Users/user_db.json
+	  <DATA_DIR>/users/user_db.json
 	"""
 	return os.path.join(get_users_root(), "user_db.json")
 
@@ -52,10 +114,10 @@ def get_user_db_path() -> str:
 def get_frontend_settings_js_path() -> str:
 	"""
 	Location of the frontend settings JS file (renamed from sentinel_settings.js):
-	  <ext_root>/Users/mss_login_settings.js
+	  <DATA_DIR>/users/mss_login_settings.js
 
 	This file is still served as a static asset by the backend, but physically
-	lives under Users/ so everything related to MSS-Login is in one place.
+	lives under DATA_DIR/users/ so runtime data stays out of the repo.
 	"""
 	return os.path.join(get_users_root(), "mss_login_settings.js")
 
@@ -63,7 +125,7 @@ def get_frontend_settings_js_path() -> str:
 def get_user_root(username: str) -> str:
 	"""
 	Per-user root folder:
-	  <ext_root>/Users/<username>/
+	  <DATA_DIR>/users/<username>/
 	"""
 	username = (username or "guest").strip() or "guest"
 	# Prevent path traversal: username must be a single path segment
@@ -77,7 +139,7 @@ def get_user_root(username: str) -> str:
 def get_user_css_dir(username: str) -> str:
 	"""
 	Per-user CSS directory:
-	  <ext_root>/Users/<username>/css/
+	  <DATA_DIR>/users/<username>/css/
 	"""
 	path = os.path.join(get_user_root(username), "css")
 	os.makedirs(path, exist_ok=True)
@@ -87,10 +149,9 @@ def get_user_css_dir(username: str) -> str:
 def get_user_settings_path(username: str) -> str:
 	"""
 	Per-user settings JSON file:
-	  <ext_root>/Users/<username>/settings.json
+	  <DATA_DIR>/users/<username>/settings.json
 	"""
 	return os.path.join(get_user_root(username), "settings.json")
-
 
 # -----------------------
 # JSON helpers
@@ -163,7 +224,7 @@ def get_gallery_root_config_path() -> str:
 	"""
 	Global config pointing at which user is used as Gallery root.
 
-	  <ext_root>/Users/gallery_root.json
+	  <DATA_DIR>/users/gallery_root.json
 
 	Stored as: { "user": "<username>" }
 	"""
@@ -203,7 +264,7 @@ def list_user_files(username: str, max_files: int = 500) -> list[str]:
 	"""
 	Return a relative list of files under the user's root directory.
 
-	  Users/<username>/...
+	  users/<username>/...
 
 	Limited to max_files entries to avoid insane payloads.
 	"""
@@ -222,7 +283,7 @@ def list_user_files(username: str, max_files: int = 500) -> list[str]:
 
 def purge_user_root(username: str) -> None:
 	"""
-	Delete the entire per-user folder under Users/<username>/ and recreate it.
+	Delete the entire per-user folder under users/<username>/ and recreate it.
 	"""
 	root = get_user_root(username)
 	if os.path.exists(root):
@@ -287,7 +348,7 @@ def get_user_workflow_dir(username: str) -> str:
 	  Stores workflows under <MSS_LOGIN_DATA_DIR>/workflows/<username>/
 	- If MSS_LOGIN_DATA_DIR is not set:
 	  Stores workflows in the configured user directory with a 'default' subfolder:
-	  <data_dir>/Users/<username>/workflows/default/
+	  <data_dir>/users/<username>/workflows/default/
 	"""
 	safe = _sanitize_username_for_path(username)
 	raw_env = os.environ.get("MSS_LOGIN_DATA_DIR", "").strip()
@@ -297,6 +358,8 @@ def get_user_workflow_dir(username: str) -> str:
 		target_dir = os.path.join(base, "workflows", safe)
 		os.makedirs(target_dir, exist_ok=True)
 		sources = [
+			get_data_subdir("users", safe, "workflows", "default"),
+			get_data_subdir("users", safe, "workflows"),
 			get_data_subdir("Users", safe, "workflows", "default"),
 			get_data_subdir("Users", safe, "workflows"),
 			_get_plugin_workflow_dir(safe),
@@ -304,9 +367,11 @@ def get_user_workflow_dir(username: str) -> str:
 		_copy_workflows_if_empty(sources, target_dir)
 		return target_dir
 	else:
-		target_dir = get_data_subdir("Users", safe, "workflows", "default")
+		target_dir = get_data_subdir("users", safe, "workflows", "default")
 		os.makedirs(target_dir, exist_ok=True)
 		sources = [
+			get_data_subdir("users", safe, "workflows"),
+			get_data_subdir("Users", safe, "workflows", "default"),
 			get_data_subdir("Users", safe, "workflows"),
 			_get_plugin_workflow_dir(safe),
 		]

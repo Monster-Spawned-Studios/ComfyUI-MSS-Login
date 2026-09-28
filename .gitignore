@@ -21,6 +21,8 @@ users/session_tokens.json
 users/whitelist.txt
 users/blacklist.txt
 users/mss_login_groups.json
+# Legacy capital Users/ written next to the extension before DATA_DIR migration
+/Users/
 .last_update_check
 
 # SQLite databases and local data (keep repo clean of user data)
@@ -96,8 +98,6 @@ web/frontend/package-lock.json
 # Compressed node file:
 node.zip
 
-# Gallery root file:
-[Uu]sers/gallery_root.json
 
 # Cursor files:
 .cursor/
