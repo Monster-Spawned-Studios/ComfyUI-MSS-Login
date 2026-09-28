@@ -133,12 +133,31 @@ async def post_me_sessions_revoke(request: web.Request) -> web.Response:
 async def _read_avatar_upload(request: web.Request) -> bytes:
 	content_type = (request.headers.get("Content-Type") or "").lower()
 	if "multipart/" in content_type:
-		reader = await request.multipart()
-		async for part in reader:
-			if part.name in ("avatar", "file", "image") or (
-				part.filename and part.filename.strip()
-			):
-				data = await part.read()
+		# Sanitizer middleware may already have called request.post(), which
+		# consumes the body. request.multipart() then fails with
+		# "Could not find starting boundary". Always use post() for multipart.
+		post = await request.post()
+		for key in ("avatar", "file", "image"):
+			field = post.get(key)
+			if field is None:
+				continue
+			if hasattr(field, "file"):
+				try:
+					field.file.seek(0)
+				except Exception:
+					pass
+				data = field.file.read()
+				if data:
+					return data
+			elif isinstance(field, (bytes, bytearray)):
+				return bytes(field)
+		for field in post.values():
+			if hasattr(field, "file") and getattr(field, "filename", None):
+				try:
+					field.file.seek(0)
+				except Exception:
+					pass
+				data = field.file.read()
 				if data:
 					return data
 		return b""

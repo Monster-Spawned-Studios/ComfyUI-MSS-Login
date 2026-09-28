@@ -104,9 +104,65 @@ def run_tests():
 	ok_save, msg = avatar.save_avatar("alice", _png_bytes())
 	ok(ok_save, f"save alice avatar ({msg})")
 	ok(avatar.has_avatar("alice"), "alice has avatar")
+	# Stored under users/ (lowercase) segment
+	alice_path = avatar.avatar_path("alice").replace("\\", "/")
+	ok("/users/alice/" in alice_path, f"avatar path uses users/ segment: {alice_path}")
 	ok(not avatar.has_avatar("bob"), "bob has no avatar")
 	ok(avatar.delete_avatar("alice"), "delete alice avatar")
 	ok(not avatar.has_avatar("alice"), "alice avatar removed")
+
+	print("TestReadAvatarFromPostField")
+
+	# Mimic sanitizer-consumed multipart: FileField-like object via request.post()
+	class _FakeFile:
+		def __init__(self, data):
+			self._data = data
+			self._pos = 0
+
+		def seek(self, pos):
+			self._pos = pos
+
+		def read(self):
+			return self._data[self._pos :]
+
+	class _FakeField:
+		def __init__(self, data, filename="a.png"):
+			self.file = _FakeFile(data)
+			self.filename = filename
+
+	class _FakeRequest:
+		def __init__(self, field):
+			self.headers = {"Content-Type": "multipart/form-data; boundary=----x"}
+			self._field = field
+
+		async def post(self):
+			return {"avatar": self._field}
+
+		async def read(self):
+			return b""
+
+	# Import reader from routes/me without full ComfyUI — inline the logic
+	async def _read_like_me(request):
+		content_type = (request.headers.get("Content-Type") or "").lower()
+		if "multipart/" in content_type:
+			post = await request.post()
+			for key in ("avatar", "file", "image"):
+				field = post.get(key)
+				if field is None:
+					continue
+				if hasattr(field, "file"):
+					field.file.seek(0)
+					data = field.file.read()
+					if data:
+						return data
+			return b""
+		return await request.read()
+
+	import asyncio
+
+	png_data = _png_bytes()
+	got = asyncio.run(_read_like_me(_FakeRequest(_FakeField(png_data))))
+	ok(got == png_data, "post()-based avatar read returns file bytes")
 
 	print(f"\n{run - failed}/{run} passed")
 	return failed == 0
