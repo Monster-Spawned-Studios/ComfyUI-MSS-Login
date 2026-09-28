@@ -13,9 +13,33 @@ from ..utils.model_cache import get_model_cache
 
 def is_admin(request: web.Request) -> bool:
 	"""Check if the user is an admin."""
+	username = request.get("user")
+	if username:
+		try:
+			_, u = users_db.get_user(username)
+			if u:
+				groups = [g.lower() for g in u.get("groups", [])]
+				return u.get("admin", False) or "admin" in groups or "owner" in groups
+		except Exception:
+			pass
 	token = jwt_auth.get_token_from_request(request)
 	if not token:
 		return False
+	try:
+		from ..utils.api_token_store import get_api_token_store
+
+		api_cfg = getattr(jwt_auth, "api_token_store_config", None) or {}
+		api_store = get_api_token_store(api_cfg)
+		api_user = api_store.get_user_for_token(token)
+		if api_user is not None:
+			_uid, uname = api_user
+			_, u = users_db.get_user(uname)
+			if not u:
+				return False
+			groups = [g.lower() for g in u.get("groups", [])]
+			return u.get("admin", False) or "admin" in groups or "owner" in groups
+	except Exception:
+		pass
 	try:
 		p = jwt_auth.decode_access_token(token)
 		username = p.get("username")

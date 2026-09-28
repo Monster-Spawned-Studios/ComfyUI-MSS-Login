@@ -125,6 +125,21 @@ def run_tests():
 	)
 	ok(not cpe.looks_like_api_prompt({"nodes": [], "links": []}), "UI graph is not API prompt")
 
+	print("TestParseWorkflowToApiPrompt")
+	api_graph = {
+		"1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "a.safetensors"}}
+	}
+	ok(cpe.parse_workflow_to_api_prompt(api_graph) is not None, "parses API dict")
+	ok(
+		cpe.parse_workflow_to_api_prompt(json.dumps(api_graph)) is not None,
+		"parses API JSON string",
+	)
+	ok(cpe.parse_workflow_to_api_prompt({"prompt": api_graph}) is not None, "parses wrapped prompt")
+	ok(
+		cpe.parse_workflow_to_api_prompt({"nodes": [], "links": []}) is None,
+		"UI format returns None",
+	)
+
 	print("TestHealthPayload")
 	health = cpe.health_payload()
 	ok(health.get("status") == "success", "health status success")

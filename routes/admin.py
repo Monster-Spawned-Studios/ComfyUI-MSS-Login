@@ -13,12 +13,12 @@ from ..constants import (
 	GROUPS_CONFIG_FILE,
 	TAILSCALE_CIDRS,
 	USERS_DB_CONFIG,
+	_normalize_encryption_level,
 	experimental_tailscale_local_auth_enabled,
+	filter_debug_messages_enabled,
 	get_domain,
 	get_experimental_failsafe_settings,
 	get_experimental_flags,
-	_normalize_encryption_level,
-	filter_debug_messages_enabled,
 	reload_allow_guest_jwt,
 	reload_api_token_store_config,
 	reload_experimental_failsafe,
@@ -29,8 +29,6 @@ from ..constants import (
 )
 from ..globals import ip_filter, jwt_auth, logger, routes, users_db
 from ..utils.admin_logic import delete_user_record, patch_user_group
-from ..utils.tailscale_network import detect_network_info
-
 from ..utils.api_token_store import reset_api_token_store
 from ..utils.bootstrap import _apply_owner_max_merge, load_default_groups
 from ..utils.json_utils import load_json_file, save_json_file
@@ -56,6 +54,7 @@ from ..utils.quarantine_store import (
 	quarantine_image_file,
 )
 from ..utils.shared_items_store import get_shared_items_store
+from ..utils.tailscale_network import detect_network_info
 from ..utils.updater import get_cached_status
 from ..utils.user_console_log import get_lines as get_user_console_lines
 from ..utils.user_console_log import list_users as list_console_users
@@ -70,9 +69,38 @@ def is_admin(request):
 	Returns:
 	    bool: True if the user is an admin, False otherwise.
 	"""
+	username = None
+	try:
+		username = request.get("user") if hasattr(request, "get") else None
+	except Exception:
+		username = None
+	if username:
+		try:
+			_, u = users_db.get_user(username)
+			if u:
+				groups = [g.lower() for g in (u.get("groups") or [])]
+				return u.get("admin", False) or "admin" in groups or "owner" in groups
+		except Exception:
+			pass
 	token = jwt_auth.get_token_from_request(request)
 	if not token:
 		return False
+	# API token store first
+	try:
+		from ..utils.api_token_store import get_api_token_store
+
+		api_cfg = getattr(jwt_auth, "api_token_store_config", None) or {}
+		api_store = get_api_token_store(api_cfg)
+		api_user = api_store.get_user_for_token(token)
+		if api_user is not None:
+			_uid, uname = api_user
+			_, u = users_db.get_user(uname)
+			if not u:
+				return False
+			groups = [g.lower() for g in (u.get("groups") or [])]
+			return u.get("admin", False) or "admin" in groups or "owner" in groups
+	except Exception:
+		pass
 	try:
 		p = jwt_auth.decode_access_token(token)
 		_, u = users_db.get_user(p["username"])
@@ -84,9 +112,37 @@ def is_admin(request):
 
 def _get_caller_username_and_groups(request):
 	"""Return (username, groups) for the authenticated caller, or (None, [])."""
+	username = None
+	try:
+		username = request.get("user") if hasattr(request, "get") else None
+	except Exception:
+		username = None
+	if username:
+		try:
+			_, u = users_db.get_user(username)
+			if u:
+				groups = [g.lower() for g in (u.get("groups") or [])]
+				return username, groups
+		except Exception:
+			pass
 	token = jwt_auth.get_token_from_request(request)
 	if not token:
 		return None, []
+	try:
+		from ..utils.api_token_store import get_api_token_store
+
+		api_cfg = getattr(jwt_auth, "api_token_store_config", None) or {}
+		api_store = get_api_token_store(api_cfg)
+		api_user = api_store.get_user_for_token(token)
+		if api_user is not None:
+			_uid, uname = api_user
+			_, u = users_db.get_user(uname)
+			if not u:
+				return None, []
+			groups = [g.lower() for g in (u.get("groups") or [])]
+			return uname, groups
+	except Exception:
+		pass
 	try:
 		p = jwt_auth.decode_access_token(token)
 		username = p.get("username")
@@ -542,19 +598,13 @@ async def api_put_local_cidrs(request):
 		save_json_file(CONFIG_FILE_PATH, cfg)
 		reload_local_network_cidrs()
 
-		return web.json_response(
-			{
-				"status": "ok",
-				"local_network_cidrs": valid_cidrs,
-			}
-		)
+		return web.json_response({"status": "ok", "local_network_cidrs": valid_cidrs})
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
 
 
 routes.get("/api/mss-login/api/settings/local-cidrs")(api_get_local_cidrs)
 routes.put("/api/mss-login/api/settings/local-cidrs")(api_put_local_cidrs)
-
 
 
 @routes.get("/mss-login/api/settings/experimental-failsafe")
@@ -671,8 +721,7 @@ async def api_admin_install_node_deps(request: web.Request) -> web.Response:
 			custom_nodes_dir = None
 
 		result = scan_and_install_node_dependencies(
-			custom_nodes_dir=custom_nodes_dir,
-			dry_run=dry_run,
+			custom_nodes_dir=custom_nodes_dir, dry_run=dry_run
 		)
 		return web.json_response(result)
 	except Exception as e:

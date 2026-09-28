@@ -183,6 +183,28 @@ def looks_like_api_prompt(data: Any) -> bool:
 	return any("class_type" in node for node in node_like)
 
 
+def parse_workflow_to_api_prompt(workflow: Any) -> dict[str, Any] | None:
+	"""Return an API-format prompt dict if *workflow* is (or contains) one; else None.
+
+	Accepts a dict, a JSON string, or CPE-style wrappers. UI-format graphs return None.
+	"""
+	data = workflow
+	if isinstance(data, str):
+		try:
+			data = json.loads(data)
+		except (json.JSONDecodeError, TypeError):
+			return None
+	if isinstance(data, dict) and "prompt" in data and isinstance(data["prompt"], dict):
+		data = data["prompt"]
+	if isinstance(data, dict) and "data" in data and isinstance(data["data"], dict):
+		inner = data["data"].get("workflow", data["data"])
+		if isinstance(inner, dict):
+			data = inner
+	if looks_like_api_prompt(data):
+		return data
+	return None
+
+
 def get_and_convert_payload(
 	user_workflow_dir: str, filename: str, extra_dirs: Iterable[str] | None = None
 ) -> tuple[int, dict[str, Any]]:

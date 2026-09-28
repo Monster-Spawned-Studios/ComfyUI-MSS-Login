@@ -14,6 +14,7 @@ import os
 
 from aiohttp import web
 
+from ..constants import USERS_DB_CONFIG
 from ..globals import routes
 from ..utils import user_env
 from ..utils.cpe_workflows import (
@@ -25,9 +26,17 @@ from ..utils.cpe_workflows import (
 	get_and_convert_payload,
 	health_payload,
 	list_workflows_payload,
+	parse_workflow_to_api_prompt,
 	read_workflow_text,
 	save_workflow_text,
 )
+from ..utils.model_visibility_policy import (
+	allowed_set_from_grants,
+	get_effective_model_grants_for_user,
+	user_can_view_all_models,
+)
+from ..utils.prompt_model_validator import validate_prompt_models
+from ..utils.shared_items_store import get_shared_items_store
 
 
 def _extra_global_dirs() -> list[str]:
@@ -52,6 +61,47 @@ def _user_workflow_dir(request: web.Request) -> str:
 	return user_env.get_user_workflow_dir(_current_username(request))
 
 
+def _model_grant_check(request: web.Request, workflow_payload: object) -> web.Response | None:
+	"""Return a 403 response if API-format workflow references forbidden models."""
+	prompt = parse_workflow_to_api_prompt(workflow_payload)
+	if prompt is None:
+		# UI-format: cannot validate without conversion; allow storage sync.
+		return None
+	try:
+		from ..globals import access_control
+
+		role, perms, username = access_control._get_user_role_and_permissions(request)
+	except Exception:
+		return None
+	if user_can_view_all_models(role, perms):
+		return None
+	try:
+		users_db = access_control.users_db
+		grants = get_effective_model_grants_for_user(
+			role=role,
+			perms=perms,
+			username=username,
+			users_db=users_db,
+			shared_items_store_getter=get_shared_items_store,
+			users_db_config=USERS_DB_CONFIG,
+		)
+		allowed_set = allowed_set_from_grants(grants)
+		valid, err_msg = validate_prompt_models(allowed_set, allow_all=False, prompt=prompt)
+		if not valid:
+			return web.json_response(
+				{
+					"status": "error",
+					"error": err_msg or "Model not allowed",
+					"code": "MODEL_NOT_ALLOWED",
+					"message": err_msg or "Model not allowed",
+				},
+				status=403,
+			)
+	except Exception:
+		return None
+	return None
+
+
 async def handle_cpe_list(request: web.Request) -> web.Response:
 	payload = list_workflows_payload(_user_workflow_dir(request), _extra_global_dirs())
 	return web.json_response(payload)
@@ -62,6 +112,10 @@ async def handle_cpe_get(request: web.Request) -> web.Response:
 	status, payload = read_workflow_text(
 		_user_workflow_dir(request), filename, _extra_global_dirs()
 	)
+	if status == 200:
+		denied = _model_grant_check(request, payload.get("workflow"))
+		if denied is not None:
+			return denied
 	return web.json_response(payload, status=status)
 
 
@@ -77,6 +131,9 @@ async def handle_cpe_save(request: web.Request) -> web.Response:
 			{"status": "error", "message": "workflow field is required"}, status=400
 		)
 	workflow = data.get("workflow")
+	denied = _model_grant_check(request, workflow)
+	if denied is not None:
+		return denied
 	if isinstance(workflow, (dict, list)):
 		workflow_str = json.dumps(workflow)
 	else:
@@ -104,6 +161,13 @@ async def handle_cpe_get_and_convert(request: web.Request) -> web.Response:
 	status, payload = get_and_convert_payload(
 		_user_workflow_dir(request), filename, _extra_global_dirs()
 	)
+	if status == 200:
+		wf = None
+		if isinstance(payload.get("data"), dict):
+			wf = payload["data"].get("workflow")
+		denied = _model_grant_check(request, wf)
+		if denied is not None:
+			return denied
 	return web.json_response(payload, status=status)
 
 

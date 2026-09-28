@@ -26,9 +26,37 @@ from ..utils.shared_items_store import get_shared_items_store
 
 
 def _current_user_id_and_username(request):
+	# Prefer identity already attached by jwt middleware (API token or JWT).
+	username = None
+	user_id = None
+	try:
+		username = request.get("user") if hasattr(request, "get") else None
+		user_id = request.get("user_id") if hasattr(request, "get") else None
+	except Exception:
+		username = None
+		user_id = None
+	if username and user_id:
+		return user_id, username
+	if username:
+		try:
+			uid, _ = users_db.get_user(username=username)
+			if uid:
+				return uid, username
+		except Exception:
+			pass
 	token = jwt_auth.get_token_from_request(request)
 	if not token:
 		return None, None
+	try:
+		from ..utils.api_token_store import get_api_token_store
+
+		api_cfg = getattr(jwt_auth, "api_token_store_config", None) or USERS_DB_CONFIG
+		api_store = get_api_token_store(api_cfg)
+		api_user = api_store.get_user_for_token(token)
+		if api_user is not None:
+			return api_user
+	except Exception:
+		pass
 	try:
 		p = jwt_auth.decode_access_token(token)
 		username = p.get("username")
