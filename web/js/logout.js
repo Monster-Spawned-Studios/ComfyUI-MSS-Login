@@ -97,6 +97,41 @@ function applyAvatarToButton(btn) {
     });
 }
 
+function tryOpenMssLoginDialog() {
+  const tryOpen = () => {
+    if (
+      window._mss_loginDialogInstance &&
+      window._mss_loginDialogInstance.overlay &&
+      document.body.contains(window._mss_loginDialogInstance.overlay)
+    ) {
+      window._mss_loginDialogInstance.overlay.style.zIndex = "999999";
+      return true;
+    }
+    if (window.mss_loginDialog && typeof window.mss_loginDialog === "function") {
+      try {
+        const dialog = new window.mss_loginDialog();
+        dialog.show().catch((err) => {
+          console.error("[mss-login] Error in dialog.show():", err);
+        });
+        return true;
+      } catch (err) {
+        console.error("[mss-login] Error creating dialog:", err);
+        return false;
+      }
+    }
+    return false;
+  };
+  if (tryOpen()) return;
+  let retries = 0;
+  const maxRetries = 20;
+  const retryInterval = setInterval(() => {
+    retries += 1;
+    if (tryOpen() || retries >= maxRetries) {
+      clearInterval(retryInterval);
+    }
+  }, 100);
+}
+
 function openProfileMenu(anchor, me) {
   closeProfileMenu();
   const guest = isGuestUser(me);
@@ -175,6 +210,45 @@ function openProfileMenu(anchor, me) {
     });
     menu.appendChild(changeBtn);
   }
+
+  if (me?.is_admin && !guest) {
+    const settingsBtn = document.createElement("button");
+    settingsBtn.type = "button";
+    settingsBtn.className = "mss-login-profile-item";
+    settingsBtn.textContent = "MSS-Login Settings";
+    settingsBtn.setAttribute("role", "menuitem");
+    settingsBtn.addEventListener("click", () => {
+      closeProfileMenu();
+      tryOpenMssLoginDialog();
+    });
+    menu.appendChild(settingsBtn);
+  }
+
+  // Extension radial-menu items (Gallery, etc.) — skip duplicates of settings/logout
+  try {
+    const extButtons =
+      window.mss_loginRadialMenu && typeof window.mss_loginRadialMenu.getAll === "function"
+        ? window.mss_loginRadialMenu.getAll()
+        : [];
+    const skipIds = new Set(["settings", "logout"]);
+    for (const ext of extButtons) {
+      if (!ext || skipIds.has(ext.id)) continue;
+      const extBtn = document.createElement("button");
+      extBtn.type = "button";
+      extBtn.className = "mss-login-profile-item";
+      extBtn.textContent = ext.label || ext.id;
+      extBtn.setAttribute("role", "menuitem");
+      extBtn.addEventListener("click", () => {
+        closeProfileMenu();
+        try {
+          if (typeof ext.onClick === "function") ext.onClick();
+        } catch (err) {
+          console.error("[mss-login] Extension menu action failed:", err);
+        }
+      });
+      menu.appendChild(extBtn);
+    }
+  } catch (_) {}
 
   const logoutBtn = document.createElement("button");
   logoutBtn.type = "button";

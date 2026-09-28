@@ -1373,59 +1373,29 @@ function detectExtensionsForRadialMenu() {
     // Auto-detection removed to prevent non-functional buttons from appearing
 }
 
-// --- Initialize Floating Button ---
-console.log("[mss-login] Registering FloatingButton extension...");
+// --- Initialize Floating Button (retired: account menu is the avatar status-bar button) ---
+console.log("[mss-login] Registering FloatingButton extension (registry only)...");
 
 if (typeof app !== 'undefined' && app.registerExtension) {
     app.registerExtension({
         name: "mss-login.FloatingButton",
         async setup() {
-            console.log("[mss-login] FloatingButton extension setup() called");
-            // Wait a bit for other extensions to load
+            // Keep radial menu registry for extensions (Gallery, etc.) but do not
+            // render the floating icon — the status-bar avatar menu is the entry point.
             setTimeout(() => {
-                console.log("[mss-login] Creating floating button...");
-                // Detect extensions
-                detectExtensionsForRadialMenu();
-                
-                // Create floating button
-                if (!window._mss_loginFloatingButton) {
-                    try {
-                        window._mss_loginFloatingButton = new mss_loginFloatingButton();
-                        window._mss_loginRadialMenu = window._mss_loginFloatingButton;
-                        console.log("[mss-login] Floating button created successfully");
-                    } catch (error) {
-                        console.error("[mss-login] Error creating floating button:", error);
-                    }
-                } else {
-                    console.log("[mss-login] Floating button already exists");
+                try {
+                    detectExtensionsForRadialMenu();
+                } catch (error) {
+                    console.warn("[mss-login] Extension detection skipped:", error);
                 }
-                
-                // Set up observer to hide/show button when dialog opens/closes
-                // Check periodically if dialog is open and hide button accordingly
-                setInterval(() => {
-                    if (window._mss_loginFloatingButton && window._mss_loginFloatingButton.button) {
-                        const dialogOpen = window._mss_loginDialogInstance && 
-                                          window._mss_loginDialogInstance.overlay && 
-                                          document.body.contains(window._mss_loginDialogInstance.overlay);
-                        
-                        if (dialogOpen) {
-                            // Hide button when dialog is open
-                            if (window._mss_loginFloatingButton.button.style.display !== "none") {
-                                window._mss_loginFloatingButton.button.style.display = "none";
-                            }
-                        } else {
-                            // Show button when dialog is closed (unless menu is open)
-                            if (!window._mss_loginFloatingButton.menuOpen && 
-                                window._mss_loginFloatingButton.button.style.display === "none") {
-                                window._mss_loginFloatingButton.button.style.display = "flex";
-                            }
-                        }
-                    }
-                }, 100);
+                // Hide any leftover floating button from older sessions/scripts
+                if (window._mss_loginFloatingButton && window._mss_loginFloatingButton.button) {
+                    window._mss_loginFloatingButton.button.style.display = "none";
+                }
             }, 1000);
         }
     });
-    console.log("[mss-login] FloatingButton extension registered");
+    console.log("[mss-login] FloatingButton extension registered (UI disabled)");
 } else {
     console.error("[mss-login] app.registerExtension not available! app:", typeof app);
 }

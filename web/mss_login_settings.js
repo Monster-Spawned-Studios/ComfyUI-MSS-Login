@@ -185,6 +185,17 @@ const CSS_BLOCK_MAP = {
         ".templates-tab-button",
         ".templates-tab-button .side-bar-button-label"
     ],
+    "ui_side_models": [
+        "[title='Models']",
+        "[aria-label='Models']",
+        ".side-bar-button[aria-label='Models']",
+        ".side-bar-button[aria-label*='Models' i]",
+        ".side-bar-button[title='Models']",
+        "[data-panel-id='models']",
+        ".comfy-models-tab",
+        "button.models-tab-button",
+        ".models-tab-button"
+    ],
     
     // --- Standard Menus (New Vue/Prime UI + legacy ids) ---
     // NOTE:
@@ -391,8 +402,9 @@ const ADMIN_STYLES = `
     );
     border-bottom: 1px solid rgba(255,255,255,0.14);
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
+    gap: 4px;
     z-index: 2;
     position: relative;
 }
@@ -402,6 +414,7 @@ const ADMIN_STYLES = `
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: #ffffff;
+    flex: 1;
 }
 .mss-login-modal-subtitle {
     font-size: 12px;
@@ -422,6 +435,30 @@ const ADMIN_STYLES = `
     color: #ffffff;
     background: rgba(255,255,255,0.12);
     transform: translateY(-1px);
+}
+.mss-login-dialog-back {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #e5e7eb;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+.mss-login-dialog-back:hover {
+    background: rgba(255,255,255,0.12);
+    color: #ffffff;
+}
+.mss-login-dialog-back[hidden] {
+    display: none !important;
+}
+.mss-login-home {
+    flex: 1;
+    min-height: 0;
 }
 
 /* Body & Tabs */
@@ -866,38 +903,40 @@ class mss_loginDialog extends ComfyDialog {
         const allTabs = [...builtInTabs, ...extensionTabs.map(t => ({ id: t.id, label: t.label, order: t.order }))];
         allTabs.sort((a, b) => a.order - b.order);
         
-        // Build tab menu HTML - mark "users" tab as active (first built-in tab)
-        // Escape tab.label to prevent XSS (tab.id is already validated during registration)
-        const initialActiveTabId = allTabs.find(tab => tab.id === "users")?.id || allTabs[0]?.id || "";
         const tabsHTML = allTabs.map((tab) => {
-            // ID is validated during registration (lowercase alphanumeric + underscore/hyphen), safe for HTML attributes
-            // Label needs escaping as it's user-provided text
             const escapedLabel = escapeHtml(tab.label);
-            return `<button type="button" class="mss-login-tab-menu-item${tab.id === initialActiveTabId ? " active" : ""}" data-tab="${tab.id}">${escapedLabel}</button>`;
+            return `<button type="button" class="mss-login-tab-menu-item" data-tab="${tab.id}">${escapedLabel}</button>`;
         }).join("");
         
-        // Build content containers HTML - mark "users" content as active
-        // tab.id is already validated during registration (lowercase alphanumeric + underscore/hyphen)
         const contentHTML = allTabs.map((tab) => {
-            const isActive = tab.id === initialActiveTabId;
-            return `<div class="mss-login-content${isActive ? " active" : ""}" id="mss-login-tab-${tab.id}"></div>`;
+            return `<div class="mss-login-content" id="mss-login-tab-${tab.id}" hidden></div>`;
+        }).join("");
+
+        const homeButtonsHTML = allTabs.map((tab) => {
+            const escapedLabel = escapeHtml(tab.label);
+            return `<button type="button" class="mss-login-launch-btn mss-login-home-btn" data-tab="${tab.id}" style="min-width:220px; max-width:320px;">${escapedLabel}</button>`;
         }).join("");
         
-        // Render Layout
+        // Render Layout: start on home menu (no section active)
         this.element.innerHTML = `
             <div class="mss-login-modal-header">
-                <span class="mss-login-modal-title">MSS-Login Security Policy</span>
+                <button type="button" id="mss-login-dialog-back" class="mss-login-dialog-back" aria-label="Back to main menu" hidden>←</button>
+                <span class="mss-login-modal-title" id="mss-login-modal-title">MSS-Login Security Policy</span>
                 <button class="mss-login-modal-close">✕</button>
             </div>
             <div class="mss-login-modal-body">
-                <div class="mss-login-tab-menu">
+                <div class="mss-login-tab-menu" id="mss-login-section-nav" hidden>
                     <button type="button" class="mss-login-tab-toggle" id="mss-login-tab-toggle" aria-haspopup="true" aria-expanded="false">
                         <span class="mss-login-tab-toggle-icon">☰</span>
-                        <span class="mss-login-tab-toggle-text">${escapeHtml(allTabs.find(t => t.id === initialActiveTabId)?.label || "Select section")}</span>
+                        <span class="mss-login-tab-toggle-text">Select section</span>
                     </button>
                     <div class="mss-login-tab-dropdown" id="mss-login-tab-dropdown" hidden>
                         ${tabsHTML}
                     </div>
+                </div>
+                <div id="mss-login-home" class="mss-login-home" style="padding:24px; overflow:auto; display:flex; flex-direction:column; align-items:center; gap:10px;">
+                    <p class="mss-login-note" style="margin-bottom:8px;">Choose a configuration section</p>
+                    ${homeButtonsHTML}
                 </div>
                 ${contentHTML}
             </div>
@@ -907,11 +946,16 @@ class mss_loginDialog extends ComfyDialog {
         this.element.querySelector(".mss-login-modal-close").onclick = () => this.close();
         this.overlay.onclick = (e) => { if (e.target === this.overlay) this.close(); };
 
+        const titleEl = this.element.querySelector("#mss-login-modal-title");
+        const backBtn = this.element.querySelector("#mss-login-dialog-back");
+        const homeEl = this.element.querySelector("#mss-login-home");
+        const sectionNav = this.element.querySelector("#mss-login-section-nav");
         const tabMenu = this.element.querySelector(".mss-login-tab-menu");
         const tabToggle = this.element.querySelector("#mss-login-tab-toggle");
         const tabToggleText = this.element.querySelector(".mss-login-tab-toggle-text");
         const tabDropdown = this.element.querySelector("#mss-login-tab-dropdown");
         const tabButtons = this.element.querySelectorAll(".mss-login-tab-menu-item");
+        const HOME_TITLE = "MSS-Login Security Policy";
 
         const closeTabMenu = () => {
             if (!tabDropdown || !tabToggle) return;
@@ -925,6 +969,19 @@ class mss_loginDialog extends ComfyDialog {
             tabToggle.setAttribute("aria-expanded", "true");
         };
 
+        const showHome = () => {
+            if (homeEl) homeEl.style.display = "flex";
+            if (sectionNav) sectionNav.hidden = true;
+            if (backBtn) backBtn.hidden = true;
+            if (titleEl) titleEl.textContent = HOME_TITLE;
+            this.element.querySelectorAll(".mss-login-content").forEach(c => {
+                c.classList.remove("active");
+                c.hidden = true;
+            });
+            tabButtons.forEach(btn => btn.classList.remove("active"));
+            closeTabMenu();
+        };
+
         const setActiveTab = (tabId) => {
             if (!tabId || !/^[a-z0-9_-]+$/.test(tabId)) {
                 return;
@@ -933,16 +990,36 @@ class mss_loginDialog extends ComfyDialog {
             if (!contentEl) {
                 return;
             }
+            if (homeEl) homeEl.style.display = "none";
+            if (sectionNav) sectionNav.hidden = false;
+            if (backBtn) backBtn.hidden = false;
             tabButtons.forEach(btn => {
                 btn.classList.toggle("active", btn.dataset.tab === tabId);
             });
-            this.element.querySelectorAll(".mss-login-content").forEach(c => c.classList.remove("active"));
+            this.element.querySelectorAll(".mss-login-content").forEach(c => {
+                c.classList.remove("active");
+                c.hidden = true;
+            });
             contentEl.classList.add("active");
+            contentEl.hidden = false;
             const activeTab = allTabs.find(tab => tab.id === tabId);
-            if (activeTab && tabToggleText) {
-                tabToggleText.textContent = activeTab.label;
+            if (activeTab) {
+                if (tabToggleText) tabToggleText.textContent = activeTab.label;
+                if (titleEl) titleEl.textContent = activeTab.label;
             }
         };
+
+        if (backBtn) {
+            backBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showHome();
+            };
+        }
+
+        this.element.querySelectorAll(".mss-login-home-btn").forEach(btn => {
+            btn.onclick = () => setActiveTab(btn.dataset.tab || "");
+        });
 
         if (tabToggle) {
             tabToggle.onclick = () => {
@@ -3042,6 +3119,7 @@ async renderS3Settings(container) {
         html += drawRow("Sidebar: Queue", "ui_side_queue");
         html += drawRow("Sidebar: Assets", "ui_side_assets");
         html += drawRow("Sidebar: Templates", "ui_side_templates");
+        html += drawRow("Sidebar: Models", "ui_side_models");
         html += drawRow("Sidebar Menu: Browse Templates", "ui_menu_templates");
         html += drawRow("Sidebar Menu: Manage Extensions", "ui_menu_extensions");
         html += drawRow("Sidebar Menu: Manager Button", "ui_menu_manager");
@@ -3211,6 +3289,7 @@ async function updateEnforcementStyles() {
         enforceSidebar(guestCfg, role);
         enforceMenus(guestCfg, role);
         enforceConsole(guestCfg, role);
+        enforceModels(guestCfg, role);
         patchSaveConfirmDialog(guestCfg, role);
         
         // Ensure logout button is always visible for guests
@@ -3265,6 +3344,7 @@ async function updateEnforcementStyles() {
     enforceSidebar(cfg, role);
     enforceMenus(cfg, role);
     enforceConsole(cfg, role);
+    enforceModels(cfg, role);
     patchSaveConfirmDialog(cfg, role);
     
     // Ensure logout button is always visible
@@ -3366,6 +3446,24 @@ function enforceConsole(cfg, role) {
     document.querySelectorAll(".xterm, .xterm-screen, .xterm-viewport").forEach((el) => {
         const pane = el.closest(".p-splitterpanel") || el.closest(".flex.h-full.flex-col") || el;
         hideEl(pane);
+    });
+}
+
+function enforceModels(cfg, role) {
+    if (isPermissionAllowed(cfg, role, "ui_side_models")) return;
+
+    document.querySelectorAll(".side-bar-button").forEach((el) => {
+        const label = `${el.getAttribute("aria-label") || ""} ${el.getAttribute("title") || ""} ${el.textContent || ""}`.toLowerCase();
+        if (label.includes("models") && !label.includes("model manager")) {
+            hideEl(el);
+        }
+    });
+
+    document.querySelectorAll("[role='tab'], .p-tab, [data-panel-id='models']").forEach((tab) => {
+        const title = `${tab.getAttribute("aria-label") || ""} ${tab.textContent || ""}`.trim().toLowerCase();
+        if (title === "models" || title.includes("models")) {
+            hideEl(tab);
+        }
     });
 }
 
@@ -3837,6 +3935,7 @@ app.registerExtension({
                 enforceSidebar(cfg, role);
                 enforceMenus(cfg, role);
                 enforceConsole(cfg, role);
+                enforceModels(cfg, role);
                 patchSaveConfirmDialog(cfg, role);
             }
             
@@ -3909,7 +4008,10 @@ app.ui.settings.addSetting({
         logoutBtn.style.display = "block"; // Force display
         
         logoutBtn.onclick = () => {
-            // Hard redirect so cookies + state reset properly
+            if (typeof window.mssLoginLogout === "function") {
+                window.mssLoginLogout();
+                return;
+            }
             window.location.href = "/logout";
         };
 
