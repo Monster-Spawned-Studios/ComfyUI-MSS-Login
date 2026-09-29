@@ -47,6 +47,12 @@ site/
 !.vscode/launch.json
 !.vscode/cspell.json
 !.vscode/dictionaries/*
+!.vscode/scripts/
+!.vscode/scripts/**
+!.vscode/comfyui-test.settings.example.json
+.vscode/comfyui-test.local.json
+.vscode/.comfyui-test-path
+.local-mss-data/
 
 # Ruff cache:
 .ruff_cache/

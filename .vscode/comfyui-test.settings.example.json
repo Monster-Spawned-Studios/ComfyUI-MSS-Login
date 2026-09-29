@@ -1,0 +1,6 @@
+{
+	"comfyuiPath": "${workspaceFolder}/ComfyUI",
+	"autoInstall": true,
+	"installFlavor": "cpu",
+	"_comment": "Copy to comfyui-test.local.json and edit. autoInstall=true generates ComfyUI via comfy-cli when the path has no main.py."
+}
