@@ -755,15 +755,24 @@ routes.get("/api/mss-login/api/groups")(api_groups)
 
 @routes.put("/mss-login/api/groups")
 async def api_update_groups(request: web.Request) -> web.Response:
-	"""Update groups (admin only)."""
+	"""Update groups (admin only; admin-role perms require owner)."""
 	if not is_admin(request):
 		return web.json_response({"error": "Admin only"}, status=403)
 	try:
 		data = await request.json()
 		new_groups = data.get("groups", {})
+		caller_is_owner = is_owner(request)
+		# Only the owner may change administrator group permissions
+		if any(str(g).lower() == "admin" for g in new_groups) and not caller_is_owner:
+			return web.json_response(
+				{"error": "Only the owner can change administrator permissions"}, status=403
+			)
 		current = load_json_file(GROUPS_CONFIG_FILE, {})
 		for g, perms in new_groups.items():
 			g_lower = g.lower()
+			# Owner column is immutable (always rebuilt via max-merge)
+			if g_lower == "owner":
+				continue
 			if g_lower not in current:
 				current[g_lower] = {}
 			for k, v in perms.items():
@@ -808,7 +817,10 @@ async def api_update_user_route(request: web.Request) -> web.Response:
 
 	groups = [g.lower() for g in data.get("groups", [])]
 	wants_owner = "owner" in groups
-	is_admin_flag = "admin" in groups
+	# Owner always implies admin privilege
+	if wants_owner and "admin" not in groups:
+		groups = list(groups) + ["admin"]
+	is_admin_flag = "admin" in groups or wants_owner
 	sfw_check = data.get("sfw_check", None)
 
 	# Owner cannot be demoted via this API
@@ -835,10 +847,8 @@ async def api_update_user_route(request: web.Request) -> web.Response:
 				{"error": "Only the current owner can assign the owner role (transfer)."},
 				status=403,
 			)
-		# Transfer: target becomes owner, caller (current owner) becomes admin
-		success = patch_user_group(
-			target, ["owner", "admin"] if is_admin_flag else ["owner"], True, sfw_check
-		)
+		# Transfer: target becomes owner+admin, caller (current owner) becomes admin
+		success = patch_user_group(target, ["owner", "admin"], True, sfw_check)
 		if success and caller_username:
 			patch_user_group(caller_username, ["admin"], True, None)
 		return web.json_response({"status": "ok"}) if success else web.Response(status=404)
