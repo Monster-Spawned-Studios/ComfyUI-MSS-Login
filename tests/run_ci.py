@@ -100,6 +100,7 @@ def main() -> int:
 		)
 		steps.append(("User isolation", os.path.join(TESTS_DIR, "run_user_isolation_tests.py")))
 		steps.append(("Avatar upload", os.path.join(TESTS_DIR, "run_avatar_tests.py")))
+		steps.append(("Owner role", os.path.join(TESTS_DIR, "run_owner_role_tests.py")))
 		steps.append(
 			("Tailscale network & JWT", os.path.join(TESTS_DIR, "run_tailscale_network_tests.py"))
 		)
