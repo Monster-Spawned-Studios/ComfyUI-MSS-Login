@@ -163,14 +163,48 @@ def _persist_ephemeral_key(key: str) -> None:
 		pass
 
 
+def resolve_secret_key(
+	env_value: str, *, load_ephemeral=None, persist_ephemeral=None, generate_key=None
+) -> tuple[str, bool]:
+	"""
+	Resolve SECRET_KEY from env or a stable ephemeral file.
+
+	Returns (key, created_new_ephemeral).
+	When env_value is empty, reuses an existing ephemeral key instead of rotating
+	on every process start (required for SQLCipher + JWT stability).
+	"""
+	key = (env_value or "").strip()
+	if key:
+		return key, False
+	_load = load_ephemeral if load_ephemeral is not None else _load_ephemeral_key
+	_persist = persist_ephemeral if persist_ephemeral is not None else _persist_ephemeral_key
+	_gen = generate_key
+	existing = (_load() or "").strip()
+	if existing:
+		return existing, False
+	if _gen is None:
+		new_key = "".join([str(uuid.uuid4().hex) for _ in range(128)])
+	else:
+		new_key = _gen()
+	_persist(new_key)
+	return new_key, True
+
+
 # --- Configuration Values ---
 LOG_LEVELS = config_data.get("log_levels", ["INFO"])
 _secret_key_env = config_data.get("secret_key_env", "SECRET_KEY")
-SECRET_KEY = (os.getenv(_secret_key_env) or "").strip()
-if not SECRET_KEY:
-	warnings.warn("[MSS-Login] SECRET_KEY not set. Using random key (logouts on restart).")
-	SECRET_KEY = "".join([str(uuid.uuid4().hex) for _ in range(128)])
-	_persist_ephemeral_key(SECRET_KEY)
+_env_secret = (os.getenv(_secret_key_env) or "").strip()
+SECRET_KEY, _ephemeral_created = resolve_secret_key(_env_secret)
+if not _env_secret:
+	if _ephemeral_created:
+		warnings.warn(
+			"[MSS-Login] SECRET_KEY not set. Using ephemeral key (set SECRET_KEY for production)."
+		)
+	else:
+		warnings.warn(
+			"[MSS-Login] SECRET_KEY not set. Reusing ephemeral key from data dir "
+			"(set SECRET_KEY for production)."
+		)
 
 TOKEN_EXPIRE_MINUTES = 60 * config_data.get("access_token_expiration_hours", 12)
 MAX_TOKEN_EXPIRE_MINUTES = 60 * config_data.get("max_access_token_expiration_hours", 8760)
@@ -514,6 +548,7 @@ def filter_debug_messages_enabled() -> bool:
 		return False
 	cfg = _load_config(CONFIG_FILE_PATH)
 	return bool(cfg.get("filter_debug_messages", False))
+
 
 AUTO_INSTALL_DEPS = bool(config_data.get("auto_install_deps", True))
 _auto_install_env = str(os.environ.get("AUTO_INSTALL_DEPS", "")).strip().lower()

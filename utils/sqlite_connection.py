@@ -74,6 +74,7 @@ def _migrate_to_plain(path: str, secret_key: str) -> bool:
 		return False
 
 	import sqlcipher3
+
 	from .db_key_derivation import derive_db_key
 
 	for level in ("secure", "standard", "low"):
@@ -155,7 +156,23 @@ def open_sqlite(
 	import sqlcipher3
 
 	conn = sqlcipher3.connect(path, check_same_thread=check_same_thread)
-	conn.execute(f"PRAGMA key = \"x'{key_hex}'\"")
-	# Force key validation to ensure decryption succeeds
-	conn.execute("SELECT count(*) FROM sqlite_master")
+	try:
+		conn.execute(f"PRAGMA key = \"x'{key_hex}'\"")
+		# Force key validation to ensure decryption succeeds
+		conn.execute("SELECT count(*) FROM sqlite_master")
+	except Exception as e:
+		try:
+			conn.close()
+		except Exception:
+			pass
+		bak = path + ".unencrypted.bak"
+		hint = ""
+		if os.path.isfile(bak):
+			hint = (
+				f" An unencrypted backup exists at {bak}. "
+				"Restore it and set a stable SECRET_KEY env var, or clear encryption_level."
+			)
+		raise RuntimeError(
+			f"Failed to open encrypted SQLite database (wrong SECRET_KEY or corrupt file): {e}.{hint}"
+		) from e
 	return conn

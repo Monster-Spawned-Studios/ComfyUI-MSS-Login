@@ -15,6 +15,7 @@ import bcrypt
 
 from .encryption import decrypt_value, encrypt_value, hash_backup_code, verify_backup_code
 from .input_sanitizer import sanitize_username as _sanitize_username
+from .sanitizer import apply_legacy_xss_sanitize
 
 
 def _get_logger():
@@ -788,12 +789,42 @@ class UsersDB:
 		return None, {}
 
 	def check_username_password(self, username: str, password: str) -> bool:
-		"""Check if a username and password match."""
+		"""
+		Check if a username and password match.
+
+		Also accepts passwords that were hashed after the legacy XSS sanitizer
+		mutated them (pre-fix installs). On a legacy match, re-hashes with the
+		raw password so future logins use the correct form.
+		"""
 		user_id, user_data = self.get_user(username=username)
 		if not user_id or not user_data:
 			return False
-		pw = user_data.get("password", "")
-		return bcrypt.checkpw(password.encode("utf-8"), pw.encode("utf-8"))
+		stored = user_data.get("password", "") or ""
+		if not stored:
+			return False
+		try:
+			stored_bytes = stored.encode("utf-8")
+			password_bytes = password.encode("utf-8")
+			if bcrypt.checkpw(password_bytes, stored_bytes):
+				return True
+			# Legacy: middleware XSS-sanitized the password before hashing/verify.
+			legacy = apply_legacy_xss_sanitize(password)
+			if (
+				legacy
+				and legacy != password
+				and bcrypt.checkpw(legacy.encode("utf-8"), stored_bytes)
+			):
+				# Upgrade stored hash to raw password for future logins.
+				new_hash = self.hash_password(password)
+				if new_hash:
+					user_data["password"] = new_hash
+					user_data["password_hash"] = new_hash
+					self._backend.update(user_id, user_data, self._secret_key)
+					self.users[user_id] = user_data
+				return True
+			return False
+		except (ValueError, TypeError):
+			return False
 
 	def get_admin_user(self) -> tuple[str | None, dict] | None:
 		"""Get the admin user."""

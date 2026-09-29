@@ -30,12 +30,6 @@ from ..globals import access_control, jwt_auth, logger, routes, timeout, users_d
 from ..utils import user_env
 from ..utils.api_token_store import get_api_token_store
 from ..utils.bootstrap import ensure_groups_config, ensure_guest_user
-from ..utils.tailscale_network import (
-	detect_network_info,
-	is_trusted_tailscale_or_local,
-	user_can_login_locally_without_auth,
-)
-
 from ..utils.input_sanitizer import (
 	sanitize_backup_code_input,
 	sanitize_label,
@@ -50,6 +44,11 @@ from ..utils.mfa_temp_store import create_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
 from ..utils.request_navigation import is_browser_navigation
 from ..utils.session_token_store import get_session_token_store
+from ..utils.tailscale_network import (
+	detect_network_info,
+	is_trusted_tailscale_or_local,
+	user_can_login_locally_without_auth,
+)
 from ..utils.updater import get_local_version
 from ..utils.user_console_log import append as user_console_append
 from ..utils.validate import validate_password, validate_username
@@ -319,7 +318,6 @@ async def get_login(request: web.Request) -> web.Response:
 	return web.Response(text=html, content_type="text/html")
 
 
-
 @routes.get("/mfa")
 async def get_mfa(request: web.Request) -> web.Response:
 	"""Serve the MFA page (verify or setup). Token and mode are in sessionStorage set by login."""
@@ -338,7 +336,19 @@ async def get_mfa(request: web.Request) -> web.Response:
 
 @routes.post("/login")
 async def post_login(request: web.Request) -> web.Response:
-	sanitized_data = request.get("_sanitized_data", {})
+	# Prefer middleware-sanitized data (form or JSON). Fallback for JSON if middleware missed it.
+	sanitized_data = dict(request.get("_sanitized_data") or {})
+	if (
+		not sanitized_data
+		and request.can_read_body
+		and "application/json" in (request.content_type or "")
+	):
+		try:
+			body = await request.json()
+			if isinstance(body, dict):
+				sanitized_data.update(body)
+		except Exception:
+			pass
 	ip = get_ip(request)
 
 	if str(sanitized_data.get("guest_login", "false")).lower() == "true":
@@ -556,7 +566,9 @@ async def api_local_login(request: web.Request) -> web.Response:
 	if not user_can_login_locally_without_auth(username, users_db, groups_cfg):
 		logger.login_failed(ip, username)
 		return web.json_response(
-			{"error": f"User '{username}' is not permitted to log in locally without authentication."},
+			{
+				"error": f"User '{username}' is not permitted to log in locally without authentication."
+			},
 			status=403,
 		)
 
@@ -606,7 +618,6 @@ async def api_local_login(request: web.Request) -> web.Response:
 
 
 routes.post("/api/mss-login/api/auth/local-login")(api_local_login)
-
 
 
 def _end_session(request: web.Request) -> None:
