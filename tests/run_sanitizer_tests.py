@@ -16,13 +16,16 @@ _utils = os.path.join(_PROJECT_ROOT, "utils")
 def _load_module(name, path):
 	spec = importlib.util.spec_from_file_location(name, path)
 	mod = importlib.util.module_from_spec(spec)
+	sys.modules[name] = mod
 	spec.loader.exec_module(mod)
 	return mod
 
 
 def run_tests():
-	input_sanitizer = _load_module("input_sanitizer", os.path.join(_utils, "input_sanitizer.py"))
-	validate = _load_module("validate", os.path.join(_utils, "validate.py"))
+	input_sanitizer = _load_module(
+		"utils.input_sanitizer", os.path.join(_utils, "input_sanitizer.py")
+	)
+	validate = _load_module("utils.validate", os.path.join(_utils, "validate.py"))
 
 	failed = 0
 	run = 0
@@ -55,6 +58,37 @@ def run_tests():
 	ok(input_sanitizer.sanitize_password_input("secret") == "secret", "keeps password")
 	ok(input_sanitizer.sanitize_password_input(None) == "", "None returns empty")
 	ok("\x00" not in input_sanitizer.sanitize_password_input("p\x00w"), "strips null byte")
+	ok(
+		input_sanitizer.sanitize_password_input("Pass&word1!(x)") == "Pass&word1!(x)",
+		"keeps special chars required by policy",
+	)
+
+	# --- XSS sanitizer must not mutate password fields (auth compat) ---
+	print("TestSanitizerPasswordExemption")
+	# Load sanitizer without importing utils package (__init__ pulls ComfyUI)
+	import types
+
+	if "utils" not in sys.modules:
+		pkg = types.ModuleType("utils")
+		pkg.__path__ = [_utils]
+		sys.modules["utils"] = pkg
+	# Ensure input_sanitizer is registered for relative import from sanitizer
+	if "utils.input_sanitizer" not in sys.modules:
+		sys.modules["utils.input_sanitizer"] = input_sanitizer
+	sanitizer = _load_module("utils.sanitizer", os.path.join(_utils, "sanitizer.py"))
+	ok(sanitizer.is_password_field("password") is True, "password key detected")
+	ok(sanitizer.is_password_field("label") is False, "label not password key")
+	pw = "Amp1&'(test)"
+	ok(
+		sanitizer.Sanitizer._sanitize_field("password", pw) == pw,
+		"middleware-style password field not XSS-mutated",
+	)
+	ok(
+		sanitizer.apply_legacy_xss_sanitize(pw) != pw,
+		"legacy XSS path still mutates for dual-verify",
+	)
+	legacy_amp = sanitizer.apply_legacy_xss_sanitize("a&b")
+	ok(legacy_amp != "a&b", "legacy XSS mutates ampersand")
 
 	# --- validate_username ---
 	print("TestValidateUsername")

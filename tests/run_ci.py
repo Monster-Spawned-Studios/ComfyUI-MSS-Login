@@ -73,6 +73,7 @@ def main() -> int:
 	steps.append(("Path traversal", os.path.join(TESTS_DIR, "run_path_traversal_tests.py")))
 	if not args.path_only:
 		steps.append(("Sanitizer", os.path.join(TESTS_DIR, "run_sanitizer_tests.py")))
+		steps.append(("Auth compatibility", os.path.join(TESTS_DIR, "run_auth_compat_tests.py")))
 		steps.append(
 			("Navigation detection", os.path.join(TESTS_DIR, "run_navigation_detection_tests.py"))
 		)
@@ -100,10 +101,7 @@ def main() -> int:
 		steps.append(("User isolation", os.path.join(TESTS_DIR, "run_user_isolation_tests.py")))
 		steps.append(("Avatar upload", os.path.join(TESTS_DIR, "run_avatar_tests.py")))
 		steps.append(
-			(
-				"Tailscale network & JWT",
-				os.path.join(TESTS_DIR, "run_tailscale_network_tests.py"),
-			)
+			("Tailscale network & JWT", os.path.join(TESTS_DIR, "run_tailscale_network_tests.py"))
 		)
 		steps.append(
 			(
