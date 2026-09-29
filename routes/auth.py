@@ -141,8 +141,10 @@ async def post_register(request: web.Request) -> web.Response:
 	if not ok:
 		return web.json_response({"error": msg}, status=400)
 
-	admin_user = users_db.get_admin_user()
-	is_first_admin = admin_user[0] is None
+	# Bootstrap only when the user DB is empty. Existing users (including
+	# owner-only accounts) must never re-trigger first-admin / owner minting.
+	existing_users = users_db.load_users()
+	is_first_admin = not bool(existing_users)
 	session_admin = _authenticated_admin_username(request)
 
 	if not is_first_admin:
@@ -157,6 +159,7 @@ async def post_register(request: web.Request) -> web.Response:
 	if None not in users_db.get_user(new_username):
 		return web.json_response({"error": "Username exists"}, status=400)
 
+	# Non-bootstrap registrations create regular users, not admins/owners
 	users_db.add_user(str(uuid.uuid4()), new_username, new_password, is_first_admin)
 
 	# Create directory immediately

@@ -707,6 +707,34 @@ class UsersDB:
 			for uid, user in self.users.items():
 				self._backend.update(uid, user, self._secret_key)
 
+	@staticmethod
+	def _user_is_admin(user: dict) -> bool:
+		"""True if user has admin privilege (admin flag, admin group, or owner group)."""
+		if not user:
+			return False
+		if user.get("admin"):
+			return True
+		groups = [str(g).lower() for g in user.get("groups", [])]
+		return "admin" in groups or "owner" in groups
+
+	@staticmethod
+	def _normalize_owner_groups(groups: list, is_admin: bool) -> tuple[list[str], bool]:
+		"""Ensure owner always retains admin group and admin flag."""
+		normalized = [str(g).lower() for g in (groups or [])]
+		if "owner" in normalized:
+			if "admin" not in normalized:
+				normalized.append("admin")
+			return normalized, True
+		return normalized, bool(is_admin)
+
+	def _owner_exists_in_loaded(self) -> bool:
+		"""True if any loaded user has owner in groups (no reload)."""
+		for user in self.users.values():
+			groups = [str(g).lower() for g in user.get("groups", [])]
+			if "owner" in groups:
+				return True
+		return False
+
 	def _ensure_owner_assigned(self) -> None:
 		"""If no user has 'owner' in groups, assign owner to the first admin (migration)."""
 		for _uid, user in self.users.items():
@@ -725,8 +753,7 @@ class UsersDB:
 	def _find_admin_in_loaded_users(self) -> tuple[str | None, dict]:
 		"""Find the first admin in the already-loaded self.users without reloading."""
 		for uid, user_data in self.users.items():
-			groups = [g.lower() for g in user_data.get("groups", [])]
-			if user_data.get("admin") or "admin" in groups:
+			if self._user_is_admin(user_data):
 				return (uid, user_data)
 		return (None, {})
 
@@ -739,10 +766,7 @@ class UsersDB:
 	def _has_admin(self) -> bool:
 		self.load_users()
 		for _uid, user in self.users.items():
-			if user.get("admin"):
-				return True
-			groups = [g.lower() for g in user.get("groups", [])]
-			if "admin" in groups:
+			if self._user_is_admin(user):
 				return True
 		return False
 
@@ -754,14 +778,12 @@ class UsersDB:
 			if not username:
 				return
 			has_admin = self._has_admin()
+			has_owner = self._owner_exists_in_loaded()
 			if not has_admin and len(self.users) == 0:
 				admin = True
-			# First admin gets owner group
-			groups = (
-				["owner", "admin"]
-				if admin and not has_admin
-				else (["admin"] if admin else ["user"])
-			)
+			# First admin gets owner only when no owner/admin exists yet
+			grant_owner = bool(admin) and not has_admin and not has_owner
+			groups = ["owner", "admin"] if grant_owner else (["admin"] if admin else ["user"])
 			user = {
 				"username": username,
 				"password": self.hash_password(password),
@@ -831,8 +853,7 @@ class UsersDB:
 		self.load_users()
 		self.admin_user = (None, {})
 		for uid, user_data in self.users.items():
-			groups = [g.lower() for g in user_data.get("groups", [])]
-			if user_data.get("admin") or "admin" in groups:
+			if self._user_is_admin(user_data):
 				self.admin_user = (uid, user_data)
 				break
 		return self.admin_user
@@ -868,8 +889,9 @@ class UsersDB:
 		user_id, user = self.get_user(username=username)
 		if not user_id:
 			return False
-		user["groups"] = [g.lower() for g in groups]
-		user["admin"] = is_admin
+		normalized_groups, normalized_admin = self._normalize_owner_groups(groups, is_admin)
+		user["groups"] = normalized_groups
+		user["admin"] = normalized_admin
 		if sfw_check is not None:
 			user["sfw_check"] = bool(sfw_check)
 		self._backend.update(user_id, user, self._secret_key)
@@ -882,14 +904,8 @@ class UsersDB:
 		user_id, user = self.get_user(username=username)
 		if not user_id:
 			return False
-		admins = sum(
-			1
-			for u in self.users.values()
-			if u.get("admin") or "admin" in [g.lower() for g in u.get("groups", [])]
-		)
-		if (
-			user.get("admin") or "admin" in [g.lower() for g in user.get("groups", [])]
-		) and admins <= 1:
+		admins = sum(1 for u in self.users.values() if self._user_is_admin(u))
+		if self._user_is_admin(user) and admins <= 1:
 			return "last_admin"
 		self._backend.delete(user_id)
 		self.users.pop(user_id, None)
