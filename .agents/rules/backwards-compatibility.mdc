@@ -1,0 +1,32 @@
+---
+description: Require backwards-compatible changes or an explicit transition/compat layer
+alwaysApply: true
+always_on: true
+trigger: always_on
+applyTo: "**"
+---
+
+# Backwards Compatibility
+
+Any change to this project must remain compatible with the previous released version, or include an explicit transition / compatibility layer so upgrades from older installs do not break.
+
+## Required
+
+- Prefer additive changes (new fields, new endpoints, optional config) over breaking renames or removals.
+- When behavior, schema, storage paths, or API contracts must change, add a **compat layer**: migration, dual-read, dual-verify, feature flag, or documented one-time upgrade step that preserves existing data and clients.
+- Do not silently enable new defaults (via config deep-merge or similar) that change security or storage semantics unless a stable key/path and migration path already exist.
+- Keep external client contracts working across upgrades: web session cookies, session JWTs, opaque API tokens (`Authorization: Bearer`), and query `token` / `access_token` (Comfy Portal, Krita AI Diffusion, headless clients).
+
+## High-risk areas (always plan a transition)
+
+- Authentication and credentials (password hashing/verification, login, MFA, token issuance)
+- Database schema, SQLCipher / `encryption_level`, and `SECRET_KEY` / ephemeral key handling
+- Config defaults merged into existing `config.json`
+- On-disk paths (`MSS_LOGIN_DATA_DIR`, users DB, avatars, workflows)
+- HTTP/WebSocket API shapes used by ComfyUI, Comfy Portal, and third-party clients
+
+## Not allowed
+
+- Shipping a change that makes existing passwords, tokens, or encrypted databases unverifiable without a migration or dual-path verifier
+- Removing or renaming public routes/fields without a legacy alias for at least one release
+- Assuming all installs set `SECRET_KEY` or use a fresh empty database
