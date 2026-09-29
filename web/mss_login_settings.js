@@ -1219,8 +1219,9 @@ renderUsers(list, container) {
         btn.onclick = async () => {
             const u = btn.dataset.user;
             const isOwnerUser = btn.dataset.isOwner === "true";
+            // Owner must retain admin so privilege checks and registration bootstrap stay correct
             const g = isOwnerUser
-                ? ["owner"]
+                ? ["owner", "admin"]
                 : [container.querySelector(`select[data-user="${u}"]`)?.value || "user"];
 
             const sfwCheckbox = container.querySelector(`.mss-login-sfw-toggle[data-user="${u}"]`);
@@ -3024,10 +3025,17 @@ async renderS3Settings(container) {
     renderPerms(container) {
         // --- SCANNER: Find all Settings Categories ---
         const categories = new Set();
-        const adminLockedFalseKeys = new Set([
+        const adminDefaultFalseKeys = new Set([
             "can_have_non_expiring_jwt",
             "can_view_console",
         ]);
+        // Only the owner account may edit the admin column; owner column stays immutable
+        const viewerIsOwner = !!(
+            currentUser &&
+            (currentUser.role === "owner" ||
+                (Array.isArray(currentUser.groups) &&
+                    currentUser.groups.map((g) => String(g).toLowerCase()).includes("owner")))
+        );
         
         // 1. Scan app.extensions
         if (app.extensions) app.extensions.forEach(e => { if(e.name) categories.add(e.name); });
@@ -3060,7 +3068,17 @@ async renderS3Settings(container) {
         const explicitIds = new Set(Object.keys(CSS_BLOCK_MAP));
 
         // --- DRAW TABLE ---
-        let html = `<table class="mss-login-table">
+        let html = "";
+        if (viewerIsOwner) {
+            html += `<p class="mss-login-help" style="margin:0 0 12px; opacity:0.85;">
+                As owner, you can change administrator permissions. The Owner column remains locked.
+            </p>`;
+        } else {
+            html += `<p class="mss-login-help" style="margin:0 0 12px; opacity:0.85;">
+                Administrator permissions can only be changed by the owner account.
+            </p>`;
+        }
+        html += `<table class="mss-login-table">
             <thead><tr><th>Feature / Category</th>${GROUPS.map(g => `<th class="mss-login-check-cell">${g.toUpperCase()}</th>`).join("")}</tr></thead>
             <tbody>`;
 
@@ -3072,18 +3090,19 @@ async renderS3Settings(container) {
                 
                 // --- CRITICAL DEFAULT LOGIC ---
                 // If a setting is new (undefined), should we block it?
-                // Guest: Block by default. 
+                // Guest: Block by default.
+                // Admin: use reserved-false defaults for owner-only privileges; else allow.
                 // Others: Allow by default.
                 if (val === undefined) {
-                    val = (g === "admin" && adminLockedFalseKeys.has(id)) ? false : (g !== "guest"); 
+                    val = (g === "admin" && adminDefaultFalseKeys.has(id)) ? false : (g !== "guest");
                 }
                 
-                // Admin keeps broad access, except for privileges intentionally reserved for owner.
-                if (g === "admin" && !adminLockedFalseKeys.has(id)) val = true;
-                // Owner column is immutable (same as admin)
+                // Owner column is immutable (always fully privileged)
                 if (g === "owner") val = true;
 
-                row += `<td class="mss-login-check-cell"><input type="checkbox" class="perm-chk" data-group="${g}" data-key="${id}" ${val?"checked":""} ${(g==="admin"||g==="owner")?"disabled":""}></td>`;
+                // Admin column editable only by owner; owner column always locked
+                const locked = g === "owner" || (g === "admin" && !viewerIsOwner);
+                row += `<td class="mss-login-check-cell"><input type="checkbox" class="perm-chk" data-group="${g}" data-key="${id}" ${val?"checked":""} ${locked?"disabled":""}></td>`;
             });
             return row + `</tr>`;
         };
