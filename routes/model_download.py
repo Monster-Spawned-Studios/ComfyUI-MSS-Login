@@ -18,10 +18,24 @@ from ..constants import (
 from ..globals import jwt_auth, logger, routes, users_db
 from ..utils.folder_paths_compat import resolve_local_model_destination
 from ..utils.model_cache import ASSET_FOLDERS_FALLBACK, get_model_cache
-from ..utils.model_download import download_civitai_async, download_huggingface
+from ..utils.model_download import (
+	ALLOWED_CIVITAI_HOSTS,
+	DEFAULT_CIVITAI_HOST,
+	civitai_get_model,
+	civitai_get_model_version,
+	civitai_search_models,
+	download_civitai_async,
+	download_huggingface,
+	get_civitai_host_preference,
+	normalize_civitai_host,
+	resolve_model_url,
+	search_huggingface_models,
+	set_civitai_host_preference,
+)
 from ..utils.model_isolation import sanitize_user_segment
 from ..utils.model_source_api_keys_store import SOURCES, get_model_source_api_keys_store
 from ..utils.model_visibility_policy import user_can_download_models, user_can_manage_model_sharing
+from ..utils.s3_mounter import get_mount_manager
 from ..utils.shared_items_store import get_shared_items_store
 
 
@@ -83,14 +97,20 @@ def _can_download_models(request) -> bool:
 	return user_can_download_models(role, perms)
 
 
-def _download_auth_or_response(request: web.Request) -> tuple[str | None, web.Response | None]:
-	"""Return (user_id, None) when authorized, or (None, error_response)."""
-	user_id, _ = _current_user_id_and_username(request)
+def _download_auth_or_response(
+	request: web.Request,
+) -> tuple[str | None, str | None, web.Response | None]:
+	"""Return (user_id, username, None) when authorized, or (None, None, error_response)."""
+	user_id, username = _current_user_id_and_username(request)
 	if not user_id:
-		return None, web.json_response({"error": "Authentication required"}, status=401)
+		return None, None, web.json_response({"error": "Authentication required"}, status=401)
 	if not _can_download_models(request):
-		return None, web.json_response({"error": "Model download permission required"}, status=403)
-	return user_id, None
+		return (
+			None,
+			None,
+			web.json_response({"error": "Model download permission required"}, status=403),
+		)
+	return user_id, username, None
 
 
 def _download_capabilities() -> dict:
@@ -106,9 +126,35 @@ def _download_capabilities() -> dict:
 			"s3": experimental_s3_enabled(),
 			"model_isolation": experimental_model_isolation_enabled(),
 		},
-		"civitai_fields": ["model_version_id", "type", "format", "size", "fp"],
+		"civitai_hosts": sorted(ALLOWED_CIVITAI_HOSTS),
+		"default_civitai_host": DEFAULT_CIVITAI_HOST,
+		"civitai_fields": ["model_version_id", "type", "format", "size", "fp", "civitai_host"],
 		"huggingface_fields": ["repo_id", "filename", "subfolder"],
 	}
+
+
+def _source_token(user_id: str, source: str) -> str | None:
+	"""Return the caller's encrypted-at-rest API key for source (never log/echo)."""
+	store = get_model_source_api_keys_store(USERS_DB_CONFIG)
+	return store.get_key(user_id, source)
+
+
+def _resolve_civitai_host_for_request(
+	username: str | None,
+	body_or_query_host: str | None = None,
+	url_hint_host: str | None = None,
+) -> str:
+	"""
+	Host selection: explicit request/URL host (allowlisted) wins; else per-user preference.
+	Pasting a .red URL routes that request through .red without changing the saved preference.
+	"""
+	if url_hint_host:
+		return normalize_civitai_host(url_hint_host)
+	if body_or_query_host:
+		return normalize_civitai_host(body_or_query_host)
+	if username:
+		return get_civitai_host_preference(username)
+	return DEFAULT_CIVITAI_HOST
 
 
 def _list_download_folder_types() -> list[str]:
@@ -164,6 +210,8 @@ def _job_public_view(job: dict) -> dict:
 	}
 	if job.get("source") == "civitai" and job.get("model_version_id"):
 		out["model_version_id"] = job["model_version_id"]
+		if job.get("civitai_host"):
+			out["civitai_host"] = job["civitai_host"]
 	elif job.get("source") == "huggingface":
 		if job.get("repo_id"):
 			out["repo_id"] = job["repo_id"]
@@ -238,10 +286,11 @@ def _resolve_destination_path(job: dict, target_user_id: str) -> tuple[str, str]
 	if destination_type == "local":
 		dest_dir, base_dir = resolve_local_model_destination(folder_type, target_user_id)
 	else:
-		from ..utils.s3_mounter import get_mount_manager
-
 		mgr = get_mount_manager()
-		if mgr is None or not mgr.is_mounted():
+		if mgr is None:
+			raise RuntimeError("S3 manager is not available")
+		# FUSE mount or boto3 staging under the local mount models path
+		if not mgr.is_mounted() and not mgr._in_boto3_mode():
 			raise RuntimeError("S3 mount is not active")
 		if experimental_model_isolation_enabled():
 			dest_dir = mgr.get_models_folder_path(
@@ -249,12 +298,57 @@ def _resolve_destination_path(job: dict, target_user_id: str) -> tuple[str, str]
 			)
 		else:
 			dest_dir = mgr.get_models_folder_path(folder_type)
+		os.makedirs(dest_dir, exist_ok=True)
 		base_dir = os.path.realpath(mgr.models_root)
 
 	resolved_dest = os.path.realpath(dest_dir)
 	if not (resolved_dest == base_dir or resolved_dest.startswith(base_dir + os.sep)):
 		raise RuntimeError("Destination path escapes allowed directory")
 	return dest_dir, base_dir
+
+
+def _upload_s3_staged_download(dest_dir: str, saved_rel: str) -> None:
+	"""When S3 is in boto3 mode, push a staged local download to the bucket."""
+	mgr = get_mount_manager()
+	if mgr is None or not mgr._in_boto3_mode():
+		return
+	local_path = os.path.realpath(os.path.join(dest_dir, saved_rel))
+	models_root = os.path.realpath(mgr.models_root)
+	if not (local_path == models_root or local_path.startswith(models_root + os.sep)):
+		raise RuntimeError("Staged download path escapes S3 models root")
+	if not os.path.isfile(local_path):
+		raise RuntimeError(f"Staged download file missing: {saved_rel}")
+	rel_from_models = os.path.relpath(local_path, models_root).replace("\\", "/")
+	s3_key = f"models/{rel_from_models}"
+	mgr.upload_file(local_path, s3_key)
+
+
+def _auto_grant_downloaded_item(
+	*,
+	target_user_id: str,
+	folder_type: str,
+	saved_rel: str,
+	destination_type: str,
+	granted_by_user_id: str,
+	granted_by_role: str,
+) -> None:
+	"""Grant only the single downloaded item when model isolation is enabled."""
+	if not experimental_model_isolation_enabled() or not target_user_id or not saved_rel:
+		return
+	rel = (saved_rel or "").replace("\\", "/").lstrip("/")
+	if not rel or ".." in rel.split("/"):
+		return
+	user_seg = sanitize_user_segment(target_user_id)
+	item_name = f"{user_seg}/{rel}"
+	shared_store = get_shared_items_store(USERS_DB_CONFIG)
+	shared_store.add(
+		target_user_id,
+		folder_type,
+		item_name,
+		source_backend=("s3" if destination_type == "s3" else "local"),
+		granted_by_user_id=granted_by_user_id or "",
+		granted_by_role=granted_by_role or "",
+	)
 
 
 async def _set_progress(
@@ -302,6 +396,7 @@ async def _run_job(job_id: str) -> None:
 		folder_type = job.get("folder_type", "checkpoints")
 
 		dest_dir, _base_dir = _resolve_destination_path(job, target_user_id)
+		saved_rel: str | None = None
 
 		async def progress_callback(bytes_done: int, total_bytes: int | None):
 			async with _JOBS_LOCK:
@@ -311,7 +406,7 @@ async def _run_job(job_id: str) -> None:
 			await _set_progress(job_id, bytes_done, total_bytes, start_time)
 
 		if source == "civitai":
-			success, error = await download_civitai_async(
+			success, error, saved_rel = await download_civitai_async(
 				job["model_version_id"],
 				token,
 				dest_dir,
@@ -320,6 +415,7 @@ async def _run_job(job_id: str) -> None:
 				size_param=job.get("size"),
 				fp_param=job.get("fp"),
 				progress_callback=progress_callback,
+				host=job.get("civitai_host"),
 			)
 		else:
 			progress_dict = {"bytes_done": 0, "total_bytes": None}
@@ -352,32 +448,30 @@ async def _run_job(job_id: str) -> None:
 			if error:
 				success = False
 			else:
-				success, error = await task
+				success, error, saved_rel = await task
+
+		if success and destination_type == "s3" and saved_rel:
+			_upload_s3_staged_download(dest_dir, saved_rel)
 
 		if success:
+			# Always refresh cache so shared-library destinations pick up the new file.
+			# Do not auto-grant other users when isolation is off.
 			try:
 				cache = get_model_cache(USERS_DB_CONFIG)
 				cache.refresh_from_folder_paths()
 			except Exception:
 				pass
-			if experimental_model_isolation_enabled() and target_user_id:
-				try:
-					cache = get_model_cache(USERS_DB_CONFIG)
-					items = cache.list_items(folder_type)
-					prefix = f"{sanitize_user_segment(target_user_id)}/"
-					shared_store = get_shared_items_store(USERS_DB_CONFIG)
-					for item_name in items:
-						if item_name.startswith(prefix):
-							shared_store.add(
-								target_user_id,
-								folder_type,
-								item_name,
-								source_backend=("s3" if destination_type == "s3" else "local"),
-								granted_by_user_id=user_id or "",
-								granted_by_role=role or "",
-							)
-				except Exception as e:
-					logger.warning(f"[MSS-Login] model isolation auto-grant failed: {e}")
+			try:
+				_auto_grant_downloaded_item(
+					target_user_id=target_user_id,
+					folder_type=folder_type,
+					saved_rel=saved_rel or "",
+					destination_type=destination_type,
+					granted_by_user_id=user_id or "",
+					granted_by_role=role or "",
+				)
+			except Exception as e:
+				logger.warning(f"[MSS-Login] model isolation auto-grant failed: {e}")
 			if target_username:
 				logger.info(f"[MSS-Login] Download completed for target user '{target_username}'")
 	except Exception as e:
@@ -407,7 +501,7 @@ async def _run_job(job_id: str) -> None:
 @routes.get("/mss-login/api/model-download/sources")
 async def api_model_download_sources(request: web.Request) -> web.Response:
 	"""List sources, key-presence, and client capabilities. Requires model-download permission."""
-	user_id, err = _download_auth_or_response(request)
+	user_id, _username, err = _download_auth_or_response(request)
 	if err:
 		return err
 	store = get_model_source_api_keys_store(USERS_DB_CONFIG)
@@ -424,7 +518,7 @@ async def api_model_download_sources(request: web.Request) -> web.Response:
 @routes.get("/mss-login/api/model-download/folders")
 async def api_model_download_folders(request: web.Request) -> web.Response:
 	"""List valid folder_type values for download destinations (mobile/client API)."""
-	_user_id, err = _download_auth_or_response(request)
+	_user_id, _username, err = _download_auth_or_response(request)
 	if err:
 		return err
 	folders = _list_download_folder_types()
@@ -434,7 +528,7 @@ async def api_model_download_folders(request: web.Request) -> web.Response:
 @routes.get("/mss-login/api/model-download/api-keys")
 async def api_model_download_api_keys_get(request: web.Request) -> web.Response:
 	"""Return which sources have keys for current user only."""
-	user_id, err = _download_auth_or_response(request)
+	user_id, _username, err = _download_auth_or_response(request)
 	if err:
 		return err
 	store = get_model_source_api_keys_store(USERS_DB_CONFIG)
@@ -445,7 +539,7 @@ async def api_model_download_api_keys_get(request: web.Request) -> web.Response:
 @routes.put("/mss-login/api/model-download/api-keys")
 async def api_model_download_api_keys_put(request: web.Request) -> web.Response:
 	"""Set or clear API key for a source. Body: { source, api_key }. Current user only."""
-	user_id, err = _download_auth_or_response(request)
+	user_id, _username, err = _download_auth_or_response(request)
 	if err:
 		return err
 	try:
@@ -470,14 +564,28 @@ async def api_model_download_api_keys_put(request: web.Request) -> web.Response:
 @routes.post("/mss-login/api/model-download/download")
 async def api_model_download_start(request: web.Request) -> web.Response:
 	"""Queue a model download job and return job id."""
-	user_id, err = _download_auth_or_response(request)
+	user_id, username, err = _download_auth_or_response(request)
 	if err:
 		return err
-	role, perms, _username = _role_and_perms(request)
+	role, perms, _role_username = _role_and_perms(request)
 	try:
 		body = await request.json()
 	except Exception as e:
 		return web.json_response({"error": f"Invalid JSON: {e}"}, status=400)
+
+	# Optional pasted URL: SSRF-safe resolve into source identifiers (host allowlisted).
+	url_hint = None
+	pasted_url = (body.get("url") or body.get("model_url") or "").strip()
+	if pasted_url:
+		resolved = resolve_model_url(pasted_url)
+		if not resolved:
+			return web.json_response({"error": "Unrecognized or disallowed model URL"}, status=400)
+		body = {**body, **{k: v for k, v in resolved.items() if k != "host"}}
+		if resolved.get("source"):
+			body["source"] = resolved["source"]
+		if resolved.get("host") and resolved.get("source") == "civitai":
+			url_hint = resolved["host"]
+			body.setdefault("civitai_host", resolved["host"])
 
 	source = (body.get("source") or "").strip().lower()
 	if source not in SOURCES:
@@ -497,8 +605,7 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 	if folder_error:
 		return web.json_response({"error": folder_error}, status=400)
 
-	store = get_model_source_api_keys_store(USERS_DB_CONFIG)
-	token = store.get_key(user_id, source)
+	token = _source_token(user_id, source)
 	if not token:
 		return web.json_response({"error": "No API key set for this source"}, status=400)
 
@@ -549,6 +656,11 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 		job["format"] = body.get("format")
 		job["size"] = body.get("size")
 		job["fp"] = body.get("fp")
+		job["civitai_host"] = _resolve_civitai_host_for_request(
+			username,
+			body_or_query_host=body.get("civitai_host") or body.get("host"),
+			url_hint_host=url_hint,
+		)
 	else:
 		repo_id = (body.get("repo_id") or "").strip()
 		filename = (body.get("filename") or "").strip()
@@ -574,10 +686,151 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 	return web.json_response({"status": "queued", "job_id": job_id, "stats": _queue_stats()})
 
 
+@routes.get("/mss-login/api/model-download/preferences")
+async def api_model_download_preferences_get(request: web.Request) -> web.Response:
+	"""Return caller's non-secret model-download preferences (civitai_host)."""
+	_user_id, username, err = _download_auth_or_response(request)
+	if err:
+		return err
+	host = get_civitai_host_preference(username or "")
+	return web.json_response(
+		{
+			"civitai_host": host,
+			"allowed_civitai_hosts": sorted(ALLOWED_CIVITAI_HOSTS),
+			"default_civitai_host": DEFAULT_CIVITAI_HOST,
+		}
+	)
+
+
+@routes.put("/mss-login/api/model-download/preferences")
+async def api_model_download_preferences_put(request: web.Request) -> web.Response:
+	"""Update caller's civitai_host preference (civitai.com | civitai.red)."""
+	_user_id, username, err = _download_auth_or_response(request)
+	if err:
+		return err
+	if not username:
+		return web.json_response({"error": "Username required"}, status=400)
+	try:
+		body = await request.json()
+	except Exception as e:
+		return web.json_response({"error": f"Invalid JSON: {e}"}, status=400)
+	raw_host = body.get("civitai_host") or body.get("host") or ""
+	normalized = normalize_civitai_host(raw_host)
+	# Reject unknown hosts rather than silently rewriting (except empty -> default).
+	requested = (raw_host or "").strip().lower()
+	if requested.startswith("https://"):
+		requested = requested[len("https://") :]
+	elif requested.startswith("http://"):
+		requested = requested[len("http://") :]
+	requested = requested.split("/")[0].split("?")[0]
+	if requested.startswith("www."):
+		requested = requested[4:]
+	if requested and requested not in ALLOWED_CIVITAI_HOSTS:
+		return web.json_response(
+			{"error": "Invalid civitai_host; allowed: civitai.com, civitai.red"},
+			status=400,
+		)
+	host = set_civitai_host_preference(username, normalized)
+	return web.json_response({"status": "ok", "civitai_host": host})
+
+
+@routes.get("/mss-login/api/model-download/civitai/search")
+async def api_model_download_civitai_search(request: web.Request) -> web.Response:
+	"""Proxy CivitAI model search. Uses caller's encrypted API key; never echoes it."""
+	user_id, username, err = _download_auth_or_response(request)
+	if err:
+		return err
+	query = (request.rel_url.query.get("query") or request.rel_url.query.get("q") or "").strip()
+	types = (request.rel_url.query.get("types") or "").strip() or None
+	try:
+		page = int(request.rel_url.query.get("page") or "1")
+	except ValueError:
+		page = 1
+	try:
+		limit = int(request.rel_url.query.get("limit") or "20")
+	except ValueError:
+		limit = 20
+	host = _resolve_civitai_host_for_request(
+		username,
+		body_or_query_host=request.rel_url.query.get("civitai_host")
+		or request.rel_url.query.get("host"),
+	)
+	token = _source_token(user_id, "civitai")
+	data, error = await civitai_search_models(
+		query, token=token, host=host, types=types, page=page, limit=limit
+	)
+	if error:
+		return web.json_response({"error": error}, status=502)
+	return web.json_response({"host": host, "query": query, "result": data})
+
+
+@routes.get("/mss-login/api/model-download/civitai/models/{model_id}")
+async def api_model_download_civitai_model(request: web.Request) -> web.Response:
+	"""Proxy GET /api/v1/models/{id} against the preferred CivitAI host."""
+	user_id, username, err = _download_auth_or_response(request)
+	if err:
+		return err
+	model_id = (request.match_info.get("model_id") or "").strip()
+	if not model_id.isdigit():
+		return web.json_response({"error": "Invalid model_id"}, status=400)
+	host = _resolve_civitai_host_for_request(
+		username,
+		body_or_query_host=request.rel_url.query.get("civitai_host")
+		or request.rel_url.query.get("host"),
+	)
+	token = _source_token(user_id, "civitai")
+	data, error = await civitai_get_model(model_id, token=token, host=host)
+	if error:
+		return web.json_response({"error": error}, status=502)
+	return web.json_response({"host": host, "model": data})
+
+
+@routes.get("/mss-login/api/model-download/civitai/model-versions/{version_id}")
+async def api_model_download_civitai_model_version(request: web.Request) -> web.Response:
+	"""Proxy GET /api/v1/model-versions/{id} against the preferred CivitAI host."""
+	user_id, username, err = _download_auth_or_response(request)
+	if err:
+		return err
+	version_id = (request.match_info.get("version_id") or "").strip()
+	if not version_id.isdigit():
+		return web.json_response({"error": "Invalid version_id"}, status=400)
+	host = _resolve_civitai_host_for_request(
+		username,
+		body_or_query_host=request.rel_url.query.get("civitai_host")
+		or request.rel_url.query.get("host"),
+	)
+	token = _source_token(user_id, "civitai")
+	data, error = await civitai_get_model_version(version_id, token=token, host=host)
+	if error:
+		return web.json_response({"error": error}, status=502)
+	return web.json_response({"host": host, "model_version": data})
+
+
+@routes.get("/mss-login/api/model-download/huggingface/search")
+async def api_model_download_huggingface_search(request: web.Request) -> web.Response:
+	"""Search Hugging Face Hub models. Uses caller's encrypted API key; never echoes it."""
+	user_id, _username, err = _download_auth_or_response(request)
+	if err:
+		return err
+	query = (request.rel_url.query.get("query") or request.rel_url.query.get("q") or "").strip()
+	try:
+		limit = int(request.rel_url.query.get("limit") or "20")
+	except ValueError:
+		limit = 20
+	token = _source_token(user_id, "huggingface")
+	loop = asyncio.get_event_loop()
+	items, error = await loop.run_in_executor(
+		None, lambda: search_huggingface_models(query, token=token, limit=limit)
+	)
+	if error:
+		return web.json_response({"error": error}, status=502)
+	return web.json_response({"query": query, "items": items or []})
+
+
 @routes.get("/mss-login/api/model-download/jobs/{job_id}")
 async def api_model_download_job_get(request: web.Request) -> web.Response:
 	"""Return one download job by id (for mobile polling). Caller must own the job."""
-	user_id, err = _download_auth_or_response(request)
+	user_id, _username, err = _download_auth_or_response(request)
 	if err:
 		return err
 	job_id = (request.match_info.get("job_id") or "").strip()
@@ -593,7 +846,7 @@ async def api_model_download_job_get(request: web.Request) -> web.Response:
 @routes.get("/mss-login/api/model-download/jobs")
 async def api_model_download_jobs(request: web.Request) -> web.Response:
 	"""Return caller-visible jobs and queue stats (privacy-preserving, per-user)."""
-	user_id, err = _download_auth_or_response(request)
+	user_id, _username, err = _download_auth_or_response(request)
 	if err:
 		return err
 	async with _JOBS_LOCK:
@@ -607,7 +860,7 @@ async def api_model_download_jobs(request: web.Request) -> web.Response:
 @routes.post("/mss-login/api/model-download/jobs/{job_id}/cancel")
 async def api_model_download_cancel(request: web.Request) -> web.Response:
 	"""Cancel a queued/running download job owned by the caller."""
-	user_id, err = _download_auth_or_response(request)
+	user_id, _username, err = _download_auth_or_response(request)
 	if err:
 		return err
 	job_id = (request.match_info.get("job_id") or "").strip()
@@ -639,6 +892,18 @@ routes.get("/api/mss-login/api/model-download/sources")(api_model_download_sourc
 routes.get("/api/mss-login/api/model-download/folders")(api_model_download_folders)
 routes.get("/api/mss-login/api/model-download/api-keys")(api_model_download_api_keys_get)
 routes.put("/api/mss-login/api/model-download/api-keys")(api_model_download_api_keys_put)
+routes.get("/api/mss-login/api/model-download/preferences")(api_model_download_preferences_get)
+routes.put("/api/mss-login/api/model-download/preferences")(api_model_download_preferences_put)
+routes.get("/api/mss-login/api/model-download/civitai/search")(api_model_download_civitai_search)
+routes.get("/api/mss-login/api/model-download/civitai/models/{model_id}")(
+	api_model_download_civitai_model
+)
+routes.get("/api/mss-login/api/model-download/civitai/model-versions/{version_id}")(
+	api_model_download_civitai_model_version
+)
+routes.get("/api/mss-login/api/model-download/huggingface/search")(
+	api_model_download_huggingface_search
+)
 routes.post("/api/mss-login/api/model-download/download")(api_model_download_start)
 routes.get("/api/mss-login/api/model-download/jobs/{job_id}")(api_model_download_job_get)
 routes.get("/api/mss-login/api/model-download/jobs")(api_model_download_jobs)

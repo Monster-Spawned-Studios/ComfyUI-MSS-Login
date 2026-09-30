@@ -1021,6 +1021,11 @@ class mss_loginDialog extends ComfyDialog {
             btn.onclick = () => setActiveTab(btn.dataset.tab || "");
         });
 
+        if (window._mss_loginPreferUsersTab) {
+            window._mss_loginPreferUsersTab = false;
+            setActiveTab("users");
+        }
+
         if (tabToggle) {
             tabToggle.onclick = () => {
                 if (tabDropdown?.hidden) {
@@ -1137,8 +1142,38 @@ class mss_loginDialog extends ComfyDialog {
 renderUsers(list, container) {
     const currentName = currentUser?.username || null;
     const self = this;
+    const isOwnerCaller = Array.isArray(currentUser?.groups)
+        && currentUser.groups.map(g => String(g).toLowerCase()).includes("owner");
+    const createRoles = GROUPS.filter(g => g !== "owner");
 
-    let html = `
+    let html = "";
+    if (isOwnerCaller) {
+        html += `
+        <div class="mss-login-section" style="margin-bottom:20px;">
+            <h3>Register user</h3>
+            <p class="mss-login-note">Owner only. Assign a role at creation (owner transfer stays in the table below).</p>
+            <div class="mss-login-row" style="gap:12px; flex-wrap:wrap; align-items:flex-end;">
+                <div>
+                    <label class="mss-login-field-label">Username</label>
+                    <input type="text" id="mss-login-create-username" class="mss-login-input" autocomplete="off" style="min-width:160px;">
+                </div>
+                <div>
+                    <label class="mss-login-field-label">Password</label>
+                    <input type="password" id="mss-login-create-password" class="mss-login-input" autocomplete="new-password" style="min-width:160px;">
+                </div>
+                <div>
+                    <label class="mss-login-field-label">Role</label>
+                    <select id="mss-login-create-role" class="mss-login-input" style="min-width:120px;">
+                        ${createRoles.map(g => `<option value="${g}" ${g === "user" ? "selected" : ""}>${g.toUpperCase()}</option>`).join("")}
+                    </select>
+                </div>
+                <button type="button" class="mss-login-btn btn-save" id="mss-login-create-user-btn">Create user</button>
+            </div>
+            <p id="mss-login-create-user-status" class="mss-login-note" style="margin-top:8px;"></p>
+        </div>`;
+    }
+
+    html += `
         <table class="mss-login-table">
             <thead>
                 <tr>
@@ -1213,6 +1248,33 @@ renderUsers(list, container) {
 
     html += `</tbody></table>`;
     container.innerHTML = html;
+
+    const createBtn = container.querySelector("#mss-login-create-user-btn");
+    if (createBtn) {
+        createBtn.onclick = async () => {
+            const statusEl = container.querySelector("#mss-login-create-user-status");
+            const username = (container.querySelector("#mss-login-create-username")?.value || "").trim();
+            const password = container.querySelector("#mss-login-create-password")?.value || "";
+            const role = container.querySelector("#mss-login-create-role")?.value || "user";
+            if (statusEl) statusEl.textContent = "Creating...";
+            try {
+                const res = await api.fetchApi("/mss-login/api/users", {
+                    method: "POST",
+                    body: JSON.stringify({ username, password, role }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    if (statusEl) statusEl.textContent = data.error || `Error ${res.status}`;
+                    return;
+                }
+                if (statusEl) statusEl.textContent = `Created ${data.username || username} as ${data.role || role}.`;
+                const usersData = await getData("/mss-login/api/users");
+                self.renderUsers(usersData?.users || [], container);
+            } catch (e) {
+                if (statusEl) statusEl.textContent = e.message || "Request failed";
+            }
+        };
+    }
 
     // --- Save handler per user ---
     container.querySelectorAll(".btn-save").forEach(btn => {
@@ -2489,6 +2551,32 @@ async renderModelDownload(container) {
                 </div>
             </div>
             <p id="mss-login-keys-status" class="mss-login-note" style="margin-top:8px;"></p>
+            <div class="mss-login-row" style="margin-top:16px; gap:12px; align-items:center; flex-wrap:wrap;">
+                <label class="mss-login-field-label">CivitAI host</label>
+                <select id="mss-login-civitai-host" class="mss-login-select">
+                    <option value="civitai.com">civitai.com</option>
+                    <option value="civitai.red">civitai.red</option>
+                </select>
+                <button class="mss-login-btn" id="mss-login-civitai-host-save">Save host preference</button>
+                <span id="mss-login-civitai-host-status" class="mss-login-note"></span>
+            </div>
+            <p class="mss-login-note" style="margin-top:6px;">Host preference is not a secret. Pasting a .red URL still routes that download through .red for that job.</p>
+        </div>
+        <div class="mss-login-section" style="margin-top:24px;">
+            <h3>Browse / Search</h3>
+            <p>Search CivitAI or Hugging Face, pick a version/file, then queue a download.</p>
+            <div class="mss-login-row" style="margin-top:12px; gap:8px; align-items:center; flex-wrap:wrap;">
+                <label class="mss-login-field-label">Provider</label>
+                <select id="mss-login-browse-provider" class="mss-login-select">
+                    <option value="civitai">CivitAI</option>
+                    <option value="huggingface">HuggingFace</option>
+                </select>
+                <input type="text" id="mss-login-browse-query" class="mss-login-input" placeholder="Search models..." style="min-width:220px; flex:1;">
+                <button class="mss-login-btn" id="mss-login-browse-search">Search</button>
+            </div>
+            <p id="mss-login-browse-status" class="mss-login-note" style="margin-top:8px;"></p>
+            <div id="mss-login-browse-results" style="margin-top:12px; max-height:320px; overflow:auto;"></div>
+            <div id="mss-login-browse-detail" style="margin-top:12px;"></div>
         </div>
         <div class="mss-login-section" style="margin-top:24px;">
             <h3>Download model</h3>
@@ -2532,6 +2620,7 @@ async renderModelDownload(container) {
     const sourceSelect = container.querySelector("#mss-login-dl-source");
     const civitaiFields = container.querySelector("#mss-login-dl-civitai-fields");
     const hfFields = container.querySelector("#mss-login-dl-hf-fields");
+    const hostSelect = container.querySelector("#mss-login-civitai-host");
     function showSourceFields() {
         const v = sourceSelect.value;
         civitaiFields.style.display = v === "civitai" ? "" : "none";
@@ -2542,6 +2631,15 @@ async renderModelDownload(container) {
 
     (async () => {
         try {
+            const prefRes = await api.fetchApi("/mss-login/api/model-download/preferences", { method: "GET" });
+            if (prefRes.ok) {
+                const pref = await prefRes.json();
+                if (pref.civitai_host && hostSelect) {
+                    hostSelect.value = pref.civitai_host;
+                }
+            }
+        } catch (_) {}
+        try {
             const me = await getData("/mss-login/api/me");
             if (me && !me.experimental?.s3) {
                 const destSelect = container.querySelector("#mss-login-dl-dest");
@@ -2550,6 +2648,202 @@ async renderModelDownload(container) {
             }
         } catch (_) {}
     })();
+
+    container.querySelector("#mss-login-civitai-host-save").onclick = async () => {
+        const statusEl = container.querySelector("#mss-login-civitai-host-status");
+        statusEl.textContent = "Saving...";
+        try {
+            const res = await api.fetchApi("/mss-login/api/model-download/preferences", {
+                method: "PUT",
+                body: JSON.stringify({ civitai_host: hostSelect.value })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || res.status);
+            hostSelect.value = data.civitai_host || hostSelect.value;
+            statusEl.textContent = "Host preference saved.";
+        } catch (e) {
+            statusEl.textContent = "Error: " + (e.message || "Save failed");
+        }
+    };
+
+    const browseResults = container.querySelector("#mss-login-browse-results");
+    const browseDetail = container.querySelector("#mss-login-browse-detail");
+    const browseStatus = container.querySelector("#mss-login-browse-status");
+    const queueFromBrowse = async (bodyExtra) => {
+        const dest = container.querySelector("#mss-login-dl-dest").value;
+        const folder = container.querySelector("#mss-login-dl-folder").value;
+        const body = {
+            destination_type: dest,
+            folder_type: folder,
+            ...bodyExtra
+        };
+        if (body.source === "civitai") {
+            body.civitai_host = hostSelect.value;
+        }
+        browseStatus.textContent = "Queueing download...";
+        try {
+            const res = await api.fetchApi("/mss-login/api/model-download/download", {
+                method: "POST",
+                body: JSON.stringify(body)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || res.status);
+            browseStatus.textContent = data.job_id
+                ? ("Queued download job: " + data.job_id)
+                : "Download queued.";
+            if (typeof refreshJobs === "function") await refreshJobs();
+        } catch (e) {
+            browseStatus.textContent = "Error: " + (e.message || "Queue failed");
+        }
+    };
+    const renderCivitaiModelDetail = async (modelId) => {
+        browseDetail.innerHTML = `<p class="mss-login-note">Loading model ${escapeHtml(String(modelId))}...</p>`;
+        try {
+            const res = await api.fetchApi(
+                `/mss-login/api/model-download/civitai/models/${encodeURIComponent(modelId)}?civitai_host=${encodeURIComponent(hostSelect.value)}`,
+                { method: "GET" }
+            );
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || res.status);
+            const model = data.model || {};
+            const versions = Array.isArray(model.modelVersions) ? model.modelVersions : [];
+            const versionOptions = versions.map((v) => {
+                const vid = v.id;
+                const name = v.name || ("v" + vid);
+                const files = Array.isArray(v.files) ? v.files : [];
+                const fileHint = files[0]?.name ? ` — ${files[0].name}` : "";
+                return `<option value="${escapeHtml(String(vid))}">${escapeHtml(name)}${escapeHtml(fileHint)}</option>`;
+            }).join("");
+            browseDetail.innerHTML = `
+                <div style="border:1px solid #333; border-radius:8px; padding:12px;">
+                    <strong>${escapeHtml(model.name || ("Model " + modelId))}</strong>
+                    <p class="mss-login-note">${escapeHtml((model.type || "") + (model.nsfw ? " (NSFW)" : ""))}</p>
+                    <div class="mss-login-row" style="gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+                        <label class="mss-login-field-label">Version</label>
+                        <select id="mss-login-browse-version" class="mss-login-select">${versionOptions || '<option value="">No versions</option>'}</select>
+                        <button class="mss-login-btn" id="mss-login-browse-queue-civitai">Queue download</button>
+                        <button class="mss-login-btn" id="mss-login-browse-fill-civitai">Fill form</button>
+                    </div>
+                </div>
+            `;
+            const queueBtn = browseDetail.querySelector("#mss-login-browse-queue-civitai");
+            const fillBtn = browseDetail.querySelector("#mss-login-browse-fill-civitai");
+            const versionSel = browseDetail.querySelector("#mss-login-browse-version");
+            if (queueBtn) {
+                queueBtn.onclick = () => {
+                    const vid = (versionSel && versionSel.value || "").trim();
+                    if (!vid) {
+                        browseStatus.textContent = "Select a model version.";
+                        return;
+                    }
+                    queueFromBrowse({ source: "civitai", model_version_id: vid });
+                };
+            }
+            if (fillBtn) {
+                fillBtn.onclick = () => {
+                    const vid = (versionSel && versionSel.value || "").trim();
+                    sourceSelect.value = "civitai";
+                    showSourceFields();
+                    container.querySelector("#mss-login-dl-civitai-version").value = vid;
+                    browseStatus.textContent = "Filled download form with version " + vid;
+                };
+            }
+        } catch (e) {
+            browseDetail.innerHTML = `<p class="mss-login-note" style="color:#ff8888;">Error: ${escapeHtml(e.message || "Load failed")}</p>`;
+        }
+    };
+    container.querySelector("#mss-login-browse-search").onclick = async () => {
+        const provider = container.querySelector("#mss-login-browse-provider").value;
+        const query = container.querySelector("#mss-login-browse-query").value.trim();
+        browseStatus.textContent = "Searching...";
+        browseResults.innerHTML = "";
+        browseDetail.innerHTML = "";
+        try {
+            if (provider === "civitai") {
+                const qs = new URLSearchParams({
+                    query,
+                    page: "1",
+                    limit: "20",
+                    civitai_host: hostSelect.value
+                });
+                const res = await api.fetchApi(`/mss-login/api/model-download/civitai/search?${qs}`, { method: "GET" });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || res.status);
+                const items = Array.isArray(data.result?.items) ? data.result.items : (Array.isArray(data.result) ? data.result : []);
+                if (!items.length) {
+                    browseResults.innerHTML = `<p class="mss-login-note">No CivitAI results.</p>`;
+                    browseStatus.textContent = "No results.";
+                    return;
+                }
+                browseResults.innerHTML = items.map((item) => {
+                    const id = item.id;
+                    const name = item.name || ("Model " + id);
+                    const type = item.type || "";
+                    return `<div style="border:1px solid #333; border-radius:8px; padding:10px; margin:8px 0; display:flex; justify-content:space-between; gap:8px; align-items:center;">
+                        <div><strong>${escapeHtml(name)}</strong><div class="mss-login-note">${escapeHtml(type)} · id ${escapeHtml(String(id))}</div></div>
+                        <button class="mss-login-btn mss-login-browse-open" data-model-id="${escapeHtml(String(id))}">Open</button>
+                    </div>`;
+                }).join("");
+                browseResults.querySelectorAll(".mss-login-browse-open").forEach((btn) => {
+                    btn.onclick = () => renderCivitaiModelDetail(btn.dataset.modelId);
+                });
+                browseStatus.textContent = `Found ${items.length} CivitAI model(s).`;
+            } else {
+                const qs = new URLSearchParams({ query, limit: "20" });
+                const res = await api.fetchApi(`/mss-login/api/model-download/huggingface/search?${qs}`, { method: "GET" });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || res.status);
+                const items = Array.isArray(data.items) ? data.items : [];
+                if (!items.length) {
+                    browseResults.innerHTML = `<p class="mss-login-note">No Hugging Face results.</p>`;
+                    browseStatus.textContent = "No results.";
+                    return;
+                }
+                browseResults.innerHTML = items.map((item) => {
+                    const repoId = item.repo_id || item.id || "";
+                    return `<div style="border:1px solid #333; border-radius:8px; padding:10px; margin:8px 0;">
+                        <strong>${escapeHtml(repoId)}</strong>
+                        <div class="mss-login-note">${escapeHtml(item.pipeline_tag || "")}</div>
+                        <div class="mss-login-row" style="margin-top:8px; gap:8px; flex-wrap:wrap; align-items:center;">
+                            <input type="text" class="mss-login-input mss-login-hf-filename" data-repo="${escapeHtml(repoId)}" placeholder="filename.safetensors" style="min-width:180px;">
+                            <button class="mss-login-btn mss-login-hf-queue" data-repo="${escapeHtml(repoId)}">Queue</button>
+                            <button class="mss-login-btn mss-login-hf-fill" data-repo="${escapeHtml(repoId)}">Fill form</button>
+                        </div>
+                    </div>`;
+                }).join("");
+                browseResults.querySelectorAll(".mss-login-hf-queue").forEach((btn) => {
+                    btn.onclick = () => {
+                        const row = btn.closest("div");
+                        const input = row && row.querySelector(".mss-login-hf-filename");
+                        const filename = (input && input.value || "").trim();
+                        if (!filename) {
+                            browseStatus.textContent = "Enter a filename for the Hugging Face file.";
+                            return;
+                        }
+                        queueFromBrowse({
+                            source: "huggingface",
+                            repo_id: btn.dataset.repo,
+                            filename
+                        });
+                    };
+                });
+                browseResults.querySelectorAll(".mss-login-hf-fill").forEach((btn) => {
+                    btn.onclick = () => {
+                        const row = btn.closest("div");
+                        const input = row && row.querySelector(".mss-login-hf-filename");
+                        sourceSelect.value = "huggingface";
+                        showSourceFields();
+                        container.querySelector("#mss-login-dl-hf-repo").value = btn.dataset.repo || "";
+                        container.querySelector("#mss-login-dl-hf-filename").value = (input && input.value || "").trim();
+                        browseStatus.textContent = "Filled download form.";
+                    };
+                });
+                browseStatus.textContent = `Found ${items.length} Hugging Face model(s).`;
+            }
+        } catch (e) {
+            browseStatus.textContent = "Error: " + (e.message || "Search failed");
+        }
+    };
 
     container.querySelector("#mss-login-save-keys").onclick = async () => {
         const statusEl = container.querySelector("#mss-login-keys-status");
@@ -2583,6 +2877,7 @@ async renderModelDownload(container) {
         const body = { source, destination_type: dest, folder_type: folder };
         if (source === "civitai") {
             body.model_version_id = container.querySelector("#mss-login-dl-civitai-version").value.trim();
+            body.civitai_host = (container.querySelector("#mss-login-civitai-host") || {}).value || "civitai.com";
             if (!body.model_version_id) {
                 statusEl.textContent = "Enter CivitAI model version ID.";
                 return;
@@ -3028,6 +3323,7 @@ async renderS3Settings(container) {
         const adminDefaultFalseKeys = new Set([
             "can_have_non_expiring_jwt",
             "can_view_console",
+            "can_manage_model_sharing",
         ]);
         // Only the owner account may edit the admin column; owner column stays immutable
         const viewerIsOwner = !!(
@@ -3122,6 +3418,7 @@ async renderS3Settings(container) {
         html += drawRow("View all ComfyUI items (models, LoRAs, VAEs, embeddings)", "can_view_all_comfyui_items");
         html += drawRow("Access S3 Storage (mount, sync, API)", "can_access_s3_storage");
         html += drawRow("Download models (queue, view, cancel own jobs)", "can_download_models");
+        html += drawRow("Manage model sharing (grant/revoke model access)", "can_manage_model_sharing");
         html += drawRow("Login locally without authentication (Tailscale / Local Network)", "can_login_locally_without_auth");
 
         // Section 2: Global UI
@@ -4041,16 +4338,16 @@ app.ui.settings.addSetting({
         btn.style.minWidth = "260px";
         btn.onclick = () => new mss_loginDialog().show();
 
-        // Register a new user (admins only). Kept out of the public login page
-        // to reduce brute-force exposure of the registration form.
+        // Register a new user (owner only). Opens in-dialog create form on Users & Roles.
         const registerBtn = document.createElement("button");
         registerBtn.innerText = "Register a New User";
         registerBtn.className = "mss-login-launch-btn";
         registerBtn.style.minWidth = "260px";
         registerBtn.style.display = "none";
-        registerBtn.setAttribute("data-mss-login-admin-only", "true");
+        registerBtn.setAttribute("data-mss-login-owner-only", "true");
         registerBtn.onclick = () => {
-            window.location.href = "/register";
+            window._mss_loginPreferUsersTab = true;
+            new mss_loginDialog().show();
         };
 
         // Export redacted debug log (for GitHub issues and troubleshooting)
@@ -4145,7 +4442,9 @@ app.ui.settings.addSetting({
             try {
                 const me = await getData("/mss-login/api/me");
                 if (me && me.is_admin) {
-                    registerBtn.style.display = "block";
+                    const isOwner = Array.isArray(me.groups)
+                        && me.groups.map(g => String(g).toLowerCase()).includes("owner");
+                    if (isOwner) registerBtn.style.display = "block";
                     const cfg = await getData("/mss-login/api/settings/guest-jwt");
                     guestJwtRow.style.display = "flex";
                     guestJwtCheck.checked = !!cfg.allow_guest_jwt;

@@ -88,6 +88,7 @@ from .utils.model_isolation import isolation_models_base
 from .utils.model_visibility_policy import (
 	allowed_set_from_grants,
 	get_effective_model_grants_for_user,
+	user_can_download_models,
 	user_can_view_all_models,
 )
 from .utils.ntfy_notifier import notify_experimental_recovery
@@ -218,44 +219,48 @@ async def workflow_interceptor_middleware(request, handler):
 		set_latest_prompt_user(username)
 		print(f"[MSS-Login::Middleware] PROMPT CAPTURE path={path} user={username!r}")
 
-	# --- Model download destination rewrite for Civicomfy / core model routes ---
-	if (
-		experimental_model_isolation_enabled()
-		and method in ("POST", "PUT", "PATCH")
-		and should_try_model_download_redirect(path)
-	):
-		current_user_id = access_control.get_current_user_id()
-		if current_user_id and (
-			is_civicomfy_present() or "/manager" in path.lower() or "model" in path.lower()
-		):
-			original_body = await request.read()
-			rewritten_body = original_body
-			content_type = (request.headers.get("Content-Type") or "").lower()
-			if "application/json" in content_type and original_body:
-				try:
-					payload = json.loads(original_body)
-					rewritten_payload, changed = rewrite_download_payload_for_user(
-						payload, current_user_id
-					)
-					if changed:
-						rewritten_body = json.dumps(rewritten_payload).encode("utf-8")
-						logger.info(
-							"[mss-login] Model isolation redirected model download path for user=%s path=%s target_base=%s",
-							current_user_id,
-							path,
-							isolation_models_base(),
+	# --- Model download permission gate + destination rewrite ---
+	# Gate Civicomfy/Manager download routes BEFORE any path rewrite.
+	if method in ("POST", "PUT", "PATCH") and should_try_model_download_redirect(path):
+		role, perms, _perm_user = access_control._get_user_role_and_permissions(request)
+		if not user_can_download_models(role, perms):
+			return web.json_response(
+				{"error": "Model download permission required"},
+				status=403,
+			)
+		if experimental_model_isolation_enabled():
+			current_user_id = access_control.get_current_user_id()
+			if current_user_id and (
+				is_civicomfy_present() or "/manager" in path.lower() or "model" in path.lower()
+			):
+				original_body = await request.read()
+				rewritten_body = original_body
+				content_type = (request.headers.get("Content-Type") or "").lower()
+				if "application/json" in content_type and original_body:
+					try:
+						payload = json.loads(original_body)
+						rewritten_payload, changed = rewrite_download_payload_for_user(
+							payload, current_user_id
 						)
-				except (json.JSONDecodeError, TypeError):
-					pass
+						if changed:
+							rewritten_body = json.dumps(rewritten_payload).encode("utf-8")
+							logger.info(
+								"[mss-login] Model isolation redirected model download path for user=%s path=%s target_base=%s",
+								current_user_id,
+								path,
+								isolation_models_base(),
+							)
+					except (json.JSONDecodeError, TypeError):
+						pass
 
-			async def _read_redirect():
-				return rewritten_body
+				async def _read_redirect():
+					return rewritten_body
 
-			async def _json_redirect():
-				return json.loads(rewritten_body) if rewritten_body else {}
+				async def _json_redirect():
+					return json.loads(rewritten_body) if rewritten_body else {}
 
-			request.read = _read_redirect
-			request.json = _json_redirect
+				request.read = _read_redirect
+				request.json = _json_redirect
 
 	# --- Prompt model validation (POST/PUT /prompt and /api/prompt) ---
 	if path in ("/prompt", "/api/prompt") and method in ("POST", "PUT"):

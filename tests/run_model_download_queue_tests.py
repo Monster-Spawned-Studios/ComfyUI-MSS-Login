@@ -93,13 +93,36 @@ def _install_stubs():
 	download_mod = types.ModuleType("mss_login.utils.model_download")
 
 	async def _download_civitai_async(*_args, **_kwargs):
-		return True, ""
+		return True, "", "model.safetensors"
 
 	def _download_huggingface(*_args, **_kwargs):
-		return True, ""
+		return True, "", "weights.safetensors"
+
+	async def _civitai_search(*_a, **_k):
+		return {"items": []}, ""
+
+	async def _civitai_get(*_a, **_k):
+		return {}, ""
+
+	async def _civitai_version(*_a, **_k):
+		return {}, ""
 
 	download_mod.download_civitai_async = _download_civitai_async
 	download_mod.download_huggingface = _download_huggingface
+	download_mod.ALLOWED_CIVITAI_HOSTS = frozenset({"civitai.com", "civitai.red"})
+	download_mod.DEFAULT_CIVITAI_HOST = "civitai.com"
+	download_mod.civitai_get_model = _civitai_get
+	download_mod.civitai_get_model_version = _civitai_version
+	download_mod.civitai_search_models = _civitai_search
+	download_mod.get_civitai_host_preference = lambda *_a, **_k: "civitai.com"
+	download_mod.normalize_civitai_host = (
+		lambda h: (h or "civitai.com").strip().lower()
+		if (h or "").strip().lower() in ("civitai.com", "civitai.red")
+		else "civitai.com"
+	)
+	download_mod.resolve_model_url = lambda *_a, **_k: None
+	download_mod.search_huggingface_models = lambda *_a, **_k: ([], "")
+	download_mod.set_civitai_host_preference = lambda *_a, **_k: "civitai.com"
 	sys.modules["mss_login.utils.model_download"] = download_mod
 
 	isolation_mod = types.ModuleType("mss_login.utils.model_isolation")
@@ -133,9 +156,37 @@ def _install_stubs():
 	policy_mod.user_can_manage_model_sharing = lambda role, perms: False
 	sys.modules["mss_login.utils.model_visibility_policy"] = policy_mod
 
+	class _SharedStore:
+		def __init__(self):
+			self.grants = []
+
+		def add(self, user_id, folder, item_name, **kwargs):
+			self.grants.append(
+				{
+					"user_id": user_id,
+					"folder": folder,
+					"item_name": item_name,
+					**kwargs,
+				}
+			)
+
+	_shared = _SharedStore()
 	shared_mod = types.ModuleType("mss_login.utils.shared_items_store")
-	shared_mod.get_shared_items_store = lambda _cfg: None
+	shared_mod.get_shared_items_store = lambda _cfg: _shared
 	sys.modules["mss_login.utils.shared_items_store"] = shared_mod
+
+	s3_mod = types.ModuleType("mss_login.utils.s3_mounter")
+	s3_mod.get_mount_manager = lambda: None
+	sys.modules["mss_login.utils.s3_mounter"] = s3_mod
+
+	compat_mod = types.ModuleType("mss_login.utils.folder_paths_compat")
+	compat_mod.resolve_local_model_destination = lambda folder, uid: (
+		os.path.join(_PROJECT_ROOT, "tests", "_tmp_dl", folder),
+		os.path.join(_PROJECT_ROOT, "tests", "_tmp_dl"),
+	)
+	sys.modules["mss_login.utils.folder_paths_compat"] = compat_mod
+
+	return _shared
 
 
 class _Req:
@@ -158,7 +209,7 @@ def run_tests():
 			print(f"  ok: {msg}")
 		return cond
 
-	_install_stubs()
+	shared_store = _install_stubs()
 	mod = _load_module(
 		"mss_login.routes.model_download",
 		os.path.join(_ROUTES_DIR, "model_download.py"),
@@ -224,6 +275,78 @@ def run_tests():
 	ok(job_body.get("job", {}).get("job_id") == job_id, "job payload returned")
 	resp = asyncio.run(mod.api_model_download_job_get(_Req(job_id="missing")))
 	ok(resp.status == 404, "unknown job returns 404")
+
+	print("TestNarrowAutoGrant")
+	shared_store.grants.clear()
+	# Isolation off: no auto-grant
+	mod.experimental_model_isolation_enabled = lambda: False
+	mod._auto_grant_downloaded_item(
+		target_user_id="uid-alice",
+		folder_type="checkpoints",
+		saved_rel="only.safetensors",
+		destination_type="local",
+		granted_by_user_id="uid-alice",
+		granted_by_role="user",
+	)
+	ok(len(shared_store.grants) == 0, "isolation off does not auto-grant")
+	# Isolation on: grant only exact item
+	mod.experimental_model_isolation_enabled = lambda: True
+	mod._auto_grant_downloaded_item(
+		target_user_id="uid-alice",
+		folder_type="checkpoints",
+		saved_rel="only.safetensors",
+		destination_type="local",
+		granted_by_user_id="uid-alice",
+		granted_by_role="user",
+	)
+	ok(len(shared_store.grants) == 1, "isolation on grants exactly one item")
+	ok(
+		shared_store.grants[0]["item_name"] == "uid-alice/only.safetensors",
+		"grant uses user prefix + exact filename",
+	)
+	mod.experimental_model_isolation_enabled = lambda: False
+
+	print("TestS3Boto3DestinationResolve")
+	mount_root = os.path.join(_PROJECT_ROOT, "tests", "_tmp_s3_mount")
+	models_root = os.path.join(mount_root, "models")
+
+	class _Mgr:
+		def __init__(self):
+			self.models_root = models_root
+			self._boto3 = True
+			self.uploads = []
+
+		def is_mounted(self):
+			return False
+
+		def _in_boto3_mode(self):
+			return self._boto3
+
+		def get_models_folder_path(self, folder_type):
+			return os.path.join(self.models_root, folder_type)
+
+		def upload_file(self, local_path, s3_key):
+			self.uploads.append((local_path, s3_key))
+			return {"key": s3_key}
+
+	mgr = _Mgr()
+	mod.get_mount_manager = lambda: mgr
+	dest, base = mod._resolve_destination_path(
+		{"destination_type": "s3", "folder_type": "checkpoints"}, "uid-alice"
+	)
+	ok(dest == os.path.join(models_root, "checkpoints"), "boto3 mode stages under models root")
+	ok(base == os.path.realpath(models_root), "boto3 base_dir is models root")
+	os.makedirs(dest, exist_ok=True)
+	staged = os.path.join(dest, "new.safetensors")
+	with open(staged, "wb") as f:
+		f.write(b"x")
+	mod._upload_s3_staged_download(dest, "new.safetensors")
+	ok(len(mgr.uploads) == 1, "boto3 upload called after staged download")
+	ok(
+		mgr.uploads[0][1] == "models/checkpoints/new.safetensors",
+		"upload key is under models/{folder}/...",
+	)
+	mod.get_mount_manager = lambda: None
 
 	print()
 	if failed:

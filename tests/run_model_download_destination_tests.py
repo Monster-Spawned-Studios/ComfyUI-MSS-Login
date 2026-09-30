@@ -109,6 +109,107 @@ def run_tests():
 	except ImportError as e:
 		ok(False, f"unexpected ImportError: {e}")
 
+	print("TestB2PathStyleDefault")
+	# Minimal stubs so s3_mounter can load _load_runtime_config helpers
+	const_mod = types.ModuleType("mss_login.constants")
+	tmp_data = os.path.join(_PROJECT_ROOT, "tests", "_tmp_s3_path_style")
+	os.makedirs(tmp_data, exist_ok=True)
+	cfg_path = os.path.join(tmp_data, "config.json")
+	const_mod.DATA_DIR = tmp_data
+	const_mod.CONFIG_FILE_PATH = cfg_path
+	const_mod.SECRET_KEY = "test-secret-key-not-for-prod"
+	sys.modules["mss_login.constants"] = const_mod
+
+	json_mod = types.ModuleType("mss_login.utils.json_utils")
+
+	def _load_json(path, default=None):
+		if not os.path.isfile(path):
+			return default if default is not None else {}
+		import json as _json
+
+		with open(path, encoding="utf-8") as f:
+			return _json.load(f)
+
+	def _save_json(path, data):
+		import json as _json
+
+		with open(path, "w", encoding="utf-8") as f:
+			_json.dump(data, f)
+
+	json_mod.load_json_file = _load_json
+	json_mod.save_json_file = _save_json
+	sys.modules["mss_login.utils.json_utils"] = json_mod
+
+	# Avoid encrypted settings I/O during config load
+	app_store_mod = types.ModuleType("mss_login.utils.app_settings_store")
+
+	class _AppStore:
+		def get(self, *_a, **_k):
+			return ""
+
+		def set(self, *_a, **_k):
+			return None
+
+	app_store_mod.get_app_settings_store = lambda *_a, **_k: _AppStore()
+	sys.modules["mss_login.utils.app_settings_store"] = app_store_mod
+	enc_mod = types.ModuleType("mss_login.utils.encryption")
+	enc_mod.decrypt_value = lambda *_a, **_k: ""
+	enc_mod.encrypt_and_verify = lambda *_a, **_k: ""
+	sys.modules["mss_login.utils.encryption"] = enc_mod
+
+	import json as _json
+
+	with open(cfg_path, "w", encoding="utf-8") as f:
+		_json.dump(
+			{
+				"s3_storage": {
+					"enabled": True,
+					"endpoint_url": "https://s3.us-west-004.backblazeb2.com",
+					"bucket_name": "demo",
+					"mount": {"enabled": True},
+				}
+			},
+			f,
+		)
+	s3m = _load_module(
+		"mss_login.utils.s3_mounter",
+		os.path.join(_UTILS_DIR, "s3_mounter.py"),
+		"mss_login.utils",
+	)
+	ok(s3m.get_s3_provider_type("https://s3.us-west-004.backblazeb2.com") == "backblaze", "B2 detected")
+	cfg = s3m._load_runtime_config()
+	ok(cfg["mount"]["use_path_style"] is True, "B2 defaults use_path_style true when unset")
+
+	with open(cfg_path, "w", encoding="utf-8") as f:
+		_json.dump(
+			{
+				"s3_storage": {
+					"enabled": True,
+					"endpoint_url": "https://s3.us-west-004.backblazeb2.com",
+					"bucket_name": "demo",
+					"mount": {"enabled": True, "use_path_style": False},
+				}
+			},
+			f,
+		)
+	cfg = s3m._load_runtime_config()
+	ok(cfg["mount"]["use_path_style"] is False, "explicit false overrides B2 default")
+
+	with open(cfg_path, "w", encoding="utf-8") as f:
+		_json.dump(
+			{
+				"s3_storage": {
+					"enabled": True,
+					"endpoint_url": "https://s3.amazonaws.com",
+					"bucket_name": "demo",
+					"mount": {"enabled": True},
+				}
+			},
+			f,
+		)
+	cfg = s3m._load_runtime_config()
+	ok(cfg["mount"]["use_path_style"] is False, "AWS keeps path-style false by default")
+
 	print()
 	if failed:
 		print(f"Result: {failed} failed, {run - failed} passed, {run} total")
