@@ -1167,7 +1167,7 @@ renderUsers(list, container) {
                         ${createRoles.map(g => `<option value="${g}" ${g === "user" ? "selected" : ""}>${g.toUpperCase()}</option>`).join("")}
                     </select>
                 </div>
-                <button type="button" class="mss-login-btn btn-save" id="mss-login-create-user-btn">Create user</button>
+                <button type="button" class="mss-login-btn" id="mss-login-create-user-btn">Create user</button>
             </div>
             <p id="mss-login-create-user-status" class="mss-login-note" style="margin-top:8px;"></p>
         </div>`;
@@ -1277,7 +1277,7 @@ renderUsers(list, container) {
     }
 
     // --- Save handler per user ---
-    container.querySelectorAll(".btn-save").forEach(btn => {
+    container.querySelectorAll(".btn-save[data-user]").forEach(btn => {
         btn.onclick = async () => {
             const u = btn.dataset.user;
             const isOwnerUser = btn.dataset.isOwner === "true";
@@ -1291,14 +1291,18 @@ renderUsers(list, container) {
 
             btn.innerText = "Saving...";
             try {
-                await api.fetchApi(`/mss-login/api/users/${u}`, {
+                const res = await api.fetchApi(`/mss-login/api/users/${u}`, {
                     method: "PUT",
                     body: JSON.stringify({
                         groups: g,
                         sfw_check: sfw,
                     }),
                 });
-                btn.innerText = "Saved";
+                if (!res.ok) {
+                    btn.innerText = "Error";
+                } else {
+                    btn.innerText = "Saved";
+                }
             } catch (e) {
                 console.error("[mss-login] Failed to update user:", e);
                 btn.innerText = "Error";
