@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -35,6 +36,18 @@ _DEFAULT_MODEL_FOLDERS = [
 ]
 _ACCESS_KEY_SETTING = "s3_storage.access_key_encrypted"
 _SECRET_KEY_SETTING = "s3_storage.secret_key_encrypted"
+
+
+def get_s3_provider_type(endpoint_url: str) -> str:
+	"""Classify S3-compatible provider from endpoint URL."""
+	if not endpoint_url:
+		return "aws"
+	url = endpoint_url.lower().strip()
+	if re.search(r"backblaze", url) or re.search(r"\.backblazeb2\.com", url):
+		return "backblaze"
+	if re.search(r"\.amazonaws\.com", url) or not url:
+		return "aws"
+	return "generic"
 
 
 def _safe_bool(value, default: bool = False) -> bool:
@@ -109,13 +122,17 @@ def _load_encrypted_setting(setting_key: str) -> str:
 
 def _save_encrypted_setting(setting_key: str, plaintext: str) -> bool:
 	from ..constants import SECRET_KEY
-	from .encryption import encrypt_value
+	from .encryption import encrypt_and_verify
 
 	try:
-		ciphertext = encrypt_value(SECRET_KEY, plaintext.strip()) if plaintext else ""
-		if plaintext and not ciphertext:
+		plain = (plaintext or "").strip()
+		if not plain:
+			_get_app_store().set(setting_key, "")
+			return True
+		ciphertext = encrypt_and_verify(SECRET_KEY, plain)
+		if not ciphertext:
 			return False
-		_get_app_store().set(setting_key, ciphertext or "")
+		_get_app_store().set(setting_key, ciphertext)
 		return True
 	except Exception:
 		return False
@@ -144,10 +161,19 @@ def _load_runtime_config() -> dict:
 	access_env = (s3.get("access_key_id_env") or "S3_ACCESS_KEY_ID").strip()
 	secret_env = (s3.get("secret_access_key_env") or "S3_SECRET_ACCESS_KEY").strip()
 	model_folders = mount.get("model_folders") or list(_DEFAULT_MODEL_FOLDERS)
+	endpoint_url = (s3.get("endpoint_url") or "").strip()
+
+	# Explicit mount/s3 use_path_style wins; otherwise default true for Backblaze B2.
+	if "use_path_style" in mount:
+		use_path_style = _safe_bool(mount.get("use_path_style"), False)
+	elif "use_path_style" in s3:
+		use_path_style = _safe_bool(s3.get("use_path_style"), False)
+	else:
+		use_path_style = get_s3_provider_type(endpoint_url) == "backblaze"
 
 	return {
 		"enabled": _safe_bool(s3.get("enabled"), False),
-		"endpoint_url": (s3.get("endpoint_url") or "").strip(),
+		"endpoint_url": endpoint_url,
 		"bucket_name": (s3.get("bucket_name") or "").strip(),
 		"region": (s3.get("region") or "").strip(),
 		"prefix": (s3.get("prefix") or "comfyui").strip().strip("/"),
@@ -169,9 +195,7 @@ def _load_runtime_config() -> dict:
 			"mount_output": _safe_bool(mount.get("mount_output"), False),
 			"mount_input": _safe_bool(mount.get("mount_input"), False),
 			"read_only": _safe_bool(mount.get("read_only"), False),
-			"use_path_style": _safe_bool(
-				mount.get("use_path_style"), _safe_bool(s3.get("use_path_style"), False)
-			),
+			"use_path_style": use_path_style,
 			"allow_other": _safe_bool(mount.get("allow_other"), True),
 			"auto_install": _safe_bool(mount.get("auto_install"), True),
 		},
@@ -728,6 +752,58 @@ class S3MountManager:
 		safe = _sanitize_username(username)
 		return os.path.join(self._workflow_root, safe, "workflows")
 
+	def _workflow_s3_key(self, username: str, rel_name: str) -> str | None:
+		"""Relative S3 key (prefix applied by upload/download helpers) for a user workflow."""
+		safe = _sanitize_username(username)
+		clean = _safe_relpath(rel_name)
+		if clean is None:
+			return None
+		if clean:
+			return f"users/{safe}/workflows/{clean}"
+		return f"users/{safe}/workflows"
+
+	def _scan_remote_workflow_files_boto3(
+		self, username: str, max_size_bytes: int
+	) -> dict[str, float]:
+		"""Map workflow relpath -> last-modified epoch for boto3/S3 objects."""
+		prefix = self._workflow_s3_key(username, "")
+		if prefix is None:
+			return {}
+		prefix = prefix.rstrip("/") + "/"
+		result: dict[str, float] = {}
+		try:
+			objects = self._list_objects_boto3(prefix, max_keys=5000)
+		except Exception:
+			return {}
+		bucket_prefix = (self._cfg.get("prefix") or "").strip("/")
+		for obj in objects:
+			key = (obj.get("key") or "").replace("\\", "/")
+			# Strip bucket prefix + users/{user}/workflows/
+			rel = key
+			if bucket_prefix and rel.startswith(bucket_prefix + "/"):
+				rel = rel[len(bucket_prefix) + 1 :]
+			marker = f"users/{_sanitize_username(username)}/workflows/"
+			if not rel.startswith(marker):
+				continue
+			rel_name = rel[len(marker) :]
+			if not rel_name.lower().endswith(".json"):
+				continue
+			if _safe_relpath(rel_name) is None:
+				continue
+			size = int(obj.get("size") or 0)
+			if size > max_size_bytes:
+				continue
+			mtime = 0.0
+			lm = obj.get("last_modified") or ""
+			if lm:
+				try:
+					parsed = datetime.fromisoformat(lm.replace("Z", "+00:00"))
+					mtime = parsed.timestamp()
+				except Exception:
+					mtime = 0.0
+			result[rel_name] = mtime
+		return result
+
 	def _scan_local_json_files(self, base_dir: str, max_size_bytes: int) -> dict[str, float]:
 		result: dict[str, float] = {}
 		if not os.path.isdir(base_dir):
@@ -775,6 +851,46 @@ class S3MountManager:
 	def _is_s3_active(self) -> bool:
 		return self.is_mounted() or self._in_boto3_mode()
 
+	def _sync_user_boto3(self, username: str) -> dict:
+		from . import user_env
+
+		max_size = int(self._cfg["workflow_sync"].get("max_workflow_size_mb", 50)) * 1024 * 1024
+		local_dir = user_env.get_user_workflow_dir(username)
+		os.makedirs(local_dir, exist_ok=True)
+
+		local_files = self._scan_local_json_files(local_dir, max_size)
+		remote_files = self._scan_remote_workflow_files_boto3(username, max_size)
+		stats = {"uploaded": 0, "downloaded": 0, "skipped": 0, "errors": 0}
+
+		for rel_name in sorted(set(local_files) | set(remote_files)):
+			try:
+				s3_key = self._workflow_s3_key(username, rel_name)
+				local_path = _resolve_under(local_dir, rel_name)
+				if s3_key is None or local_path is None:
+					stats["errors"] += 1
+					continue
+				if rel_name in local_files and rel_name not in remote_files:
+					self.upload_file(local_path, s3_key)
+					stats["uploaded"] += 1
+				elif rel_name not in local_files and rel_name in remote_files:
+					self.download_file(s3_key, local_path)
+					stats["downloaded"] += 1
+				else:
+					action = self._resolve_conflict(local_files[rel_name], remote_files[rel_name])
+					if action == "upload":
+						self.upload_file(local_path, s3_key)
+						stats["uploaded"] += 1
+					elif action == "download":
+						self.download_file(s3_key, local_path)
+						stats["downloaded"] += 1
+					else:
+						stats["skipped"] += 1
+			except Exception:
+				stats["errors"] += 1
+
+		self._last_sync_times[username] = time.time()
+		return stats
+
 	def sync_user(self, username: str) -> dict:
 		from . import user_env
 
@@ -782,6 +898,9 @@ class S3MountManager:
 			return {"skipped": True, "reason": "s3 unavailable"}
 		if not username or username == "guest":
 			return {"skipped": True, "reason": "guest user"}
+
+		if self._in_boto3_mode():
+			return self._sync_user_boto3(username)
 
 		max_size = int(self._cfg["workflow_sync"].get("max_workflow_size_mb", 50)) * 1024 * 1024
 		local_dir = user_env.get_user_workflow_dir(username)
@@ -837,6 +956,12 @@ class S3MountManager:
 	def upload_user_workflow(self, username: str, rel_name: str, local_path: str) -> None:
 		if not self._cfg["workflow_sync"].get("sync_on_save", True) or not self._is_s3_active():
 			return
+		if self._in_boto3_mode():
+			s3_key = self._workflow_s3_key(username, rel_name)
+			if s3_key and os.path.isfile(local_path):
+				self.upload_file(local_path, s3_key)
+				self._last_sync_times[username] = time.time()
+			return
 		remote_dir = self._workflow_dir_for_user(username)
 		os.makedirs(remote_dir, exist_ok=True)
 		self._copy_local_to_remote(local_path, remote_dir, rel_name)
@@ -844,6 +969,12 @@ class S3MountManager:
 
 	def delete_user_workflow(self, username: str, rel_name: str) -> None:
 		if not self._cfg["workflow_sync"].get("sync_on_delete", True) or not self._is_s3_active():
+			return
+		if self._in_boto3_mode():
+			s3_key = self._workflow_s3_key(username, rel_name)
+			if s3_key:
+				self.delete_object(s3_key)
+				self._last_sync_times[username] = time.time()
 			return
 		remote_dir = self._workflow_dir_for_user(username)
 		target = _resolve_under(remote_dir, rel_name)
@@ -860,11 +991,29 @@ class S3MountManager:
 
 		max_size = int(self._cfg["workflow_sync"].get("max_workflow_size_mb", 50)) * 1024 * 1024
 		local_dir = user_env.get_user_workflow_dir(username)
-		remote_dir = self._workflow_dir_for_user(username)
 		local_files = set(self._scan_local_json_files(local_dir, max_size).keys())
+
+		if self._in_boto3_mode():
+			remote_files = self._scan_remote_workflow_files_boto3(username, max_size)
+			downloaded: list[dict] = []
+			for rel_name in sorted(remote_files.keys()):
+				if rel_name in local_files:
+					continue
+				s3_key = self._workflow_s3_key(username, rel_name)
+				local_path = _resolve_under(local_dir, rel_name)
+				if not s3_key or not local_path:
+					continue
+				try:
+					self.download_file(s3_key, local_path)
+					downloaded.append(get_file_info(local_dir, rel_name))
+				except Exception:
+					continue
+			return downloaded
+
+		remote_dir = self._workflow_dir_for_user(username)
 		remote_files = self._scan_local_json_files(remote_dir, max_size)
 
-		downloaded: list[dict] = []
+		downloaded = []
 		for rel_name in sorted(remote_files.keys()):
 			if rel_name in local_files:
 				continue

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import re
 from typing import Optional
 
-from .s3_mounter import get_s3_manager, init_s3_manager
+from .s3_mounter import get_s3_manager, get_s3_provider_type, init_s3_manager
 
 _s3_client = None
 
@@ -51,12 +50,9 @@ def reset_s3_client() -> None:
 	_s3_client = None
 
 
-def get_s3_provider_type(endpoint_url: str) -> str:
-	if not endpoint_url:
-		return "aws"
-	url = endpoint_url.lower().strip()
-	if re.search(r"backblaze", url) or re.search(r"\.backblazeb2\.com", url):
-		return "backblaze"
-	if re.search(r"\.amazonaws\.com", url) or not url:
-		return "aws"
-	return "generic"
+__all__ = [
+	"S3StorageClient",
+	"get_s3_client",
+	"get_s3_provider_type",
+	"reset_s3_client",
+]
