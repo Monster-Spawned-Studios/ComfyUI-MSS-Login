@@ -84,6 +84,15 @@ if _old_key and _old_key != SECRET_KEY:
 
 users_db = UsersDB(USERS_DB_CONFIG, SECRET_KEY, LEGACY_USERS_JSON_PATH)
 
+# One-time migration: move plaintext ntfy.api_token from config.json into encrypted app_settings
+try:
+	from .utils.ntfy_notifier import migrate_ntfy_token_from_config
+
+	if migrate_ntfy_token_from_config():
+		logger.info("[mss_login] Migrated ntfy API token into encrypted database storage.")
+except Exception:
+	pass
+
 # One-time migration: copy api_tokens from separate DB into unified DB (when encryption off)
 if USERS_DB_CONFIG.get("backend") == "sqlite" and not USERS_DB_CONFIG.get("encryption_level"):
 	_cfg = _load_config(CONFIG_FILE_PATH)

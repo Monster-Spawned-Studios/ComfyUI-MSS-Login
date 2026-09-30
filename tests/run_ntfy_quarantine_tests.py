@@ -40,15 +40,37 @@ _install_stub_packages()
 const_mod = types.ModuleType("mss_login.constants")
 const_mod.DEBUG_MODE = False
 const_mod.NTFY_API_KEY = "env-fallback-token"
-const_mod.SECRET_KEY = "test-secret-key"
+const_mod.SECRET_KEY = "test-secret-key-for-ntfy-fernet!!"
 const_mod.CONFIG_FILE_PATH = os.path.join(_PROJECT_ROOT, "tests", "tmp-config.json")
 const_mod.DATA_DIR = os.path.join(_PROJECT_ROOT, "tests", "tmp-data")
+const_mod.USERS_DB_CONFIG = {"backend": "sqlite", "sqlite_path": ":memory:", "encryption_level": ""}
 const_mod.get_domain = lambda use_https=True, use_port=False, port=8188: "https://localhost"
 sys.modules["mss_login.constants"] = const_mod
 json_utils = _load_module(
 	"mss_login.utils.json_utils", os.path.join(_UTILS_DIR, "json_utils.py"), "mss_login.utils"
 )
 sys.modules["mss_login.utils.json_utils"] = json_utils
+encryption = _load_module(
+	"mss_login.utils.encryption", os.path.join(_UTILS_DIR, "encryption.py"), "mss_login.utils"
+)
+sys.modules["mss_login.utils.encryption"] = encryption
+
+# In-memory app_settings stub (avoids real SQLite during unit tests)
+_app_settings: dict[str, str] = {}
+
+
+class _MemAppSettings:
+	def get(self, key: str):
+		return _app_settings.get(key)
+
+	def set(self, key: str, value: str) -> None:
+		_app_settings[key] = value or ""
+
+
+app_settings_mod = types.ModuleType("mss_login.utils.app_settings_store")
+app_settings_mod.get_app_settings_store = lambda config: _MemAppSettings()
+sys.modules["mss_login.utils.app_settings_store"] = app_settings_mod
+
 ntfy_notifier = _load_module(
 	"mss_login.utils.ntfy_notifier", os.path.join(_UTILS_DIR, "ntfy_notifier.py"), "mss_login.utils"
 )
@@ -117,6 +139,7 @@ def run_tests():
 	print("TestNtfyConfigPersistence")
 	config_path = const_mod.CONFIG_FILE_PATH
 	os.makedirs(os.path.dirname(config_path), exist_ok=True)
+	_app_settings.clear()
 	try:
 		with open(config_path, "w", encoding="utf-8") as f:
 			json.dump({}, f)
@@ -128,7 +151,17 @@ def run_tests():
 		)
 		cfg = ntfy_notifier._load_ntfy_config()
 		ok(cfg.get("base_url") == "https://ntfy.example.com", "custom base_url saved")
-		ok(cfg.get("api_token") == "cfg-token", "api_token saved")
+		ok(cfg.get("api_token") == "cfg-token", "api_token resolved from encrypted DB")
+		with open(config_path, "r", encoding="utf-8") as f:
+			raw_cfg = json.load(f)
+		ok(
+			not (raw_cfg.get("ntfy") or {}).get("api_token"),
+			"api_token not stored plaintext in config.json",
+		)
+		ok(
+			bool(_app_settings.get(ntfy_notifier.NTFY_API_TOKEN_SETTING)),
+			"encrypted token present in app_settings",
+		)
 		ntfy_notifier.save_ntfy_config(
 			"topic-a", ["image_generated"], base_url=None, api_token=None
 		)
@@ -169,7 +202,21 @@ def run_tests():
 			"shared_items_removed" in ntfy_notifier.EVENT_KEYS,
 			"shared_items_removed is a toggleable event key",
 		)
+
+		# Migration: plaintext config token -> encrypted DB
+		_app_settings.clear()
+		with open(config_path, "w", encoding="utf-8") as f:
+			json.dump({"ntfy": {"topic": "t", "api_token": "legacy-plain", "base_url": "https://ntfy.sh"}}, f)
+		ok(ntfy_notifier.migrate_ntfy_token_from_config() is True, "plaintext ntfy token migrates")
+		with open(config_path, "r", encoding="utf-8") as f:
+			after = json.load(f)
+		ok(not (after.get("ntfy") or {}).get("api_token"), "legacy plaintext cleared after migrate")
+		ok(
+			ntfy_notifier._load_encrypted_ntfy_token() == "legacy-plain",
+			"migrated token decrypts correctly",
+		)
 	finally:
+		_app_settings.clear()
 		if os.path.isfile(config_path):
 			os.remove(config_path)
 

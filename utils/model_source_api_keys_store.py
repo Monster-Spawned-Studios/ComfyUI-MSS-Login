@@ -112,10 +112,11 @@ class _SqliteApiKeysStore:
 	def set_key(self, user_id: str, source: str, api_key: str) -> bool:
 		if source not in SOURCES:
 			return False
-		from .encryption import encrypt_value
+		from .encryption import encrypt_and_verify
 
-		encrypted = encrypt_value(self._secret_key, (api_key or "").strip())
-		if not encrypted and (api_key or "").strip():
+		plain = (api_key or "").strip()
+		encrypted = encrypt_and_verify(self._secret_key, plain) if plain else ""
+		if plain and not encrypted:
 			return False
 		now = time.time()
 		try:
@@ -184,10 +185,11 @@ class _PostgresApiKeysStore:
 	def set_key(self, user_id: str, source: str, api_key: str) -> bool:
 		if source not in SOURCES:
 			return False
-		from .encryption import encrypt_value
+		from .encryption import encrypt_and_verify
 
-		encrypted = encrypt_value(self._secret_key, (api_key or "").strip())
-		if not encrypted and (api_key or "").strip():
+		plain = (api_key or "").strip()
+		encrypted = encrypt_and_verify(self._secret_key, plain) if plain else ""
+		if plain and not encrypted:
 			return False
 		now = time.time()
 		try:
@@ -265,10 +267,11 @@ class _MySQLApiKeysStore:
 	def set_key(self, user_id: str, source: str, api_key: str) -> bool:
 		if source not in SOURCES:
 			return False
-		from .encryption import encrypt_value
+		from .encryption import encrypt_and_verify
 
-		encrypted = encrypt_value(self._secret_key, (api_key or "").strip())
-		if not encrypted and (api_key or "").strip():
+		plain = (api_key or "").strip()
+		encrypted = encrypt_and_verify(self._secret_key, plain) if plain else ""
+		if plain and not encrypted:
 			return False
 		now = time.time()
 		try:

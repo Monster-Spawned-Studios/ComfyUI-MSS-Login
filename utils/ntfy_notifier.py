@@ -10,7 +10,9 @@ Supports the full ntfy publishing API (https://docs.ntfy.sh/publish/):
   - Bearer-token authentication
 
 Admin configures topic, base URL, and per-event toggles in config.json
-(via the /mss-login/api/settings/ntfy admin endpoint).
+(via the /mss-login/api/settings/ntfy admin endpoint). The API token is stored
+as Fernet ciphertext in the owner-chosen users DB (app_settings), never as
+plaintext in config.json.
 """
 
 from __future__ import annotations
@@ -28,13 +30,18 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timezone
 from typing import Dict, List, Optional, Union
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import requests
 
-from ..constants import DEBUG_MODE, NTFY_API_KEY, SECRET_KEY, get_domain
+from ..constants import DEBUG_MODE, NTFY_API_KEY, SECRET_KEY, USERS_DB_CONFIG, get_domain
+from .app_settings_store import get_app_settings_store
+from .encryption import decrypt_value, encrypt_and_verify
+from .json_utils import load_json_file, save_json_file
 
 logger = logging.getLogger("mss-login.ntfy")
+
+NTFY_API_TOKEN_SETTING = "ntfy.api_token_encrypted"
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -141,34 +148,111 @@ _EVENT_DEFAULTS: dict[str, dict[str, str | list[str]]] = {
 # ---------------------------------------------------------------------------
 
 
-def _load_ntfy_config() -> dict:
+def _get_config_path() -> str:
+	from ..constants import CONFIG_FILE_PATH
+
+	return CONFIG_FILE_PATH
+
+
+def _load_encrypted_ntfy_token() -> str:
+	"""Load ntfy API token from Fernet ciphertext in app_settings."""
+	try:
+		encrypted = get_app_settings_store(USERS_DB_CONFIG).get(NTFY_API_TOKEN_SETTING) or ""
+		if not encrypted:
+			return ""
+		return (decrypt_value(SECRET_KEY, encrypted) or "").strip()
+	except Exception:
+		return ""
+
+
+def _save_encrypted_ntfy_token(plaintext: str) -> bool:
 	"""
-	Load ntfy configuration from config.json.
-
-	Expected structure inside config.json::
-
-	    {
-	        "ntfy": {
-	            "topic": "my-comfyui-topic",
-	            "base_url": "https://ntfy.sh",
-	            "enabled_events": ["user_login", "nsfw_block", ...]
-	        }
-	    }
-
-	Returns a dict with keys: topic, enabled_events, base_url, api_token.
+	Persist ntfy token as Fernet ciphertext after round-trip verify.
+	Empty plaintext clears the stored secret. Returns False if encrypt/verify fails.
 	"""
 	try:
-		from ..constants import CONFIG_FILE_PATH
-		from ..utils.json_utils import load_json_file
+		store = get_app_settings_store(USERS_DB_CONFIG)
+		plain = (plaintext or "").strip()
+		if not plain:
+			store.set(NTFY_API_TOKEN_SETTING, "")
+			return True
+		ciphertext = encrypt_and_verify(SECRET_KEY, plain)
+		if not ciphertext:
+			return False
+		store.set(NTFY_API_TOKEN_SETTING, ciphertext)
+		return True
+	except Exception:
+		return False
 
-		cfg = load_json_file(CONFIG_FILE_PATH, {})
+
+def migrate_ntfy_token_from_config() -> bool:
+	"""
+	One-time migration: move plaintext ntfy.api_token from config.json into
+	Fernet-encrypted app_settings. Clears config only after verified round-trip.
+
+	Returns True if a migration ran successfully.
+	"""
+	try:
+		config_path = _get_config_path()
+		cfg = load_json_file(config_path, {})
+		if not isinstance(cfg, dict):
+			return False
+		ntfy = cfg.get("ntfy")
+		if not isinstance(ntfy, dict):
+			return False
+		legacy = (ntfy.get("api_token") or "").strip()
+		if not legacy:
+			return False
+		# Prefer existing DB ciphertext if already present and decryptable
+		existing = _load_encrypted_ntfy_token()
+		if existing:
+			ntfy["api_token"] = ""
+			cfg["ntfy"] = ntfy
+			save_json_file(config_path, cfg)
+			return True
+		if not _save_encrypted_ntfy_token(legacy):
+			logger.warning(
+				"[mss-login] Refusing to clear plaintext ntfy.api_token: encrypt/verify failed"
+			)
+			return False
+		# Confirm decrypt before wiping JSON
+		if not hmac.compare_digest(_load_encrypted_ntfy_token(), legacy):
+			logger.warning(
+				"[mss-login] Refusing to clear plaintext ntfy.api_token: decrypt mismatch"
+			)
+			return False
+		ntfy["api_token"] = ""
+		cfg["ntfy"] = ntfy
+		save_json_file(config_path, cfg)
+		logger.info("[mss-login] Migrated ntfy.api_token from config.json into encrypted DB.")
+		return True
+	except Exception as exc:
+		logger.warning("[mss-login] ntfy token migration failed: %s", exc)
+		return False
+
+
+def _load_ntfy_config() -> dict:
+	"""
+	Load ntfy configuration.
+
+	Non-secret fields (topic, base_url, enabled_events) come from config.json.
+	api_token resolution order: encrypted DB → legacy config.json (migrates) → empty
+	(env is applied later via ``_resolve_api_key``).
+	"""
+	try:
+		migrate_ntfy_token_from_config()
+		cfg = load_json_file(_get_config_path(), {})
 		ntfy = cfg.get("ntfy") or {}
 		topic = (ntfy.get("topic") or "").strip()
 		enabled = ntfy.get("enabled_events")
 		if not isinstance(enabled, list):
 			enabled = []
 		base_url = (ntfy.get("base_url") or DEFAULT_BASE_URL).rstrip("/")
-		api_token = (ntfy.get("api_token") or "").strip()
+		api_token = _load_encrypted_ntfy_token()
+		if not api_token:
+			legacy = (ntfy.get("api_token") or "").strip()
+			if legacy:
+				api_token = legacy
 		return {
 			"topic": topic,
 			"enabled_events": enabled,
@@ -186,7 +270,7 @@ def get_ntfy_config(include_secret: bool = False) -> dict:
 		"topic": cfg.get("topic", ""),
 		"enabled_events": cfg.get("enabled_events", []),
 		"base_url": cfg.get("base_url", DEFAULT_BASE_URL),
-		"has_api_token": bool(cfg.get("api_token")),
+		"has_api_token": bool(cfg.get("api_token") or (NTFY_API_KEY or "").strip()),
 	}
 	if include_secret:
 		out["api_token"] = cfg.get("api_token", "")
@@ -201,8 +285,6 @@ def _validate_ntfy_base_url(url: str) -> str:
 	Raises ValueError if the URL scheme is HTTP for a non-local host.
 	Returns the normalised URL (trailing slash stripped).
 	"""
-	from urllib.parse import urlparse
-
 	url = (url or DEFAULT_BASE_URL).strip().rstrip("/")
 	parsed = urlparse(url)
 	scheme = (parsed.scheme or "").lower()
@@ -223,7 +305,7 @@ def save_ntfy_config(
 	topic: str, enabled_events: list[str], base_url: str | None = None, api_token: str | None = None
 ) -> None:
 	"""
-	Persist ntfy config to config.json.
+	Persist ntfy non-secret config to config.json; store api_token encrypted in DB.
 
 	Parameters
 	----------
@@ -236,17 +318,16 @@ def save_ntfy_config(
 	    If provided (including empty string), validate and save (empty -> DEFAULT_BASE_URL).
 	    Must use HTTPS for non-local hosts.
 	api_token : str | None
-	    Optional ntfy bearer token stored in config. If None, keep existing token.
+	    Optional ntfy bearer token. Stored Fernet-encrypted in the users DB.
+	    If None, keep the existing token. Empty string clears the stored token.
 
 	Raises
 	------
 	ValueError
-	    If ``base_url`` uses HTTP for a non-local hostname.
+	    If ``base_url`` uses HTTP for a non-local hostname, or token encrypt/verify fails.
 	"""
-	from ..constants import CONFIG_FILE_PATH
-	from ..utils.json_utils import load_json_file, save_json_file
-
-	cfg = load_json_file(CONFIG_FILE_PATH, {})
+	config_path = _get_config_path()
+	cfg = load_json_file(config_path, {})
 	if not isinstance(cfg, dict):
 		cfg = {}
 	current_ntfy = cfg.get("ntfy") or {}
@@ -256,20 +337,21 @@ def save_ntfy_config(
 		validated_url = _validate_ntfy_base_url(current_ntfy.get("base_url") or "")
 	else:
 		validated_url = _validate_ntfy_base_url(base_url)
-	resolved_token = (
-		current_ntfy.get("api_token", "") if api_token is None else str(api_token or "").strip()
-	)
+	if api_token is not None:
+		if not _save_encrypted_ntfy_token(str(api_token or "").strip()):
+			raise ValueError("Failed to encrypt ntfy API token; token was not saved")
+	# Never persist plaintext token in config.json
 	cfg["ntfy"] = {
 		"topic": (topic or "").strip(),
 		"enabled_events": (list(enabled_events) if isinstance(enabled_events, list) else []),
 		"base_url": validated_url,
-		"api_token": resolved_token,
+		"api_token": "",
 	}
-	save_json_file(CONFIG_FILE_PATH, cfg)
+	save_json_file(config_path, cfg)
 
 
 def _resolve_api_key(explicit_key: str, config_key: str) -> str:
-	"""Resolve ntfy key precedence: explicit arg > config token > env token."""
+	"""Resolve ntfy key precedence: explicit arg > DB/config token > env token."""
 	if explicit_key:
 		return explicit_key.strip()
 	if config_key:

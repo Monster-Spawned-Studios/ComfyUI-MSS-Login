@@ -5,6 +5,7 @@ Uses SECRET_KEY to derive an encryption key via HKDF; Fernet for symmetric encry
 Do not log or expose SECRET_KEY or derived keys.
 """
 
+import base64
 import hashlib
 import hmac
 from typing import Optional
@@ -35,8 +36,6 @@ def _derive_key(secret_key: str) -> bytes:
 	)
 	key_bytes = hkdf.derive(key_material)
 	# Fernet needs base64-encoded 32-byte key
-	import base64
-
 	return base64.urlsafe_b64encode(key_bytes)
 
 
@@ -68,6 +67,26 @@ def decrypt_value(secret_key: str, ciphertext: str) -> str | None:
 		return pt.decode("utf-8")
 	except Exception:
 		return None
+
+
+def encrypt_and_verify(secret_key: str, plaintext: str) -> str | None:
+	"""
+	Encrypt plaintext and verify round-trip decrypt before returning ciphertext.
+
+	Returns ciphertext only when decrypt yields the same plaintext (constant-time
+	compare). Returns None on empty input, crypto failure, or round-trip mismatch
+	so callers never persist undecryptable blobs.
+	"""
+	plain = (plaintext or "").strip()
+	if not plain:
+		return None
+	ciphertext = encrypt_value(secret_key, plain)
+	if not ciphertext:
+		return None
+	round_trip = decrypt_value(secret_key, ciphertext)
+	if round_trip is None or not hmac.compare_digest(round_trip, plain):
+		return None
+	return ciphertext
 
 
 def hash_backup_code(backup_code: str) -> str:
