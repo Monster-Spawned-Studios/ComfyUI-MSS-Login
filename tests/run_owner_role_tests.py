@@ -135,7 +135,10 @@ def run_tests():
 		# Empty DB forces admin=True and owner grant inside add_user
 		_buid, boot_rec = db2.get_user(username="bootstrap")
 		boot_groups = [g.lower() for g in boot_rec.get("groups", [])]
-		ok("owner" in boot_groups and "admin" in boot_groups, "empty-DB first user gets owner+admin")
+		ok(
+			"owner" in boot_groups and "admin" in boot_groups,
+			"empty-DB first user gets owner+admin",
+		)
 		ok(boot_rec.get("admin") is True, "empty-DB first user admin flag True")
 
 		# Normalize helper unit check
@@ -146,6 +149,27 @@ def run_tests():
 		ok(g2 == ["user"] and a2 is False, "normalize user unchanged")
 		g3, a3 = UsersDB._normalize_owner_groups(["owner", "admin"], True)
 		ok(g3 == ["owner", "admin"] and a3 is True, "normalize owner+admin unchanged")
+
+		# Create-with-role (owner API path via add_user groups=)
+		print("TestAddUserWithExplicitRole")
+		power_uid = str(uuid.uuid4())
+		db.add_user(power_uid, "poweruser", "PowerUser1!ab", admin=False, groups=["power"])
+		_puid, power_rec = db.get_user(username="poweruser")
+		ok(power_rec.get("groups") == ["power"], "explicit power role assigned")
+		ok(power_rec.get("admin") is False, "power role is not admin")
+		admin2_uid = str(uuid.uuid4())
+		db.add_user(admin2_uid, "admin2", "AdminTwo1!ab", admin=True, groups=["admin"])
+		_a2, admin2_rec = db.get_user(username="admin2")
+		ok(admin2_rec.get("groups") == ["admin"], "explicit admin role assigned")
+		# Refuse minting second owner via groups=
+		fake_owner_uid = str(uuid.uuid4())
+		db.add_user(
+			fake_owner_uid, "fakeowner", "FakeOwner1!ab", admin=True, groups=["owner", "admin"]
+		)
+		_fuid, fake_rec = db.get_user(username="fakeowner")
+		fake_groups = [g.lower() for g in fake_rec.get("groups", [])]
+		ok("owner" not in fake_groups, "second owner refused when groups=owner")
+		ok("admin" in fake_groups, "stripped owner still keeps admin when requested")
 
 	print(f"\n{run} tests, {failed} failed")
 	return 0 if failed == 0 else 1

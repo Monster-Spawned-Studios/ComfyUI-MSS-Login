@@ -4,6 +4,8 @@
 This module contains the routes for the admin API.
 """
 
+import uuid
+
 from aiohttp import web
 
 from ..constants import (
@@ -31,6 +33,8 @@ from ..globals import ip_filter, jwt_auth, logger, routes, users_db
 from ..utils.admin_logic import delete_user_record, patch_user_group
 from ..utils.api_token_store import reset_api_token_store
 from ..utils.bootstrap import _apply_owner_max_merge, load_default_groups
+from ..utils.input_sanitizer import sanitize_password_input, sanitize_username
+from ..utils.ip_filter import get_ip
 from ..utils.json_utils import load_json_file, save_json_file
 from ..utils.model_cache import get_model_cache
 from ..utils.model_download_redirect import (
@@ -42,6 +46,7 @@ from ..utils.model_visibility_policy import user_can_manage_model_sharing
 from ..utils.ntfy_notifier import (
 	EVENT_KEYS,
 	get_ntfy_config,
+	notify_user_created,
 	save_ntfy_config,
 	send_notification,
 	verify_signed_action_token,
@@ -58,6 +63,8 @@ from ..utils.tailscale_network import detect_network_info
 from ..utils.updater import get_cached_status
 from ..utils.user_console_log import get_lines as get_user_console_lines
 from ..utils.user_console_log import list_users as list_console_users
+from ..utils.user_env import get_user_workflow_dir
+from ..utils.validate import validate_password, validate_username
 
 
 def is_admin(request):
@@ -797,6 +804,64 @@ async def api_users(request: web.Request) -> web.Response:
 
 
 routes.get("/api/mss-login/api/users")(api_users)
+
+_CREATE_USER_ROLES = frozenset({"admin", "power", "user", "guest"})
+
+
+@routes.post("/mss-login/api/users")
+async def api_create_user(request: web.Request) -> web.Response:
+	"""Create a user with an assigned role. Owner only. Cannot mint a second owner."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	try:
+		data = await request.json()
+	except Exception:
+		return web.json_response({"error": "Invalid JSON"}, status=400)
+	if not isinstance(data, dict):
+		return web.json_response({"error": "Invalid JSON"}, status=400)
+
+	# Prefer raw password from body (sanitizer may have mutated password fields elsewhere)
+	new_username = sanitize_username(data.get("username") or data.get("new_user_username") or "")
+	raw_password = data.get("password") or data.get("new_user_password") or ""
+	new_password = sanitize_password_input(raw_password)
+	role = str(data.get("role") or data.get("group") or "user").strip().lower()
+
+	ok, msg = validate_username(new_username)
+	if not ok:
+		return web.json_response({"error": msg}, status=400)
+	ok, msg = validate_password(new_password)
+	if not ok:
+		return web.json_response({"error": msg}, status=400)
+	if role == "owner":
+		return web.json_response(
+			{
+				"error": "Cannot create a second owner via this endpoint. Transfer ownership from Users & Roles."
+			},
+			status=400,
+		)
+	if role not in _CREATE_USER_ROLES:
+		return web.json_response(
+			{"error": f"Invalid role. Allowed: {', '.join(sorted(_CREATE_USER_ROLES))}"}, status=400
+		)
+	if None not in users_db.get_user(new_username):
+		return web.json_response({"error": "Username exists"}, status=400)
+
+	groups = [role]
+	is_admin_flag = role == "admin"
+	users_db.add_user(str(uuid.uuid4()), new_username, new_password, is_admin_flag, groups=groups)
+	try:
+		get_user_workflow_dir(new_username)
+	except Exception:
+		pass
+	try:
+		caller, _ = _get_caller_username_and_groups(request)
+		notify_user_created(new_username, caller or "owner", get_ip(request))
+	except Exception:
+		pass
+	return web.json_response({"status": "ok", "username": new_username, "role": role}, status=201)
+
+
+routes.post("/api/mss-login/api/users")(api_create_user)
 
 
 @routes.put("/mss-login/api/users/{target_user}")

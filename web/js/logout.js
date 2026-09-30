@@ -224,6 +224,23 @@ function openProfileMenu(anchor, me) {
     menu.appendChild(settingsBtn);
   }
 
+  const isOwner =
+    Array.isArray(me?.groups) &&
+    me.groups.map((g) => String(g).toLowerCase()).includes("owner");
+  if (isOwner && !guest) {
+    const registerBtn = document.createElement("button");
+    registerBtn.type = "button";
+    registerBtn.className = "mss-login-profile-item";
+    registerBtn.textContent = "Register user";
+    registerBtn.setAttribute("role", "menuitem");
+    registerBtn.addEventListener("click", () => {
+      closeProfileMenu();
+      window._mss_loginPreferUsersTab = true;
+      tryOpenMssLoginDialog();
+    });
+    menu.appendChild(registerBtn);
+  }
+
   // Extension radial-menu items (Gallery, etc.) — skip duplicates of settings/logout
   try {
     const extButtons =

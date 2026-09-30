@@ -770,8 +770,20 @@ class UsersDB:
 				return True
 		return False
 
-	def add_user(self, user_id: str, username: str, password: str, admin: bool) -> None:
-		"""Add a user to the database."""
+	def add_user(
+		self,
+		user_id: str,
+		username: str,
+		password: str,
+		admin: bool,
+		groups: list[str] | None = None,
+	) -> None:
+		"""Add a user to the database.
+
+		When ``groups`` is provided (owner create-user API), those groups are used
+		as-is (caller must not pass ``owner`` for a second owner). Otherwise the
+		legacy bootstrap/admin/user assignment applies.
+		"""
 		try:
 			self.load_users()
 			username = _sanitize_username(username)
@@ -783,12 +795,29 @@ class UsersDB:
 				admin = True
 			# First admin gets owner only when no owner/admin exists yet
 			grant_owner = bool(admin) and not has_admin and not has_owner
-			groups = ["owner", "admin"] if grant_owner else (["admin"] if admin else ["user"])
+			if groups is not None:
+				normalized = [str(g).strip().lower() for g in groups if str(g).strip()]
+				if not normalized:
+					normalized = ["user"]
+				# Never mint a second owner through this path
+				if "owner" in normalized and (has_owner or has_admin or len(self.users) > 0):
+					normalized = [g for g in normalized if g != "owner"]
+					if not normalized:
+						normalized = ["admin"] if admin else ["user"]
+				if "owner" in normalized and "admin" not in normalized:
+					normalized = list(normalized) + ["admin"]
+				is_admin_flag = "admin" in normalized or "owner" in normalized
+				assigned = normalized
+			else:
+				assigned = (
+					["owner", "admin"] if grant_owner else (["admin"] if admin else ["user"])
+				)
+				is_admin_flag = bool(admin) or grant_owner
 			user = {
 				"username": username,
 				"password": self.hash_password(password),
-				"admin": bool(admin),
-				"groups": groups,
+				"admin": bool(is_admin_flag),
+				"groups": assigned,
 			}
 			self._backend.insert(user_id, user, self._secret_key)
 			self.users[user_id] = user
