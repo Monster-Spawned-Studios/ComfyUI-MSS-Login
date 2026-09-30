@@ -80,6 +80,9 @@ Never `git commit` or `git push` unless the user explicitly asks to commit, push
 - Nested MSS-Login configuration pages should offer back navigation to the main MSS-Login config menu without closing and reopening the dialog.
 - For local ComfyUI debugging, support a manually specified test-instance path plus a toggleable auto-install when that path has no `main.py`.
 - Agent-agnostic project rules belong in `.agents/rules/` (cross-agent); keep AGENTS.md in sync when adding always-on rules.
+- When asked to commit, split changes into small, digestible, topic-scoped commits rather than one large dump.
+- Only the owner (last-owner / admin-owner) may edit administrator group permissions; admins must not unlock that matrix for themselves.
+- Owner-only user registration belongs in the avatar menu and MSS-Login dialog (with role chosen at create time); do not force owners through a separate `/register` navigation for that flow.
 
 ## Learned Workspace Facts
 
@@ -89,3 +92,9 @@ Never `git commit` or `git push` unless the user explicitly asks to commit, push
 - Sanitizer middleware consumes the body via `request.post()`; multipart handlers (for example avatar upload) must reuse that parsed form instead of calling `request.multipart()` again.
 - Local ComfyUI debug settings live in gitignored `.vscode/comfyui-test.local.json` (path, `autoInstall`, flavor); see `.vscode/comfyui-test.settings.example.json`.
 - Auth compatibility coverage is in `tests/run_auth_compat_tests.py` (password XSS exemption, legacy dual-verify, ephemeral key reuse, JSON credentials) and is wired into CI.
+- Owner counts as admin for last-admin / `_has_admin` checks; never mint a second owner after bootstrap; owner updates must preserve `owner`+`admin` membership.
+- App-stored secrets (CivitAI, HuggingFace, ntfy, S3) are Fernet ciphertext in the owner-chosen users DB—not plaintext JSON; migrate with dual-read, encrypt, round-trip verify, then clear legacy files.
+- Model downloads (MSS-Login and Civicomfy/Manager routes) require `can_download_models`; under model isolation, post-download ACL grants are file-narrow by default, not all-models.
+- Per-user CivitAI host preference is `civitai.com` or `civitai.red` (non-secret prefs); API keys stay in the encrypted DB store.
+- Schema drift detection lives in `utils/db_schema.py` and `tests/run_schema_drift_tests.py`, wired into CI.
+- Experimental S3 supports AWS S3 and Backblaze B2 (boto3 when FUSE is absent; B2 path-style); macOS is best-effort; document flags under MkDocs Experimental Settings.
