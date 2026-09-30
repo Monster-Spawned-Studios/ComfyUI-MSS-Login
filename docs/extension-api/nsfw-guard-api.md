@@ -17,67 +17,6 @@ Always check `is_available()` before using other functions if the extension migh
 
 ## Functions
 
-### `is_available`
-
-```python
-is_available()
-```
-
-Check if the NSFW guard API is available.
-
-Returns:
-    bool: True if the NSFW guard is available, False otherwise
-
----
-
-### `is_sfw_enforced_for_user`
-
-```python
-is_sfw_enforced_for_user(username=None)
-```
-
-Check if SFW (Safe For Work) restrictions are enforced for a user.
-
-Args:
-    username: Optional username to check. If None, checks the current session user.
-
-Returns:
-    bool: True if SFW is enforced (user should be blocked from NSFW),
-          False if user is allowed to view NSFW content.
-
-Note:
-    Guest users always have SFW enforced (returns True) regardless of database settings.
-
-Example:
-    if is_sfw_enforced_for_user("john"):
-        # User 'john' has SFW restrictions
-        pass
-
----
-
-### `check_tensor_nsfw`
-
-```python
-check_tensor_nsfw(images_tensor, threshold=0.5)
-```
-
-Check if an image tensor contains NSFW content.
-
-Args:
-    images_tensor: PyTorch tensor containing image data (shape: [batch, channels, height, width])
-    threshold: Confidence threshold for NSFW detection (default: 0.5)
-
-Returns:
-    bool: True if NSFW content is detected above threshold, False otherwise.
-          Returns False if SFW is not enforced for the current user.
-
-Example:
-    if check_tensor_nsfw(image_tensor):
-        # Replace with black image or block
-        image_tensor = torch.zeros_like(image_tensor)
-
----
-
 ### `check_image_path_nsfw`
 
 ```python
@@ -155,24 +94,49 @@ Example:
 
 ---
 
-### `set_user_context`
+### `check_tensor_nsfw`
 
 ```python
-set_user_context(username)
+check_tensor_nsfw(images_tensor, threshold=0.5)
 ```
 
-Set the user context for the current execution thread.
-
-This is useful when you need to set the user context in a worker thread
-where the HTTP request context is not available.
+Check if an image tensor contains NSFW content.
 
 Args:
-    username: Username to set as the current context, or None for guest
+    images_tensor: PyTorch tensor containing image data (shape: [batch, channels, height, width])
+    threshold: Confidence threshold for NSFW detection (default: 0.5)
+
+Returns:
+    bool: True if NSFW content is detected above threshold, False otherwise.
+          Returns False if SFW is not enforced for the current user.
 
 Example:
-    # In a worker thread
-    set_user_context("john")
-    # Now NSFW checks will use "john" as the user
+    if check_tensor_nsfw(image_tensor):
+        # Replace with black image or block
+        image_tensor = torch.zeros_like(image_tensor)
+
+---
+
+### `clear_all_nsfw_tags`
+
+```python
+clear_all_nsfw_tags()
+```
+
+Clear all NSFW tags, forcing rescan of all images.
+
+---
+
+### `clear_image_nsfw_tag`
+
+```python
+clear_image_nsfw_tag(image_path)
+```
+
+Clear NSFW tag for an image, forcing rescan on next check.
+
+Args:
+    image_path: Path to the image file
 
 ---
 
@@ -194,26 +158,41 @@ Example:
 
 ---
 
-### `clear_image_nsfw_tag`
+### `is_available`
 
 ```python
-clear_image_nsfw_tag(image_path)
+is_available()
 ```
 
-Clear NSFW tag for an image, forcing rescan on next check.
+Check if the NSFW guard API is available.
 
-Args:
-    image_path: Path to the image file
+Returns:
+    bool: True if the NSFW guard is available, False otherwise
 
 ---
 
-### `clear_all_nsfw_tags`
+### `is_sfw_enforced_for_user`
 
 ```python
-clear_all_nsfw_tags()
+is_sfw_enforced_for_user(username=None)
 ```
 
-Clear all NSFW tags, forcing rescan of all images.
+Check if SFW (Safe For Work) restrictions are enforced for a user.
+
+Args:
+    username: Optional username to check. If None, checks the current session user.
+
+Returns:
+    bool: True if SFW is enforced (user should be blocked from NSFW),
+          False if user is allowed to view NSFW content.
+
+Note:
+    Guest users always have SFW enforced (returns True) regardless of database settings.
+
+Example:
+    if is_sfw_enforced_for_user("john"):
+        # User 'john' has SFW restrictions
+        pass
 
 ---
 
@@ -243,6 +222,27 @@ Example:
 
     # Mark an image as safe
     set_image_nsfw_tag("/output/image.png", is_nsfw=False)
+
+---
+
+### `set_user_context`
+
+```python
+set_user_context(username)
+```
+
+Set the user context for the current execution thread.
+
+This is useful when you need to set the user context in a worker thread
+where the HTTP request context is not available.
+
+Args:
+    username: Username to set as the current context, or None for guest
+
+Example:
+    # In a worker thread
+    set_user_context("john")
+    # Now NSFW checks will use "john" as the user
 
 ---
 

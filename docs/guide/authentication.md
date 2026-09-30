@@ -60,7 +60,7 @@ For mobile, **always use the Bearer header** on REST. For WebSocket, append `?to
 |----------|---------|
 | `POST /login` | Username/password → `jwt_token` cookie or JSON |
 | `GET`/`POST` `/logout` | End session: revoke the current JWT `jti`, clear the `jwt_token` cookie, redirect to login |
-| `POST /register` | New user. Public **only** for the first admin (empty user database). After that, an authenticated admin session is required (Settings → MSS-Login → Register a New User). |
+| `POST /register` | Bootstrap only when the user DB is empty (first admin/owner). After that, **owner-only** registration is via the avatar menu / MSS-Login **Users & Roles** create form (`POST /mss-login/api/users` with role). Non-owners do not see Register. |
 
 Public paths (no token required) include `/login`, `/mfa`, `/mss-login/*` static pages, and assets. `/register` is public only until the first admin exists. **Not** public: `/prompt`, `/queue`, `/history`, `/view`, `/object_info`, `/ws`, `/api/cpe/*`.
 
@@ -82,8 +82,14 @@ Roles are defined in `users/mss_login_groups.json`. Common permission keys:
 | `can_modify_workflows` | Save/delete via userdata workflow API |
 | `can_have_api_tokens` | Allow `POST /mss-login/generate_token` |
 | `can_view_all_comfyui_items` | Unfiltered `/models` and `/embeddings` lists |
+| `can_download_models` | Queue/browse CivitAI & HuggingFace downloads; Civicomfy/Manager download routes return 403 without it |
+| `can_manage_model_sharing` | Grant/revoke per-user model access (Shared Models) |
 
 Guest role typically has `can_run: false` — mobile apps should surface a clear error if `/mss-login/api/me` shows insufficient permissions.
+
+## Owner registration
+
+After bootstrap, only the **owner** can create users from the avatar menu (**Register user**) or MSS-Login **Users & Roles** form. `POST /mss-login/api/users` accepts `{ username, password, role }` where `role` is `admin`, `power`, `user`, or `guest` (not a second `owner`).
 
 ## Session management
 

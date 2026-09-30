@@ -17,8 +17,8 @@ In `config.json`:
 
 ## Behavior
 
-- New downloads are stored in per-user model subfolders (`<folder>/<user_id>/...`) when isolation is enabled.
-- Requests that attempt to download directly into global `models` paths are rewritten into per-user isolated paths when possible (including Civicomfy/core model download-style routes).
+- New downloads are stored in per-user model subfolders (`<folder>/<user_id>/...`) when isolation is enabled. On success, only the **exact downloaded item** is auto-granted to that user (not the whole prefix). Shared/global destinations do not auto-grant other users; roles without `can_view_all_comfyui_items` need an explicit Shared Models grant.
+- Requests that attempt to download directly into global `models` paths are rewritten into per-user isolated paths when possible (including Civicomfy/core model download-style routes). Matching download routes return **403** if the caller lacks `can_download_models` (checked before rewrite).
 - Redirect route matching supports:
 	- built-in defaults
 	- launch-time auto-detected patterns (e.g. Civicomfy when installed)

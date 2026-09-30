@@ -32,18 +32,9 @@ Copy `.env.example` to `.env` and set:
 
 ## Experimental features
 
-Experimental features use a **master switch** plus **per-feature toggles**. Enable the master, then enable each feature you want:
+Experimental features use a **master switch** plus **per-feature toggles**. Full documentation (purpose, enablement, prerequisites) lives under **[Experimental Settings](../experimental/index.md)**.
 
-- **Master:** set `EXPERIMENTAL_FEATURES=true` (env) or `"experimental_features": true` in `config.json`.
-- **Per-feature:** in `config.json` set `"experimental": { "mfa": true, "s3": true, "loading_screen": true, "news": true }` for the features you want. Or use env: `EXPERIMENTAL_MFA`, `EXPERIMENTAL_S3`, `EXPERIMENTAL_LOADING_SCREEN`, `EXPERIMENTAL_NEWS` (each `true`/`1` to enable). Admins can toggle these in **Settings → mss-login** when the master is on.
-
-**MFA**, **S3**, **Loading screen** (post-login page at `/loading`), and **News** (RSS) are experimental. When the master is off, all are disabled. When the master is on, each is off until enabled in config or the settings UI. `MFA_DISABLED` (env or config) still disables MFA globally if you want S3 but not MFA.
-
-**Server news feed (experimental):** With `experimental.news` enabled, admins can add a `news.md` file in the node’s data directory (`~/.comfyui-mss-login/` or `MSS_LOGIN_DATA_DIR`). The file is converted to an RSS feed and shown on the login page. See `readme/news_feed_template.md` for the format.
-
-### Loading page and ComfyUI frontend
-
-The **loading page** (`/loading`) is an MSS-Login intermediate page shown after login when `experimental.loading_screen` is enabled. It does **not** conflict with ComfyUI's in-app loading at `/`: ComfyUI's loading state runs at the root URL after the user leaves the loading page. Flow: Login then (optional) `/loading` then user clicks Continue or fail-safe fires then `/` (ComfyUI app). A **fail-safe** automatically redirects to `/` after a configurable delay (default 15 seconds). Set `MSS_LOGIN_LOADING_TIMEOUT_SECONDS` (env) or `loading_screen.timeout_seconds` in config (1 to 300). Tips from `web/data/loading-tips.json` rotate every 5 seconds.
+Short summary: set `EXPERIMENTAL_FEATURES=true`, then enable each of `mfa`, `s3`, `loading_screen`, `news`, `model_isolation`, `tailscale_local_auth`, `install_other_nodes_deps` via `config.json` `experimental`, matching `EXPERIMENTAL_*` env vars, or the admin UI.
 
 ## Roles and permissions
 
@@ -79,8 +70,9 @@ Example `security.json`:
 
 ## Users database
 
-- **Unified database**: One SQLite file, one PostgreSQL database, or one MySQL database holds users, API tokens, sessions, lockout, IP whitelist/blacklist, and shared items. Choose the backend in Settings → Users Database (or Token Storage when using the same DB). Passwords for PostgreSQL and MySQL are read from environment only (`USERS_DB_PASSWORD`, `POSTGRES_PASSWORD`, or `MYSQL_PASSWORD`); never stored in config.
+- **Unified database**: One SQLite file, one PostgreSQL database, or one MySQL database holds users, API tokens, sessions, lockout, IP whitelist/blacklist, shared items, model source API keys, and app settings (including encrypted secrets). Choose the backend in Settings → Users Database. Passwords for PostgreSQL and MySQL are read from environment only (`USERS_DB_PASSWORD`, `POSTGRES_PASSWORD`, or `MYSQL_PASSWORD`); never stored in config.
 - **Encrypted SQLite**: Encryption at rest (SQLCipher) applies **only to SQLite**. Set `encryption_level` in `config.json` under `users_db` to `low`, `standard`, or `secure`. Requires `argon2-cffi` and, for encryption at rest, `sqlcipher3` with a system SQLCipher build.
+- **Secrets**: See [Secrets and database](secrets-and-database.md). CivitAI/HF keys, ntfy tokens, and UI-saved S3 keys are Fernet-encrypted in this DB.
 
 See the README in the project root for detailed troubleshooting (SECRET_KEY, recovery mode, API tokens).
 
@@ -93,7 +85,7 @@ Under `config.json` → `auto_update` you can set:
 
 ## Push notifications (ntfy)
 
-MSS-Login can send push notifications via [ntfy](https://ntfy.sh) or a **self-hosted** ntfy server. Configuration lives in `config.json` under the MSS-Login data directory (`MSS_LOGIN_DATA_DIR`, default `~/.comfyui-mss-login/`):
+MSS-Login can send push notifications via [ntfy](https://ntfy.sh) or a **self-hosted** ntfy server. Non-secret settings live in `config.json` under the MSS-Login data directory (`MSS_LOGIN_DATA_DIR`, default `~/.comfyui-mss-login/`):
 
 ```json
 {
@@ -110,8 +102,10 @@ MSS-Login can send push notifications via [ntfy](https://ntfy.sh) or a **self-ho
 |-----|---------|
 | `topic` | ntfy topic (channel name); required to send |
 | `base_url` | Server root URL without trailing slash (default `https://ntfy.sh`) |
-| `api_token` | Bearer token for authenticated ntfy servers (optional) |
+| `api_token` | **Leave empty in config.** Store the bearer token via the admin UI; it is Fernet-encrypted in the users DB |
 | `enabled_events` | List of event keys to notify (see admin UI or `EVENT_KEYS` in code) |
+
+Legacy plaintext `api_token` values in `config.json` are migrated into the encrypted DB on startup and then cleared. Env `NTFY_API_KEY` remains a runtime fallback (not written to disk).
 
 ### Self-hosted ntfy
 
@@ -140,9 +134,6 @@ Quarantine actions in notifications call back to your ComfyUI server (`/mss-logi
 
 ## S3 model storage
 
-S3 is an experimental feature; enable `EXPERIMENTAL_FEATURES` (see above) to use it.
+S3 is experimental. See **[S3 storage guide](s3-storage.md)** and **[Experimental → S3](../experimental/s3.md)** for full setup (AWS, Backblaze B2, FUSE vs boto3, credentials).
 
-When S3 mount is enabled, the bucket is exposed as a local path (FUSE or sync). That path is registered with ComfyUI’s `folder_paths` so models (e.g. `.safetensors`, `.pt`, `.ckpt`) are indexed and loadable like local files.
-
-- **Bucket layout:** Mirror ComfyUI folder names under your prefix, e.g. `prefix/checkpoints/`, `prefix/loras/`, `prefix/vae/`. Default `model_folders` include checkpoints, loras, vae, embeddings, controlnet, upscale_models, clip, clip_vision, diffusion_models, text_encoders, hypernetworks, vae_approx.
-- **Relative path:** The effective local path is `s3_mount` under the data directory (or the path set in `s3_storage.mount.local_mount_path`). Models there are discovered at startup and after mount/sync; assign them to users via the admin shared-items UI (same permissions as local models).
+Bucket layout uses `{prefix}/models/{folder}/…`. Credentials belong in env or encrypted DB storage ([Secrets and database](secrets-and-database.md)), not plaintext in `config.json`.

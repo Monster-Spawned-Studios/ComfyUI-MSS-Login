@@ -34,11 +34,16 @@ Remote clients (`REQUIRE_AUTH_FOR_REMOTE_API=true`) must send Bearer auth; paths
 |--------|------|---------|
 | GET | `/mss-login/api/model-download/sources` | Sources, which keys are set, and capabilities |
 | GET | `/mss-login/api/model-download/folders` | Valid `folder_type` values (e.g. `checkpoints`, `loras`) |
+| GET/PUT | `/mss-login/api/model-download/preferences` | Per-user prefs (e.g. `civitai_host`: `civitai.com` or `civitai.red`) |
+| GET | `/mss-login/api/model-download/civitai/search` | Browse/search CivitAI (`query`, `types`, `page`) |
+| GET | `/mss-login/api/model-download/civitai/models/{id}` | CivitAI model metadata |
+| GET | `/mss-login/api/model-download/civitai/model-versions/{id}` | CivitAI version + files |
+| GET | `/mss-login/api/model-download/huggingface/search` | Hugging Face Hub search |
 | GET | `/mss-login/api/model-download/api-keys` | Which sources have keys (not the secrets) |
-| PUT | `/mss-login/api/model-download/api-keys` | Set or clear a source API key |
-| POST | `/mss-login/api/model-download/download` | Queue a download job |
+| PUT | `/mss-login/api/model-download/api-keys` | Set or clear a source API key (Fernet in users DB) |
+| POST | `/mss-login/api/model-download/download` | Queue a download job (uses **caller's** encrypted key) |
 | GET | `/mss-login/api/model-download/jobs` | List your jobs + queue stats |
-| GET | `/mss-login/api/model-download/jobs/{job_id}` | Single job (polling) |
+| GET | `/mss-login/api/model-download/jobs/{job_id}` | Single job (polling; no WebSocket progress channel) |
 | POST | `/mss-login/api/model-download/jobs/{job_id}/cancel` | Cancel a **queued** job |
 
 Alternate prefix (same handlers): `/api/mss-login/api/model-download/...`

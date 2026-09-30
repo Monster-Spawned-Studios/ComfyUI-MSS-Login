@@ -39,7 +39,10 @@
 
 **ComfyUI mss_login** is a comprehensive security layer that adds:
 
-- Role‑Based Access Control (RBAC)
+- Role‑Based Access Control (RBAC) with **owner** registration (role at create time)
+- Encrypted per-user CivitAI/HuggingFace keys and ntfy tokens in the users DB
+- Model download permission (`can_download_models`) for MSS-Login and Civicomfy routes
+- Optional S3/B2 storage (experimental) with FUSE or boto3
 - UI element gating
 - Workflow save/delete blocking
 - Transparent user folder isolation
@@ -51,6 +54,8 @@
 - **NSFW Guard API** - Public API for NSFW detection and enforcement
 - **Gallery integration** - Manual image flagging and metadata-based tagging
 - **Extension Tabs API** - Allow other extensions to add custom tabs to the admin panel
+
+Documentation: see [docs/](docs/index.md) (MkDocs), including [Experimental Settings](docs/experimental/index.md) and [Secrets and database](docs/guide/secrets-and-database.md).
 
 It replaces the older Sentinel system with a faster, cleaner, more modular architecture—fully rewritten for reliability and future expansion.
 

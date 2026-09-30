@@ -17,9 +17,12 @@ Start with these guides for a smooth API-token flow from login through image dow
 
 - [Installation](guide/installation.md) — Install the node and configure ComfyUI
 - [Configuration](guide/configuration.md) — config.json, environment variables, roles, ntfy
-- [Authentication](guide/authentication.md) — JWT, API tokens, MFA, remote API guard
+- [Secrets and database](guide/secrets-and-database.md) — Fernet secrets, SQLCipher, migrations
+- [Authentication](guide/authentication.md) — JWT, API tokens, MFA, owner registration
 - [Image generation pipeline](guide/image-generation.md) — End-to-end run flow for API clients
 - [Model download API](guide/model-download-api.md) — Queue CivitAI/Hugging Face downloads via Bearer token
+- [S3 storage](guide/s3-storage.md) — AWS S3 and Backblaze B2
+- [Experimental Settings](experimental/index.md) — Master switch and every experimental flag
 - [Headless JWT session](guide/headless-jwt-session.md) — WebSocket and REST only (no HTML)
 - [NSFW and outputs](guide/nsfw-and-outputs.md) — Save-time and `/view` enforcement
 - [Extending the node](guide/extending.md) — Use the HTTP API and Python extension API in your projects
@@ -34,6 +37,9 @@ Start with these guides for a smooth API-token flow from login through image dow
 | Feature                 | Description                                                                                            |
 | ----------------------- | ------------------------------------------------------------------------------------------------------ |
 | **RBAC**                | Five roles (Owner, Admin, Power, User, Guest) with configurable permissions in `mss_login_groups.json` |
+| **Owner registration**  | Create users with role assignment from the avatar menu / Users & Roles (owner only)                    |
+| **Model downloads**     | CivitAI (.com/.red) and Hugging Face browse + download; `can_download_models` gates Civicomfy too      |
+| **Encrypted secrets**   | API keys and ntfy tokens in the owner-chosen DB (Fernet); optional SQLCipher for SQLite                 |
 | **UI enforcement**      | Dynamic hiding/blocking of menu items, extensions, and workflow save/load for restricted roles         |
 | **Workflow protection** | Per-user workflow storage; save/delete blocked for non-privileged users                                |
 | **IP filtering**        | Whitelist/blacklist with live editing in the settings panel                                            |

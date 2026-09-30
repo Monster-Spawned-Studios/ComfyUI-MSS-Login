@@ -57,6 +57,8 @@ def generate_endpoints_md() -> None:
         ("Auth", "auth.py"),
         ("Admin", "admin.py"),
         ("User", "user.py"),
+        ("Model download", "model_download.py"),
+        ("S3", "s3.py"),
         ("MFA", "mfa.py"),
         ("Me", "me.py"),
         ("Recovery", "recovery.py"),
