@@ -22,9 +22,11 @@ Use when developing or modifying ComfyUI custom nodes. Keep nodes compatible wit
 
 ## Comfy Portal compatibility
 
-- **Comfy Portal**: [comfy-portal](https://github.com/ShunL12324/comfy-portal) (iOS/Android) uses standard ComfyUI HTTP and WebSocket APIs (prompt, queue, history, etc.).
-- **Server extension**: [comfy-portal-endpoint](https://github.com/ShunL12324/comfy-portal-endpoint) provides workflow list/get/save/convert; it uses a headless browser that **must load the real ComfyUI frontend**. It is **not compatible** with extensions that block or intercept the ComfyUI frontend (e.g. login walls that prevent the UI from loading).
-- For Portal compatibility: avoid blocking the main ComfyUI page from loading; use standard prompt/queue/history APIs so workflows can be executed and synced from the app. If the node adds auth, consider allowing unauthenticated access to the minimal frontend assets required for conversion, or document that Portal workflow sync will not work when auth is enabled.
+- **Comfy Portal**: [comfy-portal](https://github.com/ShunL12324/comfy-portal) (iOS/Android) uses standard ComfyUI HTTP and WebSocket APIs (prompt, queue, history, view, ws) plus CPE workflow paths (`/api/cpe/…` and `/cpe/…`).
+- Authenticate with `Authorization: Bearer` and/or `?token=` / `?access_token=`. Unauthenticated `/cpe/*` and `/api/*` return **JSON 401**, not HTML login redirects.
+- **UI→API convert**: MSS-Login embeds a Playwright converter that injects JWT/Bearer into the headless browser (no public login-wall bypass). Optional deps: `uv sync --group cpe-convert` then `playwright install chromium`. Prefer uninstalling sibling [comfy-portal-endpoint](https://github.com/ShunL12324/comfy-portal-endpoint) to avoid dual browser pools.
+- Stock CPE’s unauthenticated `page.goto(/)` is incompatible with the login wall — do **not** open unauthenticated frontend assets for it; use embedded convert or API-format workflows instead.
+- Prefer standard prompt/queue/history/view APIs so workflows can be executed and synced from the app.
 
 ## Python 3 and Comfy registry standards
 

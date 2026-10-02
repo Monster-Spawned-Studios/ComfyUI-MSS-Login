@@ -11,8 +11,10 @@ Per-user workflow list/get/save using the [comfy-portal-endpoint](https://github
 | GET | `/api/cpe/workflow/list` | List `.json` files in the user's workflow dir (plus shared/global). |
 | GET | `/api/cpe/workflow/get?filename=` | Read one workflow as a raw JSON string. |
 | POST | `/api/cpe/workflow/save` | Save to the user's workflow dir. Body: `{ "workflow": "<string>", "name": "optional.json" }`. |
-| GET | `/api/cpe/workflow/get-and-convert?filename=` | Read + return API-format prompt when the file is already API format. |
-| GET | `/api/cpe/health` | Health payload compatible with CPE. |
+| GET | `/api/cpe/workflow/get-and-convert?filename=` | Read + return API-format prompt; UI graphs via embedded Playwright when enabled. |
+| POST | `/api/cpe/workflow/convert` | Convert UI workflow JSON body to API format. |
+| GET | `/api/cpe/health` | Truthful browser status for convert. |
+| GET | `/api/cpe/system/storage` | Disk stats for `DATA_DIR` (`path`, `total`, `used`, `free` bytes). |
 
 Requires a valid token for remote clients (`REQUIRE_AUTH_FOR_REMOTE_API`) and `can_access_api`. POST save also requires `can_modify_workflows`.
 

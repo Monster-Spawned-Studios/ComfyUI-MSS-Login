@@ -68,9 +68,12 @@ See [Workflow & intercepted endpoints](workflow-endpoints.md).
 | GET | `/api/cpe/workflow/list` | Auth + `can_access_api`; lists the caller's workflows |
 | GET | `/api/cpe/workflow/get?filename=` | Auth; user file first, then shared |
 | POST | `/api/cpe/workflow/save` | Auth + `can_modify_workflows` |
-| GET | `/api/cpe/health` | Auth for remote clients |
+| GET | `/api/cpe/workflow/get-and-convert?filename=` | Auth; API graphs in-process; UI graphs via embedded Playwright when enabled |
+| POST | `/api/cpe/workflow/convert` | Auth; body = UI workflow JSON object |
+| GET | `/api/cpe/health` | Auth for remote clients; truthful browser status |
+| GET | `/api/cpe/system/storage` | Auth; disk bytes for `DATA_DIR` (`path`, `total`, `used`, `free`) |
 
-Response format matches [comfy-portal-endpoint](https://github.com/ShunL12324/comfy-portal-endpoint).
+Paths also work without the `/api` prefix (`/cpe/...`). Response format matches [comfy-portal-endpoint](https://github.com/ShunL12324/comfy-portal-endpoint). See [Mobile and Comfy Portal](../integrations/comfy-portal.md).
 
 ## MSS-Login-specific (not ComfyUI core)
 
