@@ -6,12 +6,47 @@ const DEFAULT_ICON = "pi pi-user";
 const PROFILE_CSS = `
 .mss-login-profile-btn { position: relative; }
 .mss-login-avatar-img { width: 22px; height: 22px; border-radius: 999px; object-fit: cover; display: block; }
-.mss-login-profile-menu { position: fixed; z-index: 12050; min-width: 180px; background: rgba(18,20,28,0.96); color: #f5f5f7; border: 1px solid rgba(255,255,255,0.16); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.45); padding: 6px; }
-.mss-login-profile-name { padding: 8px 10px 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; opacity: 0.85; }
-.mss-login-profile-item { display: block; width: 100%; text-align: left; background: transparent; border: none; color: #f5f5f7; padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.mss-login-profile-backdrop {
+  position: fixed; inset: 0; z-index: 12040;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.mss-login-profile-menu {
+  position: relative; z-index: 12050;
+  width: min(320px, 92vw); min-width: 220px;
+  background: rgba(18,20,28,0.98); color: #f5f5f7;
+  border: 1px solid rgba(255,255,255,0.16); border-radius: 14px;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.55);
+  padding: 12px 14px 16px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  text-align: center;
+}
+.mss-login-profile-header {
+  display: flex; align-items: center; justify-content: center;
+  position: relative; padding: 4px 36px 10px; gap: 8px;
+}
+.mss-login-profile-name {
+  flex: 1; font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; opacity: 0.9; text-align: center;
+}
+.mss-login-profile-close {
+  position: absolute; right: 0; top: 0;
+  width: 32px; height: 32px; border: none; border-radius: 8px;
+  background: transparent; color: #f5f5f7; cursor: pointer;
+  font-size: 18px; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+.mss-login-profile-close:hover { background: rgba(255,255,255,0.1); }
+.mss-login-profile-item {
+  display: block; width: 100%; text-align: center;
+  background: transparent; border: none; color: #f5f5f7;
+  padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 14px;
+}
 .mss-login-profile-item:hover { background: rgba(255,255,255,0.08); }
 .mss-login-profile-logout { color: #fca5a5; }
 `;
+
+let _profileDismissCleanup = null;
 
 function ensureProfileStyles() {
   if (document.getElementById("mss-login-profile-css")) return;
@@ -21,19 +56,44 @@ function ensureProfileStyles() {
   document.head.appendChild(style);
 }
 
+/** Browser UI session keys only — never wipe manually generated API tokens. */
+const BROWSER_SESSION_STORAGE_KEYS = [
+  "jwt_token",
+  "mss-login-jwt",
+  "mss_login_jwt",
+  "mfa_temp_token",
+  "mfa_mode",
+  "mss_login_remember_me",
+];
+
+/** Cookie names for the interactive ComfyUI login session (not API tokens). */
+const BROWSER_SESSION_COOKIE_NAMES = new Set([
+  "jwt_token",
+  "mss-login-jwt",
+  "mss_login_jwt",
+]);
+
 function clearClientAuthState() {
+  // Clear tab-scoped login/MFA state only. Do not remove arbitrary localStorage
+  // keys — users may keep long-lived API JWTs there for other apps.
   try {
-    sessionStorage.removeItem("jwt_token");
-    sessionStorage.removeItem("mss-login-jwt");
-    localStorage.removeItem("jwt_token");
+    for (const key of BROWSER_SESSION_STORAGE_KEYS) {
+      sessionStorage.removeItem(key);
+    }
   } catch (_) {}
   try {
+    // Only the known browser-session aliases; leave other localStorage alone.
+    for (const key of ["jwt_token", "mss-login-jwt", "mss_login_jwt", "mss_login_remember_me"]) {
+      localStorage.removeItem(key);
+    }
+  } catch (_) {}
+  try {
+    const paths = ["/", "/mss-login", "/login", "/logout", "/mfa"];
     document.cookie.split(";").forEach((cookie) => {
       const name = cookie.split("=")[0].trim();
-      if (!name) return;
-      const lower = name.toLowerCase();
-      if (lower === "jwt_token" || lower.includes("session") || lower === "mss_login_device_id") {
-        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; samesite=strict`;
+      if (!name || !BROWSER_SESSION_COOKIE_NAMES.has(name)) return;
+      for (const path of paths) {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${path}; samesite=strict`;
       }
     });
   } catch (_) {}
@@ -50,6 +110,12 @@ async function logoutAction() {
 }
 
 function closeProfileMenu() {
+  if (typeof _profileDismissCleanup === "function") {
+    _profileDismissCleanup();
+    _profileDismissCleanup = null;
+  }
+  const backdrop = document.getElementById("mss-login-profile-backdrop");
+  if (backdrop) backdrop.remove();
   const menu = document.getElementById("mss-login-profile-menu");
   if (menu) menu.remove();
 }
@@ -135,15 +201,38 @@ function tryOpenMssLoginDialog() {
 function openProfileMenu(anchor, me) {
   closeProfileMenu();
   const guest = isGuestUser(me);
+
+  const backdrop = document.createElement("div");
+  backdrop.id = "mss-login-profile-backdrop";
+  backdrop.className = "mss-login-profile-backdrop";
+  backdrop.setAttribute("aria-hidden", "false");
+
   const menu = document.createElement("div");
   menu.id = "mss-login-profile-menu";
   menu.className = "mss-login-profile-menu";
   menu.setAttribute("role", "menu");
+  menu.setAttribute("aria-label", "Account menu");
+
+  const header = document.createElement("div");
+  header.className = "mss-login-profile-header";
 
   const nameRow = document.createElement("div");
   nameRow.className = "mss-login-profile-name";
   nameRow.textContent = me?.username || "Account";
-  menu.appendChild(nameRow);
+  header.appendChild(nameRow);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "mss-login-profile-close";
+  closeBtn.setAttribute("aria-label", "Close account menu");
+  closeBtn.textContent = "✕";
+  closeBtn.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    closeProfileMenu();
+  });
+  header.appendChild(closeBtn);
+  menu.appendChild(header);
 
   if (!guest) {
     const changeBtn = document.createElement("button");
@@ -278,20 +367,47 @@ function openProfileMenu(anchor, me) {
   });
   menu.appendChild(logoutBtn);
 
-  document.body.appendChild(menu);
-  const rect = anchor.getBoundingClientRect();
-  menu.style.top = `${Math.round(rect.bottom + 6)}px`;
-  menu.style.right = `${Math.round(window.innerWidth - rect.right)}px`;
+  backdrop.appendChild(menu);
+  document.body.appendChild(backdrop);
 
-  const dismiss = (ev) => {
-    if (menu.contains(ev.target) || anchor.contains(ev.target)) return;
-    closeProfileMenu();
-    document.removeEventListener("mousedown", dismiss, true);
+  const onBackdropClick = (ev) => {
+    if (ev.target === backdrop) {
+      closeProfileMenu();
+    }
   };
-  document.addEventListener("mousedown", dismiss, true);
+  const onKeyDown = (ev) => {
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      closeProfileMenu();
+    }
+  };
+  const onDocMouseDown = (ev) => {
+    if (menu.contains(ev.target)) return;
+    if (anchor && anchor.contains && anchor.contains(ev.target)) return;
+    if (ev.target === backdrop || backdrop.contains(ev.target)) {
+      if (ev.target === backdrop) closeProfileMenu();
+      return;
+    }
+    closeProfileMenu();
+  };
+
+  backdrop.addEventListener("click", onBackdropClick);
+  document.addEventListener("keydown", onKeyDown, true);
+  document.addEventListener("mousedown", onDocMouseDown, true);
+
+  _profileDismissCleanup = () => {
+    backdrop.removeEventListener("click", onBackdropClick);
+    document.removeEventListener("keydown", onKeyDown, true);
+    document.removeEventListener("mousedown", onDocMouseDown, true);
+  };
 }
 
 async function onProfileClick(event) {
+  const existing = document.getElementById("mss-login-profile-backdrop");
+  if (existing) {
+    closeProfileMenu();
+    return;
+  }
   const me = await fetchMe();
   openProfileMenu(event.currentTarget, me);
 }

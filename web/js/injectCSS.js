@@ -36,38 +36,87 @@ $el("style", {
     display: block;
   }
 
-  .mss-login-profile-menu {
+  .mss-login-profile-backdrop {
     position: fixed;
+    inset: 0;
+    z-index: 12040;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .mss-login-profile-menu {
+    position: relative;
     z-index: 12050;
-    min-width: 180px;
-    background: rgba(18, 20, 28, 0.96);
+    width: min(320px, 92vw);
+    min-width: 220px;
+    background: rgba(18, 20, 28, 0.98);
     color: #f5f5f7;
     border: 1px solid rgba(255, 255, 255, 0.16);
-    border-radius: 10px;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-    padding: 6px;
+    border-radius: 14px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+    padding: 12px 14px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    text-align: center;
+  }
+
+  .mss-login-profile-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: 4px 36px 10px;
+    gap: 8px;
   }
 
   .mss-login-profile-name {
-    padding: 8px 10px 6px;
-    font-size: 12px;
+    flex: 1;
+    font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    opacity: 0.85;
+    opacity: 0.9;
+    text-align: center;
+  }
+
+  .mss-login-profile-close {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #f5f5f7;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mss-login-profile-close:hover {
+    background: rgba(255, 255, 255, 0.1);
   }
 
   .mss-login-profile-item {
     display: block;
     width: 100%;
-    text-align: left;
+    text-align: center;
     background: transparent;
     border: none;
     color: #f5f5f7;
-    padding: 8px 10px;
+    padding: 10px 12px;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 14px;
   }
 
   .mss-login-profile-item:hover {
