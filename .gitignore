@@ -107,3 +107,8 @@ node.zip
 
 # Cursor files:
 .cursor/
+
+# PNPM Data
+.pnpm-store/
+# Test scratch mounts
+tests/_tmp_s3_mount/
