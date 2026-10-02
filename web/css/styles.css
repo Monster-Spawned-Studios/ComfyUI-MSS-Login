@@ -261,6 +261,60 @@ input.error {
     border-color: #ef4444;
 }
 
+/* Remember-me checkbox: unlayered overrides beat Tailwind @layer components
+   so global `input { width: 100% }` / `label { display: block }` do not stretch it. */
+.form-field.mss-auth-remember {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+}
+
+.form-field.mss-auth-remember input.mss-auth-checkbox,
+input.mss-auth-checkbox[type="checkbox"] {
+    width: 1rem;
+    min-width: 1rem;
+    max-width: 1rem;
+    height: 1rem;
+    padding: 0;
+    margin: 0;
+    flex-shrink: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid #52525b;
+    border-radius: 0.25rem;
+    background-color: #09090b;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 0.75rem;
+    cursor: pointer;
+}
+
+.form-field.mss-auth-remember input.mss-auth-checkbox:checked,
+input.mss-auth-checkbox[type="checkbox"]:checked {
+    border-color: #9660fa;
+    background-color: #9660fa;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.5L6.5 11.5L12.5 4.5' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.form-field.mss-auth-remember input.mss-auth-checkbox:enabled:focus,
+input.mss-auth-checkbox[type="checkbox"]:enabled:focus {
+    border-color: #9660fa;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(150, 96, 250, 0.4);
+}
+
+label.mss-auth-remember-label {
+    display: inline;
+    margin: 0;
+    width: auto;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #e4e4e7;
+    cursor: pointer;
+}
+
 .btn {
     width: 100%;
     padding: 0.5rem;
