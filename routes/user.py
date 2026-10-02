@@ -6,8 +6,9 @@ import folder_paths
 from aiohttp import web
 
 from ..constants import EXPERIMENTAL_FEATURES, get_experimental_flags
-from ..globals import jwt_auth, routes, users_db
+from ..globals import access_control, jwt_auth, routes, users_db
 from ..utils import user_env
+from ..utils.model_visibility_policy import user_can_update_mss_login
 from ..utils.path_safety import is_safe_filename, resolve_path_under
 from ..utils.trash_store import empty_trash, list_trash_items, restore_trash_item
 
@@ -130,6 +131,7 @@ async def api_me(request: web.Request) -> web.Response:
 				"groups": ["guest"],
 				"is_admin": False,
 				"mfa_enabled": False,
+				"can_update_mss_login": False,
 				"experimental_features": EXPERIMENTAL_FEATURES,
 				"experimental": get_experimental_flags(),
 			}
@@ -146,6 +148,13 @@ async def api_me(request: web.Request) -> web.Response:
 		users_db.get_mfa_enabled(username) if username and username.lower() != "guest" else False
 	)
 
+	can_update = False
+	try:
+		_role, perms, _ = access_control._get_user_role_and_permissions(request)
+		can_update = user_can_update_mss_login(_role or role, perms or {})
+	except Exception:
+		can_update = user_can_update_mss_login(role, {})
+
 	return web.json_response(
 		{
 			"username": username,
@@ -153,6 +162,7 @@ async def api_me(request: web.Request) -> web.Response:
 			"groups": groups,
 			"is_admin": is_admin,
 			"mfa_enabled": mfa_enabled,
+			"can_update_mss_login": can_update,
 			"experimental_features": EXPERIMENTAL_FEATURES,
 			"experimental": get_experimental_flags(),
 		}

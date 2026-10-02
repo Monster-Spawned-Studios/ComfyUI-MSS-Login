@@ -36,6 +36,18 @@ def user_can_download_models(role: str, perms: dict) -> bool:
 	return val is True
 
 
+def user_can_update_mss_login(role: str, perms: dict) -> bool:
+	"""Return True when role may apply MSS-Login self-updates (git pull).
+
+	Requires can_update_mss_login. Missing key defaults to True for owner/admin
+	(matches shipped default_group_config) and False for other roles.
+	"""
+	val = perms.get("can_update_mss_login")
+	if val is None:
+		return role in ("admin", "owner")
+	return val is True
+
+
 def user_can_view_all_models(role: str, perms: dict) -> bool:
 	"""
 	Return True when user can bypass per-item grants.

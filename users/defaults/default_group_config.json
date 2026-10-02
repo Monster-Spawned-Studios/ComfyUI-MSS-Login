@@ -14,7 +14,8 @@
         "can_access_s3_storage": true,
         "can_manage_model_sharing": true,
         "can_download_models": true,
-        "can_login_locally_without_auth": true
+        "can_login_locally_without_auth": true,
+        "can_update_mss_login": true
     },
     "admin": {
         "can_run": true,
@@ -31,7 +32,8 @@
         "can_access_s3_storage": true,
         "can_manage_model_sharing": true,
         "can_download_models": true,
-        "can_login_locally_without_auth": true
+        "can_login_locally_without_auth": true,
+        "can_update_mss_login": true
     },
     "power": {
         "can_run": true,
@@ -48,7 +50,8 @@
         "can_access_s3_storage": false,
         "can_manage_model_sharing": false,
         "can_download_models": false,
-        "can_login_locally_without_auth": false
+        "can_login_locally_without_auth": false,
+        "can_update_mss_login": false
     },
     "user": {
         "can_run": true,
@@ -124,7 +127,8 @@
         "can_access_s3_storage": false,
         "can_manage_model_sharing": false,
         "can_download_models": false,
-        "can_login_locally_without_auth": false
+        "can_login_locally_without_auth": false,
+        "can_update_mss_login": false
     },
     "guest": {
         "can_run": true,
@@ -158,6 +162,7 @@
         "can_access_s3_storage": false,
         "can_manage_model_sharing": false,
         "can_download_models": false,
-        "can_login_locally_without_auth": false
+        "can_login_locally_without_auth": false,
+        "can_update_mss_login": false
     }
 }

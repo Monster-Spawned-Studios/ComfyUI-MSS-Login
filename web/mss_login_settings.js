@@ -3641,6 +3641,7 @@ async renderS3Settings(container) {
         html += drawRow("Download models (queue, view, cancel own jobs)", "can_download_models");
         html += drawRow("Manage model sharing (grant/revoke model access)", "can_manage_model_sharing");
         html += drawRow("Login locally without authentication (Tailscale / Local Network)", "can_login_locally_without_auth");
+        html += drawRow("Update MSS-Login (apply self-update from release check)", "can_update_mss_login");
 
         // Section 2: Global UI
         html += drawRow("Interface Elements", null, true);

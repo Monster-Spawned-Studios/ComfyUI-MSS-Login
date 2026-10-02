@@ -4,6 +4,8 @@
 This module contains the routes for the admin API.
 """
 
+import asyncio
+import os
 import uuid
 
 from aiohttp import web
@@ -29,10 +31,11 @@ from ..constants import (
 	reload_users_db_config,
 	save_experimental_failsafe_settings,
 )
-from ..globals import ip_filter, jwt_auth, logger, routes, users_db
+from ..globals import access_control, ip_filter, jwt_auth, logger, routes, users_db
 from ..utils.admin_logic import delete_user_record, patch_user_group
 from ..utils.api_token_store import reset_api_token_store
 from ..utils.bootstrap import _apply_owner_max_merge, load_default_groups
+from ..utils.data_dir import get_data_dir
 from ..utils.input_sanitizer import sanitize_password_input, sanitize_username
 from ..utils.ip_filter import get_ip
 from ..utils.json_utils import load_json_file, save_json_file
@@ -42,7 +45,7 @@ from ..utils.model_download_redirect import (
 	get_effective_route_patterns,
 	save_configured_route_patterns,
 )
-from ..utils.model_visibility_policy import user_can_manage_model_sharing
+from ..utils.model_visibility_policy import user_can_manage_model_sharing, user_can_update_mss_login
 from ..utils.ntfy_notifier import (
 	EVENT_KEYS,
 	get_ntfy_config,
@@ -60,7 +63,7 @@ from ..utils.quarantine_store import (
 )
 from ..utils.shared_items_store import get_shared_items_store
 from ..utils.tailscale_network import detect_network_info
-from ..utils.updater import get_cached_status
+from ..utils.updater import get_cached_status, get_public_update_notice, perform_update
 from ..utils.user_console_log import get_lines as get_user_console_lines
 from ..utils.user_console_log import list_users as list_console_users
 from ..utils.user_env import get_user_workflow_dir
@@ -1185,6 +1188,52 @@ async def api_get_update_status(request):
 
 
 routes.get("/api/mss-login/api/update-status")(api_get_update_status)
+
+
+@routes.get("/mss-login/api/update-notice")
+async def api_get_update_notice(request):
+	"""Public redacted update notice for the login page (no changelog body)."""
+	try:
+		return web.json_response(get_public_update_notice())
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/update-notice")(api_get_update_notice)
+
+
+@routes.post("/mss-login/api/update-apply")
+async def api_update_apply(request):
+	"""Apply MSS-Login self-update. Requires can_update_mss_login."""
+	try:
+		role, perms, username = access_control._get_user_role_and_permissions(request)
+	except Exception:
+		role, perms, username = "guest", {}, None
+	if not username:
+		return web.json_response({"error": "Authentication required"}, status=401)
+	if not user_can_update_mss_login(role, perms):
+		return web.json_response(
+			{"error": "Update permission required (can_update_mss_login)"}, status=403
+		)
+	try:
+		repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+		loop = asyncio.get_event_loop()
+		success, msg = await loop.run_in_executor(
+			None, lambda: perform_update(repo_root, get_data_dir(), logger)
+		)
+		return web.json_response(
+			{
+				"success": bool(success),
+				"message": msg
+				or ("Update applied. Restart ComfyUI to finish." if success else "Update failed."),
+			},
+			status=200 if success else 500,
+		)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.post("/api/mss-login/api/update-apply")(api_update_apply)
 
 
 @routes.get("/mss-login/api/ip-lists")
