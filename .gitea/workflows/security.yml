@@ -1,4 +1,5 @@
 # Security: secrets scan (Gitleaks), dependency audit (pip-audit), and OSV scan.
+# Gitea-compatible variant: OSV uses the CLI (Google's reusable workflows are GitHub-only).
 # Do not disable; keeps credentials and known-vuln deps out of the repo.
 name: Security scan
 
@@ -13,7 +14,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
   actions: read
 
 jobs:
@@ -85,25 +85,26 @@ jobs:
       - name: Run pip-audit
         run: pip-audit -r requirements-ci.txt --extra-index-url https://download.pytorch.org/whl/cu128
 
-  # Official reusable workflow (GitHub only). Job must not define runs-on/steps.
   osv-scan:
     name: OSV Vulnerability Scan
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.6.0
-    with:
-      scan-args: |-
-        --recursive
-        --skip-git
-        ./
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+      - name: Install OSV-Scanner
+        run: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
+      - name: Run OSV-Scanner
+        run: osv-scanner --recursive --skip-git .
 
   ntfy-notification:
     name: Notify on Security Scan Results
     needs: [secrets, dependencies, osv-scan]
     if: always()
-    uses: ./.github/workflows/ntfy-notify-reusable.yml
+    uses: ./.gitea/workflows/ntfy-notify-reusable.yml
     with:
       title: ${{ (needs.secrets.result == 'success' && needs.dependencies.result == 'success' && needs.osv-scan.result == 'success') && 'MSS-Login Security — All checks passed' || 'MSS-Login Security — Issues found' }}
       message: |

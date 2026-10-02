@@ -1,0 +1,97 @@
+# Reusable ntfy notification workflow (Gitea).
+#
+# Call from the same repository:
+#   uses: ./.gitea/workflows/ntfy-notify-reusable.yml
+#
+# Required secrets (pass with `secrets: inherit` or map explicitly):
+#   NTFY_URL, NTFY_TOPIC; optional NTFY_TOKEN
+name: Notify via ntfy
+
+on:
+  workflow_call:
+    inputs:
+      title:
+        description: "Notification title (ntfy Title header)"
+        required: true
+        type: string
+      message:
+        description: "Notification body / message text"
+        required: true
+        type: string
+      priority:
+        description: "ntfy priority 1–5 (default 3; use 5 for failures)"
+        required: false
+        type: string
+        default: "3"
+      tags:
+        description: "Comma-separated ntfy tags (emoji keywords)"
+        required: false
+        type: string
+        default: ""
+      ref_name:
+        description: "Optional branch/tag/ref label appended in the body"
+        required: false
+        type: string
+        default: ""
+      skip_if_unconfigured:
+        description: "Exit successfully when NTFY_URL/NTFY_TOPIC are missing"
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      NTFY_URL:
+        description: "ntfy server base URL"
+        required: false
+      NTFY_TOPIC:
+        description: "ntfy topic"
+        required: false
+      NTFY_TOKEN:
+        description: "Optional Bearer token for authenticated topics"
+        required: false
+
+jobs:
+  notify:
+    name: Send ntfy notification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish to ntfy
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          TITLE: ${{ inputs.title }}
+          MESSAGE: ${{ inputs.message }}
+          PRIORITY: ${{ inputs.priority }}
+          TAGS: ${{ inputs.tags }}
+          REF_NAME: ${{ inputs.ref_name }}
+          SKIP_IF_UNCONFIGURED: ${{ inputs.skip_if_unconfigured }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${NTFY_URL:-}" ] || [ -z "${NTFY_TOPIC:-}" ]; then
+            if [ "${SKIP_IF_UNCONFIGURED}" = "true" ]; then
+              echo "NTFY_URL/NTFY_TOPIC not configured; skipping notification."
+              exit 0
+            fi
+            echo "NTFY_URL and NTFY_TOPIC are required."
+            exit 1
+          fi
+
+          finished=$(date '+%m/%d/%Y %I:%M %p')
+          body="${MESSAGE}"
+          if [ -n "${REF_NAME:-}" ]; then
+            body=$(printf '%s\n\nRef: `%s`\nFinished: %s\n' "$MESSAGE" "$REF_NAME" "$finished")
+          else
+            body=$(printf '%s\n\nFinished: %s\n' "$MESSAGE" "$finished")
+          fi
+
+          args=(-H "Title: ${TITLE}" -H "Priority: ${PRIORITY}")
+          if [ -n "${TAGS:-}" ]; then
+            args+=(-H "Tags: ${TAGS}")
+          fi
+          if [ -n "${NTFY_TOKEN:-}" ]; then
+            args+=(-H "Authorization: Bearer ${NTFY_TOKEN}")
+          fi
+
+          curl -fsS "${args[@]}" -d "$body" "${NTFY_URL%/}/${NTFY_TOPIC}"
+          echo "ntfy notification sent."
