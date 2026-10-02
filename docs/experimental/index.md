@@ -25,6 +25,7 @@ Restart ComfyUI after changing env vars or `config.json` if the UI does not hot-
 | `model_isolation` | Per-user model folders + grant ACL | [Model isolation](model-isolation.md) |
 | `tailscale_local_auth` | Trusted Tailscale/local auth helpers | [Tailscale local auth](tailscale-local-auth.md) |
 | `install_other_nodes_deps` | Auto-install other custom-node deps | [Install other node deps](install-other-nodes-deps.md) |
+| `login_background` | Custom `/login` image or video background | [Login background](login-background.md) |
 
 Related (not a feature flag): [Experimental failsafe](failsafe.md) (`experimental_failsafe` / `MSS_LOGIN_EXPERIMENTAL_FAILSAFE`).
 

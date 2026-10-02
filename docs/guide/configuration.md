@@ -34,7 +34,9 @@ Copy `.env.example` to `.env` and set:
 
 Experimental features use a **master switch** plus **per-feature toggles**. Full documentation (purpose, enablement, prerequisites) lives under **[Experimental Settings](../experimental/index.md)**.
 
-Short summary: set `EXPERIMENTAL_FEATURES=true`, then enable each of `mfa`, `s3`, `loading_screen`, `news`, `model_isolation`, `tailscale_local_auth`, `install_other_nodes_deps` via `config.json` `experimental`, matching `EXPERIMENTAL_*` env vars, or the admin UI.
+Short summary: set `EXPERIMENTAL_FEATURES=true`, then enable each of `mfa`, `s3`, `loading_screen`, `news`, `model_isolation`, `tailscale_local_auth`, `install_other_nodes_deps`, `login_background` via `config.json` `experimental`, matching `EXPERIMENTAL_*` env vars, or the admin UI.
+
+Owner-only **Login Appearance** (custom `/login` background) is documented under **[Experimental → Login background](../experimental/login-background.md)**.
 
 ## Roles and permissions
 

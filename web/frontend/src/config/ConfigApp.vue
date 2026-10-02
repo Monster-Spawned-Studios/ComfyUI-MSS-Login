@@ -27,16 +27,20 @@
 
     <div class="mss-cfg-body">
       <div v-if="!activeTab" class="mss-cfg-home">
-        <p class="mss-cfg-note mb-2">Choose a configuration section</p>
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          type="button"
-          class="mss-cfg-home-btn"
-          @click="openTab(tab.id)"
-        >
-          {{ tab.label }}
-        </button>
+        <p class="mss-cfg-note mb-4 w-full text-center">
+          Choose a configuration section
+        </p>
+        <div class="mss-cfg-home-grid">
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            type="button"
+            class="mss-cfg-home-btn"
+            @click="openTab(tab.id)"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
       </div>
 
       <template v-else>
@@ -45,6 +49,9 @@
         </div>
         <div v-else-if="activeTab === 'model-download'">
           <ModelDownloadSection :current-user="currentUser" />
+        </div>
+        <div v-else-if="activeTab === 'login-appearance'">
+          <LoginAppearanceSection />
         </div>
         <div v-else>
           <LegacySectionHost
@@ -61,12 +68,18 @@
 <script>
 import SharedModelsSection from "./SharedModelsSection.vue";
 import ModelDownloadSection from "./ModelDownloadSection.vue";
+import LoginAppearanceSection from "./LoginAppearanceSection.vue";
 import LegacySectionHost from "./LegacySectionHost.vue";
 import { isOwnerUser } from "./api.js";
 
 export default {
   name: "ConfigApp",
-  components: { SharedModelsSection, ModelDownloadSection, LegacySectionHost },
+  components: {
+    SharedModelsSection,
+    ModelDownloadSection,
+    LoginAppearanceSection,
+    LegacySectionHost,
+  },
   props: {
     currentUser: { type: Object, default: null },
     usersList: { type: Array, default: () => [] },
@@ -95,6 +108,9 @@ export default {
         { id: "nsfw", label: "NSFW Management", order: 7 },
         { id: "token-storage", label: "Token Storage", order: 8 },
         { id: "users-db", label: "Users DB", order: 9 },
+        ...(owner
+          ? [{ id: "login-appearance", label: "Login Appearance", order: 10 }]
+          : []),
       ];
       const ext = (this.extensionTabs || []).map((t) => ({
         id: t.id,

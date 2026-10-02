@@ -458,6 +458,8 @@ async def api_put_experimental(request):
 				"news",
 				"model_isolation",
 				"tailscale_local_auth",
+				"install_other_nodes_deps",
+				"login_background",
 			):
 				if key in incoming:
 					block[key] = bool(incoming[key])
@@ -477,6 +479,72 @@ async def api_put_experimental(request):
 
 routes.get("/api/mss-login/api/settings/experimental")(api_get_experimental)
 routes.put("/api/mss-login/api/settings/experimental")(api_put_experimental)
+
+
+@routes.get("/mss-login/api/settings/login-background")
+async def api_get_login_background_settings(request):
+	"""Return login background appearance settings (owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	from ..constants import experimental_login_background_enabled
+	from ..utils.login_background import get_login_background_settings
+
+	settings = get_login_background_settings()
+	return web.json_response(
+		{
+			**settings,
+			"experimental_active": experimental_login_background_enabled(),
+			"data_dir_hint": "login-background/",
+		}
+	)
+
+
+@routes.put("/mss-login/api/settings/login-background")
+async def api_put_login_background_settings(request):
+	"""Update login background appearance settings (owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	from ..constants import experimental_login_background_enabled
+	from ..utils.login_background import save_login_background_settings
+
+	try:
+		data = await request.json()
+	except Exception:
+		return web.json_response({"error": "Invalid JSON"}, status=400)
+	try:
+		saved = save_login_background_settings(data if isinstance(data, dict) else {})
+	except ValueError as e:
+		return web.json_response({"error": str(e)}, status=400)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+	return web.json_response(
+		{"status": "ok", **saved, "experimental_active": experimental_login_background_enabled()}
+	)
+
+
+@routes.get("/mss-login/api/login-background")
+async def api_get_public_login_background(request):
+	"""Public payload for the login page background layer."""
+	from ..utils.login_background import get_public_login_background
+
+	return web.json_response(get_public_login_background())
+
+
+@routes.get("/mss-login/api/login-background/media")
+async def api_get_login_background_media(request):
+	"""Stream local login background media when experimental+enabled."""
+	from ..utils.login_background import get_local_media_file
+
+	path, ctype = get_local_media_file()
+	if not path:
+		return web.Response(status=404, text="Not found")
+	return web.FileResponse(path, headers={"Content-Type": ctype or "application/octet-stream"})
+
+
+routes.get("/api/mss-login/api/settings/login-background")(api_get_login_background_settings)
+routes.put("/api/mss-login/api/settings/login-background")(api_put_login_background_settings)
+routes.get("/api/mss-login/api/login-background")(api_get_public_login_background)
+routes.get("/api/mss-login/api/login-background/media")(api_get_login_background_media)
 
 
 @routes.get("/mss-login/api/settings/tailscale-auth")

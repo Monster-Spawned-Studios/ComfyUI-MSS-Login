@@ -636,7 +636,7 @@ const ADMIN_STYLES = `
 
 /* Buttons */
 .mss-login-btn {
-    background: var(--p-button-primary-bg, #3b82f6);
+    background: var(--p-button-primary-bg, #9660fa);
     color: var(--p-button-primary-text, #ffffff);
     border: 1px solid rgba(255,255,255,0.24);
     padding: 7px 16px;
@@ -688,8 +688,8 @@ const ADMIN_STYLES = `
 }
 
 .mss-login-launch-btn:hover {
-    background: #1d4ed8;                 /* blue on hover */
-    border-color: #1e40af;
+    background: #7c60fa;                 /* purple on hover */
+    border-color: #9660fa;
     color: #ffffff;
     box-shadow: 0 6px 16px rgba(0,0,0,0.45);
 }
@@ -946,6 +946,7 @@ class mss_loginDialog extends ComfyDialog {
                     s3: async (container) => dialog.renderS3Settings(container),
                     "shared-models": async (container) => dialog.renderSharedModels(container, usersList),
                     "model-download": async (container) => dialog.renderModelDownload(container),
+                    "login-appearance": async (container) => dialog.renderLoginAppearance(container),
                 };
                 for (const extTab of extensionTabs) {
                     if (!/^[a-z0-9_-]+$/.test(extTab.id)) continue;
@@ -989,7 +990,8 @@ class mss_loginDialog extends ComfyDialog {
             { id: "env", label: "User Env", order: 6 },
             { id: "nsfw", label: "NSFW Management", order: 7 },
             { id: "token-storage", label: "Token Storage", order: 8 },
-            { id: "users-db", label: "Users DB", order: 9 }
+            { id: "users-db", label: "Users DB", order: 9 },
+            ...(isOwner ? [{ id: "login-appearance", label: "Login Appearance", order: 10 }] : []),
         ];
         
         // Combine and sort all tabs
@@ -1161,6 +1163,9 @@ class mss_loginDialog extends ComfyDialog {
         await this.renderModelDownload(this.element.querySelector("#mss-login-tab-model-download"));
         if (this.element.querySelector("#mss-login-tab-s3")) {
             await this.renderS3Settings(this.element.querySelector("#mss-login-tab-s3"));
+        }
+        if (this.element.querySelector("#mss-login-tab-login-appearance")) {
+            await this.renderLoginAppearance(this.element.querySelector("#mss-login-tab-login-appearance"));
         }
         
         // Fill Data - Extension tabs
@@ -3192,6 +3197,103 @@ async renderModelDownload(container) {
     }
 }
 
+async renderLoginAppearance(container) {
+    const isOwner = Array.isArray(currentUser?.groups)
+        && currentUser.groups.map(g => String(g).toLowerCase()).includes("owner");
+    if (!isOwner) {
+        container.innerHTML = `
+            <div class="mss-login-section">
+                <h3>Login Appearance</h3>
+                <p>Only the owner account can configure the login background.</p>
+            </div>
+        `;
+        return;
+    }
+    container.innerHTML = `
+        <div class="mss-login-section" style="max-width:560px; text-align:left;">
+            <h3>Login Appearance</h3>
+            <p class="mss-login-note">Custom /login background (experimental). Local files must be under the data directory (login-background/ recommended).</p>
+            <p id="mss-login-bg-exp-note" class="mss-login-note" style="display:none; color:#fbbf24;"></p>
+            <label style="display:flex; align-items:center; gap:8px; margin:12px 0;">
+                <input type="checkbox" id="mss-login-bg-enabled"> Enable custom login background
+            </label>
+            <label class="mss-login-field-label">Source</label>
+            <select id="mss-login-bg-source" class="mss-login-input" style="width:100%; margin-bottom:8px;">
+                <option value="url">External URL</option>
+                <option value="local">Local path</option>
+            </select>
+            <div id="mss-login-bg-url-wrap">
+                <label class="mss-login-field-label">URL</label>
+                <input type="url" id="mss-login-bg-url" class="mss-login-input" style="width:100%; margin-bottom:8px;" placeholder="https://example.com/bg.jpg">
+            </div>
+            <div id="mss-login-bg-local-wrap" style="display:none;">
+                <label class="mss-login-field-label">Local path</label>
+                <input type="text" id="mss-login-bg-local" class="mss-login-input" style="width:100%; margin-bottom:8px;" placeholder="login-background/my-bg.mp4">
+            </div>
+            <label class="mss-login-field-label">Media kind</label>
+            <select id="mss-login-bg-kind" class="mss-login-input" style="width:100%; margin-bottom:12px;">
+                <option value="auto">Auto-detect</option>
+                <option value="image">Image</option>
+                <option value="video">Video</option>
+            </select>
+            <button type="button" class="mss-login-launch-btn" id="mss-login-bg-save" style="min-width:200px;">Save login appearance</button>
+            <p id="mss-login-bg-status" class="mss-login-note" style="margin-top:8px;"></p>
+        </div>
+    `;
+    const sourceEl = container.querySelector("#mss-login-bg-source");
+    const urlWrap = container.querySelector("#mss-login-bg-url-wrap");
+    const localWrap = container.querySelector("#mss-login-bg-local-wrap");
+    const syncSource = () => {
+        const local = sourceEl.value === "local";
+        urlWrap.style.display = local ? "none" : "block";
+        localWrap.style.display = local ? "block" : "none";
+    };
+    sourceEl.addEventListener("change", syncSource);
+    try {
+        const res = await api.fetchApi("/mss-login/api/settings/login-background");
+        const data = await res.json();
+        if (res.ok && data) {
+            container.querySelector("#mss-login-bg-enabled").checked = !!data.enabled;
+            sourceEl.value = data.source === "local" ? "local" : "url";
+            container.querySelector("#mss-login-bg-url").value = data.url || "";
+            container.querySelector("#mss-login-bg-local").value = data.local_path || "";
+            container.querySelector("#mss-login-bg-kind").value = data.media_kind || "auto";
+            syncSource();
+            if (!data.experimental_active) {
+                const note = container.querySelector("#mss-login-bg-exp-note");
+                note.style.display = "block";
+                note.textContent = "Experimental login_background is off. Settings will save but will not apply on /login until enabled.";
+            }
+        }
+    } catch (_) {}
+    container.querySelector("#mss-login-bg-save").onclick = async () => {
+        const statusEl = container.querySelector("#mss-login-bg-status");
+        statusEl.textContent = "Saving…";
+        try {
+            const res = await api.fetchApi("/mss-login/api/settings/login-background", {
+                method: "PUT",
+                body: JSON.stringify({
+                    enabled: !!container.querySelector("#mss-login-bg-enabled").checked,
+                    source: sourceEl.value,
+                    url: container.querySelector("#mss-login-bg-url").value,
+                    local_path: container.querySelector("#mss-login-bg-local").value,
+                    media_kind: container.querySelector("#mss-login-bg-kind").value,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                statusEl.textContent = data?.error || "Save failed.";
+                return;
+            }
+            statusEl.textContent = data.experimental_active
+                ? "Saved. Reload /login to preview."
+                : "Saved. Enable experimental login_background to apply on /login.";
+        } catch (e) {
+            statusEl.textContent = "Error: " + (e.message || "Failed");
+        }
+    };
+}
+
 async renderS3Settings(container) {
     const isOwner = Array.isArray(currentUser?.groups)
         && currentUser.groups.map(g => String(g).toLowerCase()).includes("owner");
@@ -4746,7 +4848,7 @@ app.ui.settings.addSetting({
         experimentalChecks.style.marginTop = "8px";
         experimentalSection.appendChild(experimentalChecks);
 
-        const expFeatureKeys = ["mfa", "s3", "loading_screen", "news", "model_isolation", "tailscale_local_auth", "install_other_nodes_deps"];
+        const expFeatureKeys = ["mfa", "s3", "loading_screen", "news", "model_isolation", "tailscale_local_auth", "install_other_nodes_deps", "login_background"];
         const expLabels = {
             mfa: "MFA (two-factor authentication)",
             s3: "S3 storage (mount & sync)",
@@ -4754,7 +4856,8 @@ app.ui.settings.addSetting({
             news: "News / RSS feed",
             model_isolation: "Model isolation (per-user model folders)",
             tailscale_local_auth: "Tailscale & Local Network Authentication",
-            install_other_nodes_deps: "Auto-install dependencies for other custom nodes"
+            install_other_nodes_deps: "Auto-install dependencies for other custom nodes",
+            login_background: "Custom login background (image/video)"
         };
 
         const experimentalSaveBtn = document.createElement("button");

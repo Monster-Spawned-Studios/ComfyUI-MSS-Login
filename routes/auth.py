@@ -94,6 +94,17 @@ def _inject_login_guest_block(html: str, *, allow_guest: bool) -> str:
 	return html
 
 
+def _inject_login_background_json(html: str) -> str:
+	"""Embed public login-background payload for first paint (CSP-safe JSON script)."""
+	from ..utils.login_background import get_public_login_background
+
+	payload = get_public_login_background()
+	blob = json.dumps(payload, separators=(",", ":"))
+	if "{{LOGIN_BG_JSON}}" in html:
+		return html.replace("{{LOGIN_BG_JSON}}", blob)
+	return html
+
+
 def _apply_login_cookie(
 	resp: web.Response, token: str, request: web.Request, *, remember_me: bool = False
 ) -> None:
@@ -355,6 +366,7 @@ async def get_login(request: web.Request) -> web.Response:
 	# Reload-safe: reflect admin toggle without requiring process restart.
 	allow_guest = bool(getattr(constants_module, "ALLOW_GUEST_JWT", False))
 	html = _inject_login_guest_block(html, allow_guest=allow_guest)
+	html = _inject_login_background_json(html)
 	return web.Response(text=html, content_type="text/html")
 
 

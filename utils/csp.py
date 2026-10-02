@@ -11,14 +11,30 @@ _CSP_HTML_PATHS = frozenset({"/login", "/register", "/loading", "/mfa"})
 # connect-src: self + tunnel/subdomain URLs so Cloudflare Tunnel (cloudflared) and same-site requests work
 # regardless of how the browser normalizes the origin (e.g. comfyui-server.monsterspawned.studio).
 # img-src: self + data:. frame-ancestors: self to mitigate clickjacking.
-_CSP_VALUE = (
+_CSP_BASE = (
 	"default-src 'self'; "
 	"script-src 'self' https://cdnjs.cloudflare.com; "
 	"style-src 'self' 'unsafe-inline'; "
-	"img-src 'self' data:; "
 	"connect-src 'self' https://monsterspawned.studio https://*.monsterspawned.studio wss://*.monsterspawned.studio; "
 	"frame-ancestors 'self'"
 )
+
+
+def _build_csp_for_path(path: str) -> str:
+	img_src = "img-src 'self' data:"
+	media_src = "media-src 'self'"
+	if path == "/login":
+		try:
+			from .login_background import csp_extra_origins_for_login
+
+			img_origin, media_origin = csp_extra_origins_for_login()
+			if img_origin:
+				img_src = f"{img_src} {img_origin}"
+			if media_origin:
+				media_src = f"{media_src} {media_origin}"
+		except Exception:
+			pass
+	return f"{_CSP_BASE}; {img_src}; {media_src}"
 
 
 def create_csp_middleware() -> web.middleware:
@@ -28,7 +44,7 @@ def create_csp_middleware() -> web.middleware:
 	async def csp_middleware(request: web.Request, handler) -> web.StreamResponse:
 		response = await handler(request)
 		if request.path in _CSP_HTML_PATHS and isinstance(response, web.StreamResponse):
-			response.headers["Content-Security-Policy"] = _CSP_VALUE
+			response.headers["Content-Security-Policy"] = _build_csp_for_path(request.path)
 		return response
 
 	return csp_middleware

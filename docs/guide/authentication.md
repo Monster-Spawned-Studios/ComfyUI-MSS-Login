@@ -112,3 +112,4 @@ API tokens are listed and revoked via `GET` / `DELETE /mss-login/api/tokens`.
 - [Headless JWT session](headless-jwt-session.md) — WebSocket and REST-only clients
 - [Mobile and Comfy Portal](../integrations/comfy-portal.md) — iOS/Android integration
 - [HTTP Endpoints](../api-reference/endpoints.md) — generated route table
+- [Login background (experimental)](../experimental/login-background.md) — owner-customizable `/login` image or video

@@ -52,6 +52,7 @@ nav:
       - S3: experimental/s3.md
       - Loading screen: experimental/loading-screen.md
       - News: experimental/news.md
+      - Login background: experimental/login-background.md
       - Model isolation: experimental/model-isolation.md
       - Tailscale local auth: experimental/tailscale-local-auth.md
       - Install other node deps: experimental/install-other-nodes-deps.md

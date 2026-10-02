@@ -77,6 +77,7 @@ def main() -> int:
 		steps.append(
 			("Auth HTML hardening", os.path.join(TESTS_DIR, "run_auth_html_hardening_tests.py"))
 		)
+		steps.append(("Login background", os.path.join(TESTS_DIR, "run_login_background_tests.py")))
 		steps.append(
 			("Navigation detection", os.path.join(TESTS_DIR, "run_navigation_detection_tests.py"))
 		)

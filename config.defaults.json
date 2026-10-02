@@ -90,7 +90,15 @@
 		"news": false,
 		"model_isolation": false,
 		"tailscale_local_auth": false,
-		"install_other_nodes_deps": false
+		"install_other_nodes_deps": false,
+		"login_background": false
+	},
+	"login_background": {
+		"enabled": false,
+		"source": "url",
+		"url": "",
+		"local_path": "",
+		"media_kind": "auto"
 	},
 	"s3_storage": {
 		"enabled": false,
