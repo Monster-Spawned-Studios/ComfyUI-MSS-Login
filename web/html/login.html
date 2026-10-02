@@ -67,18 +67,19 @@
                 <label class="mss-auth-label" for="password">Password:</label>
                 <input class="mss-auth-input" type="password" id="password" name="password" required>
             </div>
-            <!-- Main login + guest login -->
+            <div class="form-field mss-auth-field" style="display:flex; align-items:center; gap:0.5rem; justify-content:center;">
+                <input type="checkbox" id="remember_me" name="remember_me" value="1">
+                <label class="mss-auth-label" for="remember_me" style="margin:0;">Remember me on this device</label>
+            </div>
+            <!-- Main login; guest block injected/omitted server-side from ALLOW_GUEST_JWT -->
             <div class="form-field" style="display:flex; gap:0.5rem; flex-wrap:wrap;">
                 <button class="btn mss-auth-btn" type="submit">Login</button>
-                <button class="btn mss-auth-btn" type="button" id="guest-login-btn">Guest Login</button>
+                {{GUEST_LOGIN_BLOCK}}
             </div>
-
-            <!-- hidden flag used for guest login -->
-            <input type="hidden" id="guest_login_flag" name="guest_login" value="false">
             <!-- Version info -->
             <div>
                 <p class="version-info" id="login-version" style="margin-top:1rem; font-size:0.9rem; color: #888888; text-align:center;">
-                MSS-Login - v0.0.7</p>
+                MSS-Login - v{{VERSION}}</p>
             </div>
         </form>
         <!-- Experimental: server news feed (RSS from data dir news.md) -->

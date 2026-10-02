@@ -20,6 +20,7 @@ from ..constants import (
 	LOADING_TIMEOUT_SECONDS,
 	MAX_TOKEN_EXPIRE_MINUTES,
 	SESSION_TOKEN_STORE_CONFIG,
+	TOKEN_EXPIRE_MINUTES,
 	USERS_DB_CONFIG,
 	WEB_DIR,
 	experimental_loading_screen_enabled,
@@ -29,6 +30,7 @@ from ..constants import (
 from ..globals import access_control, jwt_auth, logger, routes, timeout, users_db
 from ..utils import user_env
 from ..utils.api_token_store import get_api_token_store
+from ..utils.auth_cookies import clear_auth_cookies, set_auth_cookie, truthy_remember_me
 from ..utils.bootstrap import ensure_groups_config, ensure_guest_user
 from ..utils.input_sanitizer import (
 	sanitize_backup_code_input,
@@ -58,12 +60,47 @@ _LOGIN_VERSION_RE = re.compile(
 )
 
 
+_GUEST_LOGIN_BLOCK_ENABLED = (
+	'<button class="btn mss-auth-btn" type="button" id="guest-login-btn">'
+	"Guest Login</button>"
+	'<input type="hidden" id="guest_login_flag" name="guest_login" value="false">'
+)
+
+
 def _inject_login_version(html: str, version: str) -> str:
 	"""Fill the login-page version from pyproject (placeholder or previously stamped semver)."""
 	if "{{VERSION}}" in html:
 		html = html.replace("{{VERSION}}", version)
 	updated, replaced = _LOGIN_VERSION_RE.subn(rf"\g<1>{version}", html, count=1)
 	return updated if replaced else html
+
+
+def _inject_login_guest_block(html: str, *, allow_guest: bool) -> str:
+	"""Omit guest button/flag when guest JWT is disabled; inject fixed markup when enabled."""
+	replacement = _GUEST_LOGIN_BLOCK_ENABLED if allow_guest else ""
+	if "{{GUEST_LOGIN_BLOCK}}" in html:
+		return html.replace("{{GUEST_LOGIN_BLOCK}}", replacement)
+	# Legacy stamped HTML without placeholder: strip guest controls when disabled.
+	if not allow_guest:
+		html = re.sub(
+			r'<button[^>]*\bid=["\']guest-login-btn["\'][^>]*>.*?</button>',
+			"",
+			html,
+			flags=re.IGNORECASE | re.DOTALL,
+		)
+		html = re.sub(
+			r'<input[^>]*\bid=["\']guest_login_flag["\'][^>]*>', "", html, flags=re.IGNORECASE
+		)
+	return html
+
+
+def _apply_login_cookie(
+	resp: web.Response, token: str, request: web.Request, *, remember_me: bool = False
+) -> None:
+	"""Set browser session cookie; persistent only when remember_me is True."""
+	_secure = is_https_request(request)
+	max_age = int(TOKEN_EXPIRE_MINUTES) * 60 if remember_me else None
+	set_auth_cookie(resp, token, secure=_secure, remember_me=remember_me, max_age_seconds=max_age)
 
 
 def _authenticated_admin_username(request: web.Request) -> str | None:
@@ -301,11 +338,8 @@ async def get_login(request: web.Request) -> web.Response:
 						except Exception:
 							pass
 						redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
-						_secure = is_https_request(request)
 						resp = web.HTTPFound(redirect_url)
-						resp.set_cookie(
-							"jwt_token", token, httponly=True, samesite="Strict", secure=_secure
-						)
+						_apply_login_cookie(resp, token, request, remember_me=False)
 						return resp
 
 	path = os.path.join(HTML_DIR, "login.html")
@@ -318,6 +352,9 @@ async def get_login(request: web.Request) -> web.Response:
 		return web.Response(text="login.html not found", status=404)
 	version = get_local_version()
 	html = _inject_login_version(html, version)
+	# Reload-safe: reflect admin toggle without requiring process restart.
+	allow_guest = bool(getattr(constants_module, "ALLOW_GUEST_JWT", False))
+	html = _inject_login_guest_block(html, allow_guest=allow_guest)
 	return web.Response(text=html, content_type="text/html")
 
 
@@ -386,17 +423,20 @@ async def post_login(request: web.Request) -> web.Response:
 		logger.login_success(ip, "guest")
 		timeout.remove_failed_attempts(ip)
 		redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
-		_secure = is_https_request(request)
+		# Guest logins are always session cookies (not persisted).
 		if is_browser_navigation(request):
 			resp = web.HTTPFound(redirect_url)
-			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+			_apply_login_cookie(resp, token, request, remember_me=False)
 			return resp
 		resp = web.json_response(
 			{"message": "Guest login", "jwt_token": token, "redirect_url": redirect_url}
 		)
-		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+		_apply_login_cookie(resp, token, request, remember_me=False)
 		return resp
 
+	remember_me = truthy_remember_me(
+		sanitized_data.get("remember_me") or sanitized_data.get("remember")
+	)
 	username = sanitize_username(sanitized_data.get("username"))
 	password = sanitize_password_input(sanitized_data.get("password"))
 
@@ -415,6 +455,7 @@ async def post_login(request: web.Request) -> web.Response:
 					"message": "MFA verification required",
 					"mfa_required": True,
 					"mfa_temp_token": mfa_temp,
+					"remember_me": remember_me,
 				},
 				status=200,
 			)
@@ -435,6 +476,7 @@ async def post_login(request: web.Request) -> web.Response:
 						"message": "MFA setup required for admin accounts",
 						"mfa_setup_required": True,
 						"mfa_temp_token": mfa_temp,
+						"remember_me": remember_me,
 					},
 					status=200,
 				)
@@ -447,6 +489,7 @@ async def post_login(request: web.Request) -> web.Response:
 						"message": "MFA setup required for your role",
 						"mfa_setup_required": True,
 						"mfa_temp_token": mfa_temp,
+						"remember_me": remember_me,
 					},
 					status=200,
 				)
@@ -480,15 +523,19 @@ async def post_login(request: web.Request) -> web.Response:
 		logger.login_success(ip, username)
 		timeout.remove_failed_attempts(ip)
 		redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
-		_secure = is_https_request(request)
 		if is_browser_navigation(request):
 			resp = web.HTTPFound(redirect_url)
-			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+			_apply_login_cookie(resp, token, request, remember_me=remember_me)
 			return resp
 		resp = web.json_response(
-			{"message": "Login successful", "jwt_token": token, "redirect_url": redirect_url}
+			{
+				"message": "Login successful",
+				"jwt_token": token,
+				"redirect_url": redirect_url,
+				"remember_me": remember_me,
+			}
 		)
-		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+		_apply_login_cookie(resp, token, request, remember_me=remember_me)
 		return resp
 
 	timeout.add_failed_attempt(ip)
@@ -606,17 +653,16 @@ async def api_local_login(request: web.Request) -> web.Response:
 	logger.login_success(ip, username)
 	timeout.remove_failed_attempts(ip)
 	redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
-	_secure = is_https_request(request)
 
 	if is_browser_navigation(request):
 		resp = web.HTTPFound(redirect_url)
-		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+		_apply_login_cookie(resp, token, request, remember_me=False)
 		return resp
 
 	resp = web.json_response(
 		{"message": "Local login successful", "jwt_token": token, "redirect_url": redirect_url}
 	)
-	resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+	_apply_login_cookie(resp, token, request, remember_me=False)
 	return resp
 
 
@@ -624,8 +670,14 @@ routes.post("/api/mss-login/api/auth/local-login")(api_local_login)
 
 
 def _end_session(request: web.Request) -> None:
-	"""Revoke the current device JWT (jti) if present. Best-effort."""
+	"""
+	Revoke only the current browser session JWT (jti in session_token_store).
+
+	Never revokes long-lived API tokens from api_token_store (Generate Token /
+	external apps). Opaque API tokens are skipped (not JWT dotted form).
+	"""
 	token = jwt_auth.get_token_from_request(request)
+	# Opaque API tokens are not JWTs — leave them alone.
 	if not token or token.count(".") < 2:
 		return
 	try:
@@ -645,6 +697,7 @@ def _end_session(request: web.Request) -> None:
 
 
 def _logout_redirect(request: web.Request) -> web.Response:
+	"""End browser UI session and clear session cookies; preserve API tokens."""
 	username = None
 	try:
 		_end_session(request)
@@ -667,10 +720,7 @@ def _logout_redirect(request: web.Request) -> web.Response:
 		logger.error(f"[auth.py] get_logout: send_notification: {e!s}")
 	resp = web.HTTPFound("/login")
 	_secure = is_https_request(request)
-	resp.del_cookie("jwt_token", path="/")
-	resp.set_cookie(
-		"jwt_token", "", max_age=0, path="/", httponly=True, samesite="Strict", secure=_secure
-	)
+	clear_auth_cookies(resp, secure=_secure)
 	return resp
 
 

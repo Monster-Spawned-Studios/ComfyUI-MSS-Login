@@ -2,7 +2,8 @@
 """Debug-mode API routes. Registered here to avoid circular import (constants <-> globals)."""
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
+
 from aiohttp import web
 
 from ..constants import (
@@ -11,16 +12,54 @@ from ..constants import (
 	DEBUG_MODE_FROM_ENV,
 	filter_debug_messages_enabled,
 )
-from ..globals import routes
-from ..utils import jwt_auth
+from ..globals import jwt_auth, routes, users_db
 from ..utils.log_redactor import redact_log_text
 
 
+def _authenticated_username(request: web.Request) -> str | None:
+	"""Return username for a valid session/API token, else None."""
+	token = jwt_auth.get_token_from_request(request)
+	if not token:
+		return None
+	try:
+		from ..utils.api_token_store import get_api_token_store
+
+		api_cfg = getattr(jwt_auth, "api_token_store_config", None) or {}
+		api_store = get_api_token_store(api_cfg)
+		api_user = api_store.get_user_for_token(token)
+		if api_user is not None:
+			_uid, uname = api_user
+			return uname
+	except Exception:
+		pass
+	try:
+		payload = jwt_auth.decode_access_token(token)
+		username = payload.get("username") if payload else None
+		return username if username else None
+	except Exception:
+		return None
+
+
+def _is_admin_username(username: str | None) -> bool:
+	if not username:
+		return False
+	try:
+		_uid, rec = users_db.get_user(username)
+	except Exception:
+		return False
+	if not rec:
+		return False
+	groups = [str(g).lower() for g in (rec.get("groups") or [])]
+	return bool(rec.get("admin") or "admin" in groups or "owner" in groups)
+
+
 @routes.get("/mss-login/api/debug-mode")
-async def get_debug_mode(
-	request: web.Request = None,  # pyright: ignore[reportUnusedParameter, reportMissingParameter]
-) -> web.json_response:
-	"""Return the debug mode and filter status from the environment/config."""
+async def get_debug_mode(request: web.Request) -> web.Response:
+	"""Return debug mode status. Unauthenticated callers get a safe false response."""
+	username = _authenticated_username(request)
+	if not username:
+		return web.json_response({"debugMode": False, "filterDebugMessages": True})
+
 	active = bool(DEBUG_MODE or DEBUG_MODE_FROM_ENV)
 	filtered = filter_debug_messages_enabled()
 	try:
@@ -36,17 +75,13 @@ async def get_debug_mode(
 async def export_redacted_debug_log(request: web.Request) -> web.Response:
 	"""
 	Export sanitized debug log with secrets and credentials masked for GitHub troubleshooting.
+	Requires an authenticated admin/owner session or API token.
 	"""
-	# Check authentication if available
-	token = jwt_auth.get_token_from_request(request)
-	username = "anonymous"
-	if token:
-		try:
-			payload = jwt_auth.decode_access_token(token)
-			if payload and payload.get("username"):
-				username = payload["username"]
-		except Exception:
-			pass
+	username = _authenticated_username(request)
+	if not username:
+		return web.json_response({"error": "Authentication required"}, status=401)
+	if not _is_admin_username(username):
+		return web.json_response({"error": "Admin authentication required"}, status=403)
 
 	content = ""
 	if os.path.isfile(DEBUG_LOG_PATH):
@@ -58,7 +93,7 @@ async def export_redacted_debug_log(request: web.Request) -> web.Response:
 	else:
 		content = (
 			"# MSS-Login Sanitized Debug Log\n"
-			f"# Generated: {datetime.now(timezone.utc).isoformat()}\n"
+			f"# Generated: {datetime.now(UTC).isoformat()}\n"
 			"# No debug log entries found on disk (DEBUG_MODE may be disabled or log is empty).\n"
 		)
 
@@ -70,7 +105,7 @@ async def export_redacted_debug_log(request: web.Request) -> web.Response:
 		"# ========================================================\n"
 		"# ComfyUI-MSS-Login Sanitized Debug Log Export\n"
 		f"# Exported by: {username}\n"
-		f"# Timestamp: {datetime.now(timezone.utc).isoformat()}\n"
+		f"# Timestamp: {datetime.now(UTC).isoformat()}\n"
 		"# Secrets, keys, tokens, and sensitive IPs have been masked.\n"
 		"# Safe for GitHub issue attachments.\n"
 		"# ========================================================\n\n"
@@ -80,9 +115,7 @@ async def export_redacted_debug_log(request: web.Request) -> web.Response:
 	return web.Response(
 		body=final_output,
 		content_type="text/plain; charset=utf-8",
-		headers={
-			"Content-Disposition": 'attachment; filename="mss-login-sanitized-debug.log"'
-		},
+		headers={"Content-Disposition": 'attachment; filename="mss-login-sanitized-debug.log"'},
 	)
 
 

@@ -75,6 +75,9 @@ def main() -> int:
 		steps.append(("Sanitizer", os.path.join(TESTS_DIR, "run_sanitizer_tests.py")))
 		steps.append(("Auth compatibility", os.path.join(TESTS_DIR, "run_auth_compat_tests.py")))
 		steps.append(
+			("Auth HTML hardening", os.path.join(TESTS_DIR, "run_auth_html_hardening_tests.py"))
+		)
+		steps.append(
 			("Navigation detection", os.path.join(TESTS_DIR, "run_navigation_detection_tests.py"))
 		)
 		steps.append(("Model isolation", os.path.join(TESTS_DIR, "run_model_isolation_tests.py")))

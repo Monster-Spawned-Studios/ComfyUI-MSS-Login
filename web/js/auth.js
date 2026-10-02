@@ -401,6 +401,7 @@ async function login(event) {
 
       const response = await fetch("/login", {
         method: "POST",
+        credentials: "same-origin",
         body: formData,
       });
 
@@ -411,6 +412,11 @@ async function login(event) {
         if (result.mfa_required && result.mfa_temp_token) {
           sessionStorage.setItem("mfa_temp_token", result.mfa_temp_token);
           sessionStorage.setItem("mfa_mode", "verify");
+          if (result.remember_me) {
+            sessionStorage.setItem("mss_login_remember_me", "1");
+          } else {
+            sessionStorage.removeItem("mss_login_remember_me");
+          }
           button.disabled = false;
           button.textContent = "Login";
           window.location.href = "/mfa";
@@ -420,24 +426,20 @@ async function login(event) {
         if (result.mfa_setup_required && result.mfa_temp_token) {
           sessionStorage.setItem("mfa_temp_token", result.mfa_temp_token);
           sessionStorage.setItem("mfa_mode", "setup");
+          if (result.remember_me) {
+            sessionStorage.setItem("mss_login_remember_me", "1");
+          } else {
+            sessionStorage.removeItem("mss_login_remember_me");
+          }
           button.disabled = false;
           button.textContent = "Login";
           window.location.href = "/mfa";
           return;
         }
-        // Normal login: backend returned { message, token } (and optionally jwt_token)
-        const token = result.token || result.jwt_token;
-        if (!token) {
-          addToast("Login succeeded but no token was returned", "error");
-        } else {
-          let cookieString = `jwt_token=${DOMPurify.sanitize(token)}; path=/; HttpOnly; SameSite=Strict`;
-
-          if (window.location.protocol === "https:") {
-            cookieString += "; Secure";
-          }
-
-          document.cookie = cookieString;
-        }
+        // Normal login: HttpOnly cookie is set by the server Set-Cookie header.
+        // Do not write jwt_token from JS (cannot set HttpOnly; would duplicate
+        // a non-HttpOnly cookie). Long-lived API tokens are never stored here.
+        sessionStorage.removeItem("mss_login_remember_me");
 
         addToast(result.message || "Login successful", "success");
         // Browser-only redirect: use redirect_url from server when loading screen is enabled, else /.
@@ -459,19 +461,25 @@ async function login(event) {
 async function guestLogin(event) {
   event.preventDefault();
 
+  // Guest UI omitted from HTML when ALLOW_GUEST_JWT is false.
+  const guestFlag = document.getElementById("guest_login_flag");
+  const guestButton = document.getElementById("guest-login-btn");
+  if (!guestFlag || !guestButton) {
+    return;
+  }
+
   if (isTimedOut()) {
     return;
   }
 
   const form = document.getElementById("login-form");
-  const guestFlag = document.getElementById("guest_login_flag");
+  if (!form) {
+    return;
+  }
   const loginButton = form.querySelector("button[type='submit']");
-  const guestButton = event.target;
 
   // ensure flag exists / set to true
-  if (guestFlag) {
-    guestFlag.value = "true";
-  }
+  guestFlag.value = "true";
 
   // clear username/password; backend ignores them on guest path anyway
   const usernameField = document.getElementById("username");
@@ -488,21 +496,14 @@ async function guestLogin(event) {
 
     const response = await fetch("/login", {
       method: "POST",
+      credentials: "same-origin",
       body: formData,
     });
 
     const result = await response.json();
 
     if (response.ok) {
-      const token = result.token || result.jwt_token;
-      if (token) {
-        let cookieString = `jwt_token=${token}; path=/; HttpOnly; SameSite=Strict`;
-        if (window.location.protocol === "https:") {
-          cookieString += "; Secure";
-        }
-        document.cookie = cookieString;
-      }
-
+      // Server sets HttpOnly session cookie; do not mirror jwt_token in JS.
       addToast(result.message || "Guest login successful", "success");
       window.location.href = result.redirect_url || "/";
     } else {
@@ -520,7 +521,7 @@ async function guestLogin(event) {
       loginButton.textContent = "Login";
     }
     // reset flag so normal login stays normal
-    if (guestFlag) guestFlag.value = "false";
+    guestFlag.value = "false";
   }
 }
 
@@ -709,6 +710,9 @@ async function submitMfaVerify(event) {
     addToast("Enter verification code or backup code", "error");
     return;
   }
+  if (sessionStorage.getItem("mss_login_remember_me") === "1") {
+    body.remember_me = true;
+  }
   const button = document.querySelector("#mfa-verify-form button[type='submit']");
   button.disabled = true;
   button.textContent = "Verifying...";
@@ -716,15 +720,17 @@ async function submitMfaVerify(event) {
     const response = await fetch("/mss-login/api/mfa/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify(body),
     });
     const result = await response.json();
-    if (response.ok && result.jwt_token) {
-      let cookieString = `jwt_token=${result.jwt_token}; path=/; HttpOnly; SameSite=Strict`;
-      if (window.location.protocol === "https:") cookieString += "; Secure";
-      document.cookie = cookieString;
+    if (response.ok) {
+      // Cookie is set by the server; do not duplicate jwt_token from JS.
+      sessionStorage.removeItem("mss_login_remember_me");
+      sessionStorage.removeItem("mfa_temp_token");
+      sessionStorage.removeItem("mfa_mode");
       addToast(result.message || "Login successful", "success");
-      window.location.href = "/";
+      window.location.href = result.redirect_url || "/";
     } else {
       addToast(result.error || "Invalid code", "error");
       button.disabled = false;
@@ -768,15 +774,20 @@ async function submitMfaSetup(event) {
     const verifyResp = await fetch("/mss-login/api/mfa/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mfa_temp_token: mfaTempToken, code }),
+      credentials: "same-origin",
+      body: JSON.stringify({
+        mfa_temp_token: mfaTempToken,
+        code,
+        remember_me: sessionStorage.getItem("mss_login_remember_me") === "1",
+      }),
     });
     const verifyData = await verifyResp.json();
-    if (verifyResp.ok && verifyData.jwt_token) {
-      let cookieString = `jwt_token=${verifyData.jwt_token}; path=/; HttpOnly; SameSite=Strict`;
-      if (window.location.protocol === "https:") cookieString += "; Secure";
-      document.cookie = cookieString;
+    if (verifyResp.ok) {
+      sessionStorage.removeItem("mss_login_remember_me");
+      sessionStorage.removeItem("mfa_temp_token");
+      sessionStorage.removeItem("mfa_mode");
       addToast(verifyData.message || "MFA enabled. Login successful.", "success");
-      window.location.href = "/";
+      window.location.href = verifyData.redirect_url || "/";
     } else {
       addToast(verifyData.error || "Verification failed", "error");
       button.disabled = false;
@@ -799,44 +810,87 @@ async function loadMyTokens() {
   try {
     const response = await fetch("/mss-login/api/tokens", { credentials: "same-origin" });
     if (!response.ok) {
-      container.innerHTML = '<p style="color:#888;">Log in to view your tokens.</p>';
+      container.textContent = "";
+      const p = document.createElement("p");
+      p.style.color = "#888";
+      p.textContent = "Log in to view your tokens.";
+      container.appendChild(p);
       return;
     }
     const data = await response.json();
     const tokens = data.tokens || [];
     if (tokens.length === 0) {
-      container.innerHTML = '<p style="color:#888;">No API tokens found.</p>';
+      container.textContent = "";
+      const p = document.createElement("p");
+      p.style.color = "#888";
+      p.textContent = "No API tokens found.";
+      container.appendChild(p);
       return;
     }
-    let html = '<table style="width:100%; border-collapse:collapse; font-size:0.9rem;">';
-    html += '<thead><tr style="border-bottom:1px solid #444;">';
-    html += '<th style="text-align:left; padding:6px;">Label</th>';
-    html += '<th style="text-align:left; padding:6px;">Hash Prefix</th>';
-    html += '<th style="text-align:left; padding:6px;">Created</th>';
-    html += '<th style="text-align:left; padding:6px;">Last used</th>';
-    html += '<th style="text-align:left; padding:6px;">Expires</th>';
-    html += '<th style="text-align:center; padding:6px;">Revoke</th>';
-    html += '</tr></thead><tbody>';
+    container.textContent = "";
+    const table = document.createElement("table");
+    table.style.cssText = "width:100%; border-collapse:collapse; font-size:0.9rem;";
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    headRow.style.borderBottom = "1px solid #444";
+    ["Label", "Hash Prefix", "Created", "Last used", "Expires", "Revoke"].forEach((label, i) => {
+      const th = document.createElement("th");
+      th.style.cssText = i === 5
+        ? "text-align:center; padding:6px;"
+        : "text-align:left; padding:6px;";
+      th.textContent = label;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
     for (const t of tokens) {
       const created = t.created_at_iso ? new Date(t.created_at_iso).toLocaleString() : "N/A";
       const lastUsed = t.last_used_at_iso ? new Date(t.last_used_at_iso).toLocaleString() : "Never";
       const neverExpires = t.expires_iso === "9999-12-31T23:59:59+00:00";
       const expires = neverExpires ? "Never" : (t.expires_iso ? new Date(t.expires_iso).toLocaleString() : "N/A");
-      const label = t.label || '<span style="color:#666;">Unlabeled</span>';
-      const prefix = t.token_hash_prefix || "";
-      html += '<tr style="border-bottom:1px solid #333;">';
-      html += `<td style="padding:6px;">${label}</td>`;
-      html += `<td style="padding:6px; font-family:monospace; font-size:0.8rem;">${prefix}</td>`;
-      html += `<td style="padding:6px;">${created}</td>`;
-      html += `<td style="padding:6px;">${lastUsed}</td>`;
-      html += `<td style="padding:6px;">${expires}</td>`;
-      html += `<td style="padding:6px; text-align:center;"><button class="btn" style="padding:2px 10px; font-size:0.8rem;" onclick="revokeToken('${prefix}')">Revoke</button></td>`;
-      html += '</tr>';
+      const prefix = String(t.token_hash_prefix || "");
+      const tr = document.createElement("tr");
+      tr.style.borderBottom = "1px solid #333";
+      const cells = [
+        t.label || "Unlabeled",
+        prefix,
+        created,
+        lastUsed,
+        expires,
+      ];
+      cells.forEach((text, i) => {
+        const td = document.createElement("td");
+        td.style.padding = "6px";
+        if (i === 1) {
+          td.style.fontFamily = "monospace";
+          td.style.fontSize = "0.8rem";
+        }
+        if (i === 0 && !t.label) {
+          td.style.color = "#666";
+        }
+        td.textContent = text;
+        tr.appendChild(td);
+      });
+      const revokeTd = document.createElement("td");
+      revokeTd.style.cssText = "padding:6px; text-align:center;";
+      const revokeBtn = document.createElement("button");
+      revokeBtn.className = "btn";
+      revokeBtn.style.cssText = "padding:2px 10px; font-size:0.8rem;";
+      revokeBtn.textContent = "Revoke";
+      revokeBtn.addEventListener("click", () => revokeToken(prefix));
+      revokeTd.appendChild(revokeBtn);
+      tr.appendChild(revokeTd);
+      tbody.appendChild(tr);
     }
-    html += '</tbody></table>';
-    container.textContent = DOMPurify.sanitize(html);
+    table.appendChild(tbody);
+    container.appendChild(table);
   } catch {
-    container.innerHTML = '<p style="color:#888;">Could not load tokens.</p>';
+    container.textContent = "";
+    const p = document.createElement("p");
+    p.style.color = "#888";
+    p.textContent = "Could not load tokens.";
+    container.appendChild(p);
   }
 }
 

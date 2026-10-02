@@ -132,8 +132,9 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
 		return web.json_response({"error": "MFA is disabled."}, status=403)
 	from datetime import datetime, timezone
 
-	from ..constants import DEBUG_MODE
+	from ..constants import DEBUG_MODE, TOKEN_EXPIRE_MINUTES
 	from ..globals import logger
+	from ..utils.auth_cookies import set_auth_cookie, truthy_remember_me
 
 	data = await _get_request_data(request)
 	mfa_temp = (data.get("mfa_temp_token") or "").strip()
@@ -141,6 +142,7 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
 	backup_code_raw = (
 		(data.get("backup_code") or "").strip().replace(" ", "").replace("-", "").upper()
 	)
+	remember_me = truthy_remember_me(data.get("remember_me") or data.get("remember"))
 	if not mfa_temp:
 		return web.json_response({"error": "mfa_temp_token required"}, status=400)
 	username = consume_mfa_temp_token(mfa_temp)
@@ -183,14 +185,19 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
 	logger.login_success(get_ip(request), username)
 	redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
 	_secure = is_https_request(request)
+	max_age = int(TOKEN_EXPIRE_MINUTES) * 60 if remember_me else None
 	if is_browser_navigation(request):
 		resp = web.HTTPFound(redirect_url)
-		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+		set_auth_cookie(
+			resp, token, secure=_secure, remember_me=remember_me, max_age_seconds=max_age
+		)
 		return resp
 	resp = web.json_response(
 		{"message": "Login successful", "jwt_token": token, "redirect_url": redirect_url}
 	)
-	resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+	set_auth_cookie(
+		resp, token, secure=_secure, remember_me=remember_me, max_age_seconds=max_age
+	)
 	return resp
 
 

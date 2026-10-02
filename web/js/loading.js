@@ -67,28 +67,46 @@
         if (!status || !status.update_available || !bannerEl) return;
         // Do not cancel the auto-redirect: the banner is informational only.
         // The user can still click Continue or wait for the normal timeout.
-        var url = status.release_url || status.changelog_url || "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases";
-        var ver = status.latest_version ? " (" + status.latest_version + ")" : "";
-        var html = "An update is available" + ver + ". <a href=\"" + url + "\" target=\"_blank\" rel=\"noopener noreferrer\">View release</a>";
+        var fallbackUrl = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases";
+        var rawUrl = status.release_url || status.changelog_url || fallbackUrl;
+        var url = /^https:\/\//i.test(String(rawUrl)) ? String(rawUrl) : fallbackUrl;
+        var ver = status.latest_version ? " (" + escapeHtml(String(status.latest_version)) + ")" : "";
+        bannerEl.textContent = "";
+        bannerEl.appendChild(document.createTextNode("An update is available" + ver + ". "));
+        var link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "View release";
+        bannerEl.appendChild(link);
         if (status.changelog_body && status.changelog_body.trim()) {
-            html += " <button type=\"button\" class=\"loading-changelog-toggle\" id=\"loading-changelog-toggle\" aria-expanded=\"false\">Show changelog</button>";
-            html += "<div id=\"loading-changelog-body\" class=\"loading-changelog-body\" style=\"display:none;\" role=\"region\" aria-label=\"Changelog\"></div>";
+            bannerEl.appendChild(document.createTextNode(" "));
+            var toggle = document.createElement("button");
+            toggle.type = "button";
+            toggle.className = "loading-changelog-toggle";
+            toggle.id = "loading-changelog-toggle";
+            toggle.setAttribute("aria-expanded", "false");
+            toggle.textContent = "Show changelog";
+            bannerEl.appendChild(toggle);
+            var bodyEl = document.createElement("div");
+            bodyEl.id = "loading-changelog-body";
+            bodyEl.className = "loading-changelog-body";
+            bodyEl.style.display = "none";
+            bodyEl.setAttribute("role", "region");
+            bodyEl.setAttribute("aria-label", "Changelog");
+            var pre = document.createElement("pre");
+            pre.style.cssText = "white-space:pre-wrap;word-break:break-word;margin:0.5rem 0 0;font-size:0.85em;max-height:12rem;overflow:auto;";
+            pre.textContent = status.changelog_body;
+            bodyEl.appendChild(pre);
+            bannerEl.appendChild(bodyEl);
+            toggle.addEventListener("click", function () {
+                var open = bodyEl.style.display !== "none";
+                bodyEl.style.display = open ? "none" : "block";
+                toggle.setAttribute("aria-expanded", open ? "false" : "true");
+                toggle.textContent = open ? "Show changelog" : "Hide changelog";
+            });
         }
-        bannerEl.innerHTML = html;
         bannerEl.style.display = "block";
-        if (status.changelog_body && status.changelog_body.trim()) {
-            var toggle = document.getElementById("loading-changelog-toggle");
-            var bodyEl = document.getElementById("loading-changelog-body");
-            if (toggle && bodyEl) {
-                bodyEl.innerHTML = "<pre style=\"white-space:pre-wrap;word-break:break-word;margin:0.5rem 0 0;font-size:0.85em;max-height:12rem;overflow:auto;\">" + escapeHtml(status.changelog_body) + "</pre>";
-                toggle.addEventListener("click", function () {
-                    var open = bodyEl.style.display !== "none";
-                    bodyEl.style.display = open ? "none" : "block";
-                    toggle.setAttribute("aria-expanded", open ? "false" : "true");
-                    toggle.textContent = open ? "Show changelog" : "Hide changelog";
-                });
-            }
-        }
     }
 
     function checkAdminUpdateBanner() {
