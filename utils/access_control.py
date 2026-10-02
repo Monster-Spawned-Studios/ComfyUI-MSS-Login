@@ -166,9 +166,18 @@ class AccessControl:
 			is_userdata_workflow = path.startswith(
 				("/api/userdata/workflows", "/api/userdata/workflows:")
 			)
-			is_cpe_workflow = path.startswith(("/api/cpe/workflow", "/cpe/workflow"))
 			is_cpe_api = path.startswith(("/api/cpe/", "/cpe/"))
-			is_cpe_convert = path in ("/api/cpe/workflow/convert", "/cpe/workflow/convert")
+			mutating_methods = ("POST", "PUT", "DELETE", "PATCH")
+			try:
+				from .cpe_workflows import cpe_path_requires_modify_workflows
+			except Exception:
+
+				def cpe_path_requires_modify_workflows(p, m):
+					if (m or "").upper() not in mutating_methods:
+						return False
+					if p in ("/api/cpe/workflow/convert", "/cpe/workflow/convert"):
+						return False
+					return (p or "").startswith(("/api/cpe/workflow", "/cpe/workflow"))
 
 			if is_queue and perms.get("can_run") is False:
 				debug_write(
@@ -192,11 +201,11 @@ class AccessControl:
 				)
 				return web.json_response({"error": "MSS-Login: Upload Denied"}, status=403)
 
-			if (
-				(is_userdata_workflow or is_cpe_workflow)
-				and not is_cpe_convert
-				and request.method in ("POST", "PUT", "DELETE", "PATCH")
-			):
+			needs_modify_workflows = (
+				is_userdata_workflow and request.method in mutating_methods
+			) or cpe_path_requires_modify_workflows(path, request.method)
+
+			if needs_modify_workflows:
 				can_modify = perms.get("can_modify_workflows")
 				if can_modify is None:
 					can_modify = role != "guest"

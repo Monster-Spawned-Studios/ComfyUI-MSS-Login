@@ -232,6 +232,13 @@ CLOUDFLARE_PROXY = config_data.get("cloudflare_proxy", False)
 CLOUDFLARED_LOCAL_BYPASS = config_data.get("cloudflared_local_bypass", False)
 SEPERATE_USERS = config_data.get("seperate_users", True)
 MANAGER_ADMIN_ONLY = config_data.get("manager_admin_only", True)
+# Embedded Playwright UI→API convert for Comfy Portal (JWT/Bearer-injected; no public bypass).
+CPE_EMBEDDED_CONVERT = config_data.get("cpe_embedded_convert", True)
+# Short-lived JWT TTL (minutes) when minting a convert-only session for Playwright.
+try:
+	CPE_CONVERT_TOKEN_MINUTES = int(config_data.get("cpe_convert_token_minutes", 5))
+except (TypeError, ValueError):
+	CPE_CONVERT_TOKEN_MINUTES = 5
 MATCH_HEADERS = {"X-Forwarded-Proto": "https"}
 
 

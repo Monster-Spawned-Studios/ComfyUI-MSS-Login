@@ -148,10 +148,22 @@ def run_tests():
 		browser_status in ("not_installed", "not_initialized", "initializing", "ready", "error"),
 		f"health browser status is a known enum (got {browser_status!r})",
 	)
+	# Without Playwright/Chromium in CI, health must not claim ready
 	ok(
-		browser_status != "ready" or True,
-		"ready only when a real converter exists (may be ready if sibling CPE loaded)",
+		browser_status != "ready",
+		"health is not ready without a live Playwright browser in unit tests",
 	)
+
+	print("TestStoragePayload")
+	with tempfile.TemporaryDirectory() as tmp:
+		payload = cpe.storage_payload(tmp)
+		ok(payload.get("status") == "success", "storage status success")
+		storage = payload.get("storage") or {}
+		ok(isinstance(storage.get("path"), str) and storage["path"], "storage path set")
+		ok(isinstance(storage.get("total"), int), "storage total int")
+		ok(isinstance(storage.get("used"), int), "storage used int")
+		ok(isinstance(storage.get("free"), int), "storage free int")
+		ok(storage["total"] >= 0 and storage["free"] >= 0, "storage non-negative")
 
 	print("TestLoadWorkflowForConvert")
 	with tempfile.TemporaryDirectory() as tmp:
@@ -171,27 +183,33 @@ def run_tests():
 
 	print("TestCpeConvertHelpers")
 	conv = _load_utils_submodule("cpe_convert")
-	ok(conv.get_embedded_convert() is None, "no embedded converter by default")
+	# Reset registration so we can stub the converter
+	conv._embedded_registered = False
+	conv.set_embedded_convert(None)
+	ok(conv.get_embedded_convert() is None, "embedded converter cleared")
 	ok(conv.find_sibling_cpe_browser_manager() is None, "no sibling CPE in unit test env")
-	ok(conv.browser_status_string() == "not_installed", "browser status not_installed")
-	ok("UI format" in conv.ui_convert_unavailable_details(), "unavailable details mention UI")
 
-	# Stub embedded converter and verify convert_ui_workflow prefers it
 	import asyncio
 
+	seen_token = {"value": None}
+
 	async def _fake_convert(wf):
+		seen_token["value"] = conv.get_convert_auth_token()
 		return {"9": {"class_type": "Note", "inputs": {}}}
 
 	conv.set_embedded_convert(_fake_convert)
+	conv._embedded_registered = True
 	try:
-		result = asyncio.run(conv.convert_ui_workflow({"nodes": [], "links": []}))
-		ok(result.get("9", {}).get("class_type") == "Note", "embedded converter used")
-		ok(
-			conv.browser_status_string() == "not_initialized",
-			"embedded without mgr => not_initialized",
+		result = asyncio.run(
+			conv.convert_ui_workflow({"nodes": [], "links": []}, auth_token="test-token")
 		)
+		ok(result.get("9", {}).get("class_type") == "Note", "embedded converter used")
+		ok(seen_token["value"] == "test-token", "auth_token passed via contextvar")
+		details = conv.ui_convert_unavailable_details()
+		ok(isinstance(details, str) and len(details) > 10, "unavailable details non-empty")
 	finally:
 		conv.set_embedded_convert(None)
+		conv._embedded_registered = False
 
 	print(f"\n{run - failed}/{run} passed")
 	return failed == 0

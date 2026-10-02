@@ -57,6 +57,8 @@ cuda-deps = ["torch", "torchvision", "torchaudio"]
 cpu-deps = ["torch", "torchvision", "torchaudio"]
 # Testing/development: add tools with `uv add --dev pytest` etc.
 dev = ["pytest", "pip-audit", "ruff", "uv"]
+# Optional Comfy Portal UI→API convert (Playwright). Also run: playwright install chromium
+cpe-convert = ["playwright"]
 # Production dependency group:
 production = [
 	"uv",

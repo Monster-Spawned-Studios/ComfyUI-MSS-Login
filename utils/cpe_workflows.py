@@ -23,6 +23,7 @@ CPE_SAVE_PATHS = ("/api/cpe/workflow/save", "/cpe/workflow/save")
 CPE_CONVERT_PATHS = ("/api/cpe/workflow/convert", "/cpe/workflow/convert")
 CPE_GET_AND_CONVERT_PATHS = ("/api/cpe/workflow/get-and-convert", "/cpe/workflow/get-and-convert")
 CPE_HEALTH_PATHS = ("/api/cpe/health", "/cpe/health")
+CPE_STORAGE_PATHS = ("/api/cpe/system/storage", "/cpe/system/storage")
 
 
 def is_cpe_path(path: str) -> bool:
@@ -40,6 +41,23 @@ def is_cpe_path(path: str) -> bool:
 def is_cpe_workflow_mutating_path(path: str) -> bool:
 	"""True for CPE workflow write endpoints (save)."""
 	return path in CPE_SAVE_PATHS
+
+
+def is_cpe_convert_path(path: str) -> bool:
+	"""True for CPE convert endpoints (read-only transform; not a workflow save)."""
+	return path in CPE_CONVERT_PATHS
+
+
+def cpe_path_requires_modify_workflows(path: str, method: str) -> bool:
+	"""True when CPE path+method should enforce ``can_modify_workflows``.
+
+	Convert is excluded: it does not write workflow files.
+	"""
+	if (method or "").upper() not in ("POST", "PUT", "DELETE", "PATCH"):
+		return False
+	if is_cpe_convert_path(path or ""):
+		return False
+	return (path or "").startswith(("/api/cpe/workflow", "/cpe/workflow"))
 
 
 def sanitize_cpe_filename(name: str | None, *, default: str | None = None) -> str | None:
@@ -282,6 +300,35 @@ def health_payload() -> dict[str, Any]:
 	from .cpe_convert import health_browser_payload
 
 	return {"status": "success", "browser": health_browser_payload()}
+
+
+def storage_payload(storage_path: str) -> dict[str, Any]:
+	"""CPE ``GET /cpe/system/storage`` body (bytes). Scoped to *storage_path* only."""
+	path = os.path.abspath(storage_path or "")
+	if not path:
+		return {"status": "error", "message": "Storage path unavailable"}
+	os.makedirs(path, exist_ok=True)
+	try:
+		st = os.statvfs(path)
+		total = int(st.f_frsize * st.f_blocks)
+		free = int(st.f_frsize * st.f_bavail)
+		used = max(0, total - free)
+	except (AttributeError, OSError):
+		# Windows / restricted FS: best-effort zeros with path still reported
+		total = used = free = 0
+		try:
+			import shutil
+
+			disk = shutil.disk_usage(path)
+			total = int(disk.total)
+			used = int(disk.used)
+			free = int(disk.free)
+		except OSError as exc:
+			return {"status": "error", "message": "Internal server error", "details": str(exc)}
+	return {
+		"status": "success",
+		"storage": {"path": path, "total": total, "used": used, "free": free},
+	}
 
 
 # --- END OF FILE utils/cpe_workflows.py ---

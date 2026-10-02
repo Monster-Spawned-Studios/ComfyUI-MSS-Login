@@ -6,8 +6,8 @@ comfy-portal-endpoint is not installed. When that extension is present,
 workflow_routes middleware still intercepts these paths so listings come
 from the user's MSS-Login workflow directory instead of user/default.
 
-UI→API conversion: prefer embedded converter (Phase 1+); else delegate to a
-sibling comfy-portal-endpoint Playwright browser when importable.
+UI→API conversion: prefer embedded JWT/Bearer-injected Playwright converter;
+else delegate to a sibling comfy-portal-endpoint browser when importable.
 """
 
 from __future__ import annotations
@@ -17,10 +17,14 @@ import os
 
 from aiohttp import web
 
-from ..constants import USERS_DB_CONFIG
-from ..globals import routes
+from ..constants import CPE_CONVERT_TOKEN_MINUTES, DATA_DIR, USERS_DB_CONFIG
+from ..globals import jwt_auth, routes
 from ..utils import user_env
-from ..utils.cpe_convert import convert_ui_workflow, ui_convert_unavailable_details
+from ..utils.cpe_convert import (
+	convert_ui_workflow,
+	ensure_embedded_convert_registered,
+	ui_convert_unavailable_details,
+)
 from ..utils.cpe_workflows import (
 	CPE_CONVERT_PATHS,
 	CPE_GET_AND_CONVERT_PATHS,
@@ -28,6 +32,7 @@ from ..utils.cpe_workflows import (
 	CPE_HEALTH_PATHS,
 	CPE_LIST_PATHS,
 	CPE_SAVE_PATHS,
+	CPE_STORAGE_PATHS,
 	health_payload,
 	list_workflows_payload,
 	load_workflow_for_convert,
@@ -35,6 +40,7 @@ from ..utils.cpe_workflows import (
 	parse_workflow_to_api_prompt,
 	read_workflow_text,
 	save_workflow_text,
+	storage_payload,
 	success_convert_payload,
 )
 from ..utils.model_visibility_policy import (
@@ -44,6 +50,9 @@ from ..utils.model_visibility_policy import (
 )
 from ..utils.prompt_model_validator import validate_prompt_models
 from ..utils.shared_items_store import get_shared_items_store
+
+# Register embedded convert early so /cpe/health reflects Playwright presence.
+ensure_embedded_convert_registered()
 
 
 def _extra_global_dirs() -> list[str]:
@@ -68,11 +77,30 @@ def _user_workflow_dir(request: web.Request) -> str:
 	return user_env.get_user_workflow_dir(_current_username(request))
 
 
+def _auth_token_for_convert(request: web.Request) -> str | None:
+	"""Token for Playwright: prefer request Bearer/cookie/query; else mint short JWT."""
+	token = (jwt_auth.get_token_from_request(request) or "").strip()
+	if token:
+		return token
+	user = request.get("user")
+	if not isinstance(user, dict):
+		return None
+	username = user.get("username")
+	user_id = user.get("id")
+	if not username or user_id is None:
+		return None
+	try:
+		return jwt_auth.create_access_token(
+			{"id": user_id, "username": username}, expire_minutes=CPE_CONVERT_TOKEN_MINUTES
+		)
+	except Exception:
+		return None
+
+
 def _model_grant_check(request: web.Request, workflow_payload: object) -> web.Response | None:
 	"""Return a 403 response if API-format workflow references forbidden models."""
 	prompt = parse_workflow_to_api_prompt(workflow_payload)
 	if prompt is None:
-		# UI-format: cannot validate without conversion; allow storage sync.
 		return None
 	try:
 		from ..globals import access_control
@@ -109,10 +137,10 @@ def _model_grant_check(request: web.Request, workflow_payload: object) -> web.Re
 	return None
 
 
-async def _convert_ui_or_error(workflow_data: dict) -> tuple[int, dict]:
+async def _convert_ui_or_error(workflow_data: dict, *, auth_token: str | None) -> tuple[int, dict]:
 	"""Run UI→API conversion; return (status, payload)."""
 	try:
-		api_prompt = await convert_ui_workflow(workflow_data)
+		api_prompt = await convert_ui_workflow(workflow_data, auth_token=auth_token)
 		if not isinstance(api_prompt, dict) or not looks_like_api_prompt(api_prompt):
 			return 503, {
 				"status": "error",
@@ -204,7 +232,8 @@ async def handle_cpe_get_and_convert(request: web.Request) -> web.Response:
 			return denied
 		return web.json_response(payload, status=200)
 
-	conv_status, payload = await _convert_ui_or_error(workflow_data)
+	auth_token = _auth_token_for_convert(request)
+	conv_status, payload = await _convert_ui_or_error(workflow_data, auth_token=auth_token)
 	if conv_status == 200:
 		payload["filename"] = filename_out
 		wf = None
@@ -232,7 +261,8 @@ async def handle_cpe_convert(request: web.Request) -> web.Response:
 			return denied
 		return web.json_response(success_convert_payload(workflow_data), status=200)
 
-	conv_status, payload = await _convert_ui_or_error(workflow_data)
+	auth_token = _auth_token_for_convert(request)
+	conv_status, payload = await _convert_ui_or_error(workflow_data, auth_token=auth_token)
 	if conv_status == 200:
 		wf = None
 		if isinstance(payload.get("data"), dict):
@@ -247,12 +277,21 @@ async def handle_cpe_health(request: web.Request) -> web.Response:
 	return web.json_response(health_payload())
 
 
+async def handle_cpe_storage(request: web.Request) -> web.Response:
+	"""Disk stats for DATA_DIR (authenticated; same shape as upstream CPE)."""
+	payload = storage_payload(DATA_DIR)
+	status = 200 if payload.get("status") == "success" else 500
+	return web.json_response(payload, status=status)
+
+
 async def dispatch_cpe_request(request: web.Request) -> web.StreamResponse | None:
 	"""Intercept CPE paths so per-user workflow storage and convert delegation apply."""
 	path = request.path
 	method = request.method.upper()
 	if path in CPE_HEALTH_PATHS and method == "GET":
 		return await handle_cpe_health(request)
+	if path in CPE_STORAGE_PATHS and method == "GET":
+		return await handle_cpe_storage(request)
 	if path in CPE_LIST_PATHS and method == "GET":
 		return await handle_cpe_list(request)
 	if path in CPE_GET_PATHS and method == "GET":
@@ -300,6 +339,12 @@ async def cpe_convert_workflow(request: web.Request) -> web.Response:
 @routes.get("/api/cpe/health")
 async def cpe_health(request: web.Request) -> web.Response:
 	return await handle_cpe_health(request)
+
+
+@routes.get("/cpe/system/storage")
+@routes.get("/api/cpe/system/storage")
+async def cpe_system_storage(request: web.Request) -> web.Response:
+	return await handle_cpe_storage(request)
 
 
 # --- END OF FILE routes/cpe.py ---
