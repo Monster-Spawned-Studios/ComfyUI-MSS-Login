@@ -44,6 +44,7 @@ def run_tests():
 	data_dir = types.ModuleType("utils.data_dir")
 	tmpdir = tempfile.mkdtemp(prefix="mss-avatar-")
 	data_dir.get_data_subdir = lambda *parts: os.path.join(tmpdir, *parts)
+	data_dir.get_data_dir = lambda: tmpdir
 	sys.modules["utils.data_dir"] = data_dir
 
 	user_env = types.ModuleType("utils.user_env")
@@ -55,6 +56,7 @@ def run_tests():
 		return raw
 
 	user_env._sanitize_username_for_path = _sanitize
+	user_env.migrate_users_dir_if_needed = lambda: False
 	sys.modules["utils.user_env"] = user_env
 
 	avatar = _load("utils.avatar", os.path.join(_UTILS, "avatar.py"))

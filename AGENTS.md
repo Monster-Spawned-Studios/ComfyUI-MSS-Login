@@ -88,7 +88,7 @@ Never `git commit` or `git push` unless the user explicitly asks to commit, push
 
 ## Learned Workspace Facts
 
-- Runtime per-user data belongs under `DATA_DIR/users` (`MSS_LOGIN_DATA_DIR` or `~/.comfyui-mss-login`); do not write capital `Users/` under the extension root—repo `users/` is reserved for shipped defaults.
+- Runtime per-user data belongs under `DATA_DIR/users` (lowercase; `MSS_LOGIN_DATA_DIR` or `~/.comfyui-mss-login`). Never create capital `Users/`; migrate leftover capital trees into `users/` and remove them. Repo `users/` is reserved for shipped defaults.
 - Password and credential fields must skip XSS `sanitize_input` mutation; `check_username_password` dual-verifies legacy XSS-mutated hashes and rehashes to the raw password on success.
 - When `SECRET_KEY` is unset, reuse the persisted `.ephemeral_secret_key` across restarts so SQLCipher and JWT stay stable; do not rotate a new ephemeral key every process start.
 - Sanitizer middleware consumes the body via `request.post()`; multipart handlers (for example avatar upload) must reuse that parsed form instead of calling `request.multipart()` again.

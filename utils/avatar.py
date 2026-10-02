@@ -14,9 +14,9 @@ from typing import Optional
 
 from PIL import Image, ImageFile, UnidentifiedImageError
 
-from .data_dir import get_data_subdir
+from .data_dir import get_data_dir, get_data_subdir
 from .path_safety import is_safe_folder_segment
-from .user_env import _sanitize_username_for_path
+from .user_env import _sanitize_username_for_path, migrate_users_dir_if_needed
 
 # Decompression-bomb ceiling (Pillow default is ~178 million pixels).
 Image.MAX_IMAGE_PIXELS = 8_000_000
@@ -33,10 +33,11 @@ def avatar_dir(username: str) -> str:
 	safe = _sanitize_username_for_path(username)
 	if not is_safe_folder_segment(safe) or safe.lower() == "guest":
 		raise ValueError("Invalid username for avatar storage")
-	# Prefer lowercase users/; fall back to legacy capital Users/ if avatar already there.
+	# Merge leftover capital Users/ into lowercase users/ (no new capital dirs).
+	migrate_users_dir_if_needed()
 	path = get_data_subdir("users", safe)
-	legacy = get_data_subdir("Users", safe)
-	legacy_avatar = os.path.join(legacy, AVATAR_FILENAME)
+	# Read-only legacy check — do not mkdir under capital Users/.
+	legacy_avatar = os.path.join(get_data_dir(), "Users", safe, AVATAR_FILENAME)
 	if not os.path.isfile(os.path.join(path, AVATAR_FILENAME)) and os.path.isfile(legacy_avatar):
 		os.makedirs(path, exist_ok=True)
 		try:

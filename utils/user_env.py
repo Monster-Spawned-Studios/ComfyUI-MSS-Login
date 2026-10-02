@@ -61,32 +61,83 @@ def _copy_tree_missing(src: str, dst: str) -> bool:
 	return copied
 
 
+def _legacy_users_paths() -> list[str]:
+	"""Read-only legacy capital Users/ locations (extension root + DATA_DIR)."""
+	return [os.path.join(get_extension_root(), "Users"), os.path.join(get_data_dir(), "Users")]
+
+
+def _tree_has_files(path: str) -> bool:
+	"""True if path exists and contains at least one regular file."""
+	if not path or not os.path.isdir(path):
+		return False
+	try:
+		for dirpath, _, filenames in os.walk(path):
+			if filenames:
+				return True
+	except OSError:
+		return False
+	return False
+
+
+def _legacy_fully_mirrored(src: str, dest: str) -> bool:
+	"""True when every file under src also exists at the same relative path in dest."""
+	if not src or not os.path.isdir(src):
+		return True
+	if not dest or not os.path.isdir(dest):
+		return False
+	try:
+		for dirpath, _, filenames in os.walk(src):
+			for fn in filenames:
+				rel = os.path.relpath(os.path.join(dirpath, fn), src)
+				if not os.path.isfile(os.path.join(dest, rel)):
+					return False
+	except OSError:
+		return False
+	return True
+
+
+def _remove_legacy_users_tree(path: str) -> bool:
+	"""Remove a leftover capital Users/ directory when safe."""
+	if not path or not os.path.isdir(path):
+		return False
+	try:
+		shutil.rmtree(path)
+		return not os.path.exists(path)
+	except OSError:
+		return False
+
+
 def migrate_users_dir_if_needed() -> bool:
 	"""
-	One-time migrate legacy capital Users/ trees into DATA_DIR/users/.
+	Consolidate legacy capital Users/ trees into DATA_DIR/users/.
 
-	Sources (copied, not deleted):
-	  - <ext_root>/Users/
-	  - <DATA_DIR>/Users/
+	Always merges any remaining capital Users/ sources into lowercase users/,
+	then removes leftover capital Users/ trees that are empty or fully mirrored
+	into users/. Writes a marker on first successful pass.
 	"""
 	data_dir = get_data_dir()
 	marker = os.path.join(data_dir, _USERS_MIGRATED_MARKER)
 	dest = get_data_subdir("users")
 	os.makedirs(dest, exist_ok=True)
-	if os.path.isfile(marker):
-		return False
 
 	migrated = False
-	legacy_ext = os.path.join(get_extension_root(), "Users")
-	legacy_data = os.path.join(data_dir, "Users")
-	if _copy_tree_missing(legacy_ext, dest):
-		migrated = True
-	if _copy_tree_missing(legacy_data, dest):
-		migrated = True
+	for legacy in _legacy_users_paths():
+		# Never treat a case-folded same path as a source (e.g. macOS).
+		if os.path.abspath(legacy) == os.path.abspath(dest):
+			continue
+		if not os.path.isdir(legacy):
+			continue
+		if _copy_tree_missing(legacy, dest):
+			migrated = True
+		# Drop capital Users/ once content is under users/ (or the tree is empty).
+		if (not _tree_has_files(legacy)) or _legacy_fully_mirrored(legacy, dest):
+			if _remove_legacy_users_tree(legacy):
+				migrated = True
 
 	try:
-		with open(marker, "w", encoding="utf-8") as f:
-			f.write("migrated")
+		if not os.path.isfile(marker):
+			with open(marker, "w", encoding="utf-8") as f:
+				f.write("migrated")
 	except OSError:
 		pass
 	return migrated
@@ -152,6 +203,7 @@ def get_user_settings_path(username: str) -> str:
 	  <DATA_DIR>/users/<username>/settings.json
 	"""
 	return os.path.join(get_user_root(username), "settings.json")
+
 
 # -----------------------
 # JSON helpers
@@ -300,9 +352,16 @@ def _sanitize_username_for_path(username: str) -> str:
 
 
 def _get_plugin_workflow_dir(username: str) -> str:
-	"""Legacy plugin-root workflow dir (for migration source)."""
-	user_root = get_user_root(username)
-	return os.path.join(user_root, "workflows")
+	"""Legacy extension-root workflow dir: <ext_root>/Users/<username>/workflows/."""
+	safe = _sanitize_username_for_path(username)
+	return os.path.join(get_extension_root(), "Users", safe, "workflows")
+
+
+def _legacy_data_users_workflow_dirs(username: str) -> list[str]:
+	"""Read-only legacy DATA_DIR/Users/<user>/workflows paths (no mkdir)."""
+	safe = _sanitize_username_for_path(username)
+	legacy_root = os.path.join(get_data_dir(), "Users", safe, "workflows")
+	return [os.path.join(legacy_root, "default"), legacy_root]
 
 
 def _copy_workflows_if_empty(sources: list[str], target_dir: str) -> None:
@@ -353,6 +412,9 @@ def get_user_workflow_dir(username: str) -> str:
 	safe = _sanitize_username_for_path(username)
 	raw_env = os.environ.get("MSS_LOGIN_DATA_DIR", "").strip()
 
+	# Ensure any leftover capital Users/ is merged into lowercase users/ first.
+	migrate_users_dir_if_needed()
+
 	if raw_env:
 		base = os.path.abspath(raw_env)
 		target_dir = os.path.join(base, "workflows", safe)
@@ -360,8 +422,7 @@ def get_user_workflow_dir(username: str) -> str:
 		sources = [
 			get_data_subdir("users", safe, "workflows", "default"),
 			get_data_subdir("users", safe, "workflows"),
-			get_data_subdir("Users", safe, "workflows", "default"),
-			get_data_subdir("Users", safe, "workflows"),
+			*_legacy_data_users_workflow_dirs(safe),
 			_get_plugin_workflow_dir(safe),
 		]
 		_copy_workflows_if_empty(sources, target_dir)
@@ -371,8 +432,7 @@ def get_user_workflow_dir(username: str) -> str:
 		os.makedirs(target_dir, exist_ok=True)
 		sources = [
 			get_data_subdir("users", safe, "workflows"),
-			get_data_subdir("Users", safe, "workflows", "default"),
-			get_data_subdir("Users", safe, "workflows"),
+			*_legacy_data_users_workflow_dirs(safe),
 			_get_plugin_workflow_dir(safe),
 		]
 		_copy_workflows_if_empty(sources, target_dir)
