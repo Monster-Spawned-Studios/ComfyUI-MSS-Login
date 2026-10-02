@@ -74,3 +74,21 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deploy
         uses: actions/deploy-pages@v5
+
+  ntfy-notification:
+    name: Notify on MSS-Login Docs Results
+    needs: [build, deploy]
+    if: always()
+    uses: ./.github/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Docs — Succeeded' || 'MSS-Login Docs — Issues found' }}
+      message: |
+        === Build ===
+        Result: ${{ needs.build.result }}
+
+        === Deploy ===
+        Result: ${{ needs.deploy.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,books' || 'warning,books' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

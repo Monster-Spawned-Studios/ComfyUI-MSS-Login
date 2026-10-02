@@ -178,3 +178,18 @@ jobs:
           draft: ${{ inputs.draft || false }}
           prerelease: ${{ inputs.pre-release || false }}
           body_path: readme/changelogs/${{ steps.version.outputs.version }}.md
+
+  ntfy-notification:
+    name: Notify on MSS-Login Create Release Results
+    needs: [build]
+    if: always()
+    uses: ./.gitea/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Create Release — Succeeded' || 'MSS-Login Create Release — Failed' }}
+      message: |
+        === Build ===
+        Result: ${{ needs.build.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,rocket' || 'warning,rocket' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

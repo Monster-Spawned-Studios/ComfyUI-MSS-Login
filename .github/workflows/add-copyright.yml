@@ -26,3 +26,18 @@ jobs:
         run: python scripts/add_copyright.py --directory . --copyright-notice docs/COPYRIGHT --recursive --update
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ntfy-notification:
+    name: Notify on MSS-Login Copyright Results
+    needs: [add-copyright-headers]
+    if: always()
+    uses: ./.github/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Copyright — Succeeded' || 'MSS-Login Copyright — Failed' }}
+      message: |
+        === Add Copyright Headers ===
+        Result: ${{ needs.add-copyright-headers.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,copyright' || 'warning,copyright' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

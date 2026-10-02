@@ -91,3 +91,21 @@ jobs:
               git push
             fi
           fi
+
+  ntfy-notification:
+    name: Notify on MSS-Login Auto-format Results
+    needs: [format-check, auto-format]
+    if: always()
+    uses: ./.github/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Auto-format — Succeeded' || 'MSS-Login Auto-format — Issues found' }}
+      message: |
+        === Format Check ===
+        Result: ${{ needs.format-check.result }}
+
+        === Auto Format ===
+        Result: ${{ needs.auto-format.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,art' || 'warning,art' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

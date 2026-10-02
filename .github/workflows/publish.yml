@@ -86,3 +86,18 @@ jobs:
                   COMFY_NODE_NAME: MSS-Login
                   REGISTRY_ACCESS_TOKEN: ${{ secrets.REGISTRY_ACCESS_TOKEN }}
               run: uv run scripts/publish_comfy_node.py -D -v --node-name "${COMFY_NODE_NAME}" --node-path "${NODE_PATH}"
+
+    ntfy-notification:
+      name: Notify on MSS-Login Publish Results
+      needs: [publish]
+      if: always()
+      uses: ./.github/workflows/ntfy-notify-reusable.yml
+      with:
+        title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Publish — Succeeded' || 'MSS-Login Publish — Failed' }}
+        message: |
+          === Publish ===
+          Result: ${{ needs.publish.result }}
+        priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+        tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,package' || 'warning,package' }}
+        ref_name: ${{ github.ref_name }}
+      secrets: inherit

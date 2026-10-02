@@ -53,3 +53,18 @@ jobs:
               );
             }
             console.log('PR body length (after stripping):', stripped.length);
+
+  ntfy-notification:
+    name: Notify on MSS-Login PR Body Check Results
+    needs: [pr-body]
+    if: always()
+    uses: ./.gitea/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login PR Body Check — Passed' || 'MSS-Login PR Body Check — Failed' }}
+      message: |
+        === Pr Body ===
+        Result: ${{ needs.pr-body.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,memo' || 'warning,memo' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

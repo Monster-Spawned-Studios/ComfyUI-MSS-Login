@@ -38,3 +38,21 @@ jobs:
             exit 0
           fi
           echo "PR has description."
+
+  ntfy-notification:
+    name: Notify on MSS-Login PR Manager Results
+    needs: [labeler, pr-check]
+    if: always()
+    uses: ./.github/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login PR Manager — Succeeded' || 'MSS-Login PR Manager — Issues found' }}
+      message: |
+        === Labeler ===
+        Result: ${{ needs.labeler.result }}
+
+        === Pr Check ===
+        Result: ${{ needs.pr-check.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,pr' || 'warning,pr' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

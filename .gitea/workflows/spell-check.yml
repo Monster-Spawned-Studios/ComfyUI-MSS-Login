@@ -24,3 +24,18 @@ jobs:
               run: pnpm add -g cspell@latest
             - name: Run cSpell
               run: cspell --config .vscode/cspell.json "**/*"
+
+    ntfy-notification:
+      name: Notify on MSS-Login Spell Check Results
+      needs: [codespell]
+      if: always()
+      uses: ./.gitea/workflows/ntfy-notify-reusable.yml
+      with:
+        title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Spell Check — Passed' || 'MSS-Login Spell Check — Issues found' }}
+        message: |
+          === Codespell ===
+          Result: ${{ needs.codespell.result }}
+        priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+        tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,abc' || 'warning,abc' }}
+        ref_name: ${{ github.ref_name }}
+      secrets: inherit
