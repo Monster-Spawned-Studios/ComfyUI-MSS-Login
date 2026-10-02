@@ -1,0 +1,77 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+@reference "tailwindcss";
+
+@layer components {
+	.mss-cfg-shell {
+		@apply flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 text-zinc-100 shadow-2xl;
+	}
+
+	.mss-cfg-header {
+		@apply flex items-center gap-3 border-b border-zinc-800 px-4 py-3;
+	}
+
+	.mss-cfg-title {
+		@apply flex-1 text-center text-lg font-semibold tracking-tight;
+	}
+
+	.mss-cfg-body {
+		@apply flex min-h-0 flex-1 flex-col overflow-auto px-4 py-5;
+	}
+
+	.mss-cfg-home {
+		@apply mx-auto flex w-full max-w-xl flex-col items-center gap-3 text-center;
+	}
+
+	.mss-cfg-home-btn {
+		@apply w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-sm font-medium text-zinc-100 transition hover:border-blue-400 hover:bg-zinc-800;
+	}
+
+	.mss-cfg-section {
+		@apply mx-auto w-full max-w-3xl space-y-4 text-center;
+	}
+
+	.mss-cfg-card {
+		@apply rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 text-left;
+	}
+
+	.mss-cfg-label {
+		@apply mb-1 block text-left text-xs font-medium uppercase tracking-wide text-zinc-400;
+	}
+
+	.mss-cfg-input {
+		@apply w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400;
+	}
+
+	.mss-cfg-btn {
+		@apply inline-flex items-center justify-center rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-50;
+	}
+
+	.mss-cfg-btn-ghost {
+		@apply inline-flex items-center justify-center rounded-lg border border-zinc-700 bg-transparent px-3 py-2 text-sm text-zinc-200 transition hover:bg-zinc-800;
+	}
+
+	.mss-cfg-btn-danger {
+		@apply inline-flex items-center justify-center rounded-lg bg-red-700/80 px-3 py-2 text-sm text-red-50 transition hover:bg-red-600;
+	}
+
+	.mss-cfg-note {
+		@apply text-sm text-zinc-400;
+	}
+
+	.mss-cfg-folder-row {
+		@apply flex w-full items-stretch overflow-hidden rounded-lg border border-zinc-700 bg-zinc-950;
+	}
+
+	.mss-cfg-folder-chevron {
+		@apply flex h-11 w-11 shrink-0 items-center justify-center border-r border-zinc-700 text-lg text-zinc-200 transition hover:bg-zinc-800;
+	}
+
+	.mss-cfg-folder-label {
+		@apply flex flex-1 items-center px-3 text-left text-sm font-medium;
+	}
+
+	.mss-cfg-flyout {
+		@apply mt-1 max-h-52 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-left;
+	}
+}

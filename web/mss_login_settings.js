@@ -828,11 +828,55 @@ function escapeHtml(text) {
 // Global reference to the current dialog instance
 window._mss_loginDialogInstance = null;
 
+function loadMssLoginConfigAssets() {
+    return new Promise((resolve, reject) => {
+        if (typeof window.mssLoginMountConfig === "function") {
+            resolve();
+            return;
+        }
+        if (!document.querySelector('link[data-mss-login-config-css]')) {
+            const link = document.createElement("link");
+            link.rel = "stylesheet";
+            link.href = "/mss-login/dist/config.css";
+            link.setAttribute("data-mss-login-config-css", "1");
+            document.head.appendChild(link);
+        }
+        const loadModule = (src) =>
+            new Promise((res, rej) => {
+                const existing = document.querySelector(`script[data-mss-login-src="${src}"]`);
+                if (existing) {
+                    existing.addEventListener("load", () => res());
+                    existing.addEventListener("error", () => rej(new Error(src + " failed")));
+                    // Already loaded
+                    if (existing.dataset.loaded === "1") res();
+                    return;
+                }
+                const script = document.createElement("script");
+                script.type = "module";
+                script.src = src;
+                script.setAttribute("data-mss-login-src", src);
+                script.onload = () => {
+                    script.dataset.loaded = "1";
+                    res();
+                };
+                script.onerror = () => rej(new Error("Failed to load " + src));
+                document.head.appendChild(script);
+            });
+        // vue-vendor chunk (if present) then config-app entry
+        loadModule("/mss-login/dist/vue-vendor.js")
+            .catch(() => null)
+            .then(() => loadModule("/mss-login/dist/config-app.js"))
+            .then(resolve)
+            .catch(reject);
+    });
+}
+
 class mss_loginDialog extends ComfyDialog {
     constructor() {
         super();
         this.overlay = $el("div.mss-login-modal-overlay");
         this.element = $el("div.mss-login-modal");
+        this._vueUnmount = null;
     }
 
     async show() {
@@ -881,8 +925,57 @@ class mss_loginDialog extends ComfyDialog {
             return;
         }
 
-        // Get extension tabs
         const extensionTabs = window.mss_loginAdminTabs.getAll();
+        const preferUsers = !!window._mss_loginPreferUsersTab;
+        window._mss_loginPreferUsersTab = false;
+        this.overlay.onclick = (e) => { if (e.target === this.overlay) this.close(); };
+
+        // Prefer Vue + Tailwind config UI when dist assets are available.
+        try {
+            await loadMssLoginConfigAssets();
+            if (typeof window.mssLoginMountConfig === "function") {
+                const dialog = this;
+                const legacyRenderers = {
+                    users: async (container) => dialog.renderUsers(usersList, container),
+                    perms: async (container) => dialog.renderPerms(container),
+                    ip: async (container) => dialog.renderIpRules(container),
+                    env: async (container) => dialog.renderUserEnv(container, usersList),
+                    nsfw: async (container) => dialog.renderNsfwManagement(container),
+                    "token-storage": async (container) => dialog.renderTokenStorage(container),
+                    "users-db": async (container) => dialog.renderUsersDbConfig(container),
+                    s3: async (container) => dialog.renderS3Settings(container),
+                    "shared-models": async (container) => dialog.renderSharedModels(container, usersList),
+                    "model-download": async (container) => dialog.renderModelDownload(container),
+                };
+                for (const extTab of extensionTabs) {
+                    if (!/^[a-z0-9_-]+$/.test(extTab.id)) continue;
+                    legacyRenderers[extTab.id] = async (container, ctx) => {
+                        await extTab.render(container, ctx);
+                    };
+                }
+                this.element.innerHTML = "";
+                this.element.style.cssText = "padding:0;background:transparent;border:none;box-shadow:none;max-width:none;width:auto;";
+                if (this._vueUnmount) {
+                    try { this._vueUnmount(); } catch (_) {}
+                    this._vueUnmount = null;
+                }
+                this._vueUnmount = window.mssLoginMountConfig(this.element, {
+                    currentUser,
+                    usersList,
+                    groupsConfig,
+                    extensionTabs,
+                    legacyRenderers,
+                    preferTab: preferUsers ? "users" : "",
+                    onClose: () => dialog.close(),
+                });
+                return;
+            }
+        } catch (err) {
+            console.error("[mss-login] Vue config assets failed, using legacy dialog:", err);
+        }
+
+        // Get extension tabs (legacy vanilla fallback)
+        // const extensionTabs already set
         
         // Build tabs HTML (built-in tabs first, then extension tabs)
         const isOwner = Array.isArray(currentUser?.groups) && currentUser.groups.map(g => String(g).toLowerCase()).includes("owner");
@@ -1021,8 +1114,7 @@ class mss_loginDialog extends ComfyDialog {
             btn.onclick = () => setActiveTab(btn.dataset.tab || "");
         });
 
-        if (window._mss_loginPreferUsersTab) {
-            window._mss_loginPreferUsersTab = false;
+        if (preferUsers) {
             setActiveTab("users");
         }
 
@@ -1119,6 +1211,10 @@ class mss_loginDialog extends ComfyDialog {
         if (this._tabMenuEscapeHandler) {
             document.removeEventListener("keydown", this._tabMenuEscapeHandler);
             this._tabMenuEscapeHandler = null;
+        }
+        if (this._vueUnmount) {
+            try { this._vueUnmount(); } catch (_) {}
+            this._vueUnmount = null;
         }
         this.overlay.remove();
         
@@ -2001,64 +2097,83 @@ async renderSharedModels(container, usersList) {
         }
         toggleFoldersEl.innerHTML = folders.map(folder => {
             const safeFolder = escapeHtml(folder);
-            return `<details class="mss-login-toggle-folder" data-folder="${safeFolder}">
-                <summary>${safeFolder}</summary>
-                <div class="mss-login-toggle-items" data-folder="${safeFolder}" style="padding:8px 0 8px 12px; max-height:200px; overflow-y:auto;">Loading...</div>
-            </details>`;
+            return `<div class="mss-login-toggle-folder" data-folder="${safeFolder}" style="margin:6px 0;">
+                <div style="display:flex; align-items:stretch; border:1px solid #555; border-radius:8px; overflow:hidden;">
+                    <button type="button" class="mss-login-folder-chevron" data-folder="${safeFolder}" aria-label="Expand ${safeFolder}" style="min-width:44px; min-height:44px; border:none; border-right:1px solid #555; background:rgba(255,255,255,0.04); color:inherit; cursor:pointer; font-size:16px;">▸</button>
+                    <button type="button" class="mss-login-folder-label" data-folder="${safeFolder}" style="flex:1; text-align:left; padding:10px 12px; border:none; background:transparent; color:inherit; cursor:pointer;">${safeFolder}</button>
+                </div>
+                <div class="mss-login-toggle-items" data-folder="${safeFolder}" hidden style="padding:8px 8px 8px 12px; max-height:200px; overflow-y:auto; border:1px solid #444; border-top:none; border-radius:0 0 8px 8px;">Loading...</div>
+            </div>`;
         }).join("");
 
-        toggleFoldersEl.querySelectorAll("details.mss-login-toggle-folder").forEach(detailsEl => {
-            detailsEl.addEventListener("toggle", async () => {
-                if (!detailsEl.open) return;
-                const folder = detailsEl.dataset.folder;
-                const itemsEl = detailsEl.querySelector(".mss-login-toggle-items");
-                if (!itemsEl || itemsEl.dataset.loaded === "1") return;
-                itemsEl.textContent = "Loading...";
-                try {
-                    let res = await api.fetchApi("/mss-login/api/model-cache/folders/" + encodeURIComponent(folder) + "/items", { method: "GET" });
-                    if (!res.ok) res = await api.fetchApi("/mss-login/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
-                    const data = await res.json();
-                    const items = data.items || [];
-                    loadedItems[folder] = items;
-                    itemsEl.dataset.loaded = "1";
-                    itemsEl.innerHTML = items.map(itemName => {
-                        const key = folder + "|" + itemName;
-                        const checked = sharedSet.has(key);
-                        const safeItem = escapeHtml(itemName);
-                        return `<label class="mss-login-toggle-item" style="display:block; margin:4px 0;"><input type="checkbox" class="mss-login-toggle-chk" data-folder="${escapeHtml(folder)}" data-item="${safeItem}" ${checked ? "checked" : ""}> ${safeItem}</label>`;
-                    }).join("");
-                    itemsEl.querySelectorAll(".mss-login-toggle-chk").forEach(chk => {
-                        chk.onchange = async () => {
-                            const f = chk.dataset.folder;
-                            const item = chk.dataset.item;
-                            const key = f + "|" + item;
-                            const add = chk.checked;
-                            try {
-                                if (add) {
-                                    await api.fetchApi("/mss-login/api/users/" + encodeURIComponent(username) + "/shared-items", {
-                                        method: "POST",
-                                        body: JSON.stringify({ folder: f, item_name: item }),
-                                    });
-                                    sharedSet.add(key);
-                                } else {
-                                    await api.fetchApi("/mss-login/api/users/" + encodeURIComponent(username) + "/shared-items", {
-                                        method: "DELETE",
-                                        body: JSON.stringify({ folder: f, item_name: item }),
-                                    });
-                                    sharedSet.delete(key);
-                                }
-                                await refreshSharedList();
-                            } catch (e) {
-                                console.error("[mss-login] Toggle shared item failed:", e);
-                                chk.checked = !add;
+        const openFolder = async (folder, chevronBtn, itemsEl) => {
+            const isOpen = !itemsEl.hidden;
+            if (isOpen) {
+                itemsEl.hidden = true;
+                if (chevronBtn) chevronBtn.textContent = "▸";
+                return;
+            }
+            itemsEl.hidden = false;
+            if (chevronBtn) chevronBtn.textContent = "▾";
+            if (itemsEl.dataset.loaded === "1") return;
+            itemsEl.textContent = "Loading...";
+            try {
+                let res = await api.fetchApi("/mss-login/api/model-cache/folders/" + encodeURIComponent(folder) + "/items", { method: "GET" });
+                if (!res.ok) res = await api.fetchApi("/mss-login/api/available-models/" + encodeURIComponent(folder), { method: "GET" });
+                const data = await res.json();
+                const items = data.items || [];
+                loadedItems[folder] = items;
+                itemsEl.dataset.loaded = "1";
+                itemsEl.innerHTML = items.map(itemName => {
+                    const key = folder + "|" + itemName;
+                    const checked = sharedSet.has(key);
+                    const safeItem = escapeHtml(itemName);
+                    return `<label class="mss-login-toggle-item" style="display:block; margin:4px 0;"><input type="checkbox" class="mss-login-toggle-chk" data-folder="${escapeHtml(folder)}" data-item="${safeItem}" ${checked ? "checked" : ""}> ${safeItem}</label>`;
+                }).join("");
+                itemsEl.querySelectorAll(".mss-login-toggle-chk").forEach(chk => {
+                    chk.onchange = async () => {
+                        const f = chk.dataset.folder;
+                        const item = chk.dataset.item;
+                        const key = f + "|" + item;
+                        const add = chk.checked;
+                        try {
+                            if (add) {
+                                await api.fetchApi("/mss-login/api/users/" + encodeURIComponent(username) + "/shared-items", {
+                                    method: "POST",
+                                    body: JSON.stringify({ folder: f, item_name: item }),
+                                });
+                                sharedSet.add(key);
+                            } else {
+                                await api.fetchApi("/mss-login/api/users/" + encodeURIComponent(username) + "/shared-items", {
+                                    method: "DELETE",
+                                    body: JSON.stringify({ folder: f, item_name: item }),
+                                });
+                                sharedSet.delete(key);
                             }
-                        };
-                    });
-                } catch (e) {
-                    itemsEl.textContent = "Error loading items.";
-                    console.error("[mss-login] Failed to load items for folder:", e);
-                }
+                            await refreshSharedList();
+                        } catch (e) {
+                            console.error("[mss-login] Toggle shared item failed:", e);
+                            chk.checked = !add;
+                        }
+                    };
+                });
+            } catch (e) {
+                itemsEl.textContent = "Error loading items.";
+                console.error("[mss-login] Failed to load items for folder:", e);
+            }
+        };
+
+        toggleFoldersEl.querySelectorAll(".mss-login-folder-chevron, .mss-login-folder-label").forEach(btn => {
+            btn.addEventListener("click", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                const folder = btn.dataset.folder;
+                const root = btn.closest(".mss-login-toggle-folder");
+                const itemsEl = root && root.querySelector(".mss-login-toggle-items");
+                const chevronBtn = root && root.querySelector(".mss-login-folder-chevron");
+                if (folder && itemsEl) openFolder(folder, chevronBtn, itemsEl);
             });
+            btn.addEventListener("mousedown", (ev) => ev.stopPropagation());
         });
     }
     try {
