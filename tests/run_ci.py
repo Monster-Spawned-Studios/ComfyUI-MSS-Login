@@ -99,6 +99,7 @@ def main() -> int:
 		steps.append(("NTFY + quarantine", os.path.join(TESTS_DIR, "run_ntfy_quarantine_tests.py")))
 		steps.append(("Release prepare", os.path.join(TESTS_DIR, "run_release_prepare_tests.py")))
 		steps.append(("CPE workflows", os.path.join(TESTS_DIR, "run_cpe_workflow_tests.py")))
+		steps.append(("CPE auth", os.path.join(TESTS_DIR, "run_cpe_auth_tests.py")))
 		steps.append(
 			("Install deps plan", os.path.join(TESTS_DIR, "run_install_deps_plan_tests.py"))
 		)

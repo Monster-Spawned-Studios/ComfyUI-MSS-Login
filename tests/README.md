@@ -33,6 +33,7 @@ These run without loading ComfyUI or `folder_paths`, so they work in CI and on m
 | `run_owner_role_tests.py` | Owner counts as admin; `add_user` never mints a second owner; explicit role groups; `update_user` restores admin when saving owner-only groups. |
 | `run_schema_drift_tests.py` | Live SQLite/SQLCipher schema vs `utils/db_schema.py`; Fernet secret decrypt after reopen. |
 | `run_cpe_workflow_tests.py` | Per-user Comfy Portal Endpoint workflow list/get/save helpers (no ComfyUI). |
+| `run_cpe_auth_tests.py` | CPE/Portal JSON 401 policy for `/cpe/*`, convert vs save mutate RBAC, remote-guard `/cpe` prefix. |
 | `run_install_deps_plan_tests.py` | PyTorch backend detection (Metal / cu130 / cu128 / CPU). |
 | `run_user_isolation_tests.py` | Per-user output-dir segments, `/prompt` vs `/api/prompt`, queue user stamps. |
 | `run_avatar_tests.py` | Avatar upload sanitization (PNG re-encode, SVG/HTML reject, guest block). |
