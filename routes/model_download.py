@@ -32,9 +32,17 @@ from ..utils.model_download import (
 	search_huggingface_models,
 	set_civitai_host_preference,
 )
+from ..utils.model_download_history_store import (
+	extract_civitai_metadata,
+	get_model_download_history_store,
+)
 from ..utils.model_isolation import sanitize_user_segment
 from ..utils.model_source_api_keys_store import SOURCES, get_model_source_api_keys_store
-from ..utils.model_visibility_policy import user_can_download_models, user_can_manage_model_sharing
+from ..utils.model_visibility_policy import (
+	user_can_download_models,
+	user_can_manage_model_sharing,
+	user_can_view_all_models,
+)
 from ..utils.s3_mounter import get_mount_manager
 from ..utils.shared_items_store import get_shared_items_store
 
@@ -140,9 +148,7 @@ def _source_token(user_id: str, source: str) -> str | None:
 
 
 def _resolve_civitai_host_for_request(
-	username: str | None,
-	body_or_query_host: str | None = None,
-	url_hint_host: str | None = None,
+	username: str | None, body_or_query_host: str | None = None, url_hint_host: str | None = None
 ) -> str:
 	"""
 	Host selection: explicit request/URL host (allowlisted) wins; else per-user preference.
@@ -207,6 +213,11 @@ def _job_public_view(job: dict) -> dict:
 		"destination": job.get("destination", ""),
 		"error": job.get("error", ""),
 		"can_cancel": job.get("status") == "queued",
+		"can_resume": job.get("status") in ("failed", "interrupted", "cancelled"),
+		"description": job.get("description") or "",
+		"trigger_words": job.get("trigger_words") or [],
+		"filename": job.get("filename") or job.get("saved_relpath") or "",
+		"model_id": job.get("model_id") or "",
 	}
 	if job.get("source") == "civitai" and job.get("model_version_id"):
 		out["model_version_id"] = job["model_version_id"]
@@ -218,6 +229,116 @@ def _job_public_view(job: dict) -> dict:
 		if job.get("filename"):
 			out["filename"] = job["filename"]
 	return out
+
+
+def _persist_job_history(job: dict) -> None:
+	"""Best-effort durable snapshot for resume / previously-downloaded UI."""
+	try:
+		store = get_model_download_history_store(USERS_DB_CONFIG)
+		triggers = job.get("trigger_words") or []
+		if isinstance(triggers, str):
+			triggers = [t.strip() for t in triggers.split(",") if t.strip()]
+		store.upsert(
+			{
+				"job_id": job.get("job_id"),
+				"user_id": job.get("user_id") or "",
+				"username": job.get("username") or job.get("target_username") or "",
+				"source": job.get("source") or "",
+				"status": job.get("status") or "queued",
+				"destination_type": job.get("destination_type") or "local",
+				"folder_type": job.get("folder_type") or "checkpoints",
+				"model_id": job.get("model_id") or "",
+				"model_version_id": job.get("model_version_id") or "",
+				"repo_id": job.get("repo_id") or "",
+				"filename": job.get("filename") or "",
+				"subfolder": job.get("subfolder") or "",
+				"civitai_host": job.get("civitai_host") or "",
+				"local_path": job.get("destination") or job.get("local_path") or "",
+				"saved_relpath": job.get("saved_relpath") or "",
+				"description": job.get("description") or "",
+				"trigger_words": triggers,
+				"bytes_done": job.get("bytes_done") or 0,
+				"total_bytes": job.get("total_bytes"),
+				"error": job.get("error") or "",
+				"extra_json": {
+					"type": job.get("type"),
+					"format": job.get("format"),
+					"size": job.get("size"),
+					"fp": job.get("fp"),
+				},
+			}
+		)
+	except Exception as e:
+		logger.warning(f"[MSS-Login] persist download history failed: {e}")
+
+
+async def _enrich_civitai_job_metadata(job: dict, token: str) -> None:
+	"""Fetch description / trainedWords for the job when possible."""
+	if job.get("source") != "civitai":
+		return
+	host = job.get("civitai_host")
+	version_id = job.get("model_version_id")
+	model_id = job.get("model_id")
+	version_data = None
+	model_data = None
+	if version_id:
+		version_data, _err = await civitai_get_model_version(version_id, token=token, host=host)
+	if model_id:
+		model_data, _err = await civitai_get_model(model_id, token=token, host=host)
+	meta = extract_civitai_metadata(model_data, version_data)
+	if meta.get("description"):
+		job["description"] = meta["description"]
+	if meta.get("trigger_words"):
+		job["trigger_words"] = meta["trigger_words"]
+	if meta.get("model_id") and not job.get("model_id"):
+		job["model_id"] = meta["model_id"]
+	if meta.get("model_version_id") and not job.get("model_version_id"):
+		job["model_version_id"] = meta["model_version_id"]
+	if meta.get("model_name"):
+		job["model_name"] = meta["model_name"]
+
+
+def _shape_civitai_model_for_ui(model: dict | None) -> dict:
+	"""Normalize CivitAI model JSON for the config UI (description, triggers, versions)."""
+	if not isinstance(model, dict):
+		return {}
+	meta = extract_civitai_metadata(model, None)
+	versions = []
+	for ver in model.get("modelVersions") or []:
+		if not isinstance(ver, dict):
+			continue
+		files = []
+		for f in ver.get("files") or []:
+			if not isinstance(f, dict):
+				continue
+			files.append(
+				{
+					"name": f.get("name"),
+					"sizeKB": f.get("sizeKB"),
+					"type": f.get("type"),
+					"format": (f.get("metadata") or {}).get("format")
+					if isinstance(f.get("metadata"), dict)
+					else None,
+				}
+			)
+		versions.append(
+			{
+				"id": ver.get("id"),
+				"name": ver.get("name"),
+				"trainedWords": ver.get("trainedWords") or [],
+				"description": ver.get("description") or "",
+				"files": files,
+			}
+		)
+	return {
+		"id": model.get("id"),
+		"name": model.get("name"),
+		"type": model.get("type"),
+		"nsfw": model.get("nsfw"),
+		"description": meta.get("description") or model.get("description") or "",
+		"trigger_words": meta.get("trigger_words") or [],
+		"modelVersions": versions,
+	}
 
 
 def _queue_stats() -> dict:
@@ -406,6 +527,10 @@ async def _run_job(job_id: str) -> None:
 			await _set_progress(job_id, bytes_done, total_bytes, start_time)
 
 		if source == "civitai":
+			try:
+				await _enrich_civitai_job_metadata(job, token)
+			except Exception:
+				pass
 			success, error, saved_rel = await download_civitai_async(
 				job["model_version_id"],
 				token,
@@ -416,7 +541,12 @@ async def _run_job(job_id: str) -> None:
 				fp_param=job.get("fp"),
 				progress_callback=progress_callback,
 				host=job.get("civitai_host"),
+				resume=True,
+				preferred_filename=job.get("filename") or None,
 			)
+			if saved_rel:
+				job["saved_relpath"] = saved_rel
+				job["filename"] = os.path.basename(saved_rel)
 		else:
 			progress_dict = {"bytes_done": 0, "total_bytes": None}
 			loop = asyncio.get_event_loop()
@@ -491,6 +621,7 @@ async def _run_job(job_id: str) -> None:
 				job["error"] = error or ""
 				if success:
 					job["progress_pct"] = 100.0
+				_persist_job_history(job)
 			source = job.get("source") if job else None
 			if source:
 				_RUNNING_BY_PROVIDER[source] = max(0, _RUNNING_BY_PROVIDER.get(source, 0) - 1)
@@ -624,6 +755,7 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 	job = {
 		"job_id": job_id,
 		"user_id": user_id,
+		"username": username or "",
 		"source": source,
 		"destination_type": destination_type,
 		"folder_type": folder_type,
@@ -644,6 +776,12 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 		"destination": "",
 		"error": "",
 		"cancel_requested": False,
+		"description": (body.get("description") or "")[:4000],
+		"trigger_words": body.get("trigger_words")
+		if isinstance(body.get("trigger_words"), list)
+		else [],
+		"model_id": str(body.get("model_id") or ""),
+		"saved_relpath": "",
 	}
 	if source == "civitai":
 		model_version_id = (
@@ -682,6 +820,7 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 	async with _JOBS_LOCK:
 		_JOBS_BY_ID[job_id] = job
 		_PENDING_JOB_IDS.append(job_id)
+		_persist_job_history(job)
 		await _schedule_jobs_unsafe()
 	return web.json_response({"status": "queued", "job_id": job_id, "stats": _queue_stats()})
 
@@ -723,12 +862,10 @@ async def api_model_download_preferences_put(request: web.Request) -> web.Respon
 	elif requested.startswith("http://"):
 		requested = requested[len("http://") :]
 	requested = requested.split("/")[0].split("?")[0]
-	if requested.startswith("www."):
-		requested = requested[4:]
+	requested = requested.removeprefix("www.")
 	if requested and requested not in ALLOWED_CIVITAI_HOSTS:
 		return web.json_response(
-			{"error": "Invalid civitai_host; allowed: civitai.com, civitai.red"},
-			status=400,
+			{"error": "Invalid civitai_host; allowed: civitai.com, civitai.red"}, status=400
 		)
 	host = set_civitai_host_preference(username, normalized)
 	return web.json_response({"status": "ok", "civitai_host": host})
@@ -782,7 +919,8 @@ async def api_model_download_civitai_model(request: web.Request) -> web.Response
 	data, error = await civitai_get_model(model_id, token=token, host=host)
 	if error:
 		return web.json_response({"error": error}, status=502)
-	return web.json_response({"host": host, "model": data})
+	shaped = _shape_civitai_model_for_ui(data if isinstance(data, dict) else None)
+	return web.json_response({"host": host, "model": data, "ui": shaped})
 
 
 @routes.get("/mss-login/api/model-download/civitai/model-versions/{version_id}")
@@ -803,7 +941,8 @@ async def api_model_download_civitai_model_version(request: web.Request) -> web.
 	data, error = await civitai_get_model_version(version_id, token=token, host=host)
 	if error:
 		return web.json_response({"error": error}, status=502)
-	return web.json_response({"host": host, "model_version": data})
+	meta = extract_civitai_metadata(None, data if isinstance(data, dict) else None)
+	return web.json_response({"host": host, "model_version": data, "ui": meta})
 
 
 @routes.get("/mss-login/api/model-download/huggingface/search")
@@ -885,7 +1024,171 @@ async def api_model_download_cancel(request: web.Request) -> web.Response:
 				_PENDING_JOB_IDS.remove(job_id)
 			except ValueError:
 				pass
+			_persist_job_history(job)
 		return web.json_response({"status": "ok", "job_id": job_id})
+
+
+@routes.get("/mss-login/api/model-download/history")
+async def api_model_download_history(request: web.Request) -> web.Response:
+	"""
+	List durable download history.
+
+	Callers always see their own rows. Admins with can_view_all_comfyui_items may
+	pass ?scope=all to list everyone's history (metadata only; no API keys).
+	"""
+	user_id, _username, err = _download_auth_or_response(request)
+	if err:
+		return err
+	role, perms, _ = _role_and_perms(request)
+	scope = (request.rel_url.query.get("scope") or "mine").strip().lower()
+	status = (request.rel_url.query.get("status") or "").strip() or None
+	try:
+		limit = int(request.rel_url.query.get("limit") or "100")
+	except ValueError:
+		limit = 100
+	include_all = scope == "all" and user_can_view_all_models(role, perms)
+	store = get_model_download_history_store(USERS_DB_CONFIG)
+	items = store.list_for_user(
+		user_id or "", status=status, limit=limit, include_all_users=include_all
+	)
+	# Strip internal noise; never expose tokens.
+	public = []
+	for item in items:
+		if not item:
+			continue
+		public.append(
+			{
+				"job_id": item.get("job_id"),
+				"user_id": item.get("user_id") if include_all else user_id,
+				"username": item.get("username") if include_all else "",
+				"source": item.get("source"),
+				"status": item.get("status"),
+				"destination_type": item.get("destination_type"),
+				"folder_type": item.get("folder_type"),
+				"model_id": item.get("model_id"),
+				"model_version_id": item.get("model_version_id"),
+				"repo_id": item.get("repo_id"),
+				"filename": item.get("filename") or item.get("saved_relpath"),
+				"description": item.get("description") or "",
+				"trigger_words": item.get("trigger_words_list") or [],
+				"bytes_done": item.get("bytes_done"),
+				"total_bytes": item.get("total_bytes"),
+				"error": item.get("error") or "",
+				"created_at": item.get("created_at"),
+				"updated_at": item.get("updated_at"),
+				"finished_at": item.get("finished_at"),
+				"can_resume": (item.get("status") or "")
+				in ("failed", "interrupted", "cancelled", "queued"),
+			}
+		)
+	return web.json_response({"items": public, "scope": "all" if include_all else "mine"})
+
+
+@routes.post("/mss-login/api/model-download/jobs/{job_id}/resume")
+async def api_model_download_resume(request: web.Request) -> web.Response:
+	"""Re-queue an incomplete download owned by the caller (CivitAI Range resume)."""
+	user_id, username, err = _download_auth_or_response(request)
+	if err:
+		return err
+	job_id = (request.match_info.get("job_id") or "").strip()
+	if not job_id:
+		return web.json_response({"error": "Missing job_id"}, status=400)
+
+	async with _JOBS_LOCK:
+		job = _JOBS_BY_ID.get(job_id)
+		if job and job.get("user_id") == user_id:
+			if job.get("status") in ("queued", "running"):
+				return web.json_response({"error": "Job is already active"}, status=400)
+			if job.get("status") == "completed":
+				return web.json_response({"error": "Job already completed"}, status=400)
+			token = _source_token(user_id, job.get("source") or "")
+			if not token:
+				return web.json_response({"error": "No API key set for this source"}, status=400)
+			job["token"] = token
+			job["status"] = "queued"
+			job["error"] = ""
+			job["cancel_requested"] = False
+			job["finished_at"] = ""
+			if job_id not in _PENDING_JOB_IDS:
+				_PENDING_JOB_IDS.append(job_id)
+			_persist_job_history(job)
+			await _schedule_jobs_unsafe()
+			return web.json_response(
+				{"status": "queued", "job_id": job_id, "stats": _queue_stats()}
+			)
+
+	# Restore from durable history if not in memory (e.g. after restart).
+	store = get_model_download_history_store(USERS_DB_CONFIG)
+	rec = store.get(job_id)
+	if not rec or rec.get("user_id") != user_id:
+		return web.json_response({"error": "Job not found"}, status=404)
+	if (rec.get("status") or "") == "completed":
+		return web.json_response({"error": "Job already completed"}, status=400)
+	source = (rec.get("source") or "").strip().lower()
+	if source not in SOURCES:
+		return web.json_response({"error": "Invalid source on history record"}, status=400)
+	token = _source_token(user_id, source)
+	if not token:
+		return web.json_response({"error": "No API key set for this source"}, status=400)
+	role, _perms, _ = _role_and_perms(request)
+	new_job = {
+		"job_id": job_id,
+		"user_id": user_id,
+		"username": username or rec.get("username") or "",
+		"source": source,
+		"destination_type": rec.get("destination_type") or "local",
+		"folder_type": rec.get("folder_type") or "checkpoints",
+		"target_user_id": user_id,
+		"target_username": "",
+		"role": role,
+		"token": token,
+		"status": "queued",
+		"created_at": _utc_now(),
+		"started_at": "",
+		"finished_at": "",
+		"bytes_done": int(rec.get("bytes_done") or 0),
+		"total_bytes": rec.get("total_bytes"),
+		"elapsed": 0.0,
+		"progress_pct": 0.0,
+		"speed_bps": 0.0,
+		"eta_seconds": 0.0,
+		"destination": rec.get("local_path") or "",
+		"error": "",
+		"cancel_requested": False,
+		"description": rec.get("description") or "",
+		"trigger_words": rec.get("trigger_words_list") or [],
+		"model_id": rec.get("model_id") or "",
+		"saved_relpath": rec.get("saved_relpath") or "",
+		"filename": rec.get("filename") or "",
+	}
+	extra = rec.get("extra") if isinstance(rec.get("extra"), dict) else {}
+	if source == "civitai":
+		if not rec.get("model_version_id"):
+			return web.json_response(
+				{"error": "History record missing model_version_id"}, status=400
+			)
+		new_job["model_version_id"] = rec["model_version_id"]
+		new_job["civitai_host"] = rec.get("civitai_host") or DEFAULT_CIVITAI_HOST
+		new_job["type"] = extra.get("type")
+		new_job["format"] = extra.get("format")
+		new_job["size"] = extra.get("size")
+		new_job["fp"] = extra.get("fp")
+	else:
+		if not rec.get("repo_id") or not rec.get("filename"):
+			return web.json_response(
+				{"error": "History record missing repo_id/filename"}, status=400
+			)
+		new_job["repo_id"] = rec["repo_id"]
+		new_job["filename"] = rec["filename"]
+		new_job["subfolder"] = rec.get("subfolder") or None
+
+	async with _JOBS_LOCK:
+		_JOBS_BY_ID[job_id] = new_job
+		if job_id not in _PENDING_JOB_IDS:
+			_PENDING_JOB_IDS.append(job_id)
+		_persist_job_history(new_job)
+		await _schedule_jobs_unsafe()
+	return web.json_response({"status": "queued", "job_id": job_id, "stats": _queue_stats()})
 
 
 routes.get("/api/mss-login/api/model-download/sources")(api_model_download_sources)
@@ -908,3 +1211,5 @@ routes.post("/api/mss-login/api/model-download/download")(api_model_download_sta
 routes.get("/api/mss-login/api/model-download/jobs/{job_id}")(api_model_download_job_get)
 routes.get("/api/mss-login/api/model-download/jobs")(api_model_download_jobs)
 routes.post("/api/mss-login/api/model-download/jobs/{job_id}/cancel")(api_model_download_cancel)
+routes.get("/api/mss-login/api/model-download/history")(api_model_download_history)
+routes.post("/api/mss-login/api/model-download/jobs/{job_id}/resume")(api_model_download_resume)

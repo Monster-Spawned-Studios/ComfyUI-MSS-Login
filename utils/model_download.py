@@ -27,16 +27,11 @@ DEFAULT_CIVITAI_HOST = "civitai.com"
 ALLOWED_HF_HOSTS = frozenset({"huggingface.co", "hf.co"})
 
 _CIVITAI_MODEL_PATH_RE = re.compile(
-	r"^/models/(?P<model_id>\d+)(?:/(?P<slug>[^/?#]+))?",
-	re.IGNORECASE,
+	r"^/models/(?P<model_id>\d+)(?:/(?P<slug>[^/?#]+))?", re.IGNORECASE
 )
-_CIVITAI_DOWNLOAD_PATH_RE = re.compile(
-	r"^/api/download/models/(?P<version_id>\d+)",
-	re.IGNORECASE,
-)
+_CIVITAI_DOWNLOAD_PATH_RE = re.compile(r"^/api/download/models/(?P<version_id>\d+)", re.IGNORECASE)
 _CIVITAI_VERSION_API_PATH_RE = re.compile(
-	r"^/api/v1/model-versions/(?P<version_id>\d+)",
-	re.IGNORECASE,
+	r"^/api/v1/model-versions/(?P<version_id>\d+)", re.IGNORECASE
 )
 _HF_REPO_PATH_RE = re.compile(
 	r"^/(?P<repo_id>[^/]+/[^/]+)(?:/(?P<kind>blob|resolve|raw)/(?P<revision>[^/]+)/(?P<path>.+))?$",
@@ -52,8 +47,7 @@ def normalize_civitai_host(host: str | None) -> str:
 	elif raw.startswith("http://"):
 		raw = raw[len("http://") :]
 	raw = raw.split("/")[0].split("?")[0].rstrip(".")
-	if raw.startswith("www."):
-		raw = raw[4:]
+	raw = raw.removeprefix("www.")
 	if raw in ALLOWED_CIVITAI_HOSTS:
 		return raw
 	return DEFAULT_CIVITAI_HOST
@@ -72,7 +66,9 @@ def civitai_download_base(host: str | None = None) -> str:
 def get_civitai_host_preference(username: str) -> str:
 	"""Load per-user civitai_host from settings.json (non-secret). Default .com."""
 	settings = load_user_settings(username)
-	return normalize_civitai_host(settings.get("civitai_host") if isinstance(settings, dict) else None)
+	return normalize_civitai_host(
+		settings.get("civitai_host") if isinstance(settings, dict) else None
+	)
 
 
 def set_civitai_host_preference(username: str, host: str) -> str:
@@ -97,8 +93,7 @@ def _is_allowlisted_hostname(hostname: str | None, allowed: frozenset[str]) -> b
 	if not hostname:
 		return False
 	host = hostname.strip().lower().rstrip(".")
-	if host.startswith("www."):
-		host = host[4:]
+	host = host.removeprefix("www.")
 	return host in allowed
 
 
@@ -134,8 +129,7 @@ def resolve_civitai_url(url: str) -> dict[str, Any] | None:
 	if err:
 		return None
 	host = (parsed.hostname or "").lower()
-	if host.startswith("www."):
-		host = host[4:]
+	host = host.removeprefix("www.")
 	if host not in ALLOWED_CIVITAI_HOSTS:
 		return None
 	path = parsed.path or ""
@@ -177,8 +171,7 @@ def resolve_huggingface_url(url: str) -> dict[str, Any] | None:
 	if err:
 		return None
 	host = (parsed.hostname or "").lower()
-	if host.startswith("www."):
-		host = host[4:]
+	host = host.removeprefix("www.")
 	if host not in ALLOWED_HF_HOSTS:
 		return None
 	path = parsed.path or ""
@@ -209,10 +202,7 @@ def resolve_model_url(url: str) -> dict[str, Any] | None:
 
 
 async def _civitai_get_json(
-	path: str,
-	token: str | None,
-	host: str | None = None,
-	params: dict[str, Any] | None = None,
+	path: str, token: str | None, host: str | None = None, params: dict[str, Any] | None = None
 ) -> tuple[dict[str, Any] | list | None, str]:
 	"""
 	GET JSON from CivitAI /api/v1/... on the allowlisted host.
@@ -227,7 +217,9 @@ async def _civitai_get_json(
 		timeout = aiohttp.ClientTimeout(total=60, sock_read=60)
 		async with (
 			aiohttp.ClientSession(timeout=timeout) as session,
-			session.get(url, params=params or None, headers=headers or None, allow_redirects=True) as resp,
+			session.get(
+				url, params=params or None, headers=headers or None, allow_redirects=True
+			) as resp,
 		):
 			if resp.status != 200:
 				text = ""
@@ -267,9 +259,7 @@ async def civitai_search_models(
 
 
 async def civitai_get_model(
-	model_id: str | int,
-	token: str | None = None,
-	host: str | None = None,
+	model_id: str | int, token: str | None = None, host: str | None = None
 ) -> tuple[dict[str, Any] | None, str]:
 	"""Fetch a CivitAI model by id via GET /api/v1/models/{id}."""
 	mid = str(model_id).strip()
@@ -279,9 +269,7 @@ async def civitai_get_model(
 
 
 async def civitai_get_model_version(
-	version_id: str | int,
-	token: str | None = None,
-	host: str | None = None,
+	version_id: str | int, token: str | None = None, host: str | None = None
 ) -> tuple[dict[str, Any] | None, str]:
 	"""Fetch a CivitAI model version by id via GET /api/v1/model-versions/{id}."""
 	vid = str(version_id).strip()
@@ -291,9 +279,7 @@ async def civitai_get_model_version(
 
 
 def search_huggingface_models(
-	query: str,
-	token: str | None = None,
-	limit: int = 20,
+	query: str, token: str | None = None, limit: int = 20
 ) -> tuple[list[dict[str, Any]] | None, str]:
 	"""
 	Search Hugging Face Hub models. Returns a list of public-safe dicts (no secrets).
@@ -337,11 +323,16 @@ async def download_civitai_async(
 	fp_param: str | None = None,
 	progress_callback: ProgressCallback = None,
 	host: str | None = None,
+	resume: bool = True,
+	preferred_filename: str | None = None,
 ) -> tuple[bool, str, str | None]:
 	"""
 	Download a model file from CivitAI to dest_path. Async.
 	Returns (success, error_message, saved_relpath). Prefer Authorization Bearer; follow redirects.
 	Requires a token for file downloads (current CivitAI policy).
+
+	When resume=True and a partial file exists, sends Range and appends (keeps
+	partials on failure so the job can be resumed later).
 	"""
 	if not (token or "").strip():
 		return False, "CivitAI API token required for downloads", None
@@ -370,10 +361,16 @@ async def download_civitai_async(
 				url, params=params or None, headers=headers or None, allow_redirects=True
 			) as resp,
 		):
-			if resp.status != 200:
+			# First request discovers filename / Content-Length; may re-request with Range.
+			if resp.status not in (200, 206):
+				# If we intended resume, try without Range path below after HEAD-like get fails
 				return False, f"CivitAI returned {resp.status}", None
 			content_disp = resp.headers.get("Content-Disposition")
 			filename = None
+			if preferred_filename:
+				_basename = Path(preferred_filename).name
+				if _basename:
+					filename = _basename
 			if content_disp and "filename=" in content_disp:
 				part = content_disp.split("filename=")[-1].strip().strip("\"'")
 				if part:
@@ -407,41 +404,109 @@ async def download_civitai_async(
 				if os.path.abspath(common) != os.path.abspath(dest_resolved):
 					return False, "Path traversal prevented", None
 			out.parent.mkdir(parents=True, exist_ok=True)
-			raw_len = getattr(resp, "content_length", None) or resp.headers.get("Content-Length")
-			total_bytes = None
-			if raw_len is not None:
+
+			existing = 0
+			if resume and out.is_file():
 				try:
-					total_bytes = int(raw_len)
-				except (TypeError, ValueError):
-					pass
-			bytes_done = 0
-			try:
-				with open(out, "wb") as f:
-					while True:
-						chunk = await resp.content.read(1024 * 1024)
-						if not chunk:
-							break
-						f.write(chunk)
-						bytes_done += len(chunk)
-						if progress_callback:
-							cb = progress_callback(bytes_done, total_bytes)
-							if asyncio.iscoroutine(cb):
-								await cb
-			except Exception:
-				# Remove partial file so a failed download doesn't leave corrupt data
-				try:
-					if out.exists():
-						out.unlink()
+					existing = out.stat().st_size
 				except OSError:
-					pass
-				raise
-			try:
-				saved_rel = os.path.relpath(out.resolve(), dest_resolved)
-			except ValueError:
-				saved_rel = out.name
-			return True, "", saved_rel.replace("\\", "/")
+					existing = 0
+
+			# If partial exists, re-request with Range (current response may be full body).
+			if existing > 0:
+				await resp.release()
+				range_headers = {**headers, "Range": f"bytes={existing}-"}
+				async with session.get(
+					url, params=params or None, headers=range_headers or None, allow_redirects=True
+				) as range_resp:
+					if range_resp.status == 206:
+						return await _stream_civitai_body(
+							range_resp,
+							out,
+							dest_resolved,
+							bytes_done_start=existing,
+							progress_callback=progress_callback,
+							append=True,
+							keep_partial_on_error=True,
+						)
+					if range_resp.status == 200:
+						# Server ignored Range — restart from scratch.
+						existing = 0
+						return await _stream_civitai_body(
+							range_resp,
+							out,
+							dest_resolved,
+							bytes_done_start=0,
+							progress_callback=progress_callback,
+							append=False,
+							keep_partial_on_error=True,
+						)
+					return False, f"CivitAI returned {range_resp.status}", None
+
+			return await _stream_civitai_body(
+				resp,
+				out,
+				dest_resolved,
+				bytes_done_start=0,
+				progress_callback=progress_callback,
+				append=False,
+				keep_partial_on_error=True,
+			)
 	except Exception as e:
 		return False, str(e), None
+
+
+async def _stream_civitai_body(
+	resp,
+	out: Path,
+	dest_resolved: Path,
+	*,
+	bytes_done_start: int,
+	progress_callback: ProgressCallback,
+	append: bool,
+	keep_partial_on_error: bool,
+) -> tuple[bool, str, str | None]:
+	raw_len = getattr(resp, "content_length", None) or resp.headers.get("Content-Length")
+	content_range = resp.headers.get("Content-Range") or ""
+	total_bytes = None
+	if content_range and "/" in content_range:
+		try:
+			total_bytes = int(content_range.rsplit("/", 1)[-1])
+		except (TypeError, ValueError):
+			pass
+	if total_bytes is None and raw_len is not None:
+		try:
+			chunk_len = int(raw_len)
+			total_bytes = (bytes_done_start + chunk_len) if append else chunk_len
+		except (TypeError, ValueError):
+			pass
+	bytes_done = int(bytes_done_start)
+	mode = "ab" if append else "wb"
+	try:
+		with open(out, mode) as f:
+			while True:
+				chunk = await resp.content.read(1024 * 1024)
+				if not chunk:
+					break
+				f.write(chunk)
+				bytes_done += len(chunk)
+				if progress_callback:
+					cb = progress_callback(bytes_done, total_bytes)
+					if asyncio.iscoroutine(cb):
+						await cb
+	except Exception:
+		if not keep_partial_on_error:
+			try:
+				if out.exists():
+					out.unlink()
+			except OSError:
+				pass
+		raise
+	try:
+		saved_rel = os.path.relpath(out.resolve(), dest_resolved)
+	except ValueError:
+		saved_rel = out.name
+	return True, "", saved_rel.replace("\\", "/")
 
 
 def download_huggingface(

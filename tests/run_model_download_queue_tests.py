@@ -115,8 +115,8 @@ def _install_stubs():
 	download_mod.civitai_get_model_version = _civitai_version
 	download_mod.civitai_search_models = _civitai_search
 	download_mod.get_civitai_host_preference = lambda *_a, **_k: "civitai.com"
-	download_mod.normalize_civitai_host = (
-		lambda h: (h or "civitai.com").strip().lower()
+	download_mod.normalize_civitai_host = lambda h: (
+		(h or "civitai.com").strip().lower()
 		if (h or "").strip().lower() in ("civitai.com", "civitai.red")
 		else "civitai.com"
 	)
@@ -154,7 +154,36 @@ def _install_stubs():
 		"can_download_models", False
 	)
 	policy_mod.user_can_manage_model_sharing = lambda role, perms: False
+	policy_mod.user_can_view_all_models = lambda role, perms: role in ("admin", "owner")
 	sys.modules["mss_login.utils.model_visibility_policy"] = policy_mod
+
+	history_mod = types.ModuleType("mss_login.utils.model_download_history_store")
+	history_mod.extract_civitai_metadata = lambda *_a, **_k: {
+		"description": "",
+		"trigger_words": [],
+		"model_id": "",
+		"model_name": "",
+		"model_version_id": "",
+	}
+
+	class _HistoryStore:
+		def upsert(self, _rec):
+			return True
+
+		def get(self, _job_id):
+			return None
+
+		def list_for_user(self, *_a, **_k):
+			return []
+
+		def list_resumable(self, *_a, **_k):
+			return []
+
+		def update_fields(self, *_a, **_k):
+			return True
+
+	history_mod.get_model_download_history_store = lambda _cfg: _HistoryStore()
+	sys.modules["mss_login.utils.model_download_history_store"] = history_mod
 
 	class _SharedStore:
 		def __init__(self):
@@ -162,12 +191,7 @@ def _install_stubs():
 
 		def add(self, user_id, folder, item_name, **kwargs):
 			self.grants.append(
-				{
-					"user_id": user_id,
-					"folder": folder,
-					"item_name": item_name,
-					**kwargs,
-				}
+				{"user_id": user_id, "folder": folder, "item_name": item_name, **kwargs}
 			)
 
 	_shared = _SharedStore()

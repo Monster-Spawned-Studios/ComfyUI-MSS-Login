@@ -71,7 +71,7 @@ def run_tests() -> int:
 
 	levels_to_test = [""]
 	try:
-		import sqlcipher3  # noqa: F401
+		import sqlcipher3
 
 		levels_to_test.append("low")
 	except ImportError:
@@ -189,6 +189,21 @@ def run_tests() -> int:
 			except Exception as e:
 				print(f"  note: model_cache init: {e}")
 
+		history_mod = _load_module(
+			"mss_login.utils.model_download_history_store",
+			os.path.join(_UTILS_DIR, "model_download_history_store.py"),
+			"mss_login.utils",
+		)
+		if hasattr(history_mod, "get_model_download_history_store"):
+			if hasattr(history_mod, "_store"):
+				history_mod._store = None
+			if hasattr(history_mod, "reset_model_download_history_store"):
+				history_mod.reset_model_download_history_store()
+			try:
+				history_mod.get_model_download_history_store(config)
+			except Exception as e:
+				print(f"  note: model_download_history: {e}")
+
 		lockout_mod = _load_module(
 			"mss_login.utils.lockout_store",
 			os.path.join(_UTILS_DIR, "lockout_store.py"),
@@ -203,9 +218,7 @@ def run_tests() -> int:
 				print(f"  note: lockout_store: {e}")
 
 		users_db_mod = _load_module(
-			"mss_login.utils.users_db",
-			os.path.join(_UTILS_DIR, "users_db.py"),
-			"mss_login.utils",
+			"mss_login.utils.users_db", os.path.join(_UTILS_DIR, "users_db.py"), "mss_login.utils"
 		)
 		try:
 			udb = users_db_mod.UsersDB(config, secret, "")

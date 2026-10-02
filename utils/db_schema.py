@@ -128,6 +128,35 @@ EXPECTED_TABLES: dict[str, TableSpec] = {
 			ColumnSpec("updated_at", "real", nullable=False),
 		),
 	),
+	"model_download_history": TableSpec(
+		"model_download_history",
+		(
+			ColumnSpec("job_id", "text", nullable=False, pk=True),
+			ColumnSpec("user_id", "text", nullable=False),
+			ColumnSpec("username", "text", nullable=False),
+			ColumnSpec("source", "text", nullable=False),
+			ColumnSpec("status", "text", nullable=False),
+			ColumnSpec("destination_type", "text", nullable=False),
+			ColumnSpec("folder_type", "text", nullable=False),
+			ColumnSpec("model_id", "text", nullable=False),
+			ColumnSpec("model_version_id", "text", nullable=False),
+			ColumnSpec("repo_id", "text", nullable=False),
+			ColumnSpec("filename", "text", nullable=False),
+			ColumnSpec("subfolder", "text", nullable=False),
+			ColumnSpec("civitai_host", "text", nullable=False),
+			ColumnSpec("local_path", "text", nullable=False),
+			ColumnSpec("saved_relpath", "text", nullable=False),
+			ColumnSpec("description", "text", nullable=False),
+			ColumnSpec("trigger_words", "text", nullable=False),
+			ColumnSpec("bytes_done", "real", nullable=False),
+			ColumnSpec("total_bytes", "real", nullable=True),
+			ColumnSpec("error", "text", nullable=False),
+			ColumnSpec("created_at", "real", nullable=False),
+			ColumnSpec("updated_at", "real", nullable=False),
+			ColumnSpec("finished_at", "real", nullable=False),
+			ColumnSpec("extra_json", "text", nullable=False),
+		),
+	),
 	"ip_blacklist": TableSpec(
 		"ip_blacklist",
 		(
@@ -136,12 +165,10 @@ EXPECTED_TABLES: dict[str, TableSpec] = {
 		),
 	),
 	"ip_whitelist": TableSpec(
-		"ip_whitelist",
-		(ColumnSpec("entry", "text", nullable=False, pk=True),),
+		"ip_whitelist", (ColumnSpec("entry", "text", nullable=False, pk=True),)
 	),
 	"locked_devices": TableSpec(
-		"locked_devices",
-		(ColumnSpec("device_id", "text", nullable=False, pk=True),),
+		"locked_devices", (ColumnSpec("device_id", "text", nullable=False, pk=True),)
 	),
 }
 
