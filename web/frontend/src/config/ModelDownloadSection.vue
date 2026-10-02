@@ -81,7 +81,7 @@
             v-for="item in results"
             :key="item.key"
             type="button"
-            class="block w-full rounded-lg border border-zinc-800 px-3 py-2 text-left text-sm hover:border-blue-400"
+            class="block w-full rounded-lg border border-zinc-800 px-3 py-2 text-left text-sm hover:border-[#9660fa]"
             @click="openResult(item)"
           >
             <span class="font-medium">{{ item.title }}</span>
@@ -199,7 +199,7 @@
           </div>
           <div class="mt-2 h-2 overflow-hidden rounded bg-zinc-800">
             <div
-              class="h-full bg-blue-500 transition-all"
+              class="h-full bg-[#9660fa] transition-all"
               :style="{ width: Math.min(100, job.progress_pct || 0) + '%' }"
             />
           </div>

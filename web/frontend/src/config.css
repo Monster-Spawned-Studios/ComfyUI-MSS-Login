@@ -20,15 +20,19 @@
 	}
 
 	.mss-cfg-home {
-		@apply mx-auto flex w-full max-w-xl flex-col items-center gap-3 text-center;
+		@apply mx-auto flex w-full max-w-4xl flex-col items-center;
+	}
+
+	.mss-cfg-home-grid {
+		@apply grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3;
 	}
 
 	.mss-cfg-home-btn {
-		@apply w-full max-w-sm rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-center text-sm font-medium text-zinc-100 transition hover:border-blue-400 hover:bg-zinc-800;
+		@apply min-h-14 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-4 text-center text-sm font-medium text-zinc-100 shadow-sm transition hover:border-[#9660fa] hover:bg-zinc-800 hover:shadow-[0_0_0_1px_rgba(150,96,250,0.35)];
 	}
 
 	.mss-cfg-section {
-		@apply mx-auto w-full max-w-3xl space-y-4 text-center;
+		@apply mx-auto w-full max-w-3xl space-y-4 text-left;
 	}
 
 	.mss-cfg-card {
@@ -40,15 +44,15 @@
 	}
 
 	.mss-cfg-input {
-		@apply w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-blue-400;
+		@apply w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-[#9660fa] focus:ring-1 focus:ring-[#9660fa];
 	}
 
 	.mss-cfg-btn {
-		@apply inline-flex items-center justify-center rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-50;
+		@apply inline-flex items-center justify-center rounded-lg bg-[#9660fa] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#7c60fa] disabled:cursor-not-allowed disabled:opacity-50;
 	}
 
 	.mss-cfg-btn-ghost {
-		@apply inline-flex items-center justify-center rounded-lg border border-zinc-700 bg-transparent px-3 py-2 text-sm text-zinc-200 transition hover:bg-zinc-800;
+		@apply inline-flex items-center justify-center rounded-lg border border-zinc-700 bg-transparent px-3 py-2 text-sm text-zinc-200 transition hover:border-[#9660fa]/60 hover:bg-zinc-800;
 	}
 
 	.mss-cfg-btn-danger {
@@ -57,6 +61,25 @@
 
 	.mss-cfg-note {
 		@apply text-sm text-zinc-400;
+	}
+
+	.mss-cfg-warn {
+		@apply rounded-lg border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-sm text-amber-100;
+	}
+
+	.mss-cfg-check-row {
+		@apply flex cursor-pointer items-center gap-2.5 text-sm text-zinc-200;
+	}
+
+	.mss-cfg-checkbox {
+		@apply h-4 w-4 shrink-0 cursor-pointer appearance-none rounded border border-zinc-600 bg-zinc-950 transition checked:border-[#9660fa] checked:bg-[#9660fa] focus:outline-none focus:ring-2 focus:ring-[#9660fa]/40;
+		background-position: center;
+		background-repeat: no-repeat;
+		background-size: 0.75rem;
+	}
+
+	.mss-cfg-checkbox:checked {
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.5L6.5 11.5L12.5 4.5' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 	}
 
 	.mss-cfg-folder-row {
@@ -73,5 +96,41 @@
 
 	.mss-cfg-flyout {
 		@apply mt-1 max-h-52 overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950 p-3 text-left;
+	}
+
+	/* Legacy section content hosted inside Vue shell */
+	.mss-cfg-section input[type="text"],
+	.mss-cfg-section input[type="password"],
+	.mss-cfg-section input[type="number"],
+	.mss-cfg-section input[type="url"],
+	.mss-cfg-section input[type="email"],
+	.mss-cfg-section select,
+	.mss-cfg-section textarea {
+		@apply w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-[#9660fa];
+	}
+
+	.mss-cfg-section input[type="checkbox"] {
+		@apply h-4 w-4 accent-[#9660fa];
+	}
+
+	.mss-cfg-section .mss-login-launch-btn,
+	.mss-cfg-section .mss-login-btn,
+	.mss-cfg-section button.btn-save,
+	.mss-cfg-section button[type="submit"] {
+		@apply inline-flex items-center justify-center rounded-lg border border-transparent bg-[#9660fa] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#7c60fa];
+	}
+
+	.mss-cfg-section .mss-login-note,
+	.mss-cfg-section p.mss-login-note {
+		@apply text-sm text-zinc-400;
+	}
+
+	.mss-cfg-section table {
+		@apply w-full border-collapse text-left text-sm;
+	}
+
+	.mss-cfg-section th,
+	.mss-cfg-section td {
+		@apply border-b border-zinc-800 px-2 py-2;
 	}
 }
