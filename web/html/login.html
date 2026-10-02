@@ -24,17 +24,26 @@
     <link rel="stylesheet" type="text/css" href="/mss-login/css/styles.css">
     <link rel="stylesheet" type="text/css" href="/mss-login/dist/auth.css">
     <style>
-        .login-news { margin-top: 1.5rem; border-top: 1px solid #3f3f46; padding-top: 1rem; }
+        .login-news { margin-top: 1.5rem; width: 100%; border-top: 1px solid #3f3f46; padding-top: 1rem; text-align: left; }
         .login-news h2 { font-size: 0.95rem; margin-bottom: 0.5rem; color: #a1a1aa; }
         .login-news-feed { max-height: 120px; overflow-y: auto; font-size: 0.85rem; color: #71717a; }
         .login-news-item { margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px solid #27272a; }
         .login-news-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
         .login-news-item strong { color: #a1a1aa; }
         .login-news-item time { font-size: 0.8rem; }
+        .local-login-card { width: 100%; margin-bottom: 1rem; padding: 0.85rem 1rem; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 0.75rem; text-align: left; }
+        .local-login-header { font-size: 0.85rem; color: #60a5fa; margin-bottom: 0.35rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+        .local-login-body { font-size: 0.8rem; color: #a1a1aa; margin: 0; }
     </style>
 </head>
 
 <body>
+    <div id="mss-login-bg" class="mss-auth-bg" hidden aria-hidden="true">
+        <img id="mss-login-bg-image" class="mss-auth-bg-media" alt="" hidden>
+        <video id="mss-login-bg-video" class="mss-auth-bg-media" autoplay muted loop playsinline hidden></video>
+        <div class="mss-auth-bg-scrim"></div>
+    </div>
+    <script type="application/json" id="mss-login-bg-config">{{LOGIN_BG_JSON}}</script>
     <div id="mss-login-auth-app"></div>
     <div class="container mss-auth-shell">
         <picture>
@@ -50,35 +59,36 @@
         </picture>
         <h1 class="title login mss-auth-title">Login</h1>
         <!-- method="post" and action prevent credentials from ever being sent in the URL (e.g. if JS is disabled). -->
-        <form id="login-form" method="post" action="/login">
+        <form id="login-form" method="post" action="/login" style="width:100%;">
             <!-- Local / Tailscale quick login (experimental, local/tailscale only) -->
             <div id="local-login-section" class="local-login-card" style="display: none;">
                 <div class="local-login-header">
-                    <span>🛡️ <strong id="local-net-label">Tailscale/Local Network Detected</strong></span>
+                    <span>🛡️ <strong id="local-net-label">Local Network Detected</strong></span>
                     <span id="local-client-ip" style="font-size: 0.75rem; opacity: 0.8;"></span>
                 </div>
+                <p class="local-login-body" id="local-login-body">Connected via trusted network. Sign in with standard credentials.</p>
                 <div id="local-login-actions" class="local-login-actions"></div>
             </div>
             <div class="form-field mss-auth-field">
-                <label class="mss-auth-label" for="username">Username:</label>
-                <input class="mss-auth-input" type="text" id="username" name="username" required>
+                <label class="mss-auth-label" for="username">Username</label>
+                <input class="mss-auth-input" type="text" id="username" name="username" required autocomplete="username">
             </div>
             <div class="form-field mss-auth-field">
-                <label class="mss-auth-label" for="password">Password:</label>
-                <input class="mss-auth-input" type="password" id="password" name="password" required>
+                <label class="mss-auth-label" for="password">Password</label>
+                <input class="mss-auth-input" type="password" id="password" name="password" required autocomplete="current-password">
             </div>
-            <div class="form-field mss-auth-field" style="display:flex; align-items:center; gap:0.5rem; justify-content:center;">
-                <input type="checkbox" id="remember_me" name="remember_me" value="1">
-                <label class="mss-auth-label" for="remember_me" style="margin:0;">Remember me on this device</label>
+            <div class="form-field mss-auth-remember">
+                <input class="mss-auth-checkbox" type="checkbox" id="remember_me" name="remember_me" value="1">
+                <label class="mss-auth-remember-label" for="remember_me">Remember me on this device</label>
             </div>
             <!-- Main login; guest block injected/omitted server-side from ALLOW_GUEST_JWT -->
-            <div class="form-field" style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <div class="form-field mss-auth-actions">
                 <button class="btn mss-auth-btn" type="submit">Login</button>
                 {{GUEST_LOGIN_BLOCK}}
             </div>
             <!-- Version info -->
             <div>
-                <p class="version-info" id="login-version" style="margin-top:1rem; font-size:0.9rem; color: #888888; text-align:center;">
+                <p class="version-info mss-auth-version" id="login-version">
                 MSS-Login - v{{VERSION}}</p>
             </div>
         </form>
@@ -94,11 +104,3 @@
 <script src="/mss-login/js/auth.js"></script>
 <script type="module" src="/mss-login/dist/auth-app.js"></script>
 </html>
-
-
-
-
-
-
-
-

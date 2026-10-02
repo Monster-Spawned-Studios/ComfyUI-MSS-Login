@@ -25,9 +25,52 @@ if (window.location.pathname === "/register") {
 
 if (window.location.pathname === "/login") {
   document.addEventListener("DOMContentLoaded", () => {
+    function applyLoginBackground(data) {
+      const root = document.getElementById("mss-login-bg");
+      const img = document.getElementById("mss-login-bg-image");
+      const video = document.getElementById("mss-login-bg-video");
+      if (!root || !img || !video) return;
+      if (!data || !data.enabled || !data.src) {
+        root.hidden = true;
+        img.hidden = true;
+        video.hidden = true;
+        img.removeAttribute("src");
+        video.removeAttribute("src");
+        video.pause();
+        return;
+      }
+      const kind = data.media_kind === "video" ? "video" : "image";
+      root.hidden = false;
+      if (kind === "video") {
+        img.hidden = true;
+        img.removeAttribute("src");
+        video.hidden = false;
+        video.src = data.src;
+        video.play().catch(function () {});
+      } else {
+        video.hidden = true;
+        video.removeAttribute("src");
+        video.pause();
+        img.hidden = false;
+        img.src = data.src;
+      }
+    }
+
+    try {
+      const cfgEl = document.getElementById("mss-login-bg-config");
+      if (cfgEl && cfgEl.textContent) {
+        applyLoginBackground(JSON.parse(cfgEl.textContent));
+      }
+    } catch (_) {}
+
+    fetch("/mss-login/api/login-background", { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) { if (data) applyLoginBackground(data); })
+      .catch(function () {});
+
     const section = document.getElementById("login-news-section");
     const feedEl = document.getElementById("login-news-feed");
-    if (!section || !feedEl) return;
+    if (section && feedEl) {
     fetch("/mss-login/api/news/feed.xml", { credentials: "same-origin" })
       .then(function (r) {
         if (!r.ok) return null;
@@ -64,6 +107,7 @@ if (window.location.pathname === "/login") {
         section.style.display = "block";
       })
       .catch(function () {});
+    }
 
     // Check Tailscale / Local Network authentication status (experimental)
     const localSection = document.getElementById("local-login-section");

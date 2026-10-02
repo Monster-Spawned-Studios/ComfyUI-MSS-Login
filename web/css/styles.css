@@ -233,13 +233,15 @@ label {
 input {
     background-color: #09090b;
     color: #ffffff;
-    width: 250px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 0.5rem;
     font-size: 1rem;
     border: 1px solid #3f3f46;
-    border-radius: 0.25rem;
+    border-radius: 0.5rem;
     transition: 0.2s;
-    outline: None;
+    outline: none;
 }
 
 input:enabled:hover {
@@ -247,7 +249,7 @@ input:enabled:hover {
 }
 
 input:enabled:focus {
-    border-color: #60a5fa;
+    border-color: #9660fa;
 }
 
 input:disabled {
@@ -447,13 +449,13 @@ a:active {
     }
 
     input:enabled:focus {
-        border-color: #60a5fa;
+        border-color: #9660fa;
     }
 
     .btn {
         background-color: #9660fa;
         border-color: #7c60fa;
-        color: #18181b;
+        color: #ffffff;
     }
 }
 
