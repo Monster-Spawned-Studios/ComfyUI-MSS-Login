@@ -68,6 +68,119 @@ if (window.location.pathname === "/login") {
       .then(function (data) { if (data) applyLoginBackground(data); })
       .catch(function () {});
 
+    // Update notice (public); session-aware Update now when can_update_mss_login
+    (function initLoginUpdateNotice() {
+      const noticeEl = document.getElementById("login-update-notice");
+      if (!noticeEl) return;
+      const DISMISS_KEY = "mss_login_update_notice_dismissed";
+      const fallbackUrl = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases";
+
+      function httpsUrl(raw) {
+        return /^https:\/\//i.test(String(raw || "")) ? String(raw) : fallbackUrl;
+      }
+
+      function applyUpdate(btn) {
+        if (!btn) return;
+        btn.disabled = true;
+        btn.textContent = "Updating…";
+        fetch("/mss-login/api/update-apply", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (res) {
+            if (res.ok && res.j && res.j.success) {
+              if (typeof addToast === "function") {
+                addToast(res.j.message || "Update applied. Restart ComfyUI to finish.", "success");
+              }
+              btn.textContent = "Restart required";
+            } else {
+              if (typeof addToast === "function") {
+                addToast((res.j && (res.j.error || res.j.message)) || "Update failed", "error");
+              }
+              btn.disabled = false;
+              btn.textContent = "Update now";
+            }
+          })
+          .catch(function (e) {
+            if (typeof addToast === "function") {
+              addToast(e.message || "Update failed", "error");
+            }
+            btn.disabled = false;
+            btn.textContent = "Update now";
+          });
+      }
+
+      function renderNotice(status, canUpdate) {
+        if (!status || !status.update_available) return;
+        const latest = status.latest_version ? String(status.latest_version) : "";
+        if (latest && sessionStorage.getItem(DISMISS_KEY) === latest) return;
+
+        noticeEl.textContent = "";
+        const header = document.createElement("div");
+        header.className = "login-update-notice-header";
+        const title = document.createElement("span");
+        title.textContent = latest
+          ? "MSS-Login update available (v" + latest + ")"
+          : "MSS-Login update available";
+        const dismiss = document.createElement("button");
+        dismiss.type = "button";
+        dismiss.className = "login-update-dismiss";
+        dismiss.setAttribute("aria-label", "Dismiss update notice");
+        dismiss.textContent = "×";
+        dismiss.addEventListener("click", function () {
+          if (latest) sessionStorage.setItem(DISMISS_KEY, latest);
+          noticeEl.style.display = "none";
+        });
+        header.appendChild(title);
+        header.appendChild(dismiss);
+
+        const body = document.createElement("p");
+        body.className = "login-update-notice-body";
+        body.textContent = canUpdate
+          ? "A newer version is available. You can apply the update now; restart ComfyUI afterward."
+          : "A newer version is available. Please notify your administrator so they can update MSS-Login.";
+
+        const actions = document.createElement("div");
+        actions.className = "login-update-notice-actions";
+        const link = document.createElement("a");
+        link.href = httpsUrl(status.release_url);
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "View release";
+        actions.appendChild(link);
+
+        if (canUpdate) {
+          const applyBtn = document.createElement("button");
+          applyBtn.type = "button";
+          applyBtn.className = "login-update-apply";
+          applyBtn.textContent = "Update now";
+          applyBtn.addEventListener("click", function () { applyUpdate(applyBtn); });
+          actions.appendChild(applyBtn);
+        }
+
+        noticeEl.appendChild(header);
+        noticeEl.appendChild(body);
+        noticeEl.appendChild(actions);
+        noticeEl.style.display = "block";
+      }
+
+      fetch("/mss-login/api/update-notice", { credentials: "same-origin" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (status) {
+          if (!status || !status.update_available) return null;
+          return fetch("/mss-login/api/me", { credentials: "same-origin" })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (me) {
+              renderNotice(status, !!(me && me.can_update_mss_login));
+            })
+            .catch(function () { renderNotice(status, false); });
+        })
+        .catch(function () {});
+    })();
+
     const section = document.getElementById("login-news-section");
     const feedEl = document.getElementById("login-news-feed");
     if (section && feedEl) {
@@ -163,13 +276,9 @@ if (window.location.pathname === "/login") {
               };
               localActions.appendChild(btn);
             });
-          } else {
-            const note = document.createElement("span");
-            note.style.fontSize = "0.8rem";
-            note.style.color = "#94a3b8";
-            note.textContent = "Connected via trusted network. Sign in with standard credentials.";
-            localActions.appendChild(note);
           }
+          // When there are no quick-login users, keep #local-login-body as the
+          // single copy source (do not duplicate the trusted-network sentence).
         })
         .catch(function () {});
     }

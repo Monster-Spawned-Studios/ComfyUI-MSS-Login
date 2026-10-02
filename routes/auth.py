@@ -287,7 +287,9 @@ async def get_loading_tips(request: web.Request) -> web.Response:
 async def get_loading(request: web.Request) -> web.Response:
 	"""Serve the loading page (between login and ComfyUI) when experimental loading_screen is enabled.
 	Otherwise redirect to /. Requires valid JWT; unauthenticated users are redirected by JWT middleware.
-	This is an MSS-Login intermediate page and does not conflict with ComfyUI's in-app loading at /.
+
+	Pre-ComfyUI interstitial only: does not replace or inject into ComfyUI's default splash at /.
+	Clients navigate fully to / after Continue/timeout so the frontend package can show its own loader.
 	"""
 	if not experimental_loading_screen_enabled():
 		return web.HTTPFound("/")

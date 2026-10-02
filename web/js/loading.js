@@ -63,22 +63,80 @@
         return div.innerHTML;
     }
 
-    function showUpdateBanner(status) {
+    function applyUpdateNow(btn) {
+        if (!btn) return;
+        btn.disabled = true;
+        btn.textContent = "Updating…";
+        fetch("/mss-login/api/update-apply", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+        })
+            .then(function (r) {
+                return r.json().then(function (j) {
+                    return { ok: r.ok, j: j };
+                });
+            })
+            .then(function (res) {
+                if (res.ok && res.j && res.j.success) {
+                    btn.textContent = "Restart required";
+                    if (tipEl) {
+                        setTip(res.j.message || "Update applied. Restart ComfyUI to finish.");
+                    }
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = "Update now";
+                    if (tipEl) {
+                        setTip((res.j && (res.j.error || res.j.message)) || "Update failed");
+                    }
+                }
+            })
+            .catch(function (e) {
+                btn.disabled = false;
+                btn.textContent = "Update now";
+                if (tipEl) setTip(e.message || "Update failed");
+            });
+    }
+
+    function showUpdateBanner(status, canUpdate) {
         if (!status || !status.update_available || !bannerEl) return;
-        // Do not cancel the auto-redirect: the banner is informational only.
+        // Do not cancel the auto-redirect: the banner is informational unless Update now is used.
         // The user can still click Continue or wait for the normal timeout.
         var fallbackUrl = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/releases";
         var rawUrl = status.release_url || status.changelog_url || fallbackUrl;
         var url = /^https:\/\//i.test(String(rawUrl)) ? String(rawUrl) : fallbackUrl;
         var ver = status.latest_version ? " (" + escapeHtml(String(status.latest_version)) + ")" : "";
         bannerEl.textContent = "";
-        bannerEl.appendChild(document.createTextNode("An update is available" + ver + ". "));
+        if (canUpdate) {
+            bannerEl.appendChild(
+                document.createTextNode("An update is available" + ver + ". ")
+            );
+        } else {
+            bannerEl.appendChild(
+                document.createTextNode(
+                    "An update is available" +
+                        ver +
+                        ". Please notify your administrator to update MSS-Login. "
+                )
+            );
+        }
         var link = document.createElement("a");
         link.href = url;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.textContent = "View release";
         bannerEl.appendChild(link);
+        if (canUpdate) {
+            var applyBtn = document.createElement("button");
+            applyBtn.type = "button";
+            applyBtn.className = "loading-update-apply";
+            applyBtn.textContent = "Update now";
+            applyBtn.addEventListener("click", function () {
+                applyUpdateNow(applyBtn);
+            });
+            bannerEl.appendChild(applyBtn);
+        }
         if (status.changelog_body && status.changelog_body.trim()) {
             bannerEl.appendChild(document.createTextNode(" "));
             var toggle = document.createElement("button");
@@ -109,17 +167,30 @@
         bannerEl.style.display = "block";
     }
 
-    function checkAdminUpdateBanner() {
+    function checkUpdateBanner() {
+        // MSS /loading interstitial only (pathname guard above). Does not touch ComfyUI splash at /.
         fetch("/mss-login/api/me", { credentials: "same-origin" })
             .then(function (r) { return r.json(); })
             .then(function (me) {
-                if (me && me.is_admin) {
-                    return fetch("/mss-login/api/update-status", { credentials: "same-origin" })
-                        .then(function (r) { return r.ok ? r.json() : null; })
-                        .then(showUpdateBanner);
-                }
+                var canUpdate = !!(me && me.can_update_mss_login);
+                var statusUrl =
+                    me && me.is_admin
+                        ? "/mss-login/api/update-status"
+                        : "/mss-login/api/update-notice";
+                return fetch(statusUrl, { credentials: "same-origin" })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (status) {
+                        showUpdateBanner(status, canUpdate);
+                    });
             })
-            .catch(function () {});
+            .catch(function () {
+                fetch("/mss-login/api/update-notice", { credentials: "same-origin" })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (status) {
+                        showUpdateBanner(status, false);
+                    })
+                    .catch(function () {});
+            });
     }
 
     function goToApp() {
@@ -133,7 +204,7 @@
     if (continueBtn) continueBtn.addEventListener("click", goToApp);
 
     fetchTips();
-    checkAdminUpdateBanner();
+    checkUpdateBanner();
 
     // Auto-redirect to main ComfyUI after a short display time; Continue button still works for immediate navigation
     autoRedirectTimer = setTimeout(goToApp, AUTO_REDIRECT_MS);

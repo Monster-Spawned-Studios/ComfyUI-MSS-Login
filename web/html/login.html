@@ -34,6 +34,51 @@
         .local-login-card { width: 100%; margin-bottom: 1rem; padding: 0.85rem 1rem; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 0.75rem; text-align: left; }
         .local-login-header { font-size: 0.85rem; color: #60a5fa; margin-bottom: 0.35rem; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
         .local-login-body { font-size: 0.8rem; color: #a1a1aa; margin: 0; }
+        .login-update-notice {
+            width: 100%;
+            margin-bottom: 1rem;
+            padding: 0.85rem 1rem;
+            background: rgba(150, 96, 250, 0.12);
+            border: 1px solid rgba(150, 96, 250, 0.45);
+            border-radius: 0.75rem;
+            text-align: left;
+            color: #e4e4e7;
+            font-size: 0.85rem;
+        }
+        .login-update-notice-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.5rem;
+            margin-bottom: 0.35rem;
+            color: #c4b5fd;
+            font-weight: 600;
+        }
+        .login-update-notice-body { margin: 0 0 0.5rem; color: #a1a1aa; }
+        .login-update-notice a { color: #c4b5fd; }
+        .login-update-notice-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+        .login-update-dismiss {
+            background: transparent;
+            border: none;
+            color: #a1a1aa;
+            cursor: pointer;
+            font-size: 1.1rem;
+            line-height: 1;
+            padding: 0 0.15rem;
+        }
+        .login-update-dismiss:hover { color: #e4e4e7; }
+        .login-update-apply {
+            display: inline-block;
+            padding: 0.35rem 0.75rem;
+            background: #9660fa;
+            border: 1px solid #9660fa;
+            border-radius: 0.5rem;
+            color: #fff;
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        .login-update-apply:hover { background: #7c60fa; border-color: #7c60fa; }
+        .login-update-apply:disabled { opacity: 0.5; cursor: not-allowed; }
     </style>
 </head>
 
@@ -58,6 +103,7 @@
                 alt="MSS-Login Logo">
         </picture>
         <h1 class="title login mss-auth-title">Login</h1>
+        <div id="login-update-notice" class="login-update-notice" style="display: none;" role="status" aria-live="polite"></div>
         <!-- method="post" and action prevent credentials from ever being sent in the URL (e.g. if JS is disabled). -->
         <form id="login-form" method="post" action="/login" style="width:100%;">
             <!-- Local / Tailscale quick login (experimental, local/tailscale only) -->
