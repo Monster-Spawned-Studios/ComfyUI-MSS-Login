@@ -68,6 +68,8 @@ When editing this extension, maintain compatibility with:
 
 Never `git commit` or `git push` unless the user explicitly asks to commit, push, or create a PR in that turn. Completing a task is not permission to publish. Leave local changes uncommitted and unpushed; summarize what changed and wait. If the user does ask to commit, follow the Commit signing section above.
 
+For significant change sets (~500+ lines) or multi-topic dumps, invoke **`/commit-multi-changes`** and follow [`.agents/skills/commit-multi-changes/SKILL.md`](.agents/skills/commit-multi-changes/SKILL.md): propose a topic-scoped multi-stage commit plan, wait for approval, then commit sequentially. Do not push unless asked.
+
 ### Known caveats
 
 - Always use the `.venv` Python (`.venv/bin/python`) per `.agent/rules/python-venv.mdc`.
@@ -83,8 +85,9 @@ Never `git commit` or `git push` unless the user explicitly asks to commit, push
 - When asked to commit, split changes into small, digestible, topic-scoped commits rather than one large dump; leave push to the user after review unless they explicitly ask to push.
 - Only the owner (last-owner / admin-owner) may edit administrator group permissions; admins must not unlock that matrix for themselves.
 - Owner-only user registration belongs in the avatar menu and MSS-Login dialog (with role chosen at create time); do not force owners through a separate `/register` navigation for that flow.
-- Keep MSS-Login purple/red branding (`#9660fa` and claw logo) for Login and Security Policy UI; do not switch accents to blue or Civicomfy terracotta.
+- Keep MSS-Login purple/red branding (`#9660fa` and claw logo) for Login and Security Policy UI; do not switch accents to blue or Civicomfy terracotta; keep login Remember Me compact/inline (not a full-width stretched control).
 - Prefer a responsive multi-column card grid for Security Policy home section launchers across desktop widths (not a single stacked column).
+- Login-page update notices should reuse the existing MSS-Login theme; tell non-updaters to notify an admin, and allow applying updates only for users with explicit update permission (not general users).
 
 ## Learned Workspace Facts
 
@@ -93,10 +96,10 @@ Never `git commit` or `git push` unless the user explicitly asks to commit, push
 - When `SECRET_KEY` is unset, reuse the persisted `.ephemeral_secret_key` across restarts so SQLCipher and JWT stay stable; do not rotate a new ephemeral key every process start.
 - Sanitizer middleware consumes the body via `request.post()`; multipart handlers (for example avatar upload) must reuse that parsed form instead of calling `request.multipart()` again.
 - Local ComfyUI debug settings live in gitignored `.vscode/comfyui-test.local.json` (path, `autoInstall`, flavor); see `.vscode/comfyui-test.settings.example.json`.
-- Auth compatibility coverage is in `tests/run_auth_compat_tests.py` (password XSS exemption, legacy dual-verify, ephemeral key reuse, JSON credentials) and is wired into CI.
+- Auth compatibility coverage is in `tests/run_auth_compat_tests.py` (password XSS exemption, legacy dual-verify, ephemeral key reuse, JSON credentials); schema drift detection lives in `utils/db_schema.py` and `tests/run_schema_drift_tests.py`; both are wired into CI.
 - Owner counts as admin for last-admin / `_has_admin` checks; never mint a second owner after bootstrap; owner updates must preserve `owner`+`admin` membership.
 - App-stored secrets (CivitAI, HuggingFace, ntfy, S3) are Fernet ciphertext in the owner-chosen users DB—not plaintext JSON; per-user CivitAI host preference (`civitai.com`/`civitai.red`) is non-secret prefs only; migrate secrets with dual-read, encrypt, round-trip verify, then clear legacy files.
 - Model downloads (MSS-Login and Civicomfy/Manager routes) require `can_download_models`; under model isolation, post-download ACL grants are file-narrow by default, not all-models.
-- Schema drift detection lives in `utils/db_schema.py` and `tests/run_schema_drift_tests.py`, wired into CI.
 - Experimental features include S3 (AWS S3 and Backblaze B2; boto3 when FUSE is absent; B2 path-style; macOS best-effort) and owner-only login background (`experimental.login_background` / `EXPERIMENTAL_LOGIN_BACKGROUND`; local media under `DATA_DIR`); document under `docs/experimental/` / MkDocs Experimental Settings.
 - Keep `.github` and `.gitea` security workflows mirrored; install Gitleaks via `scripts/ci/install-gitleaks.sh` pinned release asset URL (avoid unauthenticated GitHub API latest on shared runners).
+- Phased feature plans and status live under gitignored `_planning/` at the repo root.
