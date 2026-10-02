@@ -36,12 +36,13 @@ Comfy Portal calls [comfy-portal-endpoint](https://github.com/ShunL12324/comfy-p
 | GET | `/cpe/workflow/list` and `/api/cpe/workflow/list` | — | `{ "status": "success", "workflows": [ { "filename", "size", "modified" } ] }` |
 | GET | `/cpe/workflow/get` | `?filename=` | `{ "status": "success", "filename", "workflow": "<raw JSON string>" }` |
 | POST | `/cpe/workflow/save` | `{ "workflow": "<json string>", "name": "optional.json" }` | Writes into the authenticated user's workflow dir |
-| GET | `/cpe/workflow/get-and-convert` | `?filename=` | Returns API-format graphs; UI-format graphs need CPE's headless browser (`503` otherwise) |
-| GET | `/cpe/health` | — | `{ "status": "success", "browser": { "status": "ready" } }` |
+| GET | `/cpe/workflow/get-and-convert` | `?filename=` | API-format graphs convert in-process; UI-format graphs use sibling comfy-portal-endpoint Playwright when installed, else `503` |
+| POST | `/cpe/workflow/convert` | UI workflow JSON object | Same converter path as get-and-convert (MSS delegates to sibling CPE browser when available) |
+| GET | `/cpe/health` | — | `{ "status": "success", "browser": { "status": "<enum>" } }` — truthful status (`not_installed` / `not_initialized` / `initializing` / `ready` / `error`) |
 
-`POST /cpe/workflow/convert` is left to comfy-portal-endpoint when that extension is installed.
+Saving through CPE requires `can_modify_workflows` (defaults to allowed for every role except guest). Convert does not require `can_modify_workflows` (read-only transform) but still needs `can_access_api`.
 
-Saving through CPE requires `can_modify_workflows` (defaults to allowed for every role except guest).
+Under MSS-Login auth, stock CPE’s headless browser may still fail to load `/` without a session cookie. Prefer **API-format** workflow saves until MSS embedded JWT-injected convert is available. See `_planning/cpe-phase-1-embedded-convert.md` when present.
 
 ## comfy-portal-endpoint
 

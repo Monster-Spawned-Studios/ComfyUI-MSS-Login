@@ -168,6 +168,7 @@ class AccessControl:
 			)
 			is_cpe_workflow = path.startswith(("/api/cpe/workflow", "/cpe/workflow"))
 			is_cpe_api = path.startswith(("/api/cpe/", "/cpe/"))
+			is_cpe_convert = path in ("/api/cpe/workflow/convert", "/cpe/workflow/convert")
 
 			if is_queue and perms.get("can_run") is False:
 				debug_write(
@@ -191,11 +192,10 @@ class AccessControl:
 				)
 				return web.json_response({"error": "MSS-Login: Upload Denied"}, status=403)
 
-			if (is_userdata_workflow or is_cpe_workflow) and request.method in (
-				"POST",
-				"PUT",
-				"DELETE",
-				"PATCH",
+			if (
+				(is_userdata_workflow or is_cpe_workflow)
+				and not is_cpe_convert
+				and request.method in ("POST", "PUT", "DELETE", "PATCH")
 			):
 				can_modify = perms.get("can_modify_workflows")
 				if can_modify is None:

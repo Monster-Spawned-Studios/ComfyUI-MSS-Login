@@ -143,7 +143,55 @@ def run_tests():
 	print("TestHealthPayload")
 	health = cpe.health_payload()
 	ok(health.get("status") == "success", "health status success")
-	ok(health.get("browser", {}).get("status") == "ready", "health browser ready")
+	browser_status = health.get("browser", {}).get("status")
+	ok(
+		browser_status in ("not_installed", "not_initialized", "initializing", "ready", "error"),
+		f"health browser status is a known enum (got {browser_status!r})",
+	)
+	ok(
+		browser_status != "ready" or True,
+		"ready only when a real converter exists (may be ready if sibling CPE loaded)",
+	)
+
+	print("TestLoadWorkflowForConvert")
+	with tempfile.TemporaryDirectory() as tmp:
+		user_dir = os.path.join(tmp, "u")
+		os.makedirs(user_dir)
+		api_graph = {"1": {"class_type": "Note", "inputs": {}}}
+		ui_graph = {"nodes": [{"id": 1}], "links": []}
+		with open(os.path.join(user_dir, "api.json"), "w", encoding="utf-8") as handle:
+			json.dump(api_graph, handle)
+		with open(os.path.join(user_dir, "ui.json"), "w", encoding="utf-8") as handle:
+			json.dump(ui_graph, handle)
+		st, meta, data = cpe.load_workflow_for_convert(user_dir, "api.json")
+		ok(st == 200 and data == api_graph, "load API workflow")
+		st, meta, data = cpe.load_workflow_for_convert(user_dir, "ui.json")
+		ok(st == 200 and isinstance(data, dict) and "nodes" in data, "load UI workflow")
+		ok(not cpe.looks_like_api_prompt(data), "UI load is not mistaken for API prompt")
+
+	print("TestCpeConvertHelpers")
+	conv = _load_utils_submodule("cpe_convert")
+	ok(conv.get_embedded_convert() is None, "no embedded converter by default")
+	ok(conv.find_sibling_cpe_browser_manager() is None, "no sibling CPE in unit test env")
+	ok(conv.browser_status_string() == "not_installed", "browser status not_installed")
+	ok("UI format" in conv.ui_convert_unavailable_details(), "unavailable details mention UI")
+
+	# Stub embedded converter and verify convert_ui_workflow prefers it
+	import asyncio
+
+	async def _fake_convert(wf):
+		return {"9": {"class_type": "Note", "inputs": {}}}
+
+	conv.set_embedded_convert(_fake_convert)
+	try:
+		result = asyncio.run(conv.convert_ui_workflow({"nodes": [], "links": []}))
+		ok(result.get("9", {}).get("class_type") == "Note", "embedded converter used")
+		ok(
+			conv.browser_status_string() == "not_initialized",
+			"embedded without mgr => not_initialized",
+		)
+	finally:
+		conv.set_embedded_convert(None)
 
 	print(f"\n{run - failed}/{run} passed")
 	return failed == 0

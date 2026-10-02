@@ -5,6 +5,9 @@ Registered so Comfy Portal can list/get/save workflows even when
 comfy-portal-endpoint is not installed. When that extension is present,
 workflow_routes middleware still intercepts these paths so listings come
 from the user's MSS-Login workflow directory instead of user/default.
+
+UI→API conversion: prefer embedded converter (Phase 1+); else delegate to a
+sibling comfy-portal-endpoint Playwright browser when importable.
 """
 
 from __future__ import annotations
@@ -17,18 +20,22 @@ from aiohttp import web
 from ..constants import USERS_DB_CONFIG
 from ..globals import routes
 from ..utils import user_env
+from ..utils.cpe_convert import convert_ui_workflow, ui_convert_unavailable_details
 from ..utils.cpe_workflows import (
+	CPE_CONVERT_PATHS,
 	CPE_GET_AND_CONVERT_PATHS,
 	CPE_GET_PATHS,
 	CPE_HEALTH_PATHS,
 	CPE_LIST_PATHS,
 	CPE_SAVE_PATHS,
-	get_and_convert_payload,
 	health_payload,
 	list_workflows_payload,
+	load_workflow_for_convert,
+	looks_like_api_prompt,
 	parse_workflow_to_api_prompt,
 	read_workflow_text,
 	save_workflow_text,
+	success_convert_payload,
 )
 from ..utils.model_visibility_policy import (
 	allowed_set_from_grants,
@@ -102,6 +109,31 @@ def _model_grant_check(request: web.Request, workflow_payload: object) -> web.Re
 	return None
 
 
+async def _convert_ui_or_error(workflow_data: dict) -> tuple[int, dict]:
+	"""Run UI→API conversion; return (status, payload)."""
+	try:
+		api_prompt = await convert_ui_workflow(workflow_data)
+		if not isinstance(api_prompt, dict) or not looks_like_api_prompt(api_prompt):
+			return 503, {
+				"status": "error",
+				"message": "Workflow conversion failed",
+				"details": "Converter returned a non-API workflow payload",
+			}
+		return 200, success_convert_payload(api_prompt)
+	except RuntimeError as exc:
+		return 503, {
+			"status": "error",
+			"message": "Workflow conversion failed",
+			"details": str(exc) or ui_convert_unavailable_details(),
+		}
+	except Exception as exc:
+		return 503, {
+			"status": "error",
+			"message": "Workflow conversion failed",
+			"details": str(exc) or ui_convert_unavailable_details(),
+		}
+
+
 async def handle_cpe_list(request: web.Request) -> web.Response:
 	payload = list_workflows_payload(_user_workflow_dir(request), _extra_global_dirs())
 	return web.json_response(payload)
@@ -158,17 +190,57 @@ async def handle_cpe_save(request: web.Request) -> web.Response:
 
 async def handle_cpe_get_and_convert(request: web.Request) -> web.Response:
 	filename = request.query.get("filename")
-	status, payload = get_and_convert_payload(
+	status, meta, workflow_data = load_workflow_for_convert(
 		_user_workflow_dir(request), filename, _extra_global_dirs()
 	)
-	if status == 200:
+	if status != 200 or workflow_data is None:
+		return web.json_response(meta, status=status)
+
+	filename_out = meta.get("filename") or filename
+	if looks_like_api_prompt(workflow_data):
+		payload = success_convert_payload(workflow_data, filename=filename_out)
+		denied = _model_grant_check(request, workflow_data)
+		if denied is not None:
+			return denied
+		return web.json_response(payload, status=200)
+
+	conv_status, payload = await _convert_ui_or_error(workflow_data)
+	if conv_status == 200:
+		payload["filename"] = filename_out
 		wf = None
 		if isinstance(payload.get("data"), dict):
 			wf = payload["data"].get("workflow")
 		denied = _model_grant_check(request, wf)
 		if denied is not None:
 			return denied
-	return web.json_response(payload, status=status)
+	return web.json_response(payload, status=conv_status)
+
+
+async def handle_cpe_convert(request: web.Request) -> web.Response:
+	"""POST body = UI-format workflow JSON object (CPE contract)."""
+	try:
+		workflow_data = await request.json()
+	except Exception:
+		return web.json_response({"status": "error", "message": "Invalid JSON body"}, status=400)
+	if not isinstance(workflow_data, dict) or not workflow_data:
+		return web.json_response(
+			{"status": "error", "message": "Workflow JSON object is required"}, status=400
+		)
+	if looks_like_api_prompt(workflow_data):
+		denied = _model_grant_check(request, workflow_data)
+		if denied is not None:
+			return denied
+		return web.json_response(success_convert_payload(workflow_data), status=200)
+
+	conv_status, payload = await _convert_ui_or_error(workflow_data)
+	if conv_status == 200:
+		wf = None
+		if isinstance(payload.get("data"), dict):
+			wf = payload["data"].get("workflow")
+		denied = _model_grant_check(request, wf)
+		if denied is not None:
+			return denied
+	return web.json_response(payload, status=conv_status)
 
 
 async def handle_cpe_health(request: web.Request) -> web.Response:
@@ -176,11 +248,7 @@ async def handle_cpe_health(request: web.Request) -> web.Response:
 
 
 async def dispatch_cpe_request(request: web.Request) -> web.StreamResponse | None:
-	"""Intercept CPE paths so per-user workflow storage is used.
-
-	``POST /cpe/workflow/convert`` is left to comfy-portal-endpoint (headless
-	browser) when that extension is installed. This dispatcher does not claim it.
-	"""
+	"""Intercept CPE paths so per-user workflow storage and convert delegation apply."""
 	path = request.path
 	method = request.method.upper()
 	if path in CPE_HEALTH_PATHS and method == "GET":
@@ -193,6 +261,8 @@ async def dispatch_cpe_request(request: web.Request) -> web.StreamResponse | Non
 		return await handle_cpe_save(request)
 	if path in CPE_GET_AND_CONVERT_PATHS and method == "GET":
 		return await handle_cpe_get_and_convert(request)
+	if path in CPE_CONVERT_PATHS and method == "POST":
+		return await handle_cpe_convert(request)
 	return None
 
 
@@ -218,6 +288,12 @@ async def cpe_save_workflow(request: web.Request) -> web.Response:
 @routes.get("/api/cpe/workflow/get-and-convert")
 async def cpe_get_and_convert(request: web.Request) -> web.Response:
 	return await handle_cpe_get_and_convert(request)
+
+
+@routes.post("/cpe/workflow/convert")
+@routes.post("/api/cpe/workflow/convert")
+async def cpe_convert_workflow(request: web.Request) -> web.Response:
+	return await handle_cpe_convert(request)
 
 
 @routes.get("/cpe/health")

@@ -205,34 +205,55 @@ def parse_workflow_to_api_prompt(workflow: Any) -> dict[str, Any] | None:
 	return None
 
 
+def load_workflow_for_convert(
+	user_workflow_dir: str, filename: str, extra_dirs: Iterable[str] | None = None
+) -> tuple[int, dict[str, Any], dict[str, Any] | None]:
+	"""Read a workflow file for get-and-convert.
+
+	Returns ``(status, error_or_meta_body, workflow_dict_or_None)``.
+	On success (200), ``workflow_dict`` is the parsed JSON object and the body
+	holds at least ``filename``. Callers convert UI graphs via ``cpe_convert``.
+	"""
+	status, body = read_workflow_text(user_workflow_dir, filename, extra_dirs)
+	if status != 200:
+		return status, body, None
+	filename_out = body.get("filename") or filename
+	try:
+		workflow_data = json.loads(body.get("workflow") or "")
+	except json.JSONDecodeError:
+		return 400, {"status": "error", "message": "Invalid JSON in workflow file"}, None
+	if not workflow_data:
+		return (
+			400,
+			{
+				"status": "error",
+				"message": "Workflow file contains no data or is an empty JSON object",
+			},
+			None,
+		)
+	return 200, {"status": "success", "filename": filename_out}, workflow_data
+
+
 def get_and_convert_payload(
 	user_workflow_dir: str, filename: str, extra_dirs: Iterable[str] | None = None
 ) -> tuple[int, dict[str, Any]]:
 	"""Read a user workflow and return it as API format when already converted.
 
-	UI-format graphs need comfy-portal-endpoint's headless browser; those return 503.
+	UI-format graphs return 503 here without attempting a browser convert.
+	Prefer ``load_workflow_for_convert`` + ``cpe_convert.convert_ui_workflow``
+	in async route handlers so sibling/embedded converters can run.
 	"""
-	status, body = read_workflow_text(user_workflow_dir, filename, extra_dirs)
-	if status != 200:
-		return status, body
-	filename_out = body.get("filename") or filename
-	try:
-		workflow_data = json.loads(body.get("workflow") or "")
-	except json.JSONDecodeError:
-		return 400, {"status": "error", "message": "Invalid JSON in workflow file"}
-	if not workflow_data:
-		return 400, {
-			"status": "error",
-			"message": "Workflow file contains no data or is an empty JSON object",
-		}
+	status, meta, workflow_data = load_workflow_for_convert(user_workflow_dir, filename, extra_dirs)
+	if status != 200 or workflow_data is None:
+		return status, meta
+	filename_out = meta.get("filename") or filename
 	if not looks_like_api_prompt(workflow_data):
+		from .cpe_convert import ui_convert_unavailable_details
+
 		return 503, {
 			"status": "error",
 			"message": "Workflow conversion failed",
-			"details": (
-				"This workflow is in UI format. Install comfy-portal-endpoint for "
-				"headless conversion, or save an API-format workflow."
-			),
+			"details": ui_convert_unavailable_details(),
 		}
 	return 200, {
 		"status": "success",
@@ -242,9 +263,25 @@ def get_and_convert_payload(
 	}
 
 
+def success_convert_payload(
+	workflow_api: dict[str, Any], filename: str | None = None
+) -> dict[str, Any]:
+	"""CPE convert / get-and-convert success body."""
+	payload: dict[str, Any] = {
+		"status": "success",
+		"message": "Workflow converted successfully",
+		"data": {"workflow": workflow_api},
+	}
+	if filename:
+		payload["filename"] = filename
+	return payload
+
+
 def health_payload() -> dict[str, Any]:
-	"""CPE ``GET /cpe/health`` body. List/get/save are served by MSS-Login."""
-	return {"status": "success", "browser": {"status": "ready"}}
+	"""CPE ``GET /cpe/health`` body. Browser status reflects a real converter."""
+	from .cpe_convert import health_browser_payload
+
+	return {"status": "success", "browser": health_browser_payload()}
 
 
 # --- END OF FILE utils/cpe_workflows.py ---

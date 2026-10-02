@@ -112,3 +112,6 @@ node.zip
 .pnpm-store/
 # Test scratch mounts
 tests/_tmp_s3_mount/
+
+# Planning files
+_planning/
