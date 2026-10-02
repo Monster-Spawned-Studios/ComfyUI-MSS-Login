@@ -27,12 +27,14 @@ ensure_groups_config()
 CSS_DIR = "..."
 JS_DIR = "..."
 ASSETS_DIR = "..."
+DIST_DIR = "..."
 
 app.add_routes(
 	[
 		web.static("/mss-login/css", CSS_DIR),
 		web.static("/mss-login/js", JS_DIR),
 		web.static("/mss-login/assets", ASSETS_DIR),
+		web.static("/mss-login/dist", DIST_DIR),
 	]
 )
 

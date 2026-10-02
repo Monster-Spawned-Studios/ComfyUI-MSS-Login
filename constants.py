@@ -72,6 +72,7 @@ HTML_DIR = os.path.join(WEB_DIR, "html")
 CSS_DIR = os.path.join(WEB_DIR, "css")
 JS_DIR = os.path.join(WEB_DIR, "js")
 ASSETS_DIR = os.path.join(WEB_DIR, "assets")
+DIST_DIR = os.path.join(WEB_DIR, "dist")
 
 # --- Load config (runtime config in data dir; defaults from repo config.defaults.json) ---
 CONFIG_FILE_PATH = os.path.join(DATA_DIR, "config.json")
@@ -660,6 +661,11 @@ def experimental_install_other_nodes_deps_enabled() -> bool:
 	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("install_other_nodes_deps"))
 
 
+def experimental_login_background_enabled() -> bool:
+	"""True if master experimental is on and login_background feature is enabled."""
+	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("login_background"))
+
+
 def get_experimental_flags() -> dict:
 	"""Return dict of per-feature flags for /me and settings."""
 	return {
@@ -670,6 +676,7 @@ def get_experimental_flags() -> dict:
 		"model_isolation": experimental_model_isolation_enabled(),
 		"tailscale_local_auth": experimental_tailscale_local_auth_enabled(),
 		"install_other_nodes_deps": experimental_install_other_nodes_deps_enabled(),
+		"login_background": experimental_login_background_enabled(),
 	}
 
 
