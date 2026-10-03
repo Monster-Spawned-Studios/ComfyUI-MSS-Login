@@ -30,7 +30,8 @@ These run without loading ComfyUI or `folder_paths`, so they work in CI and on m
 | `run_path_traversal_tests.py` | `utils.path_safety`: path traversal prevention, safe filenames/folders, `resolve_path_under`, attack vectors. |
 | `run_sanitizer_tests.py` | `utils.input_sanitizer`, `utils.validate`, and password-field XSS exemption. |
 | `run_auth_compat_tests.py` | Password XSS exemption, legacy dual-verify/rehash, ephemeral SECRET_KEY reuse, JSON credential sanitization. |
-| `run_owner_role_tests.py` | Owner counts as admin; `add_user` never mints a second owner; explicit role groups; `update_user` restores admin when saving owner-only groups. |
+| `run_owner_role_tests.py` | Owner counts as admin; `add_user` never mints a second owner; explicit role groups; `update_user` restores admin when saving owner-only groups; prefers `mss_admin` / demotes duplicate owners. |
+| `run_csp_host_tests.py` | CSP `connect-src` includes `HOST_BASE_URL` (http + wss) for reverse-proxy hosts. |
 | `run_schema_drift_tests.py` | Live SQLite/SQLCipher schema vs `utils/db_schema.py`; Fernet secret decrypt after reopen. |
 | `run_update_notice_tests.py` | Public update-notice redaction, DATA_DIR persist/hydrate, `can_update_mss_login` defaults. |
 | `run_cpe_workflow_tests.py` | Per-user Comfy Portal Endpoint workflow list/get/save helpers (no ComfyUI). |

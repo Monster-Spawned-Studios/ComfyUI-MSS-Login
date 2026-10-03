@@ -106,6 +106,7 @@ def main() -> int:
 		steps.append(("User isolation", os.path.join(TESTS_DIR, "run_user_isolation_tests.py")))
 		steps.append(("Avatar upload", os.path.join(TESTS_DIR, "run_avatar_tests.py")))
 		steps.append(("Owner role", os.path.join(TESTS_DIR, "run_owner_role_tests.py")))
+		steps.append(("CSP host base URL", os.path.join(TESTS_DIR, "run_csp_host_tests.py")))
 		steps.append(("Schema drift", os.path.join(TESTS_DIR, "run_schema_drift_tests.py")))
 		steps.append(("Update notice", os.path.join(TESTS_DIR, "run_update_notice_tests.py")))
 		steps.append(

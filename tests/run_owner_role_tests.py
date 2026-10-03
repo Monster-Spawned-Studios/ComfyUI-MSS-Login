@@ -171,6 +171,62 @@ def run_tests():
 		ok("owner" not in fake_groups, "second owner refused when groups=owner")
 		ok("admin" in fake_groups, "stripped owner still keeps admin when requested")
 
+		# --- multiple owners healed; mss_admin preferred ---
+		print("TestMultipleOwnersPreferMssAdmin")
+		db3_path = os.path.join(tmp, "users3.db")
+		db3 = UsersDB(
+			{"backend": "sqlite", "sqlite_path": db3_path, "encryption_level": ""},
+			secret_key="test-secret-key-for-owner-role-3",
+		)
+		dev_uid = str(uuid.uuid4())
+		admin_uid = str(uuid.uuid4())
+		db3.add_user(dev_uid, "mss_developer", "DevPass1!ab", admin=True)
+		db3.add_user(admin_uid, "mss_admin", "AdminPass1!ab", admin=True)
+		# Force a second owner into the DB (simulates accidental dual-owner state)
+		_duid, dev_rec = db3.get_user(username="mss_developer")
+		_auid, admin_rec = db3.get_user(username="mss_admin")
+		dev_rec["groups"] = ["owner", "admin"]
+		dev_rec["admin"] = True
+		admin_rec["groups"] = ["owner", "admin"]
+		admin_rec["admin"] = True
+		db3._backend.update(dev_uid, dev_rec, db3._secret_key)
+		db3._backend.update(admin_uid, admin_rec, db3._secret_key)
+		db3.users[dev_uid] = dev_rec
+		db3.users[admin_uid] = admin_rec
+		db3._ensure_owner_assigned()
+		ok(db3.get_owner_username() == "mss_admin", "mss_admin kept as sole owner")
+		_duid2, healed_dev = db3.get_user(username="mss_developer")
+		ok(
+			"owner" not in [g.lower() for g in healed_dev.get("groups", [])],
+			"extra owner demoted from mss_developer",
+		)
+		ok(
+			"admin" in [g.lower() for g in healed_dev.get("groups", [])],
+			"demoted former owner remains admin",
+		)
+
+		# Prefer mss_admin when promoting from zero owners
+		print("TestEnsureOwnerPrefersMssAdmin")
+		db4_path = os.path.join(tmp, "users4.db")
+		db4 = UsersDB(
+			{"backend": "sqlite", "sqlite_path": db4_path, "encryption_level": ""},
+			secret_key="test-secret-key-for-owner-role-4",
+		)
+		z_uid = str(uuid.uuid4())
+		m_uid = str(uuid.uuid4())
+		# Insert without going through add_user owner grant: empty then force admin-only
+		db4.add_user(z_uid, "zzz_admin", "ZzzPass1!ab", admin=True)
+		db4.add_user(m_uid, "mss_admin", "AdminPass1!ab", admin=True)
+		# Strip owner from whoever got it so we can test promotion preference
+		for uname in ("zzz_admin", "mss_admin"):
+			uid, rec = db4.get_user(username=uname)
+			rec["groups"] = ["admin"]
+			rec["admin"] = True
+			db4._backend.update(uid, rec, db4._secret_key)
+			db4.users[uid] = rec
+		db4._ensure_owner_assigned()
+		ok(db4.get_owner_username() == "mss_admin", "zero-owner promote prefers mss_admin")
+
 	print(f"\n{run} tests, {failed} failed")
 	return 0 if failed == 0 else 1
 
