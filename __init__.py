@@ -117,7 +117,10 @@ if EXPERIMENTAL_FEATURES:
 	from .routes import s3 as _s3_routes
 
 
-WEB_DIRECTORY = "web"
+# Only ComfyUI extension entry scripts live here. Keep Vite source (web/frontend),
+# build output (web/dist), and static assets out of this tree so Comfy's recursive
+# JS scanner never loads node_modules or ES-module bundles as extensions.
+WEB_DIRECTORY = "web/comfyui"
 
 # Export the public API for other extensions
 try:
@@ -224,10 +227,7 @@ async def workflow_interceptor_middleware(request, handler):
 	if method in ("POST", "PUT", "PATCH") and should_try_model_download_redirect(path):
 		role, perms, _perm_user = access_control._get_user_role_and_permissions(request)
 		if not user_can_download_models(role, perms):
-			return web.json_response(
-				{"error": "Model download permission required"},
-				status=403,
-			)
+			return web.json_response({"error": "Model download permission required"}, status=403)
 		if experimental_model_isolation_enabled():
 			current_user_id = access_control.get_current_user_id()
 			if current_user_id and (
@@ -637,11 +637,14 @@ except Exception:
 if experimental_install_other_nodes_deps_enabled():
 	try:
 		import threading
+
 		from .utils.node_deps_installer import scan_and_install_node_dependencies
 
 		def _bg_installer():
 			try:
-				print("[MSS-Login] Starting background installation of other custom node dependencies...")
+				print(
+					"[MSS-Login] Starting background installation of other custom node dependencies..."
+				)
 				res = scan_and_install_node_dependencies()
 				print(
 					f"[MSS-Login] Node dependency installer completed. "

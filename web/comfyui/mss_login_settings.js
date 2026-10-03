@@ -3,6 +3,8 @@ import { app } from "../../scripts/app.js";
 import { $el, ComfyDialog } from "../../scripts/ui.js";
 
 const GROUPS = ["owner", "admin", "power", "user", "guest"];
+/** Roles assignable via the Users & Roles dropdown (ownership uses Transfer ownership). */
+const ASSIGNABLE_GROUPS = ["admin", "power", "user", "guest"];
 let currentUser = null;
 let groupsConfig = {};
 
@@ -1252,7 +1254,7 @@ renderUsers(list, container) {
         html += `
         <div class="mss-login-section" style="margin-bottom:20px;">
             <h3>Register user</h3>
-            <p class="mss-login-note">Owner only. Assign a role at creation (owner transfer stays in the table below).</p>
+            <p class="mss-login-note">Owner only. Assign a role at creation. To move ownership, use Transfer ownership below (requires confirmation).</p>
             <div class="mss-login-row" style="gap:12px; flex-wrap:wrap; align-items:flex-end;">
                 <div>
                     <label class="mss-login-field-label">Username</label>
@@ -1313,18 +1315,26 @@ renderUsers(list, container) {
         }
 
         const groupCell = isOwner
-            ? `<span class="mss-login-owner-locked" title="Owner role cannot be changed">Owner (locked)</span>`
+            ? `<span class="mss-login-owner-locked" title="Owner role cannot be changed via Save Changes">Owner (locked)</span>`
             : `<select
                         class="mss-login-role-select"
                         data-user="${uname}"
                         style="background:var(--comfy-input-bg); color:var(--input-text); border:1px solid #555; padding:6px 10px; border-radius:4px; width: 150px;"
                     >
-                        ${GROUPS.map(g => `
+                        ${ASSIGNABLE_GROUPS.map(g => `
                             <option value="${g}" ${g === grp ? "selected" : ""}>
                                 ${g.toUpperCase()}
                             </option>
                         `).join("")}
                     </select>`;
+
+        if (!isOwner && isOwnerCaller && !isGuest) {
+            actionsHtml += `
+                <button class="mss-login-btn btn-transfer-owner" data-user="${uname}" title="Transfer ownership to this user">
+                    Transfer ownership
+                </button>
+            `;
+        }
 
         html += `
             <tr>
@@ -1382,10 +1392,11 @@ renderUsers(list, container) {
         btn.onclick = async () => {
             const u = btn.dataset.user;
             const isOwnerUser = btn.dataset.isOwner === "true";
-            // Owner must retain admin so privilege checks and registration bootstrap stay correct
-            const g = isOwnerUser
-                ? ["owner", "admin"]
-                : [container.querySelector(`select[data-user="${u}"]`)?.value || "user"];
+            // Owner must retain admin so privilege checks and registration bootstrap stay correct.
+            // Never send "owner" from the role dropdown — ownership uses Transfer ownership.
+            let role = container.querySelector(`select[data-user="${u}"]`)?.value || "user";
+            if (role === "owner") role = "admin";
+            const g = isOwnerUser ? ["owner", "admin"] : [role];
 
             const sfwCheckbox = container.querySelector(`.mss-login-sfw-toggle[data-user="${u}"]`);
             const sfw = sfwCheckbox ? sfwCheckbox.checked : true;
@@ -1409,6 +1420,50 @@ renderUsers(list, container) {
                 btn.innerText = "Error";
             }
             setTimeout(() => (btn.innerText = "Save Changes"), 1000);
+        };
+    });
+
+    // --- Explicit ownership transfer (requires typed confirmation + API confirm_transfer) ---
+    container.querySelectorAll(".btn-transfer-owner[data-user]").forEach(btn => {
+        btn.onclick = async () => {
+            const u = btn.dataset.user;
+            const typed = window.prompt(
+                `Transfer ownership to "${u}"?\n\nYou will become an admin and lose the owner role.\nType the username exactly to confirm:`,
+                ""
+            );
+            if (typed !== u) {
+                if (typed !== null) {
+                    window.alert("Transfer cancelled: username did not match.");
+                }
+                return;
+            }
+            const originalText = btn.innerText;
+            btn.disabled = true;
+            btn.innerText = "Transferring...";
+            try {
+                const res = await api.fetchApi(`/mss-login/api/users/${u}`, {
+                    method: "PUT",
+                    body: JSON.stringify({
+                        groups: ["owner", "admin"],
+                        confirm_transfer: true,
+                    }),
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    window.alert(data.error || `Transfer failed (${res.status})`);
+                    btn.disabled = false;
+                    btn.innerText = originalText;
+                    return;
+                }
+                window.alert(`Ownership transferred to "${u}". Reload recommended.`);
+                const usersData = await getData("/mss-login/api/users");
+                self.renderUsers(usersData?.users || [], container);
+            } catch (e) {
+                console.error("[mss-login] Ownership transfer failed:", e);
+                window.alert(e.message || "Transfer failed");
+                btn.disabled = false;
+                btn.innerText = originalText;
+            }
         };
     });
 

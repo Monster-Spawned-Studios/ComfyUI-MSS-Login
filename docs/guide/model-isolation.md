@@ -55,7 +55,7 @@ Owner API:
 
 ## Frontend build (Vue + Tailwind)
 
-The web UI frontend workspace is under `web/frontend`:
+The web UI frontend workspace is under `web/frontend` (build-only; not part of ComfyUI's `WEB_DIRECTORY`):
 
 ```bash
 cd web/frontend
@@ -63,4 +63,4 @@ npm install
 npm run build
 ```
 
-Build outputs are emitted to `web/dist`.
+Build outputs are emitted to `web/dist` (served at `/mss-login/dist`). Comfy extension entry scripts live in `web/comfyui`.
