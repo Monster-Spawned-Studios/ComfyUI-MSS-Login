@@ -966,7 +966,8 @@ async def api_update_user_route(request: web.Request) -> web.Response:
 			status=403,
 		)
 
-	# Assigning owner: only current owner can assign (transfer); max one owner
+	# Assigning owner: only current owner can assign (transfer); max one owner.
+	# Require confirm_transfer so a casual role dropdown save cannot steal ownership.
 	if wants_owner and not target_is_owner:
 		if owner_username is None:
 			# No owner yet: _ensure_owner_assigned will run on next load; allow this assign
@@ -982,6 +983,13 @@ async def api_update_user_route(request: web.Request) -> web.Response:
 			return web.json_response(
 				{"error": "Only the current owner can assign the owner role (transfer)."},
 				status=403,
+			)
+		if not data.get("confirm_transfer"):
+			return web.json_response(
+				{
+					"error": "Ownership transfer requires confirm_transfer=true. Use Transfer ownership in Users & Roles."
+				},
+				status=400,
 			)
 		# Transfer: target becomes owner+admin, caller (current owner) becomes admin
 		success = patch_user_group(target, ["owner", "admin"], True, sfw_check)

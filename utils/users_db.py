@@ -736,26 +736,88 @@ class UsersDB:
 		return False
 
 	def _ensure_owner_assigned(self) -> None:
-		"""If no user has 'owner' in groups, assign owner to the first admin (migration)."""
-		for _uid, user in self.users.items():
+		"""Ensure exactly one owner exists (migration / repair).
+
+		- If no owner: promote a deterministic admin (prefer username ``mss_admin``
+		  when that account is admin; otherwise the lexicographically first admin
+		  username) so restarts do not flip ownership based on dict order.
+		- If multiple owners: keep the preferred one, demote the rest to admin.
+		"""
+		owners: list[tuple[str, dict, str]] = []
+		for uid, user in self.users.items():
 			groups = [g.lower() for g in user.get("groups", [])]
 			if "owner" in groups:
-				return
+				owners.append((uid, user, str(user.get("username") or "")))
+
+		if len(owners) > 1:
+			owners_sorted = sorted(owners, key=lambda t: t[2].lower())
+			preferred = next(
+				(t for t in owners_sorted if t[2].lower() == "mss_admin"), owners_sorted[0]
+			)
+			keep_uid = preferred[0]
+			for uid, user, _uname in owners:
+				if uid == keep_uid:
+					normalized, admin_flag = self._normalize_owner_groups(
+						user.get("groups", []), True
+					)
+					if user.get("groups") != normalized or user.get("admin") is not admin_flag:
+						user["groups"] = normalized
+						user["admin"] = admin_flag
+						self._backend.update(uid, user, self._secret_key)
+						self.users[uid] = user
+					continue
+				# Demote extra owners to admin (never leave zero admins).
+				new_groups = [
+					g for g in [str(x).lower() for x in user.get("groups", [])] if g != "owner"
+				]
+				if "admin" not in new_groups:
+					new_groups.insert(0, "admin")
+				user["groups"] = new_groups
+				user["admin"] = True
+				self._backend.update(uid, user, self._secret_key)
+				self.users[uid] = user
+			return
+
+		if owners:
+			# Heal single owner to always retain admin group/flag
+			uid, user, _uname = owners[0]
+			normalized, admin_flag = self._normalize_owner_groups(user.get("groups", []), True)
+			if user.get("groups") != normalized or user.get("admin") is not admin_flag:
+				user["groups"] = normalized
+				user["admin"] = admin_flag
+				self._backend.update(uid, user, self._secret_key)
+				self.users[uid] = user
+			return
+
 		admin_uid, admin_user = self._find_admin_in_loaded_users()
 		if not admin_uid or not admin_user:
 			return
 		groups = list(admin_user.get("groups", ["admin"]))
 		if "owner" not in [g.lower() for g in groups]:
 			admin_user["groups"] = ["owner"] + [g for g in groups if g.lower() != "owner"]
+			if "admin" not in [g.lower() for g in admin_user["groups"]]:
+				admin_user["groups"].append("admin")
+			admin_user["admin"] = True
 			self._backend.update(admin_uid, admin_user, self._secret_key)
 			self.users[admin_uid] = admin_user
 
 	def _find_admin_in_loaded_users(self) -> tuple[str | None, dict]:
-		"""Find the first admin in the already-loaded self.users without reloading."""
+		"""Find a preferred admin in the already-loaded self.users without reloading.
+
+		Prefers username ``mss_admin`` when that account is admin; otherwise the
+		lexicographically first admin username for stable migration behavior.
+		"""
+		admins: list[tuple[str, dict, str]] = []
 		for uid, user_data in self.users.items():
 			if self._user_is_admin(user_data):
+				admins.append((uid, user_data, str(user_data.get("username") or "")))
+		if not admins:
+			return (None, {})
+		for uid, user_data, uname in admins:
+			if uname.lower() == "mss_admin":
 				return (uid, user_data)
-		return (None, {})
+		admins.sort(key=lambda t: t[2].lower())
+		return (admins[0][0], admins[0][1])
 
 	def save_users(self, users: dict) -> None:
 		"""Persist entire users dict (used by code that expects legacy behavior). Prefer update_user/add_user/delete_user."""
@@ -809,9 +871,7 @@ class UsersDB:
 				is_admin_flag = "admin" in normalized or "owner" in normalized
 				assigned = normalized
 			else:
-				assigned = (
-					["owner", "admin"] if grant_owner else (["admin"] if admin else ["user"])
-				)
+				assigned = ["owner", "admin"] if grant_owner else (["admin"] if admin else ["user"])
 				is_admin_flag = bool(admin) or grant_owner
 			user = {
 				"username": username,
