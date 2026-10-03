@@ -4920,6 +4920,13 @@ app.ui.settings.addSetting({
         experimentalSaveBtn.className = "mss-login-launch-btn";
         experimentalSaveBtn.textContent = "Save experimental settings";
         experimentalSaveBtn.style.marginTop = "8px";
+        const experimentalRestartNote = document.createElement("p");
+        experimentalRestartNote.id = "mss-login-exp-restart-note";
+        experimentalRestartNote.className = "mss-login-note";
+        experimentalRestartNote.style.margin = "8px 0 0 0";
+        experimentalRestartNote.style.display = "none";
+        experimentalRestartNote.style.color = "#fbbf24";
+
         experimentalSaveBtn.onclick = async () => {
             try {
                 const payload = {
@@ -4934,15 +4941,30 @@ app.ui.settings.addSetting({
                     method: "PUT",
                     body: JSON.stringify(payload)
                 });
+                const data = res ? await res.json().catch(() => ({})) : {};
                 if (res && res.ok) {
-                    if (window.showToast) window.showToast("Experimental settings saved.");
+                    const reasons = Array.isArray(data.restart_reasons) ? data.restart_reasons : [];
+                    if (data.restart_required && reasons.length) {
+                        const msg =
+                            "Restart the ComfyUI server to fully apply: " + reasons.join("; ");
+                        experimentalRestartNote.textContent = msg;
+                        experimentalRestartNote.style.display = "block";
+                        if (window.showToast) window.showToast(msg);
+                    } else {
+                        experimentalRestartNote.style.display = "none";
+                        experimentalRestartNote.textContent = "";
+                        if (window.showToast) window.showToast("Experimental settings saved.");
+                    }
                     refreshTailscaleCard();
+                } else if (window.showToast) {
+                    window.showToast("Save failed: " + (data.error || res?.statusText || "Unknown error"));
                 }
             } catch (e) {
                 if (window.showToast) window.showToast("Save failed: " + (e.message || "Unknown error"));
             }
         };
         experimentalSection.appendChild(experimentalSaveBtn);
+        experimentalSection.appendChild(experimentalRestartNote);
 
         // Dedicated Custom Node Dependencies Installer Card
         const nodeDepsCard = document.createElement("div");

@@ -10,9 +10,22 @@ Experimental features use a **master switch** plus **per-feature toggles**. When
 2. **Per feature** (master must already be on)
    - `config.json` → `"experimental": { "<key>": true }`
    - Environment: `EXPERIMENTAL_<KEY>=true` (for example `EXPERIMENTAL_S3=1`)
-   - Admin UI: **Settings → MSS-Login** experimental toggles (when master is on)
+   - Admin UI (preferred): avatar menu → **MSS-Login Settings** → **Experimental Settings**
+   - Also available: ComfyUI **Settings → MSS-Login** experimental toggles
 
-Restart ComfyUI after changing env vars or `config.json` if the UI does not hot-reload the flag you changed.
+When you save from the Admin UI, `reload_experimental_features()` updates most flags live. Features that initialize only at process start will show a **restart required** notice (see below).
+
+After changing env vars or editing `config.json` on disk, restart ComfyUI if the UI does not pick up the change.
+
+## Restart required
+
+| Change | Restart needed? |
+|--------|-----------------|
+| `s3` toggled, or master toggled while `s3` is enabled | **Yes** — S3 mount/sync starts at process boot |
+| `install_other_nodes_deps` turned **on** | **Yes** — startup background scan; manual Scan & Install still works live |
+| `mfa`, `loading_screen`, `news`, `model_isolation`, `tailscale_local_auth`, `login_background`, failsafe | **No** — apply after save |
+
+The PUT `/mss-login/api/settings/experimental` response includes `restart_required` and `restart_reasons` so the UI can warn you.
 
 ## Feature index
 
@@ -28,6 +41,8 @@ Restart ComfyUI after changing env vars or `config.json` if the UI does not hot-
 | `login_background` | Custom `/login` image or video background | [Login background](login-background.md) |
 
 Related (not a feature flag): [Experimental failsafe](failsafe.md) (`experimental_failsafe` / `MSS_LOGIN_EXPERIMENTAL_FAILSAFE`).
+
+Owner-only **Login Appearance** (background media paths/URLs) is under Security Policy → Login Appearance; enable `login_background` here first.
 
 ## MFA legacy note
 

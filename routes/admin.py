@@ -410,6 +410,48 @@ routes.get("/api/mss-login/api/quarantine")(api_quarantine_list)
 routes.post("/api/mss-login/api/quarantine/{record_id}/review")(api_quarantine_mark_reviewed)
 
 
+_EXPERIMENTAL_FEATURE_KEYS = (
+	"mfa",
+	"s3",
+	"loading_screen",
+	"news",
+	"model_isolation",
+	"tailscale_local_auth",
+	"install_other_nodes_deps",
+	"login_background",
+)
+
+
+def _experimental_block_from_cfg(cfg: dict) -> dict:
+	"""Normalize stored experimental.* flags for API responses (config values, not env-effective)."""
+	block = cfg.get("experimental") if isinstance(cfg, dict) else None
+	if not isinstance(block, dict):
+		block = {}
+	return {key: bool(block.get(key, False)) for key in _EXPERIMENTAL_FEATURE_KEYS}
+
+
+def compute_experimental_restart_reasons(
+	prev_master: bool, prev_flags: dict, new_master: bool, new_flags: dict
+) -> list[str]:
+	"""Return human-readable restart reasons for experimental config deltas.
+
+	S3 mount/sync and the node-deps startup scan initialize at process start.
+	Other flags reload live via reload_experimental_features().
+	"""
+	reasons: list[str] = []
+	prev_s3 = bool(prev_flags.get("s3"))
+	new_s3 = bool(new_flags.get("s3"))
+	s3_flag_changed = prev_s3 != new_s3
+	master_changed = bool(prev_master) != bool(new_master)
+	if s3_flag_changed or (master_changed and (prev_s3 or new_s3)):
+		reasons.append("S3 storage mount/sync")
+	prev_deps = bool(prev_flags.get("install_other_nodes_deps"))
+	new_deps = bool(new_flags.get("install_other_nodes_deps"))
+	if (not prev_deps) and new_deps:
+		reasons.append("Node dependency auto-install (startup scan)")
+	return reasons
+
+
 @routes.get("/mss-login/api/settings/experimental")
 async def api_get_experimental(request):
 	"""Return experimental_features (master) and experimental (per-feature flags). Authenticated; any user can read."""
@@ -419,17 +461,7 @@ async def api_get_experimental(request):
 	try:
 		cfg = load_json_file(CONFIG_FILE_PATH, {})
 		master = bool(cfg.get("experimental_features", False))
-		block = cfg.get("experimental")
-		if not isinstance(block, dict):
-			block = {}
-		experimental = {
-			"mfa": bool(block.get("mfa", False)),
-			"s3": bool(block.get("s3", False)),
-			"loading_screen": bool(block.get("loading_screen", False)),
-			"news": bool(block.get("news", False)),
-			"model_isolation": bool(block.get("model_isolation", False)),
-			"tailscale_local_auth": bool(block.get("tailscale_local_auth", False)),
-		}
+		experimental = _experimental_block_from_cfg(cfg if isinstance(cfg, dict) else {})
 		return web.json_response({"experimental_features": master, "experimental": experimental})
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
@@ -447,6 +479,8 @@ async def api_put_experimental(request):
 		cfg = load_json_file(CONFIG_FILE_PATH, {})
 		if not isinstance(cfg, dict):
 			cfg = {}
+		prev_master = bool(cfg.get("experimental_features", False))
+		prev_flags = _experimental_block_from_cfg(cfg)
 		if "experimental_features" in data:
 			cfg["experimental_features"] = bool(data["experimental_features"])
 		block = cfg.get("experimental")
@@ -454,26 +488,24 @@ async def api_put_experimental(request):
 			block = {}
 		incoming = data.get("experimental")
 		if isinstance(incoming, dict):
-			for key in (
-				"mfa",
-				"s3",
-				"loading_screen",
-				"news",
-				"model_isolation",
-				"tailscale_local_auth",
-				"install_other_nodes_deps",
-				"login_background",
-			):
+			for key in _EXPERIMENTAL_FEATURE_KEYS:
 				if key in incoming:
 					block[key] = bool(incoming[key])
 		cfg["experimental"] = block
+		new_master = bool(cfg.get("experimental_features", False))
+		new_flags = _experimental_block_from_cfg(cfg)
+		restart_reasons = compute_experimental_restart_reasons(
+			prev_master, prev_flags, new_master, new_flags
+		)
 		save_json_file(CONFIG_FILE_PATH, cfg)
 		reload_experimental_features()
 		return web.json_response(
 			{
 				"status": "ok",
-				"experimental_features": bool(cfg.get("experimental_features", False)),
+				"experimental_features": new_master,
 				"experimental": get_experimental_flags(),
+				"restart_required": bool(restart_reasons),
+				"restart_reasons": restart_reasons,
 			}
 		)
 	except Exception as e:

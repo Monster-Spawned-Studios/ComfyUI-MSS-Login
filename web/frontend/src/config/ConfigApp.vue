@@ -53,6 +53,9 @@
         <div v-else-if="activeTab === 'login-appearance'">
           <LoginAppearanceSection />
         </div>
+        <div v-else-if="activeTab === 'experimental'">
+          <ExperimentalSettingsSection />
+        </div>
         <div v-else>
           <LegacySectionHost
             :tab-id="activeTab"
@@ -69,6 +72,7 @@
 import SharedModelsSection from "./SharedModelsSection.vue";
 import ModelDownloadSection from "./ModelDownloadSection.vue";
 import LoginAppearanceSection from "./LoginAppearanceSection.vue";
+import ExperimentalSettingsSection from "./ExperimentalSettingsSection.vue";
 import LegacySectionHost from "./LegacySectionHost.vue";
 import { isOwnerUser } from "./api.js";
 
@@ -78,6 +82,7 @@ export default {
     SharedModelsSection,
     ModelDownloadSection,
     LoginAppearanceSection,
+    ExperimentalSettingsSection,
     LegacySectionHost,
   },
   props: {
@@ -111,6 +116,7 @@ export default {
         ...(owner
           ? [{ id: "login-appearance", label: "Login Appearance", order: 10 }]
           : []),
+        { id: "experimental", label: "Experimental Settings", order: 11 },
       ];
       const ext = (this.extensionTabs || []).map((t) => ({
         id: t.id,
