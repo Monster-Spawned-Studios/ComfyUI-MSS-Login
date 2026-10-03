@@ -87,7 +87,8 @@ For significant change sets (~500+ lines) or multi-topic dumps, invoke **`/commi
 - Owner-only user registration belongs in the avatar menu and MSS-Login dialog (with role chosen at create time); do not force owners through a separate `/register` navigation for that flow.
 - Keep MSS-Login purple/red branding (`#9660fa` and claw logo) for Login and Security Policy UI; do not switch accents to blue or Civicomfy terracotta; keep login Remember Me compact/inline (not a full-width stretched control).
 - Prefer a responsive multi-column card grid for Security Policy home section launchers across desktop widths (not a single stacked column).
-- Login-page update notices should reuse the existing MSS-Login theme; tell non-updaters to notify an admin, and allow applying updates only for users with explicit update permission (not general users).
+- Update notices on login and `/loading` should reuse the MSS-Login theme; tell non-updaters to notify an admin; show session-aware Update now only for users with explicit update permission (`can_update_mss_login`).
+- Prefer MSS `/loading` as a post-login interstitial before navigating to ComfyUI `/`; do not replace ComfyUI’s in-app splash (fragile across ComfyUI_frontend / PyPI versions).
 
 ## Learned Workspace Facts
 
@@ -97,11 +98,9 @@ For significant change sets (~500+ lines) or multi-topic dumps, invoke **`/commi
 - Sanitizer middleware consumes the body via `request.post()`; multipart handlers (for example avatar upload) must reuse that parsed form instead of calling `request.multipart()` again.
 - Local ComfyUI debug settings live in gitignored `.vscode/comfyui-test.local.json` (path, `autoInstall`, flavor); see `.vscode/comfyui-test.settings.example.json`.
 - Auth compatibility coverage is in `tests/run_auth_compat_tests.py` (password XSS exemption, legacy dual-verify, ephemeral key reuse, JSON credentials); schema drift detection lives in `utils/db_schema.py` and `tests/run_schema_drift_tests.py`; both are wired into CI.
-- Owner counts as admin for last-admin / `_has_admin` checks; never mint a second owner after bootstrap; owner updates must preserve `owner`+`admin` membership.
+- Owner counts as admin for last-admin / `_has_admin` checks; never mint a second owner after bootstrap; owner updates must preserve `owner`+`admin` membership. Ownership transfer requires `confirm_transfer: true` and an explicit UI Transfer ownership action; role dropdown must not include `owner`. `_ensure_owner_assigned` prefers `mss_admin` and demotes duplicate owners.
 - App-stored secrets (CivitAI, HuggingFace, ntfy, S3) are Fernet ciphertext in the owner-chosen users DB—not plaintext JSON; per-user CivitAI host preference (`civitai.com`/`civitai.red`) is non-secret prefs only; migrate secrets with dual-read, encrypt, round-trip verify, then clear legacy files.
 - Model downloads (MSS-Login and Civicomfy/Manager routes) require `can_download_models`; under model isolation, post-download ACL grants are file-narrow by default, not all-models.
 - Experimental features include S3 (AWS S3 and Backblaze B2; boto3 when FUSE is absent; B2 path-style; macOS best-effort) and owner-only login background (`experimental.login_background` / `EXPERIMENTAL_LOGIN_BACKGROUND`; local media under `DATA_DIR`); document under `docs/experimental/` / MkDocs Experimental Settings.
-- Keep `.github` and `.gitea` security workflows mirrored; install Gitleaks via `scripts/ci/install-gitleaks.sh` pinned release asset URL (avoid unauthenticated GitHub API latest on shared runners).
-- Phased feature plans and status live under gitignored `_planning/` at the repo root.
-- Comfy `WEB_DIRECTORY` is `web/comfyui` only (extension entry JS). Never put `web/frontend` / `node_modules` / `web/dist` under it — Comfy recursively preloads those as extensions (`node:path` CORS / vite preload spam). Dist is served at `/mss-login/dist`.
-- Ownership transfer requires `confirm_transfer: true` and an explicit UI Transfer ownership action; role dropdown must not include `owner`. `_ensure_owner_assigned` prefers `mss_admin` and demotes duplicate owners.
+- Keep `.github` and `.gitea` workflows mirrored; end Actions with the reusable ntfy notification job (`if: always()`, `secrets: inherit`); install Gitleaks via `scripts/ci/install-gitleaks.sh` pinned release asset URL (avoid unauthenticated GitHub API latest on shared runners).
+- Comfy `WEB_DIRECTORY` is `web/comfyui` only (extension entry JS). Never put `web/frontend` / `node_modules` / `web/dist` under it — Comfy recursively preloads those as extensions (`node:path` CORS / vite preload spam). Dist is served at `/mss-login/dist`. Login CSP `connect-src` must include `HOST_BASE_URL` (and derived `wss://`) plus the request origin so reverse-proxy hosts work.
