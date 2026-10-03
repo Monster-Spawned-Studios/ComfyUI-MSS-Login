@@ -35,10 +35,11 @@ Remote clients (`REQUIRE_AUTH_FOR_REMOTE_API=true`) must send Bearer auth; paths
 | GET | `/mss-login/api/model-download/sources` | Sources, which keys are set, and capabilities |
 | GET | `/mss-login/api/model-download/folders` | Valid `folder_type` values (e.g. `checkpoints`, `loras`) |
 | GET/PUT | `/mss-login/api/model-download/preferences` | Per-user prefs (e.g. `civitai_host`: `civitai.com` or `civitai.red`) |
-| GET | `/mss-login/api/model-download/civitai/search` | Browse/search CivitAI (`query`, `types`, `page`) |
+| GET | `/mss-login/api/model-download/civitai/search` | Browse/search CivitAI (see search params below) |
 | GET | `/mss-login/api/model-download/civitai/models/{id}` | CivitAI model metadata |
 | GET | `/mss-login/api/model-download/civitai/model-versions/{id}` | CivitAI version + files |
-| GET | `/mss-login/api/model-download/huggingface/search` | Hugging Face Hub search |
+| GET | `/mss-login/api/model-download/huggingface/search` | Hugging Face Hub search (`safetensors=true` optional) |
+| GET | `/mss-login/api/model-download/huggingface/files` | List model files in a HF repo (`repo_id=org/model`) |
 | GET | `/mss-login/api/model-download/api-keys` | Which sources have keys (not the secrets) |
 | PUT | `/mss-login/api/model-download/api-keys` | Set or clear a source API key (Fernet in users DB) |
 | POST | `/mss-login/api/model-download/download` | Queue a download job (uses **caller's** encrypted key) |
@@ -68,11 +69,35 @@ Example response:
       "s3": false,
       "model_isolation": true
     },
-    "civitai_fields": ["model_version_id", "type", "format", "size", "fp"],
+    "civitai_fields": ["model_version_id", "type", "format", "size", "fp", "civitai_host"],
     "huggingface_fields": ["repo_id", "filename", "subfolder"]
   }
 }
 ```
+
+## CivitAI search
+
+```http
+GET /mss-login/api/model-download/civitai/search?query=anime&types=LORA&sort=Most%20Downloaded&primaryFileOnly=true&civitai_host=civitai.com
+```
+
+| Param | Notes |
+|-------|--------|
+| `query` | Text search. **Do not combine with `page`** (CivitAI returns 400). Use `cursor` / `next_cursor` for more pages. |
+| `page` | Browse-only (empty query). |
+| `cursor` | Continue a text search from a previous `next_cursor`. |
+| `types`, `sort`, `baseModels`, `nsfw`, `primaryFileOnly` | Forwarded to CivitAI. |
+| `civitai_host` | `civitai.com` or `civitai.red` for this request. |
+
+Upstream client errors are mapped to matching MSS statuses (`400`, `401`, `403`, `404`, `429`). Network / upstream 5xx become `502`.
+
+## Hugging Face files
+
+```http
+GET /mss-login/api/model-download/huggingface/files?repo_id=owner/model-name
+```
+
+Returns downloadable model files (`.safetensors`, `.ckpt`, `.pt`, `.pth`, `.bin`, `.onnx`, `.gguf`) with `path`, `filename`, `subfolder`, `size`, and `extension`.
 
 ## Store API keys
 
@@ -104,7 +129,8 @@ Authorization: Bearer <token>
   "destination_type": "local",
   "format": "SafeTensor",
   "size": "pruned",
-  "fp": "fp16"
+  "fp": "fp16",
+  "filename": "my-checkpoint.safetensors"
 }
 ```
 
@@ -114,7 +140,9 @@ Authorization: Bearer <token>
 | `model_version_id` | CivitAI | Also accepts `modelVersionId` |
 | `folder_type` | no | Default `checkpoints`; use `GET .../folders` |
 | `destination_type` | no | `local` (default) or `s3` if experimental S3 enabled |
-| `type`, `format`, `size`, `fp` | no | CivitAI download query parameters |
+| `type`, `format`, `size`, `fp` | no | CivitAI download query parameters (select a specific file variant) |
+| `filename` / `save_as` | no | Preferred save-as basename under `folder_type` (wins over Content-Disposition) |
+| `civitai_host` | no | Per-request host override |
 
 ## Queue Hugging Face download
 
@@ -125,9 +153,12 @@ Authorization: Bearer <token>
   "filename": "model.safetensors",
   "folder_type": "checkpoints",
   "destination_type": "local",
-  "subfolder": "optional/subfolder"
+  "subfolder": "optional/subfolder",
+  "save_as": "custom-name.safetensors"
 }
 ```
+
+`filename` is the remote file in the repo. Optional `save_as` renames the downloaded file under the destination folder (basename only).
 
 ## Poll job status
 

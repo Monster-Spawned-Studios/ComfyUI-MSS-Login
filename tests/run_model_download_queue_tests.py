@@ -122,6 +122,16 @@ def _install_stubs():
 	)
 	download_mod.resolve_model_url = lambda *_a, **_k: None
 	download_mod.search_huggingface_models = lambda *_a, **_k: ([], "")
+	download_mod.list_huggingface_repo_files = lambda *_a, **_k: ([], "")
+	download_mod.map_civitai_error_http_status = lambda err: (
+		400
+		if "400" in (err or "")
+		else 401
+		if "401" in (err or "")
+		else 429
+		if "429" in (err or "")
+		else 502
+	)
 	download_mod.set_civitai_host_preference = lambda *_a, **_k: "civitai.com"
 	sys.modules["mss_login.utils.model_download"] = download_mod
 

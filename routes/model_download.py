@@ -27,6 +27,8 @@ from ..utils.model_download import (
 	download_civitai_async,
 	download_huggingface,
 	get_civitai_host_preference,
+	list_huggingface_repo_files,
+	map_civitai_error_http_status,
 	normalize_civitai_host,
 	resolve_model_url,
 	search_huggingface_models,
@@ -136,8 +138,16 @@ def _download_capabilities() -> dict:
 		},
 		"civitai_hosts": sorted(ALLOWED_CIVITAI_HOSTS),
 		"default_civitai_host": DEFAULT_CIVITAI_HOST,
-		"civitai_fields": ["model_version_id", "type", "format", "size", "fp", "civitai_host"],
-		"huggingface_fields": ["repo_id", "filename", "subfolder"],
+		"civitai_fields": [
+			"model_version_id",
+			"type",
+			"format",
+			"size",
+			"fp",
+			"civitai_host",
+			"filename",
+		],
+		"huggingface_fields": ["repo_id", "filename", "subfolder", "save_as"],
 	}
 
 
@@ -311,14 +321,16 @@ def _shape_civitai_model_for_ui(model: dict | None) -> dict:
 		for f in ver.get("files") or []:
 			if not isinstance(f, dict):
 				continue
+			meta = f.get("metadata") if isinstance(f.get("metadata"), dict) else {}
 			files.append(
 				{
 					"name": f.get("name"),
 					"sizeKB": f.get("sizeKB"),
 					"type": f.get("type"),
-					"format": (f.get("metadata") or {}).get("format")
-					if isinstance(f.get("metadata"), dict)
-					else None,
+					"primary": bool(f.get("primary")),
+					"format": meta.get("format"),
+					"size": meta.get("size"),
+					"fp": meta.get("fp"),
 				}
 			)
 		versions.append(
@@ -559,6 +571,7 @@ async def _run_job(job_id: str) -> None:
 					dest_dir,
 					subfolder=job.get("subfolder"),
 					progress_dict=progress_dict,
+					preferred_filename=job.get("save_as") or None,
 				)
 
 			task = loop.run_in_executor(None, run_hf)
@@ -783,6 +796,16 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 		"model_id": str(body.get("model_id") or ""),
 		"saved_relpath": "",
 	}
+
+	def _sanitize_basename(raw: str | None) -> str:
+		name = (raw or "").strip()
+		if not name:
+			return ""
+		name = os.path.basename(name.replace("\\", "/"))
+		if name in (".", "..") or ".." in name:
+			return ""
+		return name
+
 	if source == "civitai":
 		model_version_id = (
 			body.get("model_version_id") or body.get("modelVersionId") or ""
@@ -799,11 +822,15 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 			body_or_query_host=body.get("civitai_host") or body.get("host"),
 			url_hint_host=url_hint,
 		)
+		# Optional save-as basename (preferred over Content-Disposition).
+		save_as = _sanitize_basename(body.get("filename") or body.get("save_as"))
+		if save_as:
+			job["filename"] = save_as
 	else:
 		repo_id = (body.get("repo_id") or "").strip()
 		filename = (body.get("filename") or "").strip()
 		if filename and (".." in filename or "/" in filename or "\\" in filename):
-			filename = os.path.basename(filename)
+			filename = os.path.basename(filename.replace("\\", "/"))
 		subfolder = body.get("subfolder")
 		if isinstance(subfolder, str):
 			subfolder = subfolder.strip()
@@ -816,6 +843,9 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 		job["repo_id"] = repo_id
 		job["filename"] = filename
 		job["subfolder"] = subfolder
+		save_as = _sanitize_basename(body.get("save_as"))
+		if save_as:
+			job["save_as"] = save_as
 
 	async with _JOBS_LOCK:
 		_JOBS_BY_ID[job_id] = job
@@ -879,6 +909,31 @@ async def api_model_download_civitai_search(request: web.Request) -> web.Respons
 		return err
 	query = (request.rel_url.query.get("query") or request.rel_url.query.get("q") or "").strip()
 	types = (request.rel_url.query.get("types") or "").strip() or None
+	sort = (request.rel_url.query.get("sort") or "").strip() or None
+	base_models = (
+		request.rel_url.query.get("baseModels") or request.rel_url.query.get("base_models") or ""
+	).strip() or None
+	cursor = (request.rel_url.query.get("cursor") or "").strip() or None
+	nsfw_raw = (request.rel_url.query.get("nsfw") or "").strip().lower()
+	nsfw = None
+	if nsfw_raw in ("1", "true", "yes", "on"):
+		nsfw = True
+	elif nsfw_raw in ("0", "false", "no", "off"):
+		nsfw = False
+	pfo_raw = (
+		(
+			request.rel_url.query.get("primaryFileOnly")
+			or request.rel_url.query.get("primary_file_only")
+			or ""
+		)
+		.strip()
+		.lower()
+	)
+	primary_file_only = None
+	if pfo_raw in ("1", "true", "yes", "on"):
+		primary_file_only = True
+	elif pfo_raw in ("0", "false", "no", "off"):
+		primary_file_only = False
 	try:
 		page = int(request.rel_url.query.get("page") or "1")
 	except ValueError:
@@ -894,11 +949,28 @@ async def api_model_download_civitai_search(request: web.Request) -> web.Respons
 	)
 	token = _source_token(user_id, "civitai")
 	data, error = await civitai_search_models(
-		query, token=token, host=host, types=types, page=page, limit=limit
+		query,
+		token=token,
+		host=host,
+		types=types,
+		page=page,
+		limit=limit,
+		cursor=cursor,
+		sort=sort,
+		base_models=base_models,
+		nsfw=nsfw,
+		primary_file_only=primary_file_only,
 	)
 	if error:
-		return web.json_response({"error": error}, status=502)
-	return web.json_response({"host": host, "query": query, "result": data})
+		status = map_civitai_error_http_status(error)
+		return web.json_response({"error": error}, status=status)
+	meta = data.get("metadata") if isinstance(data, dict) else None
+	next_cursor = None
+	if isinstance(meta, dict):
+		next_cursor = meta.get("nextCursor") or meta.get("next_cursor")
+	return web.json_response(
+		{"host": host, "query": query, "result": data, "next_cursor": next_cursor}
+	)
 
 
 @routes.get("/mss-login/api/model-download/civitai/models/{model_id}")
@@ -918,7 +990,8 @@ async def api_model_download_civitai_model(request: web.Request) -> web.Response
 	token = _source_token(user_id, "civitai")
 	data, error = await civitai_get_model(model_id, token=token, host=host)
 	if error:
-		return web.json_response({"error": error}, status=502)
+		status = map_civitai_error_http_status(error)
+		return web.json_response({"error": error}, status=status)
 	shaped = _shape_civitai_model_for_ui(data if isinstance(data, dict) else None)
 	return web.json_response({"host": host, "model": data, "ui": shaped})
 
@@ -940,7 +1013,8 @@ async def api_model_download_civitai_model_version(request: web.Request) -> web.
 	token = _source_token(user_id, "civitai")
 	data, error = await civitai_get_model_version(version_id, token=token, host=host)
 	if error:
-		return web.json_response({"error": error}, status=502)
+		status = map_civitai_error_http_status(error)
+		return web.json_response({"error": error}, status=status)
 	meta = extract_civitai_metadata(None, data if isinstance(data, dict) else None)
 	return web.json_response({"host": host, "model_version": data, "ui": meta})
 
@@ -956,14 +1030,47 @@ async def api_model_download_huggingface_search(request: web.Request) -> web.Res
 		limit = int(request.rel_url.query.get("limit") or "20")
 	except ValueError:
 		limit = 20
+	st_raw = (
+		(
+			request.rel_url.query.get("safetensors")
+			or request.rel_url.query.get("safetensors_only")
+			or ""
+		)
+		.strip()
+		.lower()
+	)
+	safetensors_only = st_raw in ("1", "true", "yes", "on")
 	token = _source_token(user_id, "huggingface")
 	loop = asyncio.get_event_loop()
 	items, error = await loop.run_in_executor(
-		None, lambda: search_huggingface_models(query, token=token, limit=limit)
+		None,
+		lambda: search_huggingface_models(
+			query, token=token, limit=limit, safetensors_only=safetensors_only
+		),
 	)
 	if error:
 		return web.json_response({"error": error}, status=502)
 	return web.json_response({"query": query, "items": items or []})
+
+
+@routes.get("/mss-login/api/model-download/huggingface/files")
+async def api_model_download_huggingface_repo_files(request: web.Request) -> web.Response:
+	"""List downloadable model files in a Hugging Face repo (query: repo_id=org/model)."""
+	user_id, _username, err = _download_auth_or_response(request)
+	if err:
+		return err
+	repo_id = (request.rel_url.query.get("repo_id") or "").strip().strip("/")
+	if not repo_id or "/" not in repo_id or ".." in repo_id:
+		return web.json_response({"error": "Invalid repo_id"}, status=400)
+	token = _source_token(user_id, "huggingface")
+	loop = asyncio.get_event_loop()
+	files, error = await loop.run_in_executor(
+		None, lambda: list_huggingface_repo_files(repo_id, token=token)
+	)
+	if error:
+		status = 400 if "Invalid" in error else 502
+		return web.json_response({"error": error}, status=status)
+	return web.json_response({"repo_id": repo_id, "files": files or []})
 
 
 @routes.get("/mss-login/api/model-download/jobs/{job_id}")
@@ -1206,6 +1313,9 @@ routes.get("/api/mss-login/api/model-download/civitai/model-versions/{version_id
 )
 routes.get("/api/mss-login/api/model-download/huggingface/search")(
 	api_model_download_huggingface_search
+)
+routes.get("/api/mss-login/api/model-download/huggingface/files")(
+	api_model_download_huggingface_repo_files
 )
 routes.post("/api/mss-login/api/model-download/download")(api_model_download_start)
 routes.get("/api/mss-login/api/model-download/jobs/{job_id}")(api_model_download_job_get)

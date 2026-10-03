@@ -244,18 +244,64 @@ async def civitai_search_models(
 	types: str | None = None,
 	page: int = 1,
 	limit: int = 20,
+	cursor: str | None = None,
+	sort: str | None = None,
+	base_models: str | None = None,
+	nsfw: bool | None = None,
+	primary_file_only: bool | None = None,
 ) -> tuple[dict[str, Any] | None, str]:
-	"""Search CivitAI models via GET /api/v1/models."""
-	params: dict[str, Any] = {
-		"limit": max(1, min(int(limit or 20), 100)),
-		"page": max(1, int(page or 1)),
-	}
+	"""Search CivitAI models via GET /api/v1/models.
+
+	CivitAI rejects combining ``query`` with ``page`` (HTTP 400). Text search
+	uses ``cursor`` pagination; browse-without-query may use ``page``.
+	"""
+	params: dict[str, Any] = {"limit": max(1, min(int(limit or 20), 100))}
 	q = (query or "").strip()
 	if q:
 		params["query"] = q
+		# query + page is invalid upstream; use cursor for text search.
+		cur = (cursor or "").strip()
+		if cur:
+			params["cursor"] = cur
+	else:
+		cur = (cursor or "").strip()
+		if cur:
+			params["cursor"] = cur
+		else:
+			params["page"] = max(1, int(page or 1))
 	if types:
 		params["types"] = types
+	if sort:
+		params["sort"] = sort
+	if base_models:
+		params["baseModels"] = base_models
+	if nsfw is not None:
+		params["nsfw"] = "true" if nsfw else "false"
+	if primary_file_only is not None:
+		params["primaryFileOnly"] = "true" if primary_file_only else "false"
 	return await _civitai_get_json("models", token, host=host, params=params)
+
+
+def parse_civitai_upstream_status(error: str) -> int | None:
+	"""Extract upstream HTTP status from ``_civitai_get_json`` error strings."""
+	m = re.match(r"^CivitAI returned (\d{3})", (error or "").strip())
+	if not m:
+		return None
+	try:
+		return int(m.group(1))
+	except (TypeError, ValueError):
+		return None
+
+
+def map_civitai_error_http_status(error: str) -> int:
+	"""Map CivitAI client errors to an MSS HTTP status for proxy routes."""
+	upstream = parse_civitai_upstream_status(error)
+	if upstream in (400, 401, 403, 404, 429):
+		return upstream
+	if upstream is not None and 500 <= upstream < 600:
+		return 502
+	# Network / parse / other failures
+	return 502
 
 
 async def civitai_get_model(
@@ -278,11 +324,16 @@ async def civitai_get_model_version(
 	return await _civitai_get_json(f"model-versions/{vid}", token, host=host)
 
 
+_HF_MODEL_EXTENSIONS = frozenset({".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".onnx", ".gguf"})
+
+
 def search_huggingface_models(
-	query: str, token: str | None = None, limit: int = 20
+	query: str, token: str | None = None, limit: int = 20, *, safetensors_only: bool = False
 ) -> tuple[list[dict[str, Any]] | None, str]:
 	"""
 	Search Hugging Face Hub models. Returns a list of public-safe dicts (no secrets).
+
+	When safetensors_only=True, applies the Hub ``safetensors`` filter tag.
 	"""
 	try:
 		from huggingface_hub import HfApi
@@ -293,21 +344,89 @@ def search_huggingface_models(
 	lim = max(1, min(int(limit or 20), 100))
 	try:
 		api = HfApi(token=token or None)
-		results = list(api.list_models(search=q or None, limit=lim, full=False))
+		kwargs: dict[str, Any] = {"search": q or None, "limit": lim, "full": False}
+		if safetensors_only:
+			kwargs["filter"] = "safetensors"
+		results = list(api.list_models(**kwargs))
 		out: list[dict[str, Any]] = []
 		for item in results:
 			repo_id = getattr(item, "id", None) or getattr(item, "modelId", None) or ""
+			tags = list(getattr(item, "tags", None) or [])[:20]
 			out.append(
 				{
 					"id": repo_id,
 					"repo_id": repo_id,
 					"downloads": getattr(item, "downloads", None),
 					"likes": getattr(item, "likes", None),
-					"tags": list(getattr(item, "tags", None) or [])[:20],
+					"tags": tags,
 					"pipeline_tag": getattr(item, "pipeline_tag", None),
 					"private": bool(getattr(item, "private", False)),
+					"has_safetensors": "safetensors"
+					in {t.lower() for t in tags if isinstance(t, str)},
 				}
 			)
+		return out, ""
+	except Exception as e:
+		return None, str(e)
+
+
+def list_huggingface_repo_files(
+	repo_id: str, token: str | None = None, *, model_files_only: bool = True
+) -> tuple[list[dict[str, Any]] | None, str]:
+	"""
+	List files in a Hugging Face model repo suitable for download.
+
+	Returns public-safe dicts: path, filename, subfolder, size, extension.
+	"""
+	try:
+		from huggingface_hub import HfApi
+	except ImportError:
+		return None, "huggingface_hub is required; pip install huggingface_hub"
+
+	rid = (repo_id or "").strip().strip("/")
+	if not rid or "/" not in rid or ".." in rid:
+		return None, "Invalid repo_id"
+	try:
+		api = HfApi(token=token or None)
+		paths = [str(p) for p in (api.list_repo_files(rid, repo_type="model") or [])]
+		size_by_path: dict[str, int | None] = {}
+		model_paths = []
+		for path in paths:
+			p = path.replace("\\", "/").lstrip("/")
+			if not p or p.endswith("/"):
+				continue
+			ext = Path(p).suffix.lower()
+			if model_files_only and ext not in _HF_MODEL_EXTENSIONS:
+				continue
+			model_paths.append(p)
+		if model_paths:
+			try:
+				infos = api.get_paths_info(rid, model_paths, repo_type="model")
+				for info in infos or []:
+					ipath = getattr(info, "path", None) or getattr(info, "rfilename", None)
+					if ipath:
+						size_by_path[str(ipath)] = getattr(info, "size", None)
+			except Exception:
+				pass
+		out: list[dict[str, Any]] = []
+		for p in model_paths:
+			ext = Path(p).suffix.lower()
+			if "/" in p:
+				subfolder, filename = p.rsplit("/", 1)
+			else:
+				subfolder, filename = "", Path(p).name
+			out.append(
+				{
+					"path": p,
+					"filename": filename,
+					"subfolder": subfolder or None,
+					"size": size_by_path.get(p),
+					"extension": ext,
+				}
+			)
+		out.sort(
+			key=lambda x: (0 if x.get("extension") == ".safetensors" else 1, x.get("path") or "")
+		)
 		return out, ""
 	except Exception as e:
 		return None, str(e)
@@ -367,11 +486,13 @@ async def download_civitai_async(
 				return False, f"CivitAI returned {resp.status}", None
 			content_disp = resp.headers.get("Content-Disposition")
 			filename = None
+			# Preferred save-as wins over Content-Disposition when the client asked
+			# for an explicit basename (folder targeting still uses dest_path).
 			if preferred_filename:
 				_basename = Path(preferred_filename).name
-				if _basename:
+				if _basename and _basename not in (".", ".."):
 					filename = _basename
-			if content_disp and "filename=" in content_disp:
+			if not filename and content_disp and "filename=" in content_disp:
 				part = content_disp.split("filename=")[-1].strip().strip("\"'")
 				if part:
 					# Use basename only; if Path.name is empty (e.g. input was "/" or ".."),
@@ -516,12 +637,16 @@ def download_huggingface(
 	dest_dir: str | Path,
 	subfolder: str | None = None,
 	progress_dict: dict | None = None,
+	preferred_filename: str | None = None,
 ) -> tuple[bool, str, str | None]:
 	"""
 	Download a file from HuggingFace Hub to dest_dir. Uses huggingface_hub if available.
 	Returns (success, error_message, saved_relpath).
 	If progress_dict is provided, it is updated with bytes_done and total_bytes during download
 	(for streaming progress to the client). Keys: bytes_done (int), total_bytes (int or None).
+
+	When preferred_filename is a different basename, rename under dest_dir after download
+	(path-traversal checked).
 	"""
 	dest_dir = Path(dest_dir)
 	dest_dir.mkdir(parents=True, exist_ok=True)
@@ -567,11 +692,31 @@ def download_huggingface(
 		)
 		if not path:
 			return False, "Download returned empty path", None
+		dest_resolved = dest_dir.resolve()
+		out_path = Path(path)
+		# Optional save-as rename (basename only, contained under dest_dir).
+		save_as = Path(preferred_filename).name if preferred_filename else ""
+		remote_base = Path(filename).name
+		if save_as and save_as not in (".", "..") and save_as != remote_base:
+			renamed = dest_dir / save_as
+			try:
+				common = os.path.commonpath([renamed.resolve(), dest_resolved])
+			except ValueError:
+				return False, "Path traversal prevented", None
+			if os.path.abspath(common) != os.path.abspath(dest_resolved):
+				return False, "Path traversal prevented", None
+			try:
+				if renamed.exists():
+					renamed.unlink()
+				os.replace(out_path, renamed)
+				out_path = renamed
+			except OSError as e:
+				return False, f"Rename failed: {e}", None
 		try:
-			saved_rel = os.path.relpath(os.path.realpath(path), dest_dir.resolve())
+			saved_rel = os.path.relpath(os.path.realpath(out_path), dest_resolved)
 		except ValueError:
-			parts = [p for p in (subfolder, filename) if p]
-			saved_rel = "/".join(parts) if parts else Path(path).name
+			parts = [p for p in (subfolder, save_as or filename) if p]
+			saved_rel = "/".join(parts) if parts else Path(out_path).name
 		return True, "", saved_rel.replace("\\", "/")
 	except Exception as e:
 		return False, str(e), None
