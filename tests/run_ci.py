@@ -86,6 +86,9 @@ def main() -> int:
 			("Experimental failsafe", os.path.join(TESTS_DIR, "run_experimental_failsafe_tests.py"))
 		)
 		steps.append(
+			("Experimental settings", os.path.join(TESTS_DIR, "run_experimental_settings_tests.py"))
+		)
+		steps.append(
 			("Model download queue", os.path.join(TESTS_DIR, "run_model_download_queue_tests.py"))
 		)
 		steps.append(
@@ -94,6 +97,10 @@ def main() -> int:
 				os.path.join(TESTS_DIR, "run_model_download_destination_tests.py"),
 			)
 		)
+		steps.append(
+			("Model download search", os.path.join(TESTS_DIR, "run_model_download_search_tests.py"))
+		)
+
 		steps.append(("View path safety", os.path.join(TESTS_DIR, "run_view_path_safety_tests.py")))
 		steps.append(("Trash bin", os.path.join(TESTS_DIR, "run_trash_bin_tests.py")))
 		steps.append(("NTFY + quarantine", os.path.join(TESTS_DIR, "run_ntfy_quarantine_tests.py")))
