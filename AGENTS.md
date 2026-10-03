@@ -103,3 +103,5 @@ For significant change sets (~500+ lines) or multi-topic dumps, invoke **`/commi
 - Experimental features include S3 (AWS S3 and Backblaze B2; boto3 when FUSE is absent; B2 path-style; macOS best-effort) and owner-only login background (`experimental.login_background` / `EXPERIMENTAL_LOGIN_BACKGROUND`; local media under `DATA_DIR`); document under `docs/experimental/` / MkDocs Experimental Settings.
 - Keep `.github` and `.gitea` security workflows mirrored; install Gitleaks via `scripts/ci/install-gitleaks.sh` pinned release asset URL (avoid unauthenticated GitHub API latest on shared runners).
 - Phased feature plans and status live under gitignored `_planning/` at the repo root.
+- Comfy `WEB_DIRECTORY` is `web/comfyui` only (extension entry JS). Never put `web/frontend` / `node_modules` / `web/dist` under it — Comfy recursively preloads those as extensions (`node:path` CORS / vite preload spam). Dist is served at `/mss-login/dist`.
+- Ownership transfer requires `confirm_transfer: true` and an explicit UI Transfer ownership action; role dropdown must not include `owner`. `_ensure_owner_assigned` prefers `mss_admin` and demotes duplicate owners.
