@@ -313,8 +313,15 @@ async def get_login(request: web.Request) -> web.Response:
 	"""Serve the login page with version injected from pyproject.toml."""
 	if not users_db.load_users():
 		return web.HTTPFound("/register")
-	if jwt_auth.get_token_from_request(request):
-		return web.HTTPFound("/logout")
+	existing_token = jwt_auth.get_token_from_request(request)
+	clear_stale_session = False
+	if existing_token:
+		if jwt_auth.is_token_valid(existing_token):
+			redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+			return web.HTTPFound(redirect_url)
+		# Invalid/expired/revoked leftover cookie must not bounce to /logout
+		# (that path previously caused a /login ↔ /logout redirect loop).
+		clear_stale_session = True
 
 	# Check for Tailscale / reverse proxy identity headers on trusted local/Tailscale connections
 	if experimental_tailscale_local_auth_enabled() and is_trusted_tailscale_or_local(request):
@@ -369,7 +376,10 @@ async def get_login(request: web.Request) -> web.Response:
 	allow_guest = bool(getattr(constants_module, "ALLOW_GUEST_JWT", False))
 	html = _inject_login_guest_block(html, allow_guest=allow_guest)
 	html = _inject_login_background_json(html)
-	return web.Response(text=html, content_type="text/html")
+	resp = web.Response(text=html, content_type="text/html")
+	if clear_stale_session:
+		clear_auth_cookies(resp, secure=is_https_request(request))
+	return resp
 
 
 @routes.get("/mfa")

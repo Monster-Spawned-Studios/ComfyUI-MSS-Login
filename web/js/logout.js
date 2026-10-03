@@ -106,7 +106,8 @@ async function logoutAction() {
   } catch (error) {
     console.error("[mss-login] Logout request failed:", error);
   }
-  window.location.href = LOGOUT_URL;
+  // Go straight to login; a second GET /logout is unnecessary after POST revoke.
+  window.location.href = "/login";
 }
 
 function closeProfileMenu() {

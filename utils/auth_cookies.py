@@ -19,8 +19,10 @@ BROWSER_SESSION_COOKIE_NAMES = (
 	"mss_login_jwt",
 )
 
-# Paths to clear against (browsers match path prefix).
-_CLEAR_PATHS = ("/", "/mss-login", "/login", "/logout", "/mfa")
+# Login always sets Path=/; aiohttp SimpleCookie keeps one morsel per name, so
+# clearing multiple paths would overwrite Path=/ with the last path and leave
+# the real session cookie intact (logout redirect loop).
+_CLEAR_PATH = "/"
 
 
 def truthy_remember_me(value: Any) -> bool:
@@ -53,7 +55,7 @@ def set_auth_cookie(
 		"httponly": True,
 		"samesite": "Strict",
 		"secure": bool(secure),
-		"path": "/",
+		"path": _CLEAR_PATH,
 	}
 	if remember_me and max_age_seconds is not None and int(max_age_seconds) > 0:
 		kwargs["max_age"] = int(max_age_seconds)
@@ -67,22 +69,27 @@ def clear_auth_cookies(resp: web.Response, *, secure: bool) -> None:
 	Preserves long-standing API/JWT tokens that users generated for external
 	apps (Krita, Comfy Portal, etc.) — those live in api_token_store and are
 	not cookies.
+
+	Clears only Path=/ so the Set-Cookie that survives matches the cookie set
+	on login (aiohttp cannot emit multiple path variants for one cookie name).
 	"""
+	secure_flag = bool(secure)
 	for name in BROWSER_SESSION_COOKIE_NAMES:
-		for path in _CLEAR_PATHS:
-			try:
-				resp.del_cookie(name, path=path)
-			except Exception:
-				pass
-			try:
-				resp.set_cookie(
-					name,
-					"",
-					max_age=0,
-					path=path,
-					httponly=True,
-					samesite="Strict",
-					secure=bool(secure),
-				)
-			except Exception:
-				pass
+		try:
+			resp.del_cookie(
+				name, path=_CLEAR_PATH, secure=secure_flag, httponly=True, samesite="Strict"
+			)
+		except Exception:
+			pass
+		try:
+			resp.set_cookie(
+				name,
+				"",
+				max_age=0,
+				path=_CLEAR_PATH,
+				httponly=True,
+				samesite="Strict",
+				secure=secure_flag,
+			)
+		except Exception:
+			pass

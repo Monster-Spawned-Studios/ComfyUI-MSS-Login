@@ -210,6 +210,43 @@ def run_tests():
 		"username still sanitized",
 	)
 
+	# --- auth cookie clear must emit Path=/ only (logout redirect-loop fix) ---
+	print("TestClearAuthCookiesPath")
+	try:
+		from aiohttp import web as aiohttp_web
+
+		auth_cookies = _load_module("utils.auth_cookies", "auth_cookies.py")
+		resp = aiohttp_web.Response()
+		auth_cookies.set_auth_cookie(resp, "dummy-token", secure=False, remember_me=False)
+		auth_cookies.clear_auth_cookies(resp, secure=False)
+		# Collect Set-Cookie headers for jwt_token
+		set_cookies = []
+		if hasattr(resp, "cookies") and resp.cookies:
+			for morsel in resp.cookies.values():
+				set_cookies.append(morsel)
+		# Also check raw headers
+		raw_headers = []
+		for k, v in resp.headers.items():
+			if k.lower() == "set-cookie":
+				raw_headers.append(v)
+		# Path=/ must be present; Path=/mfa must not survive as the only clear
+		joined = " ".join(raw_headers) if raw_headers else ""
+		if not joined and set_cookies:
+			joined = " ".join(str(m) for m in set_cookies)
+		ok(
+			"Path=/mfa" not in joined and "path=/mfa" not in joined.lower(),
+			"clear does not leave Path=/mfa",
+		)
+		# The cookie morsel for jwt_token should have path /
+		jwt_morsel = resp.cookies.get("jwt_token") if hasattr(resp, "cookies") else None
+		if jwt_morsel is not None:
+			path_val = jwt_morsel.get("path") or "/"
+			ok(path_val == "/", f"clear jwt_token path is / (got {path_val!r})")
+		else:
+			ok(bool(joined) or jwt_morsel is not None, "clear emitted jwt_token cookie")
+	except Exception as e:
+		ok(False, f"clear_auth_cookies test error: {e}")
+
 	print()
 	if failed:
 		print(f"Result: {failed} failed, {run - failed} passed, {run} total")
