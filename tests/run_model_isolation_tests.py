@@ -199,7 +199,93 @@ def run_tests():
 		"configured route pattern triggers redirect matching",
 	)
 
+	print("TestModelPathDisplay")
+	_install_fake_constants(enabled=True)
+	sys.modules["mss_login.utils.model_isolation"] = paths
+	sys.modules["mss_login.utils.model_visibility_policy"] = policy_on
+	_load_module(
+		"mss_login.utils.prompt_model_validator",
+		os.path.join(_UTILS_DIR, "prompt_model_validator.py"),
+		"mss_login.utils",
+	)
+	display = _load_module(
+		"mss_login.utils.model_path_display",
+		os.path.join(_UTILS_DIR, "model_path_display.py"),
+		"mss_login.utils",
+	)
+	uid = "f350e460-a651-4b51-bbcd-c573fa5feed4"
+	storage = f"{uid}/dream.safetensors"
+	ok(
+		display.to_display_name(storage, uid, view_all=True) == "dream.safetensors",
+		"view_all strips own UUID prefix",
+	)
+	ok(
+		display.to_display_name("other-user/other.safetensors", uid, view_all=True)
+		== "other-user/other.safetensors",
+		"view_all keeps other users' UUID prefixes",
+	)
+	grants_disp = [
+		policy_on._normalized_record({"folder": "checkpoints", "item_name": storage}),
+		policy_on._normalized_record(
+			{"folder": "checkpoints", "item_name": "other-user/shared.safetensors"}
+		),
+	]
+	ok(
+		display.to_display_name(storage, uid, view_all=False, grants=grants_disp)
+		== "dream.safetensors",
+		"non-view-all strips own grant prefix",
+	)
+	ok(
+		display.to_display_name(
+			"other-user/shared.safetensors", uid, view_all=False, grants=grants_disp
+		)
+		== "shared.safetensors",
+		"non-view-all strips shared grant prefix",
+	)
+	ok(
+		display.to_storage_name("dream.safetensors", uid, grants_disp, folder="checkpoints")
+		== storage,
+		"flat name maps back to storage via grant",
+	)
+	ok(
+		display.to_storage_name(storage, uid, grants_disp, folder="checkpoints") == storage,
+		"legacy prefixed prompt name dual-reads as storage",
+	)
+	ok(
+		display.to_storage_name("shared.safetensors", uid, grants_disp, folder="checkpoints")
+		== "other-user/shared.safetensors",
+		"shared flat name maps to other user's storage path",
+	)
+	prompt = {
+		"1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "dream.safetensors"}}
+	}
+	display.rewrite_prompt_model_names(prompt, uid, grants_disp)
+	ok(
+		prompt["1"]["inputs"]["ckpt_name"] == storage,
+		"prompt rewrite maps flat loader name to storage",
+	)
+	legacy_prompt = {
+		"1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": storage}}
+	}
+	display.rewrite_prompt_model_names(legacy_prompt, uid, grants_disp)
+	ok(
+		legacy_prompt["1"]["inputs"]["ckpt_name"] == storage,
+		"prompt rewrite leaves legacy prefixed names unchanged",
+	)
+
+	_install_fake_constants(enabled=False)
+	display_off = _load_module(
+		"mss_login.utils.model_path_display_off",
+		os.path.join(_UTILS_DIR, "model_path_display.py"),
+		"mss_login.utils",
+	)
+	ok(
+		display_off.to_display_name(storage, uid, view_all=False, grants=grants_disp) == storage,
+		"isolation off: display names unchanged",
+	)
+
 	print("TestModelFilterPathNormalizeAndObjectInfo")
+	_install_fake_constants(enabled=True)
 	# Stub folder_paths so middleware module can import
 	fp = types.ModuleType("folder_paths")
 	fp.folder_names_and_paths = {"checkpoints": ([], {".safetensors"})}
@@ -226,6 +312,10 @@ def run_tests():
 		class StreamResponse:
 			pass
 
+		class HTTPFound(Exception):
+			def __init__(self, location):
+				self.location = location
+
 	aiohttp_mod.web = _Web
 	sys.modules["aiohttp"] = aiohttp_mod
 	# path_safety is required by middleware
@@ -233,6 +323,7 @@ def run_tests():
 		"mss_login.utils.path_safety", os.path.join(_UTILS_DIR, "path_safety.py"), "mss_login.utils"
 	)
 	sys.modules["mss_login.utils.model_visibility_policy"] = policy_on
+	sys.modules["mss_login.utils.model_path_display"] = display
 	mw = _load_module(
 		"mss_login.utils.model_filter_middleware",
 		os.path.join(_UTILS_DIR, "model_filter_middleware.py"),
