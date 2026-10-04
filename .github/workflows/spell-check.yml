@@ -3,39 +3,34 @@
 name: Spell check
 
 on:
-    push:
-        branches: [development, production]
-    pull_request:
-        branches: [development, production]
+  push:
+    branches: [development, production]
+  pull_request:
+    branches: [development, production]
 
 jobs:
-    codespell:
-        name: Codespell
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v7
-            - name: Setup Pnpm
-              uses: pnpm/action-setup@v6
-              with:
-                version: latest
-                cache: true                  
-            - name: Install cSpell
-              run: pnpm add -g cspell@latest
-            - name: Run cSpell
-              run: cspell --config .vscode/cspell.json "**/*"
-
-    ntfy-notification:
-      name: Notify on MSS-Login Spell Check Results
-      needs: [codespell]
-      if: always()
-      uses: ./.github/workflows/ntfy-notify-reusable.yml
-      with:
-        title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Spell Check — Passed' || 'MSS-Login Spell Check — Issues found' }}
-        message: |
-          === Codespell ===
-          Result: ${{ needs.codespell.result }}
-        priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
-        tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,abc' || 'warning,abc' }}
-        ref_name: ${{ github.ref_name }}
-      secrets: inherit
+  codespell:
+    name: Codespell
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: streetsidesoftware/cspell-action@v9
+        with:
+          config: .vscode
+          use_cspell_files: true
+  ntfy-notification:
+    name: Notify on Spell Check Results
+    needs: [codespell]
+    if: always()
+    uses: ./.github/workflows/ntfy-notify-reusable.yml
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Spell Check — Passed' || 'MSS-Login Spell Check — Issues found' }}
+      message: |
+        === Codespell ===
+        Result: ${{ needs.codespell.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,abc' || 'warning,abc' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

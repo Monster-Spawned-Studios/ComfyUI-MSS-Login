@@ -4,7 +4,7 @@ ComfyUI/
 .env
 .env.*
 !.env.example
-mss_login.log
+*.log
 logs/
 __pycache__/
 # Ephemeral SECRET_KEY used when env unset; deleted after migration to permanent key
@@ -103,7 +103,6 @@ web/frontend/package-lock.json
 
 # Compressed node file:
 node.zip
-
 
 # Cursor files:
 .cursor/

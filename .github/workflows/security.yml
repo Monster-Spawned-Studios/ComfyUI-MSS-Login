@@ -68,9 +68,9 @@ jobs:
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.6.0
     with:
       scan-args: |-
+        scan
         --recursive
-        --skip-git
-        ./
+        .
 
   ntfy-notification:
     name: Notify on Security Scan Results

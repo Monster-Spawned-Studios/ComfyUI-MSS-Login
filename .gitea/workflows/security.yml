@@ -71,7 +71,7 @@ jobs:
       - name: Install OSV-Scanner
         run: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
       - name: Run OSV-Scanner
-        run: osv-scanner --recursive --skip-git .
+        run: osv-scanner scan --recursive .
 
   ntfy-notification:
     name: Notify on Security Scan Results

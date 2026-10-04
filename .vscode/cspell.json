@@ -11,7 +11,22 @@
     "node": ">=22.0.0"
   },
   "minWordLength": 4,
-  "ignorePaths": [".git", ".venv", "tests", "web/dist/*", "web/frontend/*"],
+  "ignorePaths": [
+    ".git",
+    ".github",
+    ".gitea",
+    ".vscode",
+    ".cursor",
+    ".venv",
+    "**/__pycache__/**",
+    "**/node_modules/**",
+    ".pnpm-store/**",
+    ".ruff_cache/**",
+    "_planning/**",
+    "tests",
+    "web/dist/*",
+    "web/frontend/*"
+  ],
   "dictionaries": [
     "en-GB",
     "en_US",
@@ -38,8 +53,13 @@
     }
   ],
   "maxDuplicateProblems": 5,
-  "maxNumberOfProblems": 100,
+  "maxNumberOfProblems": 250,
   "suggestionNumChanges": 3,
   "numSuggestions": 10,
-  "reporters": ["default"]
+  "minRandomLength": 5,
+  "reporters": [
+    "default",
+    ["@cspell/cspell-reporter-json", { "outFile": "spell-check-results.json" }]
+  ],
+  "files": ["**/*"]
 }
