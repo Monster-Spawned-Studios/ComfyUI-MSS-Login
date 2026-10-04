@@ -85,9 +85,11 @@ from .utils.model_download_redirect import (
 )
 from .utils.model_filter_middleware import create_model_filter_middleware
 from .utils.model_isolation import isolation_models_base
+from .utils.model_path_display import rewrite_prompt_model_names
 from .utils.model_visibility_policy import (
 	allowed_set_from_grants,
 	get_effective_model_grants_for_user,
+	get_user_id_for_username,
 	user_can_download_models,
 	user_can_view_all_models,
 )
@@ -266,6 +268,7 @@ async def workflow_interceptor_middleware(request, handler):
 	if path in ("/prompt", "/api/prompt") and method in ("POST", "PUT"):
 		body_bytes = await request.read()
 		prompt_to_validate = None
+		data = None
 		try:
 			data = json.loads(body_bytes) if body_bytes else {}
 			# ComfyUI accepts either the graph directly or { "prompt": graph, "client_id": ... }
@@ -278,24 +281,45 @@ async def workflow_interceptor_middleware(request, handler):
 		if prompt_to_validate is not None:
 			role, perms, username_for_perm = access_control._get_user_role_and_permissions(request)
 			can_view_all = user_can_view_all_models(role, perms)
-			if not can_view_all:
-				grants = get_effective_model_grants_for_user(
-					role=role,
-					perms=perms,
-					username=username_for_perm,
-					users_db=access_control.users_db,
-					shared_items_store_getter=get_shared_items_store,
-					users_db_config=USERS_DB_CONFIG,
+			grants = get_effective_model_grants_for_user(
+				role=role,
+				perms=perms,
+				username=username_for_perm,
+				users_db=access_control.users_db,
+				shared_items_store_getter=get_shared_items_store,
+				users_db_config=USERS_DB_CONFIG,
+			)
+			user_id = get_user_id_for_username(access_control.users_db, username_for_perm)
+			known_models = set()
+			try:
+				cache = get_model_cache(USERS_DB_CONFIG)
+				for folder in cache.list_folders():
+					for item in cache.list_items(folder):
+						known_models.add((folder, item))
+			except Exception:
+				pass
+			# Flattened UI names → storage paths before ComfyUI resolves files
+			if experimental_model_isolation_enabled():
+				rewrite_prompt_model_names(
+					prompt_to_validate,
+					user_id,
+					grants,
+					known_models=known_models if known_models else None,
 				)
-				allowed_set = allowed_set_from_grants(grants)
-				known_models = set()
 				try:
-					cache = get_model_cache(USERS_DB_CONFIG)
-					for folder in cache.list_folders():
-						for item in cache.list_items(folder):
-							known_models.add((folder, item))
+					if (
+						isinstance(data, dict)
+						and "prompt" in data
+						and isinstance(data["prompt"], dict)
+					):
+						data["prompt"] = prompt_to_validate
+					elif isinstance(data, dict):
+						data = prompt_to_validate
+					body_bytes = json.dumps(data).encode("utf-8")
 				except Exception:
 					pass
+			if not can_view_all:
+				allowed_set = allowed_set_from_grants(grants)
 				valid, err_msg = validate_prompt_models(
 					allowed_set,
 					allow_all=False,
