@@ -44,7 +44,7 @@ _COLUMNS = (
 
 def _get_sqlite_store(
 	db_path: str, secret_key: str = "", encryption_level: str = ""
-) -> "_SqliteHistoryStore":
+) -> _SqliteHistoryStore:
 	from .sqlite_connection import open_sqlite
 
 	path = Path(db_path)
@@ -85,12 +85,8 @@ def _get_sqlite_store(
         """
 	)
 	_ensure_columns_sqlite(conn)
-	conn.execute(
-		f"CREATE INDEX IF NOT EXISTS idx_{TABLE}_user ON {TABLE}(user_id, created_at)"
-	)
-	conn.execute(
-		f"CREATE INDEX IF NOT EXISTS idx_{TABLE}_status ON {TABLE}(status, updated_at)"
-	)
+	conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE}_user ON {TABLE}(user_id, created_at)")
+	conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{TABLE}_status ON {TABLE}(status, updated_at)")
 	conn.commit()
 	return _SqliteHistoryStore(conn)
 
@@ -216,8 +212,7 @@ class _SqliteHistoryStore:
 
 	def get(self, job_id: str) -> dict[str, Any] | None:
 		cur = self._conn.execute(
-			f"SELECT {', '.join(_COLUMNS)} FROM {TABLE} WHERE job_id = ?",
-			((job_id or "").strip(),),
+			f"SELECT {', '.join(_COLUMNS)} FROM {TABLE} WHERE job_id = ?", ((job_id or "").strip(),)
 		)
 		row = cur.fetchone()
 		return _row_to_dict(row)
@@ -235,7 +230,7 @@ class _SqliteHistoryStore:
 			if status:
 				cur = self._conn.execute(
 					f"""
-                    SELECT {', '.join(_COLUMNS)} FROM {TABLE}
+                    SELECT {", ".join(_COLUMNS)} FROM {TABLE}
                     WHERE status = ?
                     ORDER BY created_at DESC LIMIT ?
                     """,
@@ -244,7 +239,7 @@ class _SqliteHistoryStore:
 			else:
 				cur = self._conn.execute(
 					f"""
-                    SELECT {', '.join(_COLUMNS)} FROM {TABLE}
+                    SELECT {", ".join(_COLUMNS)} FROM {TABLE}
                     ORDER BY created_at DESC LIMIT ?
                     """,
 					(lim,),
@@ -254,7 +249,7 @@ class _SqliteHistoryStore:
 			if status:
 				cur = self._conn.execute(
 					f"""
-                    SELECT {', '.join(_COLUMNS)} FROM {TABLE}
+                    SELECT {", ".join(_COLUMNS)} FROM {TABLE}
                     WHERE user_id = ? AND status = ?
                     ORDER BY created_at DESC LIMIT ?
                     """,
@@ -263,7 +258,7 @@ class _SqliteHistoryStore:
 			else:
 				cur = self._conn.execute(
 					f"""
-                    SELECT {', '.join(_COLUMNS)} FROM {TABLE}
+                    SELECT {", ".join(_COLUMNS)} FROM {TABLE}
                     WHERE user_id = ?
                     ORDER BY created_at DESC LIMIT ?
                     """,
@@ -277,7 +272,7 @@ class _SqliteHistoryStore:
 		if user_id:
 			cur = self._conn.execute(
 				f"""
-                SELECT {', '.join(_COLUMNS)} FROM {TABLE}
+                SELECT {", ".join(_COLUMNS)} FROM {TABLE}
                 WHERE user_id = ? AND status IN ({placeholders})
                 ORDER BY updated_at DESC
                 """,
@@ -286,7 +281,7 @@ class _SqliteHistoryStore:
 		else:
 			cur = self._conn.execute(
 				f"""
-                SELECT {', '.join(_COLUMNS)} FROM {TABLE}
+                SELECT {", ".join(_COLUMNS)} FROM {TABLE}
                 WHERE status IN ({placeholders})
                 ORDER BY updated_at DESC
                 """,
@@ -330,7 +325,9 @@ def reset_model_download_history_store() -> None:
 	_store = None
 
 
-def extract_civitai_metadata(model_payload: dict | None, version_payload: dict | None = None) -> dict[str, Any]:
+def extract_civitai_metadata(
+	model_payload: dict | None, version_payload: dict | None = None
+) -> dict[str, Any]:
 	"""Normalize description + trainedWords from CivitAI model/version JSON."""
 	description = ""
 	triggers: list[str] = []

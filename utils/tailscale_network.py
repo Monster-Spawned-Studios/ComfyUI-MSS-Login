@@ -15,18 +15,10 @@ from typing import Any, Optional
 from aiohttp import web
 
 try:
-	from ..constants import (
-		DEFAULT_LOCAL_PRIVATE_CIDRS,
-		LOCAL_NETWORK_CIDRS,
-		TAILSCALE_CIDRS,
-	)
+	from ..constants import DEFAULT_LOCAL_PRIVATE_CIDRS, LOCAL_NETWORK_CIDRS, TAILSCALE_CIDRS
 except (ImportError, ValueError):
 	try:
-		from constants import (
-			DEFAULT_LOCAL_PRIVATE_CIDRS,
-			LOCAL_NETWORK_CIDRS,
-			TAILSCALE_CIDRS,
-		)
+		from constants import DEFAULT_LOCAL_PRIVATE_CIDRS, LOCAL_NETWORK_CIDRS, TAILSCALE_CIDRS
 	except (ImportError, ValueError):
 		from mss_login.constants import (
 			DEFAULT_LOCAL_PRIVATE_CIDRS,
@@ -43,7 +35,7 @@ except (ImportError, ValueError):
 		from mss_login.utils.ip_filter import get_ip
 
 
-def _parse_ip(ip_str: str) -> Optional[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+def _parse_ip(ip_str: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
 	"""Safely parse an IP address string. Return None if invalid."""
 	if not ip_str or not isinstance(ip_str, str):
 		return None
@@ -72,7 +64,7 @@ def is_ip_in_cidrs(ip_str: str, cidr_list: list[str]) -> bool:
 	return False
 
 
-def get_all_trusted_cidrs(custom_cidrs: Optional[list[str]] = None) -> list[str]:
+def get_all_trusted_cidrs(custom_cidrs: list[str] | None = None) -> list[str]:
 	"""Return the combined list of default Tailscale, local private, and custom CIDRs."""
 	combined = list(TAILSCALE_CIDRS) + list(DEFAULT_LOCAL_PRIVATE_CIDRS)
 	if custom_cidrs:
@@ -82,7 +74,7 @@ def get_all_trusted_cidrs(custom_cidrs: Optional[list[str]] = None) -> list[str]
 	return combined
 
 
-def classify_ip(ip_str: str, custom_cidrs: Optional[list[str]] = None) -> str:
+def classify_ip(ip_str: str, custom_cidrs: list[str] | None = None) -> str:
 	"""
 	Classify an IP address as 'tailscale', 'local', or 'remote'.
 	"""
@@ -108,7 +100,7 @@ def classify_ip(ip_str: str, custom_cidrs: Optional[list[str]] = None) -> str:
 
 
 def is_trusted_tailscale_or_local(
-	request: web.Request, custom_cidrs: Optional[list[str]] = None
+	request: web.Request, custom_cidrs: list[str] | None = None
 ) -> bool:
 	"""
 	Strictly verify that an incoming request originates from Tailscale or a local network.
@@ -153,7 +145,7 @@ def is_trusted_tailscale_or_local(
 
 
 def detect_network_info(
-	request: web.Request, custom_cidrs: Optional[list[str]] = None
+	request: web.Request, custom_cidrs: list[str] | None = None
 ) -> dict[str, Any]:
 	"""Return diagnostic network info for the current request."""
 	trusted = is_trusted_tailscale_or_local(request, custom_cidrs)
@@ -169,7 +161,7 @@ def detect_network_info(
 
 
 def user_can_login_locally_without_auth(
-	username: str, users_db: Any, groups_config: Optional[dict] = None
+	username: str, users_db: Any, groups_config: dict | None = None
 ) -> bool:
 	"""
 	Return True if username exists and possesses the 'can_login_locally_without_auth' permission.

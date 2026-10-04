@@ -32,9 +32,7 @@ PROTECTED_PACKAGES = {
 	"comfyui-frontend",
 }
 
-_REQ_REGEX = re.compile(
-	r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*([><=~^!].*?)?(\s*;.*)?$"
-)
+_REQ_REGEX = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*([><=~^!].*?)?(\s*;.*)?$")
 
 
 def canonicalize_pkg_name(name: str) -> str:
@@ -224,13 +222,15 @@ def scan_custom_nodes(custom_nodes_dir: str) -> list[dict]:
 			continue
 
 		sanitized, conflicts = sanitize_and_resolve_conflicts(unique_reqs)
-		discovered.append({
-			"node_name": entry,
-			"node_path": node_path,
-			"raw_requirements": unique_reqs,
-			"sanitized_requirements": sanitized,
-			"conflicts_resolved": conflicts,
-		})
+		discovered.append(
+			{
+				"node_name": entry,
+				"node_path": node_path,
+				"raw_requirements": unique_reqs,
+				"sanitized_requirements": sanitized,
+				"conflicts_resolved": conflicts,
+			}
+		)
 
 	return discovered
 
@@ -238,13 +238,7 @@ def scan_custom_nodes(custom_nodes_dir: str) -> list[dict]:
 def _run_cmd(cmd: list[str], timeout: int = 180) -> tuple[bool, str]:
 	"""Run command with timeout and return (success, output)."""
 	try:
-		proc = subprocess.run(
-			cmd,
-			capture_output=True,
-			text=True,
-			timeout=timeout,
-			check=False,
-		)
+		proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
 		out = (proc.stdout or "").strip()
 		err = (proc.stderr or "").strip()
 		combined = "\n".join(filter(None, [out, err]))
@@ -255,9 +249,7 @@ def _run_cmd(cmd: list[str], timeout: int = 180) -> tuple[bool, str]:
 		return False, f"Execution failed: {e}"
 
 
-def install_node_dependencies(
-	node_info: dict, dry_run: bool = False, timeout: int = 180
-) -> dict:
+def install_node_dependencies(node_info: dict, dry_run: bool = False, timeout: int = 180) -> dict:
 	"""Install sanitized requirements for a single custom node."""
 	node_name = node_info["node_name"]
 	reqs = node_info.get("sanitized_requirements", [])
@@ -340,9 +332,7 @@ def install_node_dependencies(
 
 
 def scan_and_install_node_dependencies(
-	custom_nodes_dir: str | None = None,
-	dry_run: bool = False,
-	timeout_per_node: int = 180,
+	custom_nodes_dir: str | None = None, dry_run: bool = False, timeout_per_node: int = 180
 ) -> dict:
 	"""
 	Main entrypoint: scan custom nodes directory, resolve conflicts, and install dependencies.
@@ -362,9 +352,7 @@ def scan_and_install_node_dependencies(
 	total_conflicts = 0
 
 	for node_info in nodes:
-		res = install_node_dependencies(
-			node_info, dry_run=dry_run, timeout=timeout_per_node
-		)
+		res = install_node_dependencies(node_info, dry_run=dry_run, timeout=timeout_per_node)
 		total_conflicts += len(node_info.get("conflicts_resolved", []))
 		results.append(res)
 
@@ -375,4 +363,6 @@ def scan_and_install_node_dependencies(
 		"conflicts_resolved_count": total_conflicts,
 		"results": results,
 	}
+
+
 # --- END OF FILE utils/node_deps_installer.py ---

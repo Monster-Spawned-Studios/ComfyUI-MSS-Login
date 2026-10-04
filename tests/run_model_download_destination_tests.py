@@ -172,11 +172,12 @@ def run_tests():
 			f,
 		)
 	s3m = _load_module(
-		"mss_login.utils.s3_mounter",
-		os.path.join(_UTILS_DIR, "s3_mounter.py"),
-		"mss_login.utils",
+		"mss_login.utils.s3_mounter", os.path.join(_UTILS_DIR, "s3_mounter.py"), "mss_login.utils"
 	)
-	ok(s3m.get_s3_provider_type("https://s3.us-west-004.backblazeb2.com") == "backblaze", "B2 detected")
+	ok(
+		s3m.get_s3_provider_type("https://s3.us-west-004.backblazeb2.com") == "backblaze",
+		"B2 detected",
+	)
 	cfg = s3m._load_runtime_config()
 	ok(cfg["mount"]["use_path_style"] is True, "B2 defaults use_path_style true when unset")
 

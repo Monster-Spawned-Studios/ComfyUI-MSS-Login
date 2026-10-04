@@ -18,26 +18,17 @@ from __future__ import annotations
 import re
 
 # Regex patterns for sensitive data redaction
-_JWT_PATTERN = re.compile(
-	r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9._-]{10,}\.[A-Za-z0-9._-]+\b"
-)
+_JWT_PATTERN = re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9._-]{10,}\.[A-Za-z0-9._-]+\b")
 
-_BEARER_PATTERN = re.compile(
-	r"\bBearer\s+[A-Za-z0-9._~+/-]{12,}=*",
-	re.IGNORECASE,
-)
+_BEARER_PATTERN = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/-]{12,}=*", re.IGNORECASE)
 
 _ARGON2_PATTERN = re.compile(
 	r"\$argon2[a-z0-9]*\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+"
 )
 
-_BCRYPT_PATTERN = re.compile(
-	r"\$2[aby]?\$\d{2}\$[A-Za-z0-9./]{53}"
-)
+_BCRYPT_PATTERN = re.compile(r"\$2[aby]?\$\d{2}\$[A-Za-z0-9./]{53}")
 
-_AWS_ACCESS_KEY_PATTERN = re.compile(
-	r"\b(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b"
-)
+_AWS_ACCESS_KEY_PATTERN = re.compile(r"\b(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b")
 
 _SQLCIPHER_PRAGMA_PATTERN = re.compile(
 	r"""(?i)PRAGMA\s+key\s*=\s*(?:'[^']*'|"[^"]*"|x'[0-9a-fA-F]+')"""
@@ -50,15 +41,9 @@ _JSON_SECRET_PATTERN = re.compile(
 )
 
 # Header patterns
-_AUTH_HEADER_PATTERN = re.compile(
-	r"(?i)^(Authorization:\s*)[^\r\n]+",
-	re.MULTILINE,
-)
+_AUTH_HEADER_PATTERN = re.compile(r"(?i)^(Authorization:\s*)[^\r\n]+", re.MULTILINE)
 
-_COOKIE_HEADER_PATTERN = re.compile(
-	r"(?i)^((?:Set-)?Cookie:\s*)[^\r\n]+",
-	re.MULTILINE,
-)
+_COOKIE_HEADER_PATTERN = re.compile(r"(?i)^((?:Set-)?Cookie:\s*)[^\r\n]+", re.MULTILINE)
 
 # IPv4 pattern (excluding 127.0.0.1 and 0.0.0.0)
 _IPV4_PATTERN = re.compile(
@@ -66,9 +51,7 @@ _IPV4_PATTERN = re.compile(
 )
 
 # IPv6 pattern (excluding ::1)
-_IPV6_PATTERN = re.compile(
-	r"\b(?!(?:::1)\b)(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b"
-)
+_IPV6_PATTERN = re.compile(r"\b(?!(?:::1)\b)(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}\b")
 
 
 def redact_log_text(text: str) -> str:
@@ -89,9 +72,7 @@ def redact_log_text(text: str) -> str:
 	redacted = _COOKIE_HEADER_PATTERN.sub(r"\1[REDACTED]", redacted)
 
 	# Redact SQLCipher PRAGMA keys
-	redacted = _SQLCIPHER_PRAGMA_PATTERN.sub(
-		"PRAGMA key = '[REDACTED_SQLCIPHER_KEY]'", redacted
-	)
+	redacted = _SQLCIPHER_PRAGMA_PATTERN.sub("PRAGMA key = '[REDACTED_SQLCIPHER_KEY]'", redacted)
 
 	# Redact Hashes
 	redacted = _ARGON2_PATTERN.sub("[REDACTED_ARGON2_HASH]", redacted)
@@ -109,4 +90,6 @@ def redact_log_text(text: str) -> str:
 	redacted = _IPV6_PATTERN.sub("[REDACTED_IPV6]", redacted)
 
 	return redacted
+
+
 # --- END OF FILE utils/log_redactor.py ---
