@@ -1,0 +1,73 @@
+name: Config / setup help
+description: Questions about installation, configuration, or troubleshooting
+title: "[Config] "
+labels: ["question", "documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use the fields below so maintainers get structured details — do not replace this form with a free-form Markdown dump.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What you’re trying to do
+      description: Brief description of your goal.
+      placeholder: e.g. Use API tokens with Comfy Portal, Restrict Guest to view-only, Run behind reverse proxy
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you’ve tried
+      description: Steps taken, relevant config (redact secrets), and any error messages or log lines.
+    validations:
+      required: true
+  - type: input
+    id: comfyui_version
+    attributes:
+      label: ComfyUI version
+      description: If known.
+    validations:
+      required: false
+  - type: input
+    id: mss_login_version
+    attributes:
+      label: mss-login version
+      description: From pyproject.toml or UI.
+    validations:
+      required: true
+  - type: input
+    id: os_install
+    attributes:
+      label: OS and install type
+      placeholder: e.g. Windows portable, Docker, comfy-cli
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - SQLite
+        - PostgreSQL
+        - Unknown
+    validations:
+      required: true
+  - type: checkboxes
+    id: docs_checked
+    attributes:
+      label: Documentation checked
+      description: Confirm what you already looked at.
+      options:
+        - label: README and Troubleshooting section
+        - label: Wiki / docs (include the link in Additional context if helpful)
+        - label: Existing issues (searched for similar questions)
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Your specific question or what’s still unclear after reading the docs.
+    validations:
+      required: true

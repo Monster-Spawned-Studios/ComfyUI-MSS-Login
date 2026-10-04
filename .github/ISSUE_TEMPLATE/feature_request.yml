@@ -1,0 +1,70 @@
+name: Feature request
+description: Suggest a new feature or improvement for the MSS-Login ComfyUI node
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem and proposed solution in the fields below — do not replace this form with a free-form Markdown dump.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What problem would this solve, or what workflow would it improve?
+      placeholder: e.g. As a Power user I want … / Currently there is no way to …
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed solution
+      description: A clear description of the feature or change you’d like.
+    validations:
+      required: true
+  - type: checkboxes
+    id: area
+    attributes:
+      label: Area
+      description: Select every area that applies.
+      options:
+        - label: Auth (login, MFA, API tokens, sessions)
+        - label: RBAC / permissions / roles
+        - label: UI enforcement / settings panel
+        - label: User environment / per-user folders
+        - label: IP filtering
+        - label: NSFW Guard / gallery
+        - label: Extension Tabs API / integration
+        - label: Performance or security
+        - label: Documentation
+        - label: Other (please explain in Additional context)
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches or workarounds you’ve thought about.
+    validations:
+      required: false
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Screenshots, mockups, or references to similar behavior (without copying proprietary design).
+    validations:
+      required: false
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact to the project
+      description: How will this impact the project? Will it help it, slow it down, or make it more unique?
+    validations:
+      required: false
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Additional required dependencies
+      description: Will this feature require new dependencies, and if so, which ones?
+    validations:
+      required: false
