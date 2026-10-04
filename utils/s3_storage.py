@@ -50,9 +50,4 @@ def reset_s3_client() -> None:
 	_s3_client = None
 
 
-__all__ = [
-	"S3StorageClient",
-	"get_s3_client",
-	"get_s3_provider_type",
-	"reset_s3_client",
-]
+__all__ = ["S3StorageClient", "get_s3_client", "get_s3_provider_type", "reset_s3_client"]

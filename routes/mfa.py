@@ -195,9 +195,7 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
 	resp = web.json_response(
 		{"message": "Login successful", "jwt_token": token, "redirect_url": redirect_url}
 	)
-	set_auth_cookie(
-		resp, token, secure=_secure, remember_me=remember_me, max_age_seconds=max_age
-	)
+	set_auth_cookie(resp, token, secure=_secure, remember_me=remember_me, max_age_seconds=max_age)
 	return resp
 
 

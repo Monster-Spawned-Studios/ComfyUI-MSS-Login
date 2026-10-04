@@ -181,40 +181,31 @@ class TestAntiSpoofingNetworkGuards(unittest.TestCase):
 	def test_remote_attacker_spoofing_x_forwarded_for(self):
 		"""Attacker connecting directly from public IP with fake X-Forwarded-For MUST BE REJECTED."""
 		req = _DummyRequest(
-			remote="203.0.113.88",
-			headers={"X-Forwarded-For": "100.64.0.1, 192.168.1.1"},
+			remote="203.0.113.88", headers={"X-Forwarded-For": "100.64.0.1, 192.168.1.1"}
 		)
 		self.assertFalse(is_trusted_tailscale_or_local(req))
 
 	def test_remote_attacker_spoofing_cf_connecting_ip(self):
 		"""Attacker connecting directly from public IP with fake CF-Connecting-IP MUST BE REJECTED."""
-		req = _DummyRequest(
-			remote="203.0.113.88",
-			headers={"CF-Connecting-IP": "100.64.0.1"},
-		)
+		req = _DummyRequest(remote="203.0.113.88", headers={"CF-Connecting-IP": "100.64.0.1"})
 		self.assertFalse(is_trusted_tailscale_or_local(req))
 
 	def test_cloudflare_tunnel_proxying_remote_client(self):
 		"""Local cloudflared tunnel on 127.0.0.1 with public CF-Connecting-IP MUST BE REJECTED."""
-		req = _DummyRequest(
-			remote="127.0.0.1",
-			headers={"CF-Connecting-IP": "203.0.113.88"},
-		)
+		req = _DummyRequest(remote="127.0.0.1", headers={"CF-Connecting-IP": "203.0.113.88"})
 		self.assertFalse(is_trusted_tailscale_or_local(req))
 
 	def test_local_proxy_with_remote_client_in_forwarded_for(self):
 		"""Local reverse proxy forwarding an external client MUST BE REJECTED."""
 		req = _DummyRequest(
-			remote="127.0.0.1",
-			headers={"X-Forwarded-For": "203.0.113.88, 127.0.0.1"},
+			remote="127.0.0.1", headers={"X-Forwarded-For": "203.0.113.88, 127.0.0.1"}
 		)
 		self.assertFalse(is_trusted_tailscale_or_local(req))
 
 	def test_tailscale_serve_local_proxy_with_tailscale_client(self):
 		"""Tailscale Serve running on 127.0.0.1 forwarding a Tailscale client MUST BE ACCEPTED."""
 		req = _DummyRequest(
-			remote="127.0.0.1",
-			headers={"X-Forwarded-For": "100.64.15.2, 127.0.0.1"},
+			remote="127.0.0.1", headers={"X-Forwarded-For": "100.64.15.2, 127.0.0.1"}
 		)
 		self.assertTrue(is_trusted_tailscale_or_local(req))
 		info = detect_network_info(req)
@@ -242,7 +233,9 @@ class TestLocalLoginPermissions(unittest.TestCase):
 		self.assertTrue(user_can_login_locally_without_auth("sysadmin", self.db, self.groups_cfg))
 
 	def test_user_default_denied(self):
-		self.assertFalse(user_can_login_locally_without_auth("regularuser", self.db, self.groups_cfg))
+		self.assertFalse(
+			user_can_login_locally_without_auth("regularuser", self.db, self.groups_cfg)
+		)
 
 	def test_guest_default_denied(self):
 		self.assertFalse(user_can_login_locally_without_auth("guest", self.db, self.groups_cfg))
@@ -253,7 +246,9 @@ class TestLocalLoginPermissions(unittest.TestCase):
 		self.assertTrue(user_can_login_locally_without_auth("poweruser", self.db, custom_cfg))
 
 	def test_unknown_user_denied(self):
-		self.assertFalse(user_can_login_locally_without_auth("nonexistent", self.db, self.groups_cfg))
+		self.assertFalse(
+			user_can_login_locally_without_auth("nonexistent", self.db, self.groups_cfg)
+		)
 
 
 class _DummyLogger:

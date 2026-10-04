@@ -206,7 +206,16 @@ def run_tests():
 		# Migration: plaintext config token -> encrypted DB
 		_app_settings.clear()
 		with open(config_path, "w", encoding="utf-8") as f:
-			json.dump({"ntfy": {"topic": "t", "api_token": "legacy-plain", "base_url": "https://ntfy.sh"}}, f)
+			json.dump(
+				{
+					"ntfy": {
+						"topic": "t",
+						"api_token": "legacy-plain",
+						"base_url": "https://ntfy.sh",
+					}
+				},
+				f,
+			)
 		ok(ntfy_notifier.migrate_ntfy_token_from_config() is True, "plaintext ntfy token migrates")
 		with open(config_path, "r", encoding="utf-8") as f:
 			after = json.load(f)

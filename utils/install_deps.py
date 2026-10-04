@@ -80,7 +80,10 @@ _UNSET = object()
 
 
 def detect_torch_install_plan(
-	*, system: str | None = None, cuda_major: int | None | object = _UNSET, env: dict[str, str] | None = None
+	*,
+	system: str | None = None,
+	cuda_major: int | None | object = _UNSET,
+	env: dict[str, str] | None = None,
 ) -> dict[str, str | None]:
 	"""Choose the PyTorch backend for this host.
 
@@ -182,9 +185,9 @@ def _log(message: str, *, error: bool = False) -> None:
 def _is_torch_installed() -> bool:
 	"""Check if torch, torchvision, and torchaudio are already installed and importable."""
 	try:
-		import torch  # noqa: F401
-		import torchvision  # noqa: F401
-		import torchaudio  # noqa: F401
+		import torch
+		import torchaudio
+		import torchvision
 
 		return True
 	except Exception:

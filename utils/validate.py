@@ -7,17 +7,7 @@ import re
 # - "admin", "administrator", "owner": built-in administrative roles/groups.
 # - "root", "system", "api": reserved system-level identifiers.
 RESERVED_USERNAMES = frozenset(
-	{
-		"guest",
-		"default",
-		"defaults",
-		"admin",
-		"administrator",
-		"owner",
-		"root",
-		"system",
-		"api",
-	}
+	{"guest", "default", "defaults", "admin", "administrator", "owner", "root", "system", "api"}
 )
 
 
