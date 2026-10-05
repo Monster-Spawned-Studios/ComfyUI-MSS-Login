@@ -547,6 +547,14 @@ watcher.register(app)
 
 install_node_interceptor()
 
+# Register isolation roots before cache refresh so existing UUID trees are indexed
+try:
+	from .utils.model_isolation import register_all_isolation_folders
+
+	register_all_isolation_folders()
+except Exception:
+	pass
+
 # Populate model cache on startup so GET /models can use it (best-effort)
 try:
 	from .utils.model_cache import get_model_cache

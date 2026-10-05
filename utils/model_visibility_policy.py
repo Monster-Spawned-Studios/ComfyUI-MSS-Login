@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from ..constants import experimental_model_isolation_enabled
+from .model_isolation import list_isolation_items_for_user
 
 
 def user_can_access_s3(role: str, perms: dict) -> bool:
@@ -113,6 +114,10 @@ def get_effective_model_grants_for_user(
 ) -> list[dict]:
 	"""
 	Return effective grants for a user after applying model isolation/S3 policy.
+
+	When isolation is on, union DB shared_items with files already on disk under
+	this user's isolation UUID folder so older downloads remain visible without
+	re-download or a forced shared_items migration.
 	"""
 	user_id = get_user_id_for_username(users_db, username)
 	if not user_id:
@@ -126,13 +131,33 @@ def get_effective_model_grants_for_user(
 
 	can_s3 = user_can_access_s3(role, perms)
 	normalized: list[dict] = []
+	seen: set[tuple[str, str]] = set()
 	for row in rows:
 		record = _normalized_record(row)
 		if not record["folder"] or not record["item_name"]:
 			continue
 		if not can_s3 and record["source_backend"] == "s3":
 			continue
+		key = (record["folder"], record["norm_item_name"])
+		if key in seen:
+			continue
+		seen.add(key)
 		normalized.append(record)
+
+	if experimental_model_isolation_enabled():
+		try:
+			disk_rows = list_isolation_items_for_user(user_id)
+		except Exception:
+			disk_rows = []
+		for row in disk_rows:
+			record = _normalized_record(row)
+			if not record["folder"] or not record["item_name"]:
+				continue
+			key = (record["folder"], record["norm_item_name"])
+			if key in seen:
+				continue
+			seen.add(key)
+			normalized.append(record)
 	return normalized
 
 
@@ -141,8 +166,22 @@ def allowed_set_from_grants(grants: list[dict]) -> set[tuple[str, str]]:
 	return {(g["folder"], g["item_name"]) for g in grants}
 
 
+def grant_matches_item(norm_item: str, allowed: set[str]) -> bool:
+	"""Dual-read: full storage path, or suffix after first segment, or flat grant."""
+	if norm_item in allowed:
+		return True
+	if "/" in norm_item:
+		suffix = norm_item.split("/", 1)[1]
+		if suffix in allowed:
+			return True
+	for grant_norm in allowed:
+		if "/" in grant_norm and grant_norm.split("/", 1)[1] == norm_item:
+			return True
+	return False
+
+
 def filter_items_by_grants(folder: str, item_names: list[str], grants: list[dict]) -> list[str]:
-	"""Return only the items granted for a folder."""
+	"""Return only the items granted for a folder (storage or flat dual-read)."""
 	folder_norm = (folder or "").strip()
 	if not folder_norm:
 		return []
@@ -153,4 +192,4 @@ def filter_items_by_grants(folder: str, item_names: list[str], grants: list[dict
 	}
 	if not allowed:
 		return []
-	return [item for item in item_names if normalize_model_name(item) in allowed]
+	return [item for item in item_names if grant_matches_item(normalize_model_name(item), allowed)]

@@ -170,6 +170,91 @@ def run_tests():
 	isolation_path = paths.isolation_user_folder("checkpoints", "alice").replace("\\", "/")
 	ok(isolation_path.endswith("checkpoints/alice"), "isolation folder path is per-user")
 
+	# Existing on-disk UUID tree: register + list without re-download
+	user_ckpt = paths.isolation_user_folder("checkpoints", "alice")
+	os.makedirs(user_ckpt, exist_ok=True)
+	existing_model = os.path.join(user_ckpt, "legacy_existing.safetensors")
+	with open(existing_model, "w", encoding="utf-8") as f:
+		f.write("x")
+	fp_reg = types.ModuleType("folder_paths")
+	fp_reg._added = []
+
+	def _add_model_folder_path(folder_type, root):
+		fp_reg._added.append((folder_type, root))
+
+	fp_reg.add_model_folder_path = _add_model_folder_path
+	sys.modules["folder_paths"] = fp_reg
+	registered = paths.register_all_isolation_folders()
+	ok("checkpoints" in registered, "startup registration includes checkpoints")
+	ok(
+		any(t == "checkpoints" for t, _r in fp_reg._added),
+		"checkpoints root registered with folder_paths",
+	)
+	disk_items = paths.list_isolation_items_for_user("alice")
+	ok(
+		any(
+			it.get("folder") == "checkpoints"
+			and it.get("item_name") == "alice/legacy_existing.safetensors"
+			for it in disk_items
+		),
+		"on-disk UUID file listed as storage-shaped grant",
+	)
+
+	# Union DB grants with disk via get_effective_model_grants_for_user
+	sys.modules["mss_login.utils.model_isolation"] = paths
+	policy_disk = _load_module(
+		"mss_login.utils.model_visibility_policy_disk",
+		os.path.join(_UTILS_DIR, "model_visibility_policy.py"),
+		"mss_login.utils",
+	)
+
+	class _FakeUsersDb:
+		def get_user(self, username=None, user_id=None):
+			if username == "alice":
+				return "alice", {"username": "alice"}
+			raise KeyError(username)
+
+	class _FakeStore:
+		def list_for_user(self, user_id):
+			return []  # no shared_items rows — disk-only legacy file
+
+	grants_disk = policy_disk.get_effective_model_grants_for_user(
+		role="user",
+		perms={},
+		username="alice",
+		users_db=_FakeUsersDb(),
+		shared_items_store_getter=lambda _cfg: _FakeStore(),
+		users_db_config={},
+	)
+	ok(
+		any(g.get("item_name") == "alice/legacy_existing.safetensors" for g in grants_disk),
+		"effective grants include on-disk isolation files without shared_items row",
+	)
+	ok(
+		policy_disk.grant_matches_item(
+			"alice/legacy_existing.safetensors", {"legacy_existing.safetensors"}
+		)
+		is True,
+		"grant dual-read matches storage item against flat grant",
+	)
+	ok(
+		policy_disk.filter_items_by_grants(
+			"checkpoints",
+			["alice/legacy_existing.safetensors", "other/x.safetensors"],
+			[
+				policy_disk._normalized_record(
+					{"folder": "checkpoints", "item_name": "alice/legacy_existing.safetensors"}
+				)
+			],
+		)
+		== ["alice/legacy_existing.safetensors"],
+		"filter_items_by_grants keeps storage-named isolation file",
+	)
+	try:
+		os.remove(existing_model)
+	except OSError:
+		pass
+
 	print("TestModelDownloadRedirect")
 	folder_paths_mod = types.ModuleType("folder_paths")
 	folder_paths_mod.models_dir = os.path.join(_PROJECT_ROOT, "ComfyUI", "models")

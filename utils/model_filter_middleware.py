@@ -37,6 +37,7 @@ from .model_visibility_policy import (
 	filter_items_by_grants,
 	get_effective_model_grants_for_user,
 	get_user_id_for_username,
+	grant_matches_item,
 	normalize_model_name,
 	user_can_access_s3,
 	user_can_view_all_models,
@@ -138,7 +139,7 @@ def _filter_object_info_combos(payload: Any, grants: list[dict]) -> Any:
 				if not all(isinstance(x, str) for x in combo):
 					continue
 				looks_like_models = any(
-					normalize_model_name(x) in all_allowed
+					grant_matches_item(normalize_model_name(x), all_allowed)
 					or any(
 						normalize_model_name(x).endswith(ext)
 						for ext in (".safetensors", ".ckpt", ".pt", ".pth", ".bin")
@@ -147,7 +148,9 @@ def _filter_object_info_combos(payload: Any, grants: list[dict]) -> Any:
 				)
 				if not looks_like_models:
 					continue
-				filtered = [x for x in combo if normalize_model_name(x) in all_allowed]
+				filtered = [
+					x for x in combo if grant_matches_item(normalize_model_name(x), all_allowed)
+				]
 				# Rebuild spec with filtered combo
 				new_spec = [filtered, *list(spec[1:])]
 				section_map[key] = new_spec
@@ -301,9 +304,9 @@ def create_model_filter_middleware(
 		for it in items:
 			if isinstance(it, dict):
 				n = it.get("name")
-				if isinstance(n, str) and normalize_model_name(n) in allowed:
+				if isinstance(n, str) and grant_matches_item(normalize_model_name(n), allowed):
 					out.append(it)
-			elif isinstance(it, str) and normalize_model_name(it) in allowed:
+			elif isinstance(it, str) and grant_matches_item(normalize_model_name(it), allowed):
 				out.append(it)
 		return _flatten_experiment_items(out, user_id, role, perms, grants)
 
