@@ -66,13 +66,15 @@ When editing this extension, maintain compatibility with:
 
 ### Do not auto-commit or auto-push
 
-Never `git commit` or `git push` unless the user explicitly asks to commit, push, or create a PR in that turn. Completing a task is not permission to publish. Leave local changes uncommitted and unpushed; summarize what changed and wait. If the user does ask to commit, follow the Commit signing section above.
+Follow [`.agents/rules/no-auto-commit.mdc`](.agents/rules/no-auto-commit.mdc) (always-on, agent-agnostic).
+
+Never `git commit` or `git push` unless the user gives **explicit** say-so either **in the instructions for this turn** or **after the changes are made** (for example: “commit this”, “push”, “open a PR”, or `/commit-multi-changes`). Completing a task, making CI green, or implied “ship it” language is **not** permission to publish. Leave local changes uncommitted and unpushed; summarize what changed and wait. If the user does ask to commit, follow the Commit signing section above. Never stage Cursor memory / local agent state (`.cursor/`, continual-learning hook indexes under `.cursor/hooks/state/`, transcript/store dumps)—keep them gitignored.
 
 For significant change sets (~500+ lines) or multi-topic dumps, invoke **`/commit-multi-changes`** and follow [`.agents/skills/commit-multi-changes/SKILL.md`](.agents/skills/commit-multi-changes/SKILL.md): propose a topic-scoped multi-stage commit plan, wait for approval, then commit sequentially. Do not push unless asked.
 
 ### Known caveats
 
-- Always use the `.venv` Python (`.venv/bin/python`) per `.agent/rules/python-venv.mdc`.
+- Always use the `.venv` Python (`.venv/bin/python`) per [`.agents/rules/python-venv.mdc`](.agents/rules/python-venv.mdc).
 - **Do not install or run ComfyUI** in the Cloud VM — it is unnecessary and wastes resources. All tests and lint work without it.
 
 ## Learned User Preferences
@@ -82,6 +84,8 @@ For significant change sets (~500+ lines) or multi-topic dumps, invoke **`/commi
 - Nested MSS-Login configuration pages should offer back navigation to the main MSS-Login config menu without closing and reopening the dialog.
 - For local ComfyUI debugging, support a manually specified test-instance path plus a toggleable auto-install when that path has no `main.py`.
 - Agent-agnostic project rules belong in `.agents/rules/` (cross-agent); keep AGENTS.md in sync when adding always-on rules.
+- Do not commit or push unless the user explicitly authorizes it in the turn’s instructions or after the changes are done; see [`.agents/rules/no-auto-commit.mdc`](.agents/rules/no-auto-commit.mdc).
+- Never commit Cursor memory / local agent state (`.cursor/`, continual-learning hook index files under `.cursor/hooks/state/`, transcript/store dumps); keep them gitignored and out of `git add`.
 - When asked to commit, split changes into small, digestible, topic-scoped commits rather than one large dump; leave push to the user after review unless they explicitly ask to push; when push is requested, push both `origin` and `gitea` when those remotes exist.
 - Only the owner (last-owner / admin-owner) may edit administrator group permissions; admins must not unlock that matrix for themselves.
 - Owner-only user registration belongs in the avatar menu and MSS-Login dialog (with role chosen at create time); do not force owners through a separate `/register` navigation for that flow.
@@ -102,5 +106,5 @@ For significant change sets (~500+ lines) or multi-topic dumps, invoke **`/commi
 - App-stored secrets (CivitAI, HuggingFace, ntfy, S3) are Fernet ciphertext in the owner-chosen users DB—not plaintext JSON; per-user CivitAI host preference (`civitai.com`/`civitai.red`) is non-secret prefs only; migrate secrets with dual-read, encrypt, round-trip verify, then clear legacy files.
 - Model isolation stores under `DATA_DIR/model_isolation/models/{folder_type}/{user_uuid}/…`; grants and downloads stay UUID-prefixed. List/`object_info` responses flatten via `utils/model_path_display.py` (rewrite flat names back on prompt/load; dual-read legacy prefixed paths). Downloads (MSS-Login and Civicomfy/Manager routes) require `can_download_models`; post-download ACL grants are file-narrow by default, not all-models. Isolation folder registration is lazy on download—existing UUID-tree files still need grants/`folder_paths` indexing to appear.
 - Experimental features (S3: AWS S3 and Backblaze B2; boto3 when FUSE is absent; B2 path-style; macOS best-effort; owner-only login background via `experimental.login_background` / `EXPERIMENTAL_LOGIN_BACKGROUND`; local media under `DATA_DIR`) are toggled from Security Policy Experimental Settings for permitted users; show a restart-required notice when a toggle needs a ComfyUI restart; document under `docs/experimental/` / MkDocs Experimental Settings.
-- Keep `.github` and `.gitea` workflows and issue templates mirrored; use YAML issue forms with required fields (not freeform Markdown templates), including `.gitea/ISSUE_TEMPLATE/config.yml`; end Actions with the reusable ntfy notification job (`if: always()`, `secrets: inherit`); install Gitleaks via `scripts/ci/install-gitleaks.sh` pinned release asset URL (avoid unauthenticated GitHub API latest on shared runners).
+- Keep `.github` and `.gitea` workflows and issue templates mirrored; use YAML issue forms with required fields (not freeform Markdown templates), including `.gitea/ISSUE_TEMPLATE/config.yml`; end Actions with the reusable ntfy notification job (`if: always()`, `secrets: inherit`); install Gitleaks via `scripts/ci/install-gitleaks.sh` pinned release asset URL (avoid unauthenticated GitHub API latest on shared runners). On Gitea, do not rely on `actions/upload-artifact` / `download-artifact` (unsupported or unreliable)—attach Spell check / Security reports to ntfy in-job (e.g. `scripts/ci/ntfy_publish.sh`). On GitHub, artifact upload is fine but needs `actions: write` under restricted tokens; ntfy may download those artifacts or fall back to text-only.
 - Comfy `WEB_DIRECTORY` is `web/comfyui` only (extension entry JS). Never put `web/frontend` / `node_modules` / `web/dist` under it — Comfy recursively preloads those as extensions (`node:path` CORS / vite preload spam). Dist is served at `/mss-login/dist`. Login CSP `connect-src` must include `HOST_BASE_URL` (and derived `wss://`) plus the request origin so reverse-proxy hosts work.

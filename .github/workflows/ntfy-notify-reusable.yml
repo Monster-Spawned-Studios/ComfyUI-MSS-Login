@@ -7,8 +7,9 @@
 #   NTFY_URL, NTFY_TOPIC; optional NTFY_TOKEN
 #
 # Optional attachment: upload an Actions artifact in a prior job, then pass
-# attachment_artifact. The notify job downloads it and PUTs the file to ntfy
-# (Filename + Message headers). Multi-file artifacts are zipped first.
+# attachment_artifact (exact name) and/or attachment_pattern (glob). The notify
+# job downloads it and PUTs the file to ntfy. Missing artifacts fall back to
+# text-only notify (never fails the notification job solely for that).
 name: Notify via ntfy
 
 on:
@@ -43,12 +44,17 @@ on:
         type: boolean
         default: true
       attachment_artifact:
-        description: "Optional Actions artifact name to download and attach"
+        description: "Exact Actions artifact name to download and attach"
+        required: false
+        type: string
+        default: ""
+      attachment_pattern:
+        description: "Optional artifact name glob (used when exact name is empty)"
         required: false
         type: string
         default: ""
       attachment_filename:
-        description: "Preferred filename when zipping multi-file artifacts"
+        description: "Preferred filename when zipping multi-file downloads"
         required: false
         type: string
         default: "ci-report.zip"
@@ -63,18 +69,34 @@ on:
         description: "Optional Bearer token for authenticated topics"
         required: false
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   notify:
     name: Send ntfy notification
     runs-on: ubuntu-latest
     steps:
-      - name: Download attachment artifact
+      - name: Download attachment artifact (by name)
+        id: download_named
         if: ${{ inputs.attachment_artifact != '' }}
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.attachment_artifact }}
           path: ntfy-attachment
+          merge-multiple: false
+
+      - name: Download attachment artifact (by pattern)
+        id: download_pattern
+        if: ${{ inputs.attachment_artifact == '' && inputs.attachment_pattern != '' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ inputs.attachment_pattern }}
+          path: ntfy-attachment
+          merge-multiple: true
 
       - name: Publish to ntfy
         env:
@@ -87,8 +109,10 @@ jobs:
           TAGS: ${{ inputs.tags }}
           REF_NAME: ${{ inputs.ref_name }}
           SKIP_IF_UNCONFIGURED: ${{ inputs.skip_if_unconfigured }}
-          WANT_ARTIFACT: ${{ inputs.attachment_artifact }}
+          WANT_ARTIFACT: ${{ inputs.attachment_artifact || inputs.attachment_pattern }}
           PREFERRED_ZIP_NAME: ${{ inputs.attachment_filename }}
+          DOWNLOAD_NAMED: ${{ steps.download_named.outcome }}
+          DOWNLOAD_PATTERN: ${{ steps.download_pattern.outcome }}
         shell: bash
         run: |
           set -euo pipefail
@@ -141,13 +165,25 @@ jobs:
 
           url="${NTFY_URL%/}/${NTFY_TOPIC}"
           if [ -n "${attachment}" ] && [ -f "${attachment}" ]; then
-            args+=(-H "Filename: ${attachment_name}" -H "Message: ${header_message}")
-            curl -fsS -X PUT "${args[@]}" -T "${attachment}" "${url}"
-            echo "ntfy notification sent with attachment: ${attachment_name}"
+            # ntfy PUT can fail on size limits; fall back to text-only.
+            set +e
+            curl -fsS -X PUT "${args[@]}" \
+              -H "Filename: ${attachment_name}" \
+              -H "Message: ${header_message}" \
+              -T "${attachment}" \
+              "${url}"
+            put_status=$?
+            set -e
+            if [ "$put_status" -eq 0 ]; then
+              echo "ntfy notification sent with attachment: ${attachment_name}"
+              exit 0
+            fi
+            echo "ntfy attachment upload failed (exit ${put_status}); sending text-only."
           else
             if [ -n "${WANT_ARTIFACT:-}" ]; then
-              echo "Attachment artifact missing or empty; sending text-only notification."
+              echo "Attachment unavailable (named=${DOWNLOAD_NAMED:-n/a} pattern=${DOWNLOAD_PATTERN:-n/a}); text-only."
             fi
-            curl -fsS "${args[@]}" -d "${body}" "${url}"
-            echo "ntfy notification sent."
           fi
+
+          curl -fsS "${args[@]}" -d "${body}" "${url}"
+          echo "ntfy notification sent."

@@ -98,9 +98,6 @@ $SystemVolumeInformation/
 *.orig
 *.rej
 
-# Snyk Security Extension - AI Rules (auto-generated)
-.cursor/rules/snyk_rules.mdc
-
 # Web frontend (Vite workspace; must stay outside WEB_DIRECTORY=web/comfyui):
 web/frontend/node_modules/
 web/frontend/dist/
@@ -109,8 +106,15 @@ web/frontend/package-lock.json
 # Compressed node file:
 node.zip
 
-# Cursor files:
+# Cursor local state / memory (never commit):
+# hooks, continual-learning index, rules cache, agent stores, etc.
 .cursor/
+.cursor/hooks/
+.cursor/hooks/state/
+.cursor/hooks/state/continual-learning*.json
+**/.cursor/hooks/state/**
+**/continual-learning-index.json
+**/continual-learning.json
 
 # PNPM Data
 .pnpm-store/

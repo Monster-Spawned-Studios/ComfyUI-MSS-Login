@@ -8,6 +8,11 @@ on:
   pull_request:
     branches: [development, production]
 
+# actions: write is required for actions/upload-artifact@v4 with a restricted token.
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   cspell:
     name: Spell check (cspell)
@@ -53,7 +58,6 @@ jobs:
             echo
           } > "${report}"
 
-          files_args=()
           if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
             git fetch origin "${GITHUB_BASE_REF}" --depth=1 || true
             mapfile -t changed < <(git diff --name-only --diff-filter=ACMRT "origin/${GITHUB_BASE_REF}...HEAD" 2>/dev/null || true)
@@ -78,23 +82,44 @@ jobs:
           echo >> "${report}"
           if [ "$status" -eq 0 ]; then
             echo "Result: PASS (no spelling issues)." | tee -a "${report}"
+            echo "outcome=success" >> "$GITHUB_OUTPUT"
           else
             echo "Result: ISSUES FOUND (exit ${status})." | tee -a "${report}"
+            echo "outcome=issues" >> "$GITHUB_OUTPUT"
           fi
-          echo "report_path=${report}" >> "$GITHUB_OUTPUT"
+          # Config/tool failures are hard errors; spelling findings stay soft.
           if [ "$status" -gt 1 ]; then
+            echo "outcome=failure" >> "$GITHUB_OUTPUT"
             exit "$status"
           fi
           exit 0
 
+      - name: Ensure report file exists
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          if [ ! -f ci-reports/cspell-report.txt ]; then
+            {
+              echo "MSS-Login cspell report"
+              echo "======================"
+              echo "Report missing: cspell step did not produce output."
+              echo "Job conclusion: ${{ job.status }}"
+            } > ci-reports/cspell-report.txt
+          fi
+
       - name: Upload cspell report
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: cspell-report
           path: ci-reports/cspell-report.txt
           if-no-files-found: warn
           retention-days: 14
+          overwrite: true
+          include-hidden-files: false
 
   ntfy-notification:
     name: Notify on Spell Check Results
@@ -106,7 +131,7 @@ jobs:
       message: |
         === Spell check (cspell) ===
         Result: ${{ needs.cspell.result }}
-        Report: attached cspell-report.txt
+        Report: attached cspell-report.txt (when artifact upload succeeded)
       priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
       tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,abc' || 'warning,abc' }}
       ref_name: ${{ github.ref_name }}
