@@ -6,6 +6,8 @@ comfyui
 cuda
 hashpw
 Krita
+libcuda
+nvcuda
 pycache
 rocm
 usera
