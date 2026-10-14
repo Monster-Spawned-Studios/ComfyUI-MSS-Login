@@ -1,0 +1,6 @@
+# OSV-Scanner configuration for MSS-Login CI.
+# Prefer scanning lockfiles (uv.lock / pnpm-lock.yaml); ignore known false positives.
+
+[[IgnoredVulns]]
+id = "CVE-2026-22777"
+reason = "Advisory targets ComfyUI-Manager CRLF config injection (fixed in Manager 3.39.2/4.0.5), misattributed to PyPI comfy-cli. comfy-cli latest on PyPI is 1.x; MSS-Login does not vendor ComfyUI-Manager. Aliases: PYSEC-2026-1260, GHSA-562r-8445-54r2."
