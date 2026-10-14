@@ -18,19 +18,24 @@ from ..constants import (
 from ..globals import jwt_auth, logger, routes, users_db
 from ..utils.folder_paths_compat import resolve_local_model_destination
 from ..utils.model_cache import ASSET_FOLDERS_FALLBACK, get_model_cache
+from ..utils.download_rate_limit import check_rate_limit
 from ..utils.model_download import (
 	ALLOWED_CIVITAI_HOSTS,
 	DEFAULT_CIVITAI_HOST,
+	check_disk_and_size,
 	civitai_get_model,
 	civitai_get_model_version,
 	civitai_search_models,
 	download_civitai_async,
 	download_huggingface,
+	extract_civitai_file_sha256,
+	file_already_complete,
 	get_civitai_host_preference,
 	list_huggingface_repo_files,
 	map_civitai_error_http_status,
 	normalize_civitai_host,
 	resolve_model_url,
+	sanitize_model_filename,
 	search_huggingface_models,
 	set_civitai_host_preference,
 )
@@ -40,6 +45,21 @@ from ..utils.model_download_history_store import (
 )
 from ..utils.model_isolation import sanitize_user_segment
 from ..utils.model_source_api_keys_store import SOURCES, get_model_source_api_keys_store
+from ..utils.model_download_errors import (
+	ALREADY_EXISTS,
+	AUTH_REQUIRED,
+	AUTH_REQUIRED_UPSTREAM,
+	CHECKSUM_MISMATCH,
+	DOWNLOAD_NOT_ALLOWED,
+	DOWNLOAD_NOT_ALLOWED_MESSAGE,
+	FILE_TOO_LARGE,
+	INSUFFICIENT_DISK,
+	INVALID_REQUEST,
+	INVALID_SOURCE,
+	NOT_FOUND,
+	RATE_LIMITED,
+	json_error,
+)
 from ..utils.model_visibility_policy import (
 	user_can_download_models,
 	user_can_manage_model_sharing,
@@ -113,12 +133,12 @@ def _download_auth_or_response(
 	"""Return (user_id, username, None) when authorized, or (None, None, error_response)."""
 	user_id, username = _current_user_id_and_username(request)
 	if not user_id:
-		return None, None, web.json_response({"error": "Authentication required"}, status=401)
+		return None, None, json_error(AUTH_REQUIRED, "Authentication required", 401)
 	if not _can_download_models(request):
-		return (
-			None,
-			None,
-			web.json_response({"error": "Model download permission required"}, status=403),
+		return None, None, json_error(DOWNLOAD_NOT_ALLOWED, DOWNLOAD_NOT_ALLOWED_MESSAGE, 403)
+	if not check_rate_limit(str(user_id)):
+		return None, None, json_error(
+			RATE_LIMITED, "Too many model-download requests; try again shortly", 429
 		)
 	return user_id, username, None
 
@@ -204,7 +224,29 @@ def _utc_now() -> str:
 	return datetime.now(UTC).isoformat()
 
 
+def _map_job_error_code(error: str) -> str:
+	text = (error or "").strip()
+	upper = text.upper()
+	for code in (
+		ALREADY_EXISTS,
+		CHECKSUM_MISMATCH,
+		INSUFFICIENT_DISK,
+		FILE_TOO_LARGE,
+		AUTH_REQUIRED_UPSTREAM,
+		INVALID_SOURCE,
+		NOT_FOUND,
+	):
+		if upper.startswith(code) or code in upper:
+			return code
+	if "401" in text or "token required" in text.lower():
+		return AUTH_REQUIRED_UPSTREAM
+	if "404" in text:
+		return NOT_FOUND
+	return ""
+
+
 def _job_public_view(job: dict) -> dict:
+	err = job.get("error", "") or ""
 	out = {
 		"job_id": job["job_id"],
 		"source": job.get("source"),
@@ -221,8 +263,9 @@ def _job_public_view(job: dict) -> dict:
 		"speed_bps": float(job.get("speed_bps", 0) or 0),
 		"eta_seconds": float(job.get("eta_seconds", 0) or 0),
 		"destination": job.get("destination", ""),
-		"error": job.get("error", ""),
-		"can_cancel": job.get("status") == "queued",
+		"error": err,
+		"error_code": _map_job_error_code(err),
+		"can_cancel": job.get("status") in ("queued", "running"),
 		"can_resume": job.get("status") in ("failed", "interrupted", "cancelled"),
 		"description": job.get("description") or "",
 		"trigger_words": job.get("trigger_words") or [],
@@ -283,7 +326,7 @@ def _persist_job_history(job: dict) -> None:
 
 
 async def _enrich_civitai_job_metadata(job: dict, token: str) -> None:
-	"""Fetch description / trainedWords for the job when possible."""
+	"""Fetch description / trainedWords / sha256 for the job when possible."""
 	if job.get("source") != "civitai":
 		return
 	host = job.get("civitai_host")
@@ -306,6 +349,29 @@ async def _enrich_civitai_job_metadata(job: dict, token: str) -> None:
 		job["model_version_id"] = meta["model_version_id"]
 	if meta.get("model_name"):
 		job["model_name"] = meta["model_name"]
+	# Prefer primary file hash / size for integrity and disk checks.
+	if isinstance(version_data, dict):
+		files = version_data.get("files") or []
+		chosen = None
+		for f in files:
+			if isinstance(f, dict) and f.get("primary"):
+				chosen = f
+				break
+		if chosen is None:
+			for f in files:
+				if isinstance(f, dict):
+					chosen = f
+					break
+		if chosen is not None:
+			sha = extract_civitai_file_sha256(chosen)
+			if sha:
+				job["expected_sha256"] = sha
+			size = chosen.get("sizeKB")
+			try:
+				if size is not None:
+					job["expected_bytes"] = int(float(size) * 1024)
+			except (TypeError, ValueError):
+				pass
 
 
 def _shape_civitai_model_for_ui(model: dict | None) -> dict:
@@ -555,11 +621,22 @@ async def _run_job(job_id: str) -> None:
 				host=job.get("civitai_host"),
 				resume=True,
 				preferred_filename=job.get("filename") or None,
+				expected_sha256=job.get("expected_sha256"),
+				expected_bytes=job.get("expected_bytes"),
 			)
 			if saved_rel:
 				job["saved_relpath"] = saved_rel
 				job["filename"] = os.path.basename(saved_rel)
 		else:
+			# Preflight disk / already-exists for HF when we know a basename.
+			hf_name = sanitize_model_filename(job.get("save_as") or job.get("filename") or "")
+			if hf_name:
+				candidate = os.path.join(dest_dir, hf_name)
+				if file_already_complete(candidate):
+					raise RuntimeError(ALREADY_EXISTS)
+				disk_err = check_disk_and_size(dest_dir, job.get("expected_bytes"))
+				if disk_err:
+					raise RuntimeError(disk_err)
 			progress_dict = {"bytes_done": 0, "total_bytes": None}
 			loop = asyncio.get_event_loop()
 
@@ -705,25 +782,27 @@ async def api_model_download_api_keys_put(request: web.Request) -> web.Response:
 		return web.json_response({"status": "ok", "source": source, "cleared": True})
 
 
-@routes.post("/mss-login/api/model-download/download")
-async def api_model_download_start(request: web.Request) -> web.Response:
-	"""Queue a model download job and return job id."""
-	user_id, username, err = _download_auth_or_response(request)
-	if err:
-		return err
-	role, perms, _role_username = _role_and_perms(request)
-	try:
-		body = await request.json()
-	except Exception as e:
-		return web.json_response({"error": f"Invalid JSON: {e}"}, status=400)
+async def enqueue_download_job(
+	user_id: str,
+	username: str | None,
+	role: str,
+	perms: dict,
+	body: dict,
+) -> tuple[str | None, dict | None]:
+	"""
+	Queue a download for an authenticated user (HTTP route or Comfy node).
 
-	# Optional pasted URL: SSRF-safe resolve into source identifiers (host allowlisted).
+	Returns (job_id, None) on success, or (None, error_payload) on failure.
+	error_payload is suitable for json_error / node exceptions: {error, message, code}.
+	"""
+	from ..utils.model_download_errors import error_payload
+
 	url_hint = None
 	pasted_url = (body.get("url") or body.get("model_url") or "").strip()
 	if pasted_url:
 		resolved = resolve_model_url(pasted_url)
 		if not resolved:
-			return web.json_response({"error": "Unrecognized or disallowed model URL"}, status=400)
+			return None, error_payload(INVALID_SOURCE, "Unrecognized or disallowed model URL")
 		body = {**body, **{k: v for k, v in resolved.items() if k != "host"}}
 		if resolved.get("source"):
 			body["source"] = resolved["source"]
@@ -733,37 +812,35 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 
 	source = (body.get("source") or "").strip().lower()
 	if source not in SOURCES:
-		return web.json_response({"error": "Invalid source"}, status=400)
+		return None, error_payload(INVALID_SOURCE, "Invalid source")
 	destination_type = (body.get("destination_type") or "local").strip().lower()
 	if destination_type not in ("local", "s3"):
-		return web.json_response({"error": "Invalid destination_type"}, status=400)
+		return None, error_payload(INVALID_REQUEST, "Invalid destination_type")
 	if destination_type == "s3" and not experimental_s3_enabled():
-		return web.json_response(
-			{
-				"error": "S3 is an experimental feature. Enable experimental_features and experimental.s3 to use it."
-			},
-			status=403,
+		return None, error_payload(
+			INVALID_REQUEST,
+			"S3 is an experimental feature. Enable experimental_features and experimental.s3 to use it.",
 		)
 	folder_type = (body.get("folder_type") or "checkpoints").strip()
 	folder_error = _validate_folder(folder_type)
 	if folder_error:
-		return web.json_response({"error": folder_error}, status=400)
+		return None, error_payload(INVALID_REQUEST, folder_error)
 
 	token = _source_token(user_id, source)
 	if not token:
-		return web.json_response({"error": "No API key set for this source"}, status=400)
+		return None, error_payload(AUTH_REQUIRED_UPSTREAM, "No API key set for this source")
 
 	target_user_id = user_id
 	target_username = (body.get("target_username") or "").strip()
 	if target_username:
 		if not user_can_manage_model_sharing(role, perms):
-			return web.json_response(
-				{"error": "Only owner/admin with sharing permission can set target_username"},
-				status=403,
+			return None, error_payload(
+				DOWNLOAD_NOT_ALLOWED,
+				"Only owner/admin with sharing permission can set target_username",
 			)
 		target_user_id, _ = users_db.get_user(username=target_username)
 		if not target_user_id:
-			return web.json_response({"error": "target_username not found"}, status=404)
+			return None, error_payload(NOT_FOUND, "target_username not found")
 	job_id = uuid.uuid4().hex
 	job = {
 		"job_id": job_id,
@@ -798,20 +875,24 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 	}
 
 	def _sanitize_basename(raw: str | None) -> str:
-		name = (raw or "").strip()
-		if not name:
+		name = sanitize_model_filename(raw) or ""
+		if name:
+			return name
+		# Allow basename without known extension for save-as (server may add).
+		fallback = (raw or "").strip()
+		if not fallback:
 			return ""
-		name = os.path.basename(name.replace("\\", "/"))
-		if name in (".", "..") or ".." in name:
+		fallback = os.path.basename(fallback.replace("\\", "/"))
+		if fallback in (".", "..") or ".." in fallback:
 			return ""
-		return name
+		return fallback
 
 	if source == "civitai":
 		model_version_id = (
 			body.get("model_version_id") or body.get("modelVersionId") or ""
 		).strip()
 		if not model_version_id:
-			return web.json_response({"error": "model_version_id required for CivitAI"}, status=400)
+			return None, error_payload(INVALID_REQUEST, "model_version_id required for CivitAI")
 		job["model_version_id"] = model_version_id
 		job["type"] = body.get("type")
 		job["format"] = body.get("format")
@@ -822,7 +903,6 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 			body_or_query_host=body.get("civitai_host") or body.get("host"),
 			url_hint_host=url_hint,
 		)
-		# Optional save-as basename (preferred over Content-Disposition).
 		save_as = _sanitize_basename(body.get("filename") or body.get("save_as"))
 		if save_as:
 			job["filename"] = save_as
@@ -837,8 +917,8 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 			if ".." in subfolder or subfolder.startswith("/"):
 				subfolder = None
 		if not repo_id or not filename:
-			return web.json_response(
-				{"error": "repo_id and filename required for HuggingFace"}, status=400
+			return None, error_payload(
+				INVALID_REQUEST, "repo_id and filename required for HuggingFace"
 			)
 		job["repo_id"] = repo_id
 		job["filename"] = filename
@@ -852,6 +932,38 @@ async def api_model_download_start(request: web.Request) -> web.Response:
 		_PENDING_JOB_IDS.append(job_id)
 		_persist_job_history(job)
 		await _schedule_jobs_unsafe()
+	return job_id, None
+
+
+def get_job_public_snapshot(job_id: str, user_id: str | None = None) -> dict | None:
+	"""Return a public job view if present (optionally owned by user_id)."""
+	job = _JOBS_BY_ID.get(job_id)
+	if not job:
+		return None
+	if user_id is not None and job.get("user_id") != user_id:
+		return None
+	return _job_public_view(job)
+
+
+@routes.post("/mss-login/api/model-download/download")
+async def api_model_download_start(request: web.Request) -> web.Response:
+	"""Queue a model download job and return job id."""
+	user_id, username, err = _download_auth_or_response(request)
+	if err:
+		return err
+	role, perms, _role_username = _role_and_perms(request)
+	try:
+		body = await request.json()
+	except Exception as e:
+		return json_error(INVALID_REQUEST, f"Invalid JSON: {e}", 400)
+
+	job_id, err_payload = await enqueue_download_job(
+		user_id, username, role or "user", perms or {}, body if isinstance(body, dict) else {}
+	)
+	if err_payload:
+		code = err_payload.get("error") or INVALID_REQUEST
+		status = 403 if code == DOWNLOAD_NOT_ALLOWED else 404 if code == NOT_FOUND else 400
+		return web.json_response(err_payload, status=status)
 	return web.json_response({"status": "queued", "job_id": job_id, "stats": _queue_stats()})
 
 
@@ -1081,11 +1193,11 @@ async def api_model_download_job_get(request: web.Request) -> web.Response:
 		return err
 	job_id = (request.match_info.get("job_id") or "").strip()
 	if not job_id:
-		return web.json_response({"error": "Missing job_id"}, status=400)
+		return json_error(INVALID_REQUEST, "Missing job_id", 400)
 	async with _JOBS_LOCK:
 		job = _JOBS_BY_ID.get(job_id)
 		if not job or job.get("user_id") != user_id:
-			return web.json_response({"error": "Job not found"}, status=404)
+			return json_error(NOT_FOUND, "Job not found", 404)
 		return web.json_response({"job": _job_public_view(job), "stats": _queue_stats()})
 
 
@@ -1111,18 +1223,15 @@ async def api_model_download_cancel(request: web.Request) -> web.Response:
 		return err
 	job_id = (request.match_info.get("job_id") or "").strip()
 	if not job_id:
-		return web.json_response({"error": "Missing job_id"}, status=400)
+		return json_error(INVALID_REQUEST, "Missing job_id", 400)
 	async with _JOBS_LOCK:
 		job = _JOBS_BY_ID.get(job_id)
 		if not job or job.get("user_id") != user_id:
-			return web.json_response({"error": "Job not found"}, status=404)
+			return json_error(NOT_FOUND, "Job not found", 404)
 		if job.get("status") in ("completed", "failed", "cancelled"):
-			return web.json_response({"error": "Job already finished"}, status=400)
-		if job.get("status") == "running":
-			return web.json_response(
-				{"error": "Running downloads cannot be cancelled safely; wait for completion"},
-				status=400,
-			)
+			return json_error(INVALID_REQUEST, "Job already finished", 400)
+		# Queued: cancel immediately. Running: set cancel_requested so the
+		# transfer loop stops at the next progress checkpoint.
 		job["cancel_requested"] = True
 		if job.get("status") == "queued":
 			job["status"] = "cancelled"
@@ -1132,7 +1241,9 @@ async def api_model_download_cancel(request: web.Request) -> web.Response:
 			except ValueError:
 				pass
 			_persist_job_history(job)
-		return web.json_response({"status": "ok", "job_id": job_id})
+		return web.json_response(
+			{"status": "ok", "job_id": job_id, "job_status": job.get("status")}
+		)
 
 
 @routes.get("/mss-login/api/model-download/history")
@@ -1323,3 +1434,11 @@ routes.get("/api/mss-login/api/model-download/jobs")(api_model_download_jobs)
 routes.post("/api/mss-login/api/model-download/jobs/{job_id}/cancel")(api_model_download_cancel)
 routes.get("/api/mss-login/api/model-download/history")(api_model_download_history)
 routes.post("/api/mss-login/api/model-download/jobs/{job_id}/resume")(api_model_download_resume)
+
+# Short Portal-friendly aliases (same handlers; BC with /mss-login/api/model-download/*).
+routes.post("/mss/models/download")(api_model_download_start)
+routes.get("/mss/models/download/{job_id}")(api_model_download_job_get)
+routes.delete("/mss/models/download/{job_id}")(api_model_download_cancel)
+routes.post("/api/mss/models/download")(api_model_download_start)
+routes.get("/api/mss/models/download/{job_id}")(api_model_download_job_get)
+routes.delete("/api/mss/models/download/{job_id}")(api_model_download_cancel)

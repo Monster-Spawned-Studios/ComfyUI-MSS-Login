@@ -8,12 +8,15 @@ use huggingface_hub with local_dir only (no deprecated symlink flag).
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import ipaddress
 import os
 import re
+import shutil
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import aiohttp
 
@@ -25,6 +28,32 @@ ProgressCallback = Optional[Callable[[int, int | None], None | Awaitable[None]]]
 ALLOWED_CIVITAI_HOSTS = frozenset({"civitai.com", "civitai.red"})
 DEFAULT_CIVITAI_HOST = "civitai.com"
 ALLOWED_HF_HOSTS = frozenset({"huggingface.co", "hf.co"})
+# CDN hosts used after redirects (never follow off-allowlist).
+_HF_CDN_HOST_RE = re.compile(
+	r"^(?:cdn-lfs(?:-\d+)?(?:-[a-z0-9]+)?\.)?hf\.co$|"
+	r"^cdn-lfs(?:-\d+)?\.huggingface\.co$|"
+	r"^(?:cas-bridge|cas)\.xethub\.hf\.co$",
+	re.IGNORECASE,
+)
+_CIVITAI_CDN_HOST_RE = re.compile(
+	r"^(?:image|orchestration|civitai-delivery)[^/]*\.civitai\.com$|"
+	r"^.*\.civitai\.com$|"
+	r"^.*\.civitai\.red$",
+	re.IGNORECASE,
+)
+
+# Prefer safetensors; allow common Comfy model weight extensions.
+ALLOWED_MODEL_EXTENSIONS = frozenset(
+	{".safetensors", ".gguf", ".pt", ".pth", ".bin", ".ckpt", ".onnx"}
+)
+
+# Default caps (bytes). Override via env.
+DEFAULT_MAX_DOWNLOAD_BYTES = int(
+	os.environ.get("MSS_MODEL_DOWNLOAD_MAX_BYTES", str(50 * 1024 * 1024 * 1024))
+)
+DEFAULT_MIN_FREE_DISK_BYTES = int(
+	os.environ.get("MSS_MODEL_DOWNLOAD_MIN_FREE_BYTES", str(2 * 1024 * 1024 * 1024))
+)
 
 _CIVITAI_MODEL_PATH_RE = re.compile(
 	r"^/models/(?P<model_id>\d+)(?:/(?P<slug>[^/?#]+))?", re.IGNORECASE
@@ -97,6 +126,20 @@ def _is_allowlisted_hostname(hostname: str | None, allowed: frozenset[str]) -> b
 	return host in allowed
 
 
+def is_download_redirect_host_allowed(hostname: str | None) -> bool:
+	"""True when hostname is an allowlisted HF/CivitAI API or CDN host."""
+	if not hostname:
+		return False
+	host = hostname.strip().lower().rstrip(".").removeprefix("www.")
+	if host in ALLOWED_CIVITAI_HOSTS or host in ALLOWED_HF_HOSTS:
+		return True
+	if _HF_CDN_HOST_RE.match(host):
+		return True
+	if _CIVITAI_CDN_HOST_RE.match(host):
+		return True
+	return False
+
+
 def _reject_ssrf_url(parsed) -> str | None:
 	"""Return an error string if URL is unsafe for server-side fetch; else None."""
 	if parsed.scheme not in ("https",):
@@ -104,14 +147,157 @@ def _reject_ssrf_url(parsed) -> str | None:
 	hostname = (parsed.hostname or "").strip().lower()
 	if not hostname:
 		return "Missing hostname"
-	# Block literal IPs / localhost / link-local style hosts (SSRF).
-	if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+	# Block literal IPs / localhost / link-local / cloud metadata (SSRF).
+	if hostname in ("localhost", "127.0.0.1", "::1", "0.0.0.0", "metadata.google.internal"):
 		return "Hostname not allowed"
+	if hostname.endswith(".internal") or hostname.endswith(".local"):
+		return "Hostname not allowed"
+	try:
+		ip = ipaddress.ip_address(hostname)
+		if (
+			ip.is_private
+			or ip.is_loopback
+			or ip.is_link_local
+			or ip.is_reserved
+			or ip.is_multicast
+		):
+			return "IP addresses are not allowed"
+		return "IP addresses are not allowed"
+	except ValueError:
+		pass
 	if re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", hostname):
 		return "IP addresses are not allowed"
 	if ":" in hostname and hostname.count(":") >= 2:
 		return "IP addresses are not allowed"
 	return None
+
+
+def sanitize_model_filename(raw: str | None) -> str:
+	"""Basename-only filename; empty if unsafe or disallowed extension."""
+	name = (raw or "").strip()
+	if not name:
+		return ""
+	name = os.path.basename(name.replace("\\", "/"))
+	if name in (".", "..") or ".." in name:
+		return ""
+	ext = Path(name).suffix.lower()
+	if ext and ext not in ALLOWED_MODEL_EXTENSIONS:
+		return ""
+	return name
+
+
+def check_disk_and_size(
+	dest_dir: str | Path,
+	expected_bytes: int | None = None,
+	*,
+	max_bytes: int | None = None,
+	min_free_bytes: int | None = None,
+) -> str | None:
+	"""
+	Return an error code string if disk/size checks fail, else None.
+
+	Codes: FILE_TOO_LARGE, INSUFFICIENT_DISK
+	"""
+	max_allowed = DEFAULT_MAX_DOWNLOAD_BYTES if max_bytes is None else int(max_bytes)
+	min_free = DEFAULT_MIN_FREE_DISK_BYTES if min_free_bytes is None else int(min_free_bytes)
+	if expected_bytes is not None and expected_bytes > 0 and expected_bytes > max_allowed:
+		return "FILE_TOO_LARGE"
+	try:
+		usage = shutil.disk_usage(str(Path(dest_dir)))
+		needed = int(expected_bytes or 0) + int(min_free)
+		if usage.free < needed:
+			return "INSUFFICIENT_DISK"
+	except OSError:
+		return "INSUFFICIENT_DISK"
+	return None
+
+
+def file_already_complete(path: str | Path, expected_bytes: int | None = None) -> bool:
+	"""True when path exists and (optionally) matches expected size."""
+	p = Path(path)
+	if not p.is_file():
+		return False
+	try:
+		size = p.stat().st_size
+	except OSError:
+		return False
+	if size <= 0:
+		return False
+	if expected_bytes is not None and expected_bytes > 0 and size != int(expected_bytes):
+		return False
+	return True
+
+
+def sha256_file(path: str | Path, chunk_size: int = 1024 * 1024) -> str:
+	h = hashlib.sha256()
+	with open(path, "rb") as f:
+		while True:
+			chunk = f.read(chunk_size)
+			if not chunk:
+				break
+			h.update(chunk)
+	return h.hexdigest()
+
+
+def verify_sha256(path: str | Path, expected_hex: str | None) -> str | None:
+	"""Return CHECKSUM_MISMATCH or None when ok / no expected hash."""
+	expected = (expected_hex or "").strip().lower()
+	if not expected:
+		return None
+	try:
+		actual = sha256_file(path).lower()
+	except OSError:
+		return "CHECKSUM_MISMATCH"
+	if actual != expected:
+		return "CHECKSUM_MISMATCH"
+	return None
+
+
+def extract_civitai_file_sha256(file_obj: dict | None) -> str | None:
+	"""Pull SHA256 from a CivitAI file object when present."""
+	if not isinstance(file_obj, dict):
+		return None
+	hashes = file_obj.get("hashes") if isinstance(file_obj.get("hashes"), dict) else {}
+	for key in ("SHA256", "sha256", "AutoV2"):
+		val = hashes.get(key)
+		if isinstance(val, str) and len(val) >= 32:
+			return val.strip().lower()
+	return None
+
+
+async def fetch_allowlisted(
+	session: aiohttp.ClientSession,
+	url: str,
+	*,
+	headers: dict | None = None,
+	params: dict | None = None,
+	max_redirects: int = 8,
+):
+	"""
+	GET with manual redirect following; only allowlisted hosts (SSRF-safe).
+	Returns the final ClientResponse (caller must close / use as context).
+	"""
+	current = url
+	for _ in range(max_redirects + 1):
+		parsed = urlparse(current)
+		err = _reject_ssrf_url(parsed)
+		if err:
+			raise ValueError(err)
+		if not is_download_redirect_host_allowed(parsed.hostname):
+			raise ValueError(f"Redirect host not allowlisted: {parsed.hostname}")
+		resp = await session.get(
+			current, params=params, headers=headers or None, allow_redirects=False
+		)
+		params = None  # query only on first hop
+		if resp.status in (301, 302, 303, 307, 308):
+			location = resp.headers.get("Location")
+			await resp.release()
+			if not location:
+				raise ValueError("Redirect without Location")
+			current = urljoin(current, location)
+			continue
+		return resp
+	raise ValueError("Too many redirects")
 
 
 def resolve_civitai_url(url: str) -> dict[str, Any] | None:
@@ -444,17 +630,19 @@ async def download_civitai_async(
 	host: str | None = None,
 	resume: bool = True,
 	preferred_filename: str | None = None,
+	expected_sha256: str | None = None,
+	expected_bytes: int | None = None,
 ) -> tuple[bool, str, str | None]:
 	"""
 	Download a model file from CivitAI to dest_path. Async.
-	Returns (success, error_message, saved_relpath). Prefer Authorization Bearer; follow redirects.
-	Requires a token for file downloads (current CivitAI policy).
+	Returns (success, error_message, saved_relpath). Prefer Authorization Bearer; follow
+	allowlisted redirects only. Requires a token for file downloads (current CivitAI policy).
 
-	When resume=True and a partial file exists, sends Range and appends (keeps
-	partials on failure so the job can be resumed later).
+	Writes to ``*.part`` then atomically renames. When resume=True and a partial
+	``.part`` exists, sends Range and appends.
 	"""
 	if not (token or "").strip():
-		return False, "CivitAI API token required for downloads", None
+		return False, "AUTH_REQUIRED_UPSTREAM: CivitAI API token required for downloads", None
 
 	url = f"{civitai_download_base(host)}/{model_version_id}"
 	params: dict[str, str] = {}
@@ -474,105 +662,130 @@ async def download_civitai_async(
 	try:
 		headers = _civitai_auth_headers(token)
 		timeout = aiohttp.ClientTimeout(total=None, sock_read=300)
-		async with (
-			aiohttp.ClientSession(timeout=timeout) as session,
-			session.get(
-				url, params=params or None, headers=headers or None, allow_redirects=True
-			) as resp,
-		):
-			# First request discovers filename / Content-Length; may re-request with Range.
-			if resp.status not in (200, 206):
-				# If we intended resume, try without Range path below after HEAD-like get fails
-				return False, f"CivitAI returned {resp.status}", None
-			content_disp = resp.headers.get("Content-Disposition")
-			filename = None
-			# Preferred save-as wins over Content-Disposition when the client asked
-			# for an explicit basename (folder targeting still uses dest_path).
-			if preferred_filename:
-				_basename = Path(preferred_filename).name
-				if _basename and _basename not in (".", ".."):
-					filename = _basename
-			if not filename and content_disp and "filename=" in content_disp:
-				part = content_disp.split("filename=")[-1].strip().strip("\"'")
-				if part:
-					# Use basename only; if Path.name is empty (e.g. input was "/" or ".."),
-					# discard the server-provided name entirely rather than falling back
-					# to the raw value, which could contain path traversal sequences.
-					_basename = Path(part).name
-					if _basename:
-						filename = _basename
-			if not filename and dest_path.suffix:
-				filename = dest_path.name
-			if not filename:
-				filename = f"model_{model_version_id}.safetensors"
-			out = dest_path if dest_path.suffix else dest_path / filename
-			if out.is_dir():
-				out = dest_path / filename
-			# Ensure final path stays under dest_path (defense in depth)
-			dest_resolved = dest_path.resolve()
-			out_resolved = out.resolve()
+		async with aiohttp.ClientSession(timeout=timeout) as session:
+			resp = await fetch_allowlisted(
+				session, url, headers=headers, params=params or None
+			)
 			try:
-				common = os.path.commonpath([out_resolved, dest_resolved])
-			except ValueError:
-				return False, "Path traversal prevented", None
-			if os.path.abspath(common) != os.path.abspath(dest_resolved):
-				out = dest_path / Path(filename).name
+				# First request discovers filename / Content-Length; may re-request with Range.
+				if resp.status not in (200, 206):
+					status = resp.status
+					return False, f"CivitAI returned {status}", None
+				content_disp = resp.headers.get("Content-Disposition")
+				filename = None
+				# Preferred save-as wins over Content-Disposition when the client asked
+				# for an explicit basename (folder targeting still uses dest_path).
+				if preferred_filename:
+					filename = sanitize_model_filename(preferred_filename) or None
+				if not filename and content_disp and "filename=" in content_disp:
+					part = content_disp.split("filename=")[-1].strip().strip("\"'")
+					if part:
+						filename = sanitize_model_filename(part) or None
+				if not filename and dest_path.suffix:
+					filename = sanitize_model_filename(dest_path.name) or dest_path.name
+				if not filename:
+					filename = f"model_{model_version_id}.safetensors"
+				out = dest_path if dest_path.suffix else dest_path / filename
+				if out.is_dir():
+					out = dest_path / filename
+				# Ensure final path stays under dest_path (defense in depth)
+				dest_resolved = dest_path.resolve()
 				out_resolved = out.resolve()
 				try:
 					common = os.path.commonpath([out_resolved, dest_resolved])
 				except ValueError:
 					return False, "Path traversal prevented", None
 				if os.path.abspath(common) != os.path.abspath(dest_resolved):
-					return False, "Path traversal prevented", None
-			out.parent.mkdir(parents=True, exist_ok=True)
+					out = dest_path / Path(filename).name
+					out_resolved = out.resolve()
+					try:
+						common = os.path.commonpath([out_resolved, dest_resolved])
+					except ValueError:
+						return False, "Path traversal prevented", None
+					if os.path.abspath(common) != os.path.abspath(dest_resolved):
+						return False, "Path traversal prevented", None
+				out.parent.mkdir(parents=True, exist_ok=True)
 
-			existing = 0
-			if resume and out.is_file():
-				try:
-					existing = out.stat().st_size
-				except OSError:
-					existing = 0
+				if file_already_complete(out, expected_bytes):
+					await resp.release()
+					return False, "ALREADY_EXISTS", None
 
-			# If partial exists, re-request with Range (current response may be full body).
-			if existing > 0:
-				await resp.release()
-				range_headers = {**headers, "Range": f"bytes={existing}-"}
-				async with session.get(
-					url, params=params or None, headers=range_headers or None, allow_redirects=True
-				) as range_resp:
-					if range_resp.status == 206:
-						return await _stream_civitai_body(
-							range_resp,
-							out,
-							dest_resolved,
-							bytes_done_start=existing,
-							progress_callback=progress_callback,
-							append=True,
-							keep_partial_on_error=True,
-						)
-					if range_resp.status == 200:
-						# Server ignored Range — restart from scratch.
+				disk_err = check_disk_and_size(out.parent, expected_bytes)
+				if disk_err:
+					await resp.release()
+					return False, disk_err, None
+
+				part_path = Path(str(out) + ".part")
+				existing = 0
+				if resume and part_path.is_file():
+					try:
+						existing = part_path.stat().st_size
+					except OSError:
 						existing = 0
-						return await _stream_civitai_body(
-							range_resp,
-							out,
-							dest_resolved,
-							bytes_done_start=0,
-							progress_callback=progress_callback,
-							append=False,
-							keep_partial_on_error=True,
-						)
-					return False, f"CivitAI returned {range_resp.status}", None
 
-			return await _stream_civitai_body(
-				resp,
-				out,
-				dest_resolved,
-				bytes_done_start=0,
-				progress_callback=progress_callback,
-				append=False,
-				keep_partial_on_error=True,
-			)
+				# If partial exists, re-request with Range (current response may be full body).
+				if existing > 0:
+					await resp.release()
+					range_headers = {**headers, "Range": f"bytes={existing}-"}
+					range_resp = await fetch_allowlisted(
+						session, url, headers=range_headers, params=params or None
+					)
+					try:
+						if range_resp.status == 206:
+							ok, err, saved = await _stream_civitai_body(
+								range_resp,
+								out,
+								part_path,
+								dest_resolved,
+								bytes_done_start=existing,
+								progress_callback=progress_callback,
+								append=True,
+								keep_partial_on_error=True,
+							)
+						elif range_resp.status == 200:
+							ok, err, saved = await _stream_civitai_body(
+								range_resp,
+								out,
+								part_path,
+								dest_resolved,
+								bytes_done_start=0,
+								progress_callback=progress_callback,
+								append=False,
+								keep_partial_on_error=True,
+							)
+						else:
+							return False, f"CivitAI returned {range_resp.status}", None
+					finally:
+						try:
+							range_resp.close()
+						except Exception:
+							pass
+				else:
+					ok, err, saved = await _stream_civitai_body(
+						resp,
+						out,
+						part_path,
+						dest_resolved,
+						bytes_done_start=0,
+						progress_callback=progress_callback,
+						append=False,
+						keep_partial_on_error=True,
+					)
+			finally:
+				try:
+					resp.close()
+				except Exception:
+					pass
+
+			if ok and expected_sha256:
+				mismatch = verify_sha256(out, expected_sha256)
+				if mismatch:
+					try:
+						out.unlink(missing_ok=True)
+					except OSError:
+						pass
+					return False, mismatch, None
+			return ok, err, saved
 	except Exception as e:
 		return False, str(e), None
 
@@ -580,6 +793,7 @@ async def download_civitai_async(
 async def _stream_civitai_body(
 	resp,
 	out: Path,
+	part_path: Path,
 	dest_resolved: Path,
 	*,
 	bytes_done_start: int,
@@ -604,7 +818,7 @@ async def _stream_civitai_body(
 	bytes_done = int(bytes_done_start)
 	mode = "ab" if append else "wb"
 	try:
-		with open(out, mode) as f:
+		with open(part_path, mode) as f:
 			while True:
 				chunk = await resp.content.read(1024 * 1024)
 				if not chunk:
@@ -615,11 +829,13 @@ async def _stream_civitai_body(
 					cb = progress_callback(bytes_done, total_bytes)
 					if asyncio.iscoroutine(cb):
 						await cb
+		# Atomic rename into final path.
+		os.replace(part_path, out)
 	except Exception:
 		if not keep_partial_on_error:
 			try:
-				if out.exists():
-					out.unlink()
+				if part_path.exists():
+					part_path.unlink()
 			except OSError:
 				pass
 		raise
