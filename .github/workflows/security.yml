@@ -1,14 +1,39 @@
 # Security: secrets scan (Gitleaks), dependency audit (pip-audit), and OSV scan.
 # Each job writes a report artifact; package-reports merges them for ntfy attachment.
+# Push/PR: only when dependency or security-relevant paths change. Also weekly
+# Monday 12:00 America/Denver (cron UTC) and workflow_dispatch.
 name: Security scan
 
 on:
   push:
     branches: [development, production, release/*]
+    paths:
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "web/frontend/package.json"
+      - "web/frontend/pnpm-lock.yaml"
+      - "osv-scanner.toml"
+      - ".gitleaks.toml"
+      - "scripts/ci/install-gitleaks.sh"
+      - ".github/workflows/security.yml"
+      - ".github/workflows/ntfy-notify-reusable.yml"
   pull_request:
     branches: [development, production, release/*]
+    paths:
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "web/frontend/package.json"
+      - "web/frontend/pnpm-lock.yaml"
+      - "osv-scanner.toml"
+      - ".gitleaks.toml"
+      - "scripts/ci/install-gitleaks.sh"
+      - ".github/workflows/security.yml"
+      - ".github/workflows/ntfy-notify-reusable.yml"
   schedule:
-    - cron: "0 6 * * 1" # Weekly Monday 06:00 UTC
+    # Monday 12:00 America/Denver (MDT = 18:00 UTC; during MST this is 11:00 local)
+    - cron: "0 18 * * 1"
   workflow_dispatch:
 
 # actions: write is required for actions/upload-artifact@v4 with a restricted token.
