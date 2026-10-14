@@ -1,5 +1,5 @@
 # Spell-check documentation and code comments (cspell).
-# Writes a report artifact and attaches it to the ntfy notification.
+# Gitea-compatible: no actions/upload-artifact — attach the report to ntfy in-job.
 name: Spell check
 
 on:
@@ -53,8 +53,6 @@ jobs:
             echo
           } > "${report}"
 
-          # Prefer changed files on PR/push; fall back to full project scan.
-          files_args=()
           if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
             git fetch origin "${GITHUB_BASE_REF}" --depth=1 || true
             mapfile -t changed < <(git diff --name-only --diff-filter=ACMRT "origin/${GITHUB_BASE_REF}...HEAD" 2>/dev/null || true)
@@ -79,40 +77,41 @@ jobs:
           echo >> "${report}"
           if [ "$status" -eq 0 ]; then
             echo "Result: PASS (no spelling issues)." | tee -a "${report}"
+            echo "outcome=success" >> "$GITHUB_OUTPUT"
           else
             echo "Result: ISSUES FOUND (exit ${status})." | tee -a "${report}"
+            echo "outcome=issues" >> "$GITHUB_OUTPUT"
           fi
-          echo "report_path=${report}" >> "$GITHUB_OUTPUT"
-          # Config/tool failures are hard errors; spelling findings stay soft so CI remains green
-          # while the report is still attached to ntfy for review.
+          # Config/tool failures are hard errors; spelling findings stay soft.
           if [ "$status" -gt 1 ]; then
+            echo "outcome=failure" >> "$GITHUB_OUTPUT"
             exit "$status"
           fi
           exit 0
 
-      - name: Upload cspell report
+      - name: Notify via ntfy (with report attachment)
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cspell-report
-          path: ci-reports/cspell-report.txt
-          if-no-files-found: warn
-          retention-days: 14
-
-  ntfy-notification:
-    name: Notify on MSS-Login Spell Check Results
-    needs: [cspell]
-    if: always()
-    uses: ./.gitea/workflows/ntfy-notify-reusable.yml
-    with:
-      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Spell Check — Passed' || 'MSS-Login Spell Check — Issues found' }}
-      message: |
-        === Spell check (cspell) ===
-        Result: ${{ needs.cspell.result }}
-        Report: attached cspell-report.txt
-      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
-      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,abc' || 'warning,abc' }}
-      ref_name: ${{ github.ref_name }}
-      attachment_artifact: cspell-report
-      attachment_filename: cspell-report.txt
-    secrets: inherit
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+          CSPELL_OUTCOME: ${{ steps.cspell.outputs.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          outcome="${CSPELL_OUTCOME:-unknown}"
+          if [ "$outcome" = "success" ]; then
+            export TITLE="MSS-Login Spell Check — Passed"
+            export PRIORITY="3"
+            export TAGS="white_check_mark,abc"
+          else
+            export TITLE="MSS-Login Spell Check — Issues found"
+            export PRIORITY="5"
+            export TAGS="warning,abc"
+          fi
+          export MESSAGE="$(printf '=== Spell check (cspell) ===\nResult: %s\nReport: attached cspell-report.txt\n' "$outcome")"
+          export ATTACHMENT_PATH="ci-reports/cspell-report.txt"
+          export ATTACHMENT_FILENAME="cspell-report.txt"
+          export SKIP_IF_UNCONFIGURED="true"
+          bash scripts/ci/ntfy_publish.sh
