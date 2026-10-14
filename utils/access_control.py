@@ -268,6 +268,21 @@ class AccessControl:
 	def get_current_user_id(self):
 		return self._current_user.get() or self.__current_user_id
 
+	@staticmethod
+	def _normalize_user_id(user_id) -> str | None:
+		"""Normalize user ids for stamp/filter compares (UUID str vs other types)."""
+		if user_id is None:
+			return None
+		text = str(user_id).strip()
+		return text or None
+
+	def _user_id_matches(self, stamped_user_id, current_user_id) -> bool:
+		left = self._normalize_user_id(stamped_user_id)
+		right = self._normalize_user_id(current_user_id)
+		if left is None or right is None:
+			return False
+		return left == right
+
 	def _lookup_user_record(self, user_key: str | None) -> dict | None:
 		"""Resolve a users_db record from a user_id (UUID) or username."""
 		if not user_key or user_key == "public":
@@ -377,7 +392,7 @@ class AccessControl:
 		self.__prompt_queue.wipe_history = self.user_queue_wipe_history
 
 	def user_queue_put(self, item):
-		current_user_id = self.get_current_user_id()
+		current_user_id = self._normalize_user_id(self.get_current_user_id())
 		user_rec = self._lookup_user_record(current_user_id)
 
 		if user_rec:
@@ -390,13 +405,21 @@ class AccessControl:
 					perms = cfg.get(role, {})
 					if perms.get("can_run") is False:
 						print(f"[AccessControl] Blocked execution for {current_user_id}")
-						return
+						# Fail closed: never silently drop a prompt (Portal/clients
+						# would see a successful path with no queue progress).
+						raise PermissionError(
+							"MSS-Login: Execution Denied (can_run is false for this role)"
+						)
+				except PermissionError:
+					raise
 				except Exception:
 					pass
 
 		stamp_username = None
 		if user_rec:
 			stamp_username = user_rec.get("username")
+		# Always stamp a normalized string user_id so SEPERATE_USERS queue/history
+		# filters match Portal Bearer/API-token identity comparisons.
 		stamp = {"user_id": current_user_id, "username": stamp_username}
 		if isinstance(item, tuple):
 			new_item = (*item, stamp)
@@ -453,7 +476,7 @@ class AccessControl:
 					"completed": kwargs.get("completed"),
 					"messages": kwargs.get("messages") or [],
 				},
-				"user_id": meta.get("user_id"),
+				"user_id": self._normalize_user_id(meta.get("user_id")),
 			}
 			if history_result:
 				self.__prompt_queue.history[prompt_tuple[1]].update(history_result)
@@ -477,12 +500,16 @@ class AccessControl:
 			pending = []
 			for item in self.__prompt_queue.currently_running.values():
 				meta = item[-1] if isinstance(item[-1], dict) else None
-				if not show_all and (not meta or meta.get("user_id") != current_user):
+				if not show_all and (
+					not meta or not self._user_id_matches(meta.get("user_id"), current_user)
+				):
 					continue
 				running.append(unwrap(item))
 			for item in self.__prompt_queue.queue:
 				meta = item[-1] if isinstance(item[-1], dict) else None
-				if not show_all and (not meta or meta.get("user_id") != current_user):
+				if not show_all and (
+					not meta or not self._user_id_matches(meta.get("user_id"), current_user)
+				):
 					continue
 				pending.append(unwrap(item))
 			return (running, copy.deepcopy(pending))
@@ -496,7 +523,10 @@ class AccessControl:
 				self.__prompt_queue.queue = [
 					i
 					for i in self.__prompt_queue.queue
-					if not (isinstance(i[-1], dict) and i[-1].get("user_id") == current_user)
+					if not (
+						isinstance(i[-1], dict)
+						and self._user_id_matches(i[-1].get("user_id"), current_user)
+					)
 				]
 			self.server.queue_updated()
 
@@ -511,7 +541,7 @@ class AccessControl:
 				meta = item[-1] if isinstance(item[-1], dict) else None
 				if (
 					meta
-					and meta.get("user_id") == self.get_current_user_id()
+					and self._user_id_matches(meta.get("user_id"), self.get_current_user_id())
 					and func(unwrap(item))
 				):
 					self.__prompt_queue.queue.pop(i)
@@ -527,7 +557,9 @@ class AccessControl:
 				filtered = dict(self.__prompt_queue.history)
 			else:
 				filtered = {
-					k: v for k, v in self.__prompt_queue.history.items() if v.get("user_id") == user
+					k: v
+					for k, v in self.__prompt_queue.history.items()
+					if self._user_id_matches(v.get("user_id"), user)
 				}
 			if prompt_id:
 				return {prompt_id: filtered.get(prompt_id)} if prompt_id in filtered else {}
@@ -548,5 +580,7 @@ class AccessControl:
 			else:
 				u = self.get_current_user_id()
 				self.__prompt_queue.history = {
-					k: v for k, v in self.__prompt_queue.history.items() if v.get("user_id") != u
+					k: v
+					for k, v in self.__prompt_queue.history.items()
+					if not self._user_id_matches(v.get("user_id"), u)
 				}
