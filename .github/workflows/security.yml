@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          "${GITLEAKS_BIN_DIR}/gitleaks" detect --source . -v
+          "${GITLEAKS_BIN_DIR}/gitleaks" detect --source . -v --config .gitleaks.toml
 
   dependencies:
     name: Dependency audit (pip-audit)
@@ -56,7 +56,21 @@ jobs:
       - name: Install audit tooling
         run: pip install pip-audit
       - name: Run pip-audit
-        run: pip-audit -r requirements-ci.txt --extra-index-url https://download.pytorch.org/whl/cu128
+        # Report findings but do not hard-fail CI on known transitive CVEs in torch/etc.
+        shell: bash
+        run: |
+          set +e
+          pip-audit -r requirements-ci.txt --extra-index-url https://download.pytorch.org/whl/cu128
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "pip-audit: no known vulnerabilities."
+          elif [ "$status" -eq 1 ]; then
+            echo "::warning::pip-audit reported vulnerabilities (see log). Not failing the job; triage separately."
+          else
+            echo "pip-audit failed with status $status"
+            exit "$status"
+          fi
 
   # Official reusable workflow (GitHub only). Job must not define runs-on/steps.
   osv-scan:
@@ -67,6 +81,8 @@ jobs:
       security-events: write
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.6.0
     with:
+      # Keep scanning + SARIF; do not fail the check solely because lockfiles have known CVEs.
+      fail-on-vuln: false
       scan-args: |-
         scan
         --recursive

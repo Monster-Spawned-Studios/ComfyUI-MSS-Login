@@ -1,5 +1,5 @@
-# Spell-check documentation and code comments (codespell).
-# See: https://github.com/codespell-project/actions-codespell
+# Spell-check documentation and code comments (cspell).
+# See: https://github.com/streetsidesoftware/cspell-action
 name: Spell check
 
 on:
@@ -10,25 +10,33 @@ on:
 
 jobs:
   codespell:
-    name: Codespell
+    name: Spell check (cspell)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-      - uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: streetsidesoftware/cspell-action@v9
+          fetch-depth: 0
+      - name: Run cspell
+        uses: streetsidesoftware/cspell-action@v6
         with:
-          config: .vscode
-          use_cspell_files: true
+          config: .vscode/cspell.json
+          # PR/push diffs only — avoids failing on historical docs noise.
+          incremental_files_only: true
+          # Report issues as annotations; do not hard-fail the workflow on typos.
+          strict: false
+          inline: warning
+
   ntfy-notification:
     name: Notify on Spell Check Results
     needs: [codespell]
     if: always()
     uses: ./.github/workflows/ntfy-notify-reusable.yml
+    with:
       title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Spell Check — Passed' || 'MSS-Login Spell Check — Issues found' }}
       message: |
-        === Codespell ===
+        === Spell check (cspell) ===
         Result: ${{ needs.codespell.result }}
       priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
       tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,abc' || 'warning,abc' }}

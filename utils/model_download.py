@@ -154,13 +154,7 @@ def _reject_ssrf_url(parsed) -> str | None:
 		return "Hostname not allowed"
 	try:
 		ip = ipaddress.ip_address(hostname)
-		if (
-			ip.is_private
-			or ip.is_loopback
-			or ip.is_link_local
-			or ip.is_reserved
-			or ip.is_multicast
-		):
+		if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
 			return "IP addresses are not allowed"
 		return "IP addresses are not allowed"
 	except ValueError:
@@ -663,9 +657,7 @@ async def download_civitai_async(
 		headers = _civitai_auth_headers(token)
 		timeout = aiohttp.ClientTimeout(total=None, sock_read=300)
 		async with aiohttp.ClientSession(timeout=timeout) as session:
-			resp = await fetch_allowlisted(
-				session, url, headers=headers, params=params or None
-			)
+			resp = await fetch_allowlisted(session, url, headers=headers, params=params or None)
 			try:
 				# First request discovers filename / Content-Length; may re-request with Range.
 				if resp.status not in (200, 206):

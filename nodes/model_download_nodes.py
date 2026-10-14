@@ -84,11 +84,7 @@ def _run_on_server_loop(coro, timeout: float = 60.0):
 
 
 def _wait_jobs(
-	job_ids: list[str],
-	user_id: str,
-	*,
-	progress_mode: str = "per_model",
-	poll_seconds: float = 0.5,
+	job_ids: list[str], user_id: str, *, progress_mode: str = "per_model", poll_seconds: float = 0.5
 ) -> list[dict]:
 	from ..routes import model_download as md
 
@@ -178,11 +174,7 @@ class MSSModelDownload:
 		if not user_can_download_models(role, perms):
 			raise RuntimeError(f"{DOWNLOAD_NOT_ALLOWED}: {DOWNLOAD_NOT_ALLOWED_MESSAGE}")
 
-		body = {
-			"source": source,
-			"folder_type": folder_type,
-			"destination_type": "local",
-		}
+		body = {"source": source, "folder_type": folder_type, "destination_type": "local"}
 		if (url or "").strip():
 			body["url"] = url.strip()
 		if (model_version_id or "").strip():
@@ -230,7 +222,7 @@ class MSSDownloadStatus:
 			"required": {
 				"job_id": ("STRING", {"default": ""}),
 				"progress_mode": (["per_model", "overall"], {"default": "per_model"}),
-			},
+			}
 		}
 
 	RETURN_TYPES = ("STRING", "STRING")
@@ -250,10 +242,7 @@ class MSSDownloadStatus:
 		return (str(job.get("status") or ""), json.dumps(job))
 
 
-NODE_CLASS_MAPPINGS = {
-	"MSSModelDownload": MSSModelDownload,
-	"MSSDownloadStatus": MSSDownloadStatus,
-}
+NODE_CLASS_MAPPINGS = {"MSSModelDownload": MSSModelDownload, "MSSDownloadStatus": MSSDownloadStatus}
 
 NODE_DISPLAY_NAME_MAPPINGS = {
 	"MSSModelDownload": "MSS Model Download",

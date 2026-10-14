@@ -41,10 +41,7 @@ def test_error_payload():
 	payload = mod.error_payload(mod.DOWNLOAD_NOT_ALLOWED, mod.DOWNLOAD_NOT_ALLOWED_MESSAGE)
 	ok(payload["error"] == "DOWNLOAD_NOT_ALLOWED", "error field is code")
 	ok(payload["code"] == "DOWNLOAD_NOT_ALLOWED", "code field present")
-	ok(
-		"does not have permission" in payload["message"],
-		"message is human-readable",
-	)
+	ok("does not have permission" in payload["message"], "message is human-readable")
 
 
 def test_ssrf_and_sanitize():
@@ -145,12 +142,7 @@ def test_queue_put_fail_closed_and_user_id_match():
 	sys.modules["mss_login"] = root
 	sys.modules["mss_login.utils"] = utils
 
-	for name in (
-		"folder_paths",
-		"execution",
-		"server",
-		"aiohttp",
-	):
+	for name in ("folder_paths", "execution", "server", "aiohttp"):
 		if name not in sys.modules:
 			sys.modules[name] = types.ModuleType(name)
 	sys.modules["folder_paths"].get_output_directory = lambda: "/tmp"
@@ -160,9 +152,7 @@ def test_queue_put_fail_closed_and_user_id_match():
 	sys.modules["execution"].PromptQueue = object
 	sys.modules["server"].PromptServer = object
 	sys.modules["aiohttp"].web = types.SimpleNamespace(
-		middleware=lambda f: f,
-		json_response=lambda *a, **k: None,
-		Request=object,
+		middleware=lambda f: f, json_response=lambda *a, **k: None, Request=object
 	)
 
 	api_tok = types.ModuleType("mss_login.utils.api_token_store")

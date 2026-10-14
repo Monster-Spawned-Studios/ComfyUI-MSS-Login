@@ -6,10 +6,7 @@ from typing import Any
 
 
 def aggregate_progress(
-	jobs: list[dict[str, Any]],
-	*,
-	mode: str = "per_model",
-	active_job_id: str | None = None,
+	jobs: list[dict[str, Any]], *, mode: str = "per_model", active_job_id: str | None = None
 ) -> tuple[int, int, str]:
 	"""
 	Return (value, max, label) for Comfy ProgressBar / send_sync.
@@ -82,7 +79,9 @@ def aggregate_progress(
 		active = jobs[0]
 	pct = int(round(float(active.get("progress_pct") or 0)))
 	pct = max(0, min(100, pct))
-	name = active.get("filename") or active.get("model_version_id") or active.get("repo_id") or "model"
+	name = (
+		active.get("filename") or active.get("model_version_id") or active.get("repo_id") or "model"
+	)
 	eta = active.get("eta_seconds")
 	eta_s = f", ETA {int(eta)}s" if eta else ""
 	bd = int(active.get("bytes_done") or 0)

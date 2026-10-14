@@ -137,8 +137,10 @@ def _download_auth_or_response(
 	if not _can_download_models(request):
 		return None, None, json_error(DOWNLOAD_NOT_ALLOWED, DOWNLOAD_NOT_ALLOWED_MESSAGE, 403)
 	if not check_rate_limit(str(user_id)):
-		return None, None, json_error(
-			RATE_LIMITED, "Too many model-download requests; try again shortly", 429
+		return (
+			None,
+			None,
+			json_error(RATE_LIMITED, "Too many model-download requests; try again shortly", 429),
 		)
 	return user_id, username, None
 
@@ -783,11 +785,7 @@ async def api_model_download_api_keys_put(request: web.Request) -> web.Response:
 
 
 async def enqueue_download_job(
-	user_id: str,
-	username: str | None,
-	role: str,
-	perms: dict,
-	body: dict,
+	user_id: str, username: str | None, role: str, perms: dict, body: dict
 ) -> tuple[str | None, dict | None]:
 	"""
 	Queue a download for an authenticated user (HTTP route or Comfy node).

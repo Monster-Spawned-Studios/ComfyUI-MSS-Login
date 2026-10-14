@@ -1,6 +1,8 @@
 ## Custom additions:
 ComfyUI/
 .venv/
+# Local CI tool installs (Gitleaks binary from scripts/ci/install-gitleaks.sh)
+.ci-bin/
 .env
 .env.*
 !.env.example

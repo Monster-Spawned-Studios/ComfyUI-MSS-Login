@@ -160,6 +160,9 @@ extend-ignore = [
 	"F841",    # Ignore unused variable, as we might use it later.
 	"E402",    # Ignore imports being out of order. This is a trivial issue (might remove later).
 ]
+# Package re-exports intentionally use star-imports in utils/__init__.py.
+[tool.ruff.lint.per-file-ignores]
+"utils/__init__.py" = ["F403", "F405"]
 # Isort: treat repo as single first-party; stdlib then third-party then local.
 [tool.ruff.lint.isort]
 known-first-party = ["utils", "utils.sfw_intercept", "routes"]
