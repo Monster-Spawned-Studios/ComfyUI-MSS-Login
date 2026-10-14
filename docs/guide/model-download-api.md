@@ -209,14 +209,40 @@ When `experimental.model_isolation` is enabled, downloads go to per-user folders
 
 Requires sharing permission; uses the target user’s stored CivitAI/HF key.
 
+## Short aliases (Comfy Portal)
+
+Same handlers as above (Bearer + `can_download_models`):
+
+| Method | Path |
+|--------|------|
+| POST | `/mss/models/download` |
+| GET | `/mss/models/download/{job_id}` |
+| DELETE | `/mss/models/download/{job_id}` (cancel; also works for running jobs via `cancel_requested`) |
+
+Alternate: `/api/mss/models/download…`. Cancel remains available as `POST …/jobs/{job_id}/cancel`.
+
 ## Errors
 
-| HTTP | Meaning |
-|------|---------|
-| 401 | Missing or invalid token |
-| 403 | No `can_download_models`, S3 disabled, or sharing not allowed |
-| 400 | Invalid body, missing API key for source, bad `folder_type` |
-| 404 | Unknown `job_id` or `target_username` |
+Error bodies use a dual shape for Portal and legacy clients:
+
+```json
+{"error":"DOWNLOAD_NOT_ALLOWED","message":"Your account does not have permission to download models.","code":"DOWNLOAD_NOT_ALLOWED"}
+```
+
+| HTTP | `error` code | Meaning |
+|------|--------------|---------|
+| 401 | `AUTH_REQUIRED` | Missing or invalid token |
+| 403 | `DOWNLOAD_NOT_ALLOWED` | No `can_download_models` (or sharing not allowed for `target_username`) |
+| 400 | `INVALID_SOURCE` | Bad source or disallowed URL |
+| 400 | `AUTH_REQUIRED_UPSTREAM` | Missing CivitAI/HF API key for the source |
+| 400 | `INVALID_REQUEST` | Invalid JSON / folder / fields |
+| 400 | `FILE_TOO_LARGE` / `INSUFFICIENT_DISK` / `CHECKSUM_MISMATCH` / `ALREADY_EXISTS` | Download guards (also on failed jobs as `error_code`) |
+| 404 | `NOT_FOUND` | Unknown `job_id` or `target_username` |
+| 429 | `RATE_LIMITED` | Per-user request budget exceeded |
+
+## ComfyUI nodes
+
+With MSS-Login installed, workflows can use **MSS Model Download** and **MSS Download Status** (category MSS-Login/Models). Nodes enforce `can_download_models` for the queue user, call the same download service, and emit Comfy `/ws` progress (`progress_mode`: `per_model` or `overall`). Portal has no browse UI — pass a full URL and/or CivitAI `model_version_id` / HF `repo_id`+`filename`.
 
 ## See also
 
