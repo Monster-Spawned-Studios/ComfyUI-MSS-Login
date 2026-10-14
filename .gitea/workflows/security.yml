@@ -1,6 +1,6 @@
 # Security: secrets scan (Gitleaks), dependency audit (pip-audit), and OSV scan.
 # Gitea-compatible variant: OSV uses the CLI (Google's reusable workflows are GitHub-only).
-# Do not disable; keeps credentials and known-vuln deps out of the repo.
+# Each job writes a report; a packager job zips them for ntfy attachment.
 name: Security scan
 
 on:
@@ -19,10 +19,8 @@ permissions:
 jobs:
   secrets:
     name: Secrets scan (Gitleaks)
-    # History scan is OS-independent; ubuntu avoids Windows/macOS download edge cases.
     runs-on: ubuntu-latest
     env:
-      # Pin the release asset URL (no api.github.com — avoids runner rate limits).
       GITLEAKS_VERSION: "8.30.1"
       GITLEAKS_BIN_DIR: ${{ github.workspace }}/.ci-bin
     steps:
@@ -37,11 +35,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          "${GITLEAKS_BIN_DIR}/gitleaks" detect --source . -v --config .gitleaks.toml
+          mkdir -p ci-reports
+          report="ci-reports/gitleaks-report.txt"
+          {
+            echo "MSS-Login Gitleaks report"
+            echo "========================="
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+            echo
+          } > "${report}"
+          set +e
+          "${GITLEAKS_BIN_DIR}/gitleaks" detect --source . -v --config .gitleaks.toml --report-path ci-reports/gitleaks-report.json --report-format json >> "${report}" 2>&1
+          status=$?
+          set -e
+          echo >> "${report}"
+          if [ "$status" -eq 0 ]; then
+            echo "Result: PASS (no leaks)." | tee -a "${report}"
+          else
+            echo "Result: FAIL (exit ${status})." | tee -a "${report}"
+          fi
+          exit "$status"
+      - name: Upload Gitleaks report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-gitleaks-report
+          path: |
+            ci-reports/gitleaks-report.txt
+            ci-reports/gitleaks-report.json
+          if-no-files-found: warn
+          retention-days: 14
 
   dependencies:
     name: Dependency audit (pip-audit)
-    # Gitea runners are typically Linux-only; keep matrix ubuntu to avoid stalled macos/windows jobs.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -53,21 +79,37 @@ jobs:
       - name: Install audit tooling
         run: pip install pip-audit
       - name: Run pip-audit
-        # Report findings but do not hard-fail CI on known transitive CVEs in torch/etc.
-        # Exit 1 = vulns found; >=2 = tool/runtime failure.
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          report="ci-reports/pip-audit-report.txt"
+          {
+            echo "MSS-Login pip-audit report"
+            echo "=========================="
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+            echo
+          } > "${report}"
           set +e
-          pip-audit -r requirements-ci.txt --extra-index-url https://download.pytorch.org/whl/cu128
+          pip-audit -r requirements-ci.txt --extra-index-url https://download.pytorch.org/whl/cu128 >> "${report}" 2>&1
           status=$?
           set -e
+          echo >> "${report}"
           if [ "$status" -eq 0 ]; then
-            echo "pip-audit: no known vulnerabilities."
-          elif [ "$status" -eq 1 ]; then
-            echo "::warning::pip-audit reported vulnerabilities (see log). Not failing the job; triage separately."
+            echo "Result: PASS." | tee -a "${report}"
           else
-            echo "pip-audit failed with status $status"
-            exit "$status"
+            echo "Result: FAIL (exit ${status})." | tee -a "${report}"
           fi
+          exit "$status"
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-pip-audit-report
+          path: ci-reports/pip-audit-report.txt
+          if-no-files-found: warn
+          retention-days: 14
 
   osv-scan:
     name: OSV Vulnerability Scan
@@ -82,24 +124,108 @@ jobs:
       - name: Install OSV-Scanner
         run: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
       - name: Run OSV-Scanner
-        # Exit 0 = clean; 1 = vulns found (warn); >=127 = scanner error (fail).
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          report="ci-reports/osv-scan-report.txt"
+          {
+            echo "MSS-Login OSV-Scanner report"
+            echo "============================"
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+            echo "Targets: uv.lock, web/frontend/pnpm-lock.yaml"
+            echo
+          } > "${report}"
           set +e
-          osv-scanner scan --recursive .
+          osv-scanner scan \
+            --config osv-scanner.toml \
+            -L uv.lock \
+            -L web/frontend/pnpm-lock.yaml \
+            --format table >> "${report}" 2>&1
           status=$?
           set -e
+          # Also keep machine-readable JSON beside the text report.
+          osv-scanner scan \
+            --config osv-scanner.toml \
+            -L uv.lock \
+            -L web/frontend/pnpm-lock.yaml \
+            --format json \
+            --output-file ci-reports/osv-scan-report.json || true
+          echo >> "${report}"
           if [ "$status" -eq 0 ]; then
-            echo "OSV-Scanner: no known vulnerabilities."
-          elif [ "$status" -eq 1 ]; then
-            echo "::warning::OSV-Scanner found vulnerabilities (see log). Not failing the job; triage separately."
+            echo "Result: PASS." | tee -a "${report}"
           else
-            echo "OSV-Scanner failed with status $status"
-            exit "$status"
+            echo "Result: FAIL (exit ${status})." | tee -a "${report}"
           fi
+          exit "$status"
+      - name: Upload OSV report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-osv-report
+          path: |
+            ci-reports/osv-scan-report.txt
+            ci-reports/osv-scan-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  package-reports:
+    name: Package security reports
+    needs: [secrets, dependencies, osv-scan]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Gitleaks report
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: security-gitleaks-report
+          path: security-reports/gitleaks
+      - name: Download pip-audit report
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: security-pip-audit-report
+          path: security-reports/pip-audit
+      - name: Download OSV report
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: security-osv-report
+          path: security-reports/osv
+      - name: Build combined archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p security-reports
+          {
+            echo "MSS-Login Security Scan bundle"
+            echo "=============================="
+            echo "secrets: ${{ needs.secrets.result }}"
+            echo "dependencies: ${{ needs.dependencies.result }}"
+            echo "osv-scan: ${{ needs.osv-scan.result }}"
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+          } > security-reports/SUMMARY.txt
+          if command -v zip >/dev/null 2>&1; then
+            zip -qr security-scan-reports.zip security-reports
+          else
+            tar -czf security-scan-reports.tar.gz security-reports
+            mv security-scan-reports.tar.gz security-scan-reports.zip
+          fi
+          ls -la security-scan-reports.zip
+      - name: Upload combined security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-reports
+          path: security-scan-reports.zip
+          if-no-files-found: error
+          retention-days: 14
 
   ntfy-notification:
     name: Notify on Security Scan Results
-    needs: [secrets, dependencies, osv-scan]
+    needs: [secrets, dependencies, osv-scan, package-reports]
     if: always()
     uses: ./.gitea/workflows/ntfy-notify-reusable.yml
     with:
@@ -113,7 +239,11 @@ jobs:
 
         === OSV Vulnerability Scan ===
         Result: ${{ needs.osv-scan.result }}
+
+        Report: attached security-scan-reports.zip
       priority: ${{ (needs.secrets.result == 'success' && needs.dependencies.result == 'success' && needs.osv-scan.result == 'success') && '3' || '5' }}
       tags: ${{ (needs.secrets.result == 'success' && needs.dependencies.result == 'success' && needs.osv-scan.result == 'success') && 'white_check_mark,lock' || 'warning,lock' }}
       ref_name: ${{ github.ref_name }}
+      attachment_artifact: security-scan-reports
+      attachment_filename: security-scan-reports.zip
     secrets: inherit

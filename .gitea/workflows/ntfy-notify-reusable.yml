@@ -5,6 +5,10 @@
 #
 # Required secrets (pass with `secrets: inherit` or map explicitly):
 #   NTFY_URL, NTFY_TOPIC; optional NTFY_TOKEN
+#
+# Optional attachment: upload an Actions artifact in a prior job, then pass
+# attachment_artifact. The notify job downloads it and PUTs the file to ntfy
+# (Filename + Message headers). Multi-file artifacts are zipped first.
 name: Notify via ntfy
 
 on:
@@ -38,6 +42,16 @@ on:
         required: false
         type: boolean
         default: true
+      attachment_artifact:
+        description: "Optional Actions artifact name to download and attach"
+        required: false
+        type: string
+        default: ""
+      attachment_filename:
+        description: "Preferred filename when zipping multi-file artifacts"
+        required: false
+        type: string
+        default: "ci-report.zip"
     secrets:
       NTFY_URL:
         description: "ntfy server base URL"
@@ -54,6 +68,14 @@ jobs:
     name: Send ntfy notification
     runs-on: ubuntu-latest
     steps:
+      - name: Download attachment artifact
+        if: ${{ inputs.attachment_artifact != '' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.attachment_artifact }}
+          path: ntfy-attachment
+
       - name: Publish to ntfy
         env:
           NTFY_URL: ${{ secrets.NTFY_URL }}
@@ -65,6 +87,9 @@ jobs:
           TAGS: ${{ inputs.tags }}
           REF_NAME: ${{ inputs.ref_name }}
           SKIP_IF_UNCONFIGURED: ${{ inputs.skip_if_unconfigured }}
+          WANT_ARTIFACT: ${{ inputs.attachment_artifact }}
+          PREFERRED_ZIP_NAME: ${{ inputs.attachment_filename }}
+        shell: bash
         run: |
           set -euo pipefail
 
@@ -84,6 +109,27 @@ jobs:
           else
             body=$(printf '%s\n\nFinished: %s\n' "$MESSAGE" "$finished")
           fi
+          header_message=$(printf '%s' "$body" | tr '\n' ' ' | sed 's/  */ /g' | cut -c1-900)
+
+          attachment=""
+          attachment_name=""
+          if [ -n "${WANT_ARTIFACT:-}" ] && [ -d ntfy-attachment ]; then
+            mapfile -t files < <(find ntfy-attachment -type f | sort)
+            if [ "${#files[@]}" -eq 1 ]; then
+              attachment="${files[0]}"
+              attachment_name="$(basename "$attachment")"
+            elif [ "${#files[@]}" -gt 1 ]; then
+              mkdir -p ntfy-out
+              attachment="ntfy-out/${PREFERRED_ZIP_NAME:-ci-report.zip}"
+              if command -v zip >/dev/null 2>&1; then
+                (cd ntfy-attachment && zip -qr "../${attachment}" .)
+              else
+                attachment="ntfy-out/ci-report.tar.gz"
+                tar -C ntfy-attachment -czf "${attachment}" .
+              fi
+              attachment_name="$(basename "$attachment")"
+            fi
+          fi
 
           args=(-H "Title: ${TITLE}" -H "Priority: ${PRIORITY}")
           if [ -n "${TAGS:-}" ]; then
@@ -93,5 +139,15 @@ jobs:
             args+=(-H "Authorization: Bearer ${NTFY_TOKEN}")
           fi
 
-          curl -fsS "${args[@]}" -d "$body" "${NTFY_URL%/}/${NTFY_TOPIC}"
-          echo "ntfy notification sent."
+          url="${NTFY_URL%/}/${NTFY_TOPIC}"
+          if [ -n "${attachment}" ] && [ -f "${attachment}" ]; then
+            args+=(-H "Filename: ${attachment_name}" -H "Message: ${header_message}")
+            curl -fsS -X PUT "${args[@]}" -T "${attachment}" "${url}"
+            echo "ntfy notification sent with attachment: ${attachment_name}"
+          else
+            if [ -n "${WANT_ARTIFACT:-}" ]; then
+              echo "Attachment artifact missing or empty; sending text-only notification."
+            fi
+            curl -fsS "${args[@]}" -d "${body}" "${url}"
+            echo "ntfy notification sent."
+          fi

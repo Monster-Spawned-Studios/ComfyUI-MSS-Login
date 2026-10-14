@@ -3,6 +3,8 @@ ComfyUI/
 .venv/
 # Local CI tool installs (Gitleaks binary from scripts/ci/install-gitleaks.sh)
 .ci-bin/
+# Local CI report outputs (uploaded as Actions artifacts / ntfy attachments)
+ci-reports/
 .env
 .env.*
 !.env.example
@@ -48,7 +50,8 @@ site/
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/cspell.json
-!.vscode/dictionaries/*
+!.vscode/dictionaries/
+!.vscode/dictionaries/**
 !.vscode/scripts/
 !.vscode/scripts/**
 !.vscode/comfyui-test.settings.example.json
