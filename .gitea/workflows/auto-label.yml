@@ -1,18 +1,44 @@
+# Apply path-based labels on Gitea PRs via the Gitea Issues/PR API.
+# Do NOT use actions/labeler here — that action only talks to GitHub's API,
+# so labels never appear on Gitea pull requests.
 name: "Pull Request Labeler"
 on:
-  pull_request_target:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number to label"
+        required: true
+        type: string
 
 jobs:
   labeler:
     permissions:
       contents: read
       pull-requests: write
+      issues: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/labeler@v5
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          configuration-path: .gitea/labeler.yml
-          sync-labels: false
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: python3 -m pip install --user pyyaml
+
+      - name: Apply labels via Gitea API
+        env:
+          GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+          LABELER_CONFIG: .gitea/labeler.yml
+          PR_NUMBER: ${{ github.event.inputs.pr_number || '' }}
+        run: python3 scripts/ci/gitea_label_pr.py
 
   ntfy-notification:
     name: Notify on MSS-Login Auto-label Results
