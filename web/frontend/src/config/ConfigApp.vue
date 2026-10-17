@@ -102,6 +102,15 @@ export default {
   computed: {
     tabs() {
       const owner = isOwnerUser(this.currentUser);
+      const isAdmin = !!(this.currentUser && this.currentUser.is_admin);
+      const canDownload = !!(
+        this.currentUser &&
+        (this.currentUser.can_download_models || isAdmin)
+      );
+      // Non-admins with download permission only see Model download.
+      if (!isAdmin && canDownload) {
+        return [{ id: "model-download", label: "Model download", order: 0 }];
+      }
       const builtIn = [
         { id: "users", label: "Users & Roles", order: 0 },
         { id: "perms", label: "Permissions & UI", order: 1 },

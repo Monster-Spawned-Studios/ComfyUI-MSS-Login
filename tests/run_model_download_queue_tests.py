@@ -51,6 +51,9 @@ def _install_stubs():
 		def put(self, _path):
 			return lambda fn: fn
 
+		def delete(self, _path):
+			return lambda fn: fn
+
 	class _JWT:
 		def get_token_from_request(self, request):
 			return getattr(request, "_token", None)
@@ -133,7 +136,42 @@ def _install_stubs():
 		else 502
 	)
 	download_mod.set_civitai_host_preference = lambda *_a, **_k: "civitai.com"
+	download_mod.check_disk_and_size = lambda *_a, **_k: None
+	download_mod.extract_civitai_file_sha256 = lambda *_a, **_k: None
+	download_mod.file_already_complete = lambda *_a, **_k: False
+	download_mod.sanitize_model_filename = lambda raw: (raw or "").strip()
 	sys.modules["mss_login.utils.model_download"] = download_mod
+
+	errors_mod = types.ModuleType("mss_login.utils.model_download_errors")
+	errors_mod.ALREADY_EXISTS = "ALREADY_EXISTS"
+	errors_mod.AUTH_REQUIRED = "AUTH_REQUIRED"
+	errors_mod.AUTH_REQUIRED_UPSTREAM = "AUTH_REQUIRED_UPSTREAM"
+	errors_mod.CHECKSUM_MISMATCH = "CHECKSUM_MISMATCH"
+	errors_mod.DOWNLOAD_NOT_ALLOWED = "DOWNLOAD_NOT_ALLOWED"
+	errors_mod.DOWNLOAD_NOT_ALLOWED_MESSAGE = (
+		"Your account does not have permission to download models."
+	)
+	errors_mod.FILE_TOO_LARGE = "FILE_TOO_LARGE"
+	errors_mod.INSUFFICIENT_DISK = "INSUFFICIENT_DISK"
+	errors_mod.INVALID_REQUEST = "INVALID_REQUEST"
+	errors_mod.INVALID_SOURCE = "INVALID_SOURCE"
+	errors_mod.NOT_FOUND = "NOT_FOUND"
+	errors_mod.RATE_LIMITED = "RATE_LIMITED"
+
+	def _error_payload(code, message):
+		return {"error": code, "message": message, "code": code}
+
+	def _json_error(code, message, status):
+		return web.json_response(_error_payload(code, message), status=status)
+
+	errors_mod.error_payload = _error_payload
+	errors_mod.json_error = _json_error
+	sys.modules["mss_login.utils.model_download_errors"] = errors_mod
+
+	rate_mod = types.ModuleType("mss_login.utils.download_rate_limit")
+	rate_mod.check_rate_limit = lambda *_a, **_k: True
+	rate_mod.reset_rate_limits = lambda: None
+	sys.modules["mss_login.utils.download_rate_limit"] = rate_mod
 
 	isolation_mod = types.ModuleType("mss_login.utils.model_isolation")
 	isolation_mod.maybe_isolated_destination = lambda *_args, **_kwargs: None
@@ -267,15 +305,27 @@ def run_tests():
 	resp = asyncio.run(mod.api_model_download_jobs(_Req()))
 	ok(isinstance(resp, web.Response), "jobs endpoint returns response object")
 	ok(resp.status == 403, "jobs endpoint denies users without can_download_models")
+	deny_body = json.loads(resp.text)
+	ok(deny_body.get("error") == "DOWNLOAD_NOT_ALLOWED", "403 uses DOWNLOAD_NOT_ALLOWED code")
+	ok("permission" in (deny_body.get("message") or "").lower(), "403 includes human message")
 	mod._role_and_perms = lambda _request: ("user", {"can_download_models": True}, "alice")
 	resp = asyncio.run(mod.api_model_download_jobs(_Req()))
 	ok(resp.status == 200, "jobs endpoint allows users with can_download_models")
 
 	print("TestCancelRunningJob")
 	job_id = "job-running"
-	mod._JOBS_BY_ID[job_id] = {"job_id": job_id, "user_id": "uid-alice", "status": "running"}
+	mod._JOBS_BY_ID[job_id] = {
+		"job_id": job_id,
+		"user_id": "uid-alice",
+		"status": "running",
+		"cancel_requested": False,
+	}
 	resp = asyncio.run(mod.api_model_download_cancel(_Req(job_id=job_id)))
-	ok(resp.status == 400, "running job cancel is rejected safely")
+	ok(resp.status == 200, "running job cancel sets cancel_requested")
+	ok(
+		mod._JOBS_BY_ID[job_id].get("cancel_requested") is True,
+		"running job has cancel_requested flag",
+	)
 	mod._JOBS_BY_ID.clear()
 
 	print("TestMobileClientEndpoints")

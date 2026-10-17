@@ -1,6 +1,6 @@
 name: "Pull Request Labeler"
 on:
-- pull_request_target
+  pull_request_target:
 
 jobs:
   labeler:
@@ -9,7 +9,10 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/labeler@v7
+      - uses: actions/labeler@v5
+        with:
+          configuration-path: .gitea/labeler.yml
+          sync-labels: false
 
   ntfy-notification:
     name: Notify on MSS-Login Auto-label Results

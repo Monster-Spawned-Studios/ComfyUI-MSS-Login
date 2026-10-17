@@ -5,26 +5,29 @@
 # CUDA hosts: --extra-index-url https://download.pytorch.org/whl/cu130 (fallback cu128).
 # CPU-only Linux/Windows: --extra-index-url https://download.pytorch.org/whl/cpu
 # macOS: PyPI (Metal/MPS). Do not use the pytorch-cpu index on darwin.
-aiohttp
+aiohttp>=3.14.3
 argon2-cffi
 bcrypt
-bleach
-cryptography
+bleach>=6.4.0
+cryptography>=50.0.0
 numpy
-pillow
+pillow>=12.3.0
 psycopg2-binary
 pymysql
 pyotp
-PyJWT
+PyJWT>=2.15.0
 sqlcipher3
-torch
+torch>=2.13.0
 torchaudio
 torchvision
-transformers
+transformers>=5.10.0
 uv
 python-dotenvx>=0.3.0
 ruff
 pytest
 pip-audit
 mkdocs
+mkdocs-material>=9.7.7
+pymdown-extensions>=11.0.1
 boto3
+urllib3>=2.8.0

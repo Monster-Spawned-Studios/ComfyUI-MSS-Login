@@ -914,9 +914,15 @@ class mss_loginDialog extends ComfyDialog {
         currentUser = me;
         groupsConfig = groups?.groups || {};
         const usersList = users?.users || [];
+        const preferUsers = !!window._mss_loginPreferUsersTab;
+        const preferModelDownload = !!window._mss_loginPreferModelDownloadTab;
+        window._mss_loginPreferUsersTab = false;
+        window._mss_loginPreferModelDownloadTab = false;
+        const canDownloadModels = !!(currentUser && (currentUser.can_download_models || currentUser.is_admin));
+        const downloadOnlyAccess = !!(currentUser && !currentUser.is_admin && canDownloadModels);
 
-        // Admin Guard
-        if (!currentUser || !currentUser.is_admin) {
+        // Admin Guard — allow Model download section for non-admins with can_download_models.
+        if (!currentUser || (!currentUser.is_admin && !canDownloadModels)) {
             this.element.innerHTML = `
                 <div style="padding:40px; text-align:center; color:#ff6b6b;">
                     <h2>Access Denied</h2>
@@ -927,9 +933,7 @@ class mss_loginDialog extends ComfyDialog {
             return;
         }
 
-        const extensionTabs = window.mss_loginAdminTabs.getAll();
-        const preferUsers = !!window._mss_loginPreferUsersTab;
-        window._mss_loginPreferUsersTab = false;
+        const extensionTabs = downloadOnlyAccess ? [] : window.mss_loginAdminTabs.getAll();
         this.overlay.onclick = (e) => { if (e.target === this.overlay) this.close(); };
 
         // Prefer Vue + Tailwind config UI when dist assets are available.
@@ -962,13 +966,16 @@ class mss_loginDialog extends ComfyDialog {
                     try { this._vueUnmount(); } catch (_) {}
                     this._vueUnmount = null;
                 }
+                let preferTab = "";
+                if (preferUsers && currentUser.is_admin) preferTab = "users";
+                else if (preferModelDownload || downloadOnlyAccess) preferTab = "model-download";
                 this._vueUnmount = window.mssLoginMountConfig(this.element, {
                     currentUser,
-                    usersList,
-                    groupsConfig,
+                    usersList: downloadOnlyAccess ? [] : usersList,
+                    groupsConfig: downloadOnlyAccess ? {} : groupsConfig,
                     extensionTabs,
                     legacyRenderers,
-                    preferTab: preferUsers ? "users" : "",
+                    preferTab,
                     onClose: () => dialog.close(),
                 });
                 return;
@@ -4615,6 +4622,18 @@ app.ui.settings.addSetting({
         btn.style.minWidth = "260px";
         btn.onclick = () => new mss_loginDialog().show();
 
+        // Model download browser (can_download_models); opens Model download tab.
+        const modelDownloadBtn = document.createElement("button");
+        modelDownloadBtn.innerText = "Model Download";
+        modelDownloadBtn.className = "mss-login-launch-btn";
+        modelDownloadBtn.style.minWidth = "260px";
+        modelDownloadBtn.style.display = "none";
+        modelDownloadBtn.setAttribute("data-mss-login-download-models", "true");
+        modelDownloadBtn.onclick = () => {
+            window._mss_loginPreferModelDownloadTab = true;
+            new mss_loginDialog().show();
+        };
+
         // Register a new user (owner only). Opens in-dialog create form on Users & Roles.
         const registerBtn = document.createElement("button");
         registerBtn.innerText = "Register a New User";
@@ -4638,6 +4657,7 @@ app.ui.settings.addSetting({
         };
 
         actionsWrap.appendChild(btn);
+        actionsWrap.appendChild(modelDownloadBtn);
         actionsWrap.appendChild(registerBtn);
         actionsWrap.appendChild(exportLogBtn);
         actionsWrap.appendChild(logoutBtn);
@@ -4718,6 +4738,9 @@ app.ui.settings.addSetting({
         (async () => {
             try {
                 const me = await getData("/mss-login/api/me");
+                if (me && (me.can_download_models || me.is_admin)) {
+                    modelDownloadBtn.style.display = "block";
+                }
                 if (me && me.is_admin) {
                     const isOwner = Array.isArray(me.groups)
                         && me.groups.map(g => String(g).toLowerCase()).includes("owner");
@@ -4725,6 +4748,9 @@ app.ui.settings.addSetting({
                     const cfg = await getData("/mss-login/api/settings/guest-jwt");
                     guestJwtRow.style.display = "flex";
                     guestJwtCheck.checked = !!cfg.allow_guest_jwt;
+                } else {
+                    // Non-admins manage downloads via Model Download, not full Security Policy.
+                    btn.style.display = "none";
                 }
                 const filterCfg = await getData("/mss-login/api/settings/debug-filter");
                 if (filterCfg && filterCfg.filter_debug_messages !== undefined) {

@@ -56,7 +56,7 @@ from .globals import (
 	timeout,
 	users_db,
 )
-from .nodes import NODE_CLASS_MAPPINGS
+from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
 from .routes import (
 	admin,
 	auth,
@@ -131,9 +131,9 @@ WEB_DIRECTORY = "web/comfyui"
 try:
 	from . import api
 
-	__all__ = ["NODE_CLASS_MAPPINGS", "WEB_DIRECTORY", "api"]
+	__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY", "api"]
 except ImportError:
-	__all__ = ["NODE_CLASS_MAPPINGS", "WEB_DIRECTORY"]
+	__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
 
 ensure_groups_config()
 initialize_redirect_pattern_cache(logger=logger)
@@ -232,7 +232,13 @@ async def workflow_interceptor_middleware(request, handler):
 	if method in ("POST", "PUT", "PATCH") and should_try_model_download_redirect(path):
 		role, perms, _perm_user = access_control._get_user_role_and_permissions(request)
 		if not user_can_download_models(role, perms):
-			return web.json_response({"error": "Model download permission required"}, status=403)
+			from .utils.model_download_errors import (
+				DOWNLOAD_NOT_ALLOWED,
+				DOWNLOAD_NOT_ALLOWED_MESSAGE,
+				json_error,
+			)
+
+			return json_error(DOWNLOAD_NOT_ALLOWED, DOWNLOAD_NOT_ALLOWED_MESSAGE, 403)
 		if experimental_model_isolation_enabled():
 			current_user_id = access_control.get_current_user_id()
 			if current_user_id and (
