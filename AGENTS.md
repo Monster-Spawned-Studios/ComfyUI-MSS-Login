@@ -64,6 +64,12 @@ When editing this extension, maintain compatibility with:
 - **Krita AI Diffusion and other JWT/API clients**: Preserve Bearer token, cookie, and query-token auth; do not break `POST /login` or `POST /mss-login/generate_token` (including JSON bodies) without a compat layer.
 - **Backwards compatibility (required)**: Follow [`.agents/rules/backwards-compatibility.mdc`](.agents/rules/backwards-compatibility.mdc). Changes must work with the previous release or ship an explicit migration / dual-read / dual-verify path so upgrades do not brick existing installs (auth, DB encryption, config defaults, on-disk paths, API contracts).
 
+### Planning artifacts (`_planning/`)
+
+Follow [`.agents/rules/planning-artifacts.mdc`](.agents/rules/planning-artifacts.mdc) (always-on, agent-agnostic).
+
+Store project status, session notes, implementation plans, and agent prompts under **`_planning/`** (gitignored). Do **not** drop `PROJECT-STATUS.md`, scratch prompts, or similar working files in the repository root. Keep release docs in `docs/` / `readme/`; keep always-on rules in `.agents/rules/` with this file kept in sync.
+
 ### Do not auto-commit or auto-push
 
 Follow [`.agents/rules/no-auto-commit.mdc`](.agents/rules/no-auto-commit.mdc) (always-on, agent-agnostic).
@@ -83,7 +89,8 @@ For significant change sets (~500+ lines) or multi-topic dumps, invoke **`/commi
 - When hiding Models or other sidebar UI by permission, mirror the existing console permission-hide pattern rather than inventing a new approach.
 - Nested MSS-Login configuration pages should offer back navigation to the main MSS-Login config menu without closing and reopening the dialog.
 - For local ComfyUI debugging, support a manually specified test-instance path plus a toggleable auto-install when that path has no `main.py`.
-- Agent-agnostic project rules belong in `.agents/rules/` (cross-agent); keep AGENTS.md in sync when adding always-on rules.
+- Agent-agnostic project rules belong in `.agents/rules/` (cross-agent); keep AGENTS.md in sync when adding always-on rules. Put project status, planning notes, and agent prompts under `_planning/` (gitignored), not the repo root.
+
 - Do not commit or push unless the user explicitly authorizes it in the turn’s instructions or after the changes are done; see [`.agents/rules/no-auto-commit.mdc`](.agents/rules/no-auto-commit.mdc).
 - Never commit Cursor memory / local agent state (`.cursor/`, continual-learning hook index files under `.cursor/hooks/state/`, transcript/store dumps); keep them gitignored and out of `git add`.
 - When asked to commit, split changes into small, digestible, topic-scoped commits rather than one large dump; leave push to the user after review unless they explicitly ask to push; when push is requested, push both `origin` and `gitea` when those remotes exist.
