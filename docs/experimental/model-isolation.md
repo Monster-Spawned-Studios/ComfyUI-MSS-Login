@@ -11,7 +11,7 @@ Isolates model folders per user and enforces **grant-based** visibility via `sha
 
 ## When it is required
 
-Required when non-privileged users must not see the full shared model library. Owner/admin with view-all still see all models. New downloads default-deny for users without view-all (exact-item grant to the downloader under isolation only).
+Required when non-privileged users must not see the full shared model library. Owner/admin with view-all see the full **shared** library plus their own isolation files as plain names in loader combos (not other users’ UUID-prefixed trees). New downloads default-deny for users without view-all (exact-item grant to the downloader under isolation only). See the [guide](../guide/model-isolation.md) for flat names, shadowing, and legacy prefix rules.
 
 ## See also
 
