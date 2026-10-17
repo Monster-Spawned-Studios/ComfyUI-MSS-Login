@@ -9,118 +9,131 @@ except Exception as e:
 
 	print(f"[mss-login] Auto-dependency installation failed: {e}", file=sys.stderr)
 
-from .globals import routes
-from server import PromptServer  # pyright: ignore[reportMissingImports]
-import server  # pyright: ignore[reportMissingImports]
 import asyncio
-from .utils.updater import (
-	get_cached_status,
-	perform_recovery_update,
-	run_update_check,
-	update_check_loop,
+import json
+import os
+import sys
+from datetime import UTC, datetime, timezone
+
+import folder_paths  # pyright: ignore[reportMissingImports]
+import server  # pyright: ignore[reportMissingImports]
+from aiohttp import web
+from server import PromptServer  # pyright: ignore[reportMissingImports]
+
+from .constants import (
+	CLOUDFLARE_PROXY,
+	CLOUDFLARED_LOCAL_BYPASS,
+	CONFIG_FILE_PATH,
+	CURRENT_DIR,
+	DATA_DIR,
+	EXPERIMENTAL_FAILSAFE_ENABLED,
+	EXPERIMENTAL_FAILSAFE_ESCALATE,
+	EXPERIMENTAL_FEATURES,
+	FORCE_HTTPS,
+	LOCAL_NETWORK_CIDRS,
+	MATCH_HEADERS,
+	REQUIRE_AUTH_FOR_REMOTE_API,
+	S3_MOUNT_CONFIG,
+	S3_STORAGE_CONFIG,
+	S3_WORKFLOW_SYNC_CONFIG,
+	SEPERATE_USERS,
+	USERS_DB_CONFIG,
+	apply_experimental_safety_reset,
+	clear_host_base_url_cache,
+	experimental_install_other_nodes_deps_enabled,
+	experimental_model_isolation_enabled,
 )
+from .globals import (
+	access_control,
+	app,
+	current_username_var,
+	instance,
+	ip_filter,
+	jwt_auth,
+	logger,
+	routes,
+	sanitizer,
+	timeout,
+	users_db,
+)
+from .nodes import NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+from .routes import (
+	admin,
+	auth,
+	cpe,
+	debug,
+	me,
+	mfa,
+	model_download,
+	news,
+	recovery,
+	static,
+	user,
+	workflow_routes,
+)
+from .utils import watcher
+from .utils.api_browser_redirect import create_api_browser_redirect_middleware
+from .utils.bootstrap import ensure_groups_config
+from .utils.csp import create_csp_middleware
 from .utils.json_utils import load_json_file
 from .utils.model_cache import get_model_cache
-from .utils.prompt_model_validator import validate_prompt_models
-from .utils.shared_items_store import get_shared_items_store
-from .utils.path_safety import is_safe_filename, resolve_path_under
-from .utils.csp import create_csp_middleware
-from .utils.model_filter_middleware import create_model_filter_middleware
 from .utils.model_download_redirect import (
 	initialize_redirect_pattern_cache,
 	is_civicomfy_present,
 	rewrite_download_payload_for_user,
 	should_try_model_download_redirect,
 )
+from .utils.model_filter_middleware import create_model_filter_middleware
 from .utils.model_isolation import isolation_models_base
+from .utils.model_path_display import (
+	prompt_has_foreign_uuid_model,
+	rewrite_prompt_model_names,
+)
 from .utils.model_visibility_policy import (
 	allowed_set_from_grants,
 	get_effective_model_grants_for_user,
+	get_user_id_for_username,
+	user_can_download_models,
 	user_can_view_all_models,
 )
+from .utils.ntfy_notifier import notify_experimental_recovery
+from .utils.path_safety import is_safe_filename, resolve_path_under
+from .utils.prompt_model_validator import validate_prompt_models
+from .utils.quarantine_store import quarantine_cleanup_loop
 from .utils.remote_api_guard import create_remote_api_guard_middleware
-from .utils.api_browser_redirect import create_api_browser_redirect_middleware
 from .utils.sfw_intercept.node_interceptor import install_node_interceptor
 from .utils.sfw_intercept.nsfw_guard import (
-	should_block_image_for_current_user,
 	set_latest_prompt_user,
+	should_block_image_for_current_user,
 )
 from .utils.sfw_intercept.reactor_sfw_intercept import _load_reactor_module
-from .routes import (
-	static,
-	auth,
-	admin,
-	user,
-	workflow_routes,
-	me,
-	mfa,
-	recovery,
-	debug,
-	model_download,
-	news,
-)
-from .utils.bootstrap import ensure_groups_config
-from .utils import watcher
-from .globals import (
-	app,
-	ip_filter,
-	sanitizer,
-	timeout,
-	jwt_auth,
-	access_control,
-	instance,
-	current_username_var,
-	logger,
-	users_db,
-)
-from .constants import (
-	FORCE_HTTPS,
-	CLOUDFLARE_PROXY,
-	CLOUDFLARED_LOCAL_BYPASS,
-	SEPERATE_USERS,
-	MATCH_HEADERS,
-	REQUIRE_AUTH_FOR_REMOTE_API,
-	LOCAL_NETWORK_CIDRS,
-	USERS_DB_CONFIG,
-	CONFIG_FILE_PATH,
-	EXPERIMENTAL_FEATURES,
-	S3_STORAGE_CONFIG,
-	S3_MOUNT_CONFIG,
-	S3_WORKFLOW_SYNC_CONFIG,
-	DATA_DIR,
-	CURRENT_DIR,
-	EXPERIMENTAL_FAILSAFE_ENABLED,
-	EXPERIMENTAL_FAILSAFE_ESCALATE,
-	apply_experimental_safety_reset,
-	clear_host_base_url_cache,
-	experimental_model_isolation_enabled,
-)
-from .nodes import NODE_CLASS_MAPPINGS
-import folder_paths  # pyright: ignore[reportMissingImports]
-from aiohttp import web
-import json
-import os
-import sys
-from datetime import datetime, timezone
-from .utils.ntfy_notifier import notify_experimental_recovery
-from .utils.quarantine_store import quarantine_cleanup_loop
+from .utils.shared_items_store import get_shared_items_store
 from .utils.trash_store import trash_cleanup_loop, trash_deleted_history_images
+from .utils.updater import (
+	get_cached_status,
+	perform_recovery_update,
+	run_update_check,
+	update_check_loop,
+)
 
 # Dependency auto-install runs once from constants.py (AUTO_INSTALL_DEPS), not here.
 
 if EXPERIMENTAL_FEATURES:
-	from .routes import s3 as _s3_routes  # noqa: F401
+	from .routes import s3 as _s3_routes
 
 
-WEB_DIRECTORY = "web"
+# Only ComfyUI extension entry scripts live here. Keep Vite source (web/frontend),
+# build output (web/dist), and static assets out of this tree so Comfy's recursive
+# JS scanner never loads node_modules or ES-module bundles as extensions.
+WEB_DIRECTORY = "web/comfyui"
 
 # Export the public API for other extensions
 try:
 	from . import api
 
-	__all__ = ["NODE_CLASS_MAPPINGS", "WEB_DIRECTORY", "api"]
+	__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY", "api"]
 except ImportError:
-	__all__ = ["NODE_CLASS_MAPPINGS", "WEB_DIRECTORY"]
+	__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS", "WEB_DIRECTORY"]
 
 ensure_groups_config()
 initialize_redirect_pattern_cache(logger=logger)
@@ -214,49 +227,57 @@ async def workflow_interceptor_middleware(request, handler):
 		set_latest_prompt_user(username)
 		print(f"[MSS-Login::Middleware] PROMPT CAPTURE path={path} user={username!r}")
 
-	# --- Model download destination rewrite for Civicomfy / core model routes ---
-	if (
-		experimental_model_isolation_enabled()
-		and method in ("POST", "PUT", "PATCH")
-		and should_try_model_download_redirect(path)
-	):
-		current_user_id = access_control.get_current_user_id()
-		if current_user_id and (
-			is_civicomfy_present() or "/manager" in path.lower() or "model" in path.lower()
-		):
-			original_body = await request.read()
-			rewritten_body = original_body
-			content_type = (request.headers.get("Content-Type") or "").lower()
-			if "application/json" in content_type and original_body:
-				try:
-					payload = json.loads(original_body)
-					rewritten_payload, changed = rewrite_download_payload_for_user(
-						payload, current_user_id
-					)
-					if changed:
-						rewritten_body = json.dumps(rewritten_payload).encode("utf-8")
-						logger.info(
-							"[mss-login] Model isolation redirected model download path for user=%s path=%s target_base=%s",
-							current_user_id,
-							path,
-							isolation_models_base(),
+	# --- Model download permission gate + destination rewrite ---
+	# Gate Civicomfy/Manager download routes BEFORE any path rewrite.
+	if method in ("POST", "PUT", "PATCH") and should_try_model_download_redirect(path):
+		role, perms, _perm_user = access_control._get_user_role_and_permissions(request)
+		if not user_can_download_models(role, perms):
+			from .utils.model_download_errors import (
+				DOWNLOAD_NOT_ALLOWED,
+				DOWNLOAD_NOT_ALLOWED_MESSAGE,
+				json_error,
+			)
+
+			return json_error(DOWNLOAD_NOT_ALLOWED, DOWNLOAD_NOT_ALLOWED_MESSAGE, 403)
+		if experimental_model_isolation_enabled():
+			current_user_id = access_control.get_current_user_id()
+			if current_user_id and (
+				is_civicomfy_present() or "/manager" in path.lower() or "model" in path.lower()
+			):
+				original_body = await request.read()
+				rewritten_body = original_body
+				content_type = (request.headers.get("Content-Type") or "").lower()
+				if "application/json" in content_type and original_body:
+					try:
+						payload = json.loads(original_body)
+						rewritten_payload, changed = rewrite_download_payload_for_user(
+							payload, current_user_id
 						)
-				except (json.JSONDecodeError, TypeError):
-					pass
+						if changed:
+							rewritten_body = json.dumps(rewritten_payload).encode("utf-8")
+							logger.info(
+								"[mss-login] Model isolation redirected model download path for user=%s path=%s target_base=%s",
+								current_user_id,
+								path,
+								isolation_models_base(),
+							)
+					except (json.JSONDecodeError, TypeError):
+						pass
 
-			async def _read_redirect():
-				return rewritten_body
+				async def _read_redirect():
+					return rewritten_body
 
-			async def _json_redirect():
-				return json.loads(rewritten_body) if rewritten_body else {}
+				async def _json_redirect():
+					return json.loads(rewritten_body) if rewritten_body else {}
 
-			request.read = _read_redirect
-			request.json = _json_redirect
+				request.read = _read_redirect
+				request.json = _json_redirect
 
 	# --- Prompt model validation (POST/PUT /prompt and /api/prompt) ---
 	if path in ("/prompt", "/api/prompt") and method in ("POST", "PUT"):
 		body_bytes = await request.read()
 		prompt_to_validate = None
+		data = None
 		try:
 			data = json.loads(body_bytes) if body_bytes else {}
 			# ComfyUI accepts either the graph directly or { "prompt": graph, "client_id": ... }
@@ -269,24 +290,53 @@ async def workflow_interceptor_middleware(request, handler):
 		if prompt_to_validate is not None:
 			role, perms, username_for_perm = access_control._get_user_role_and_permissions(request)
 			can_view_all = user_can_view_all_models(role, perms)
-			if not can_view_all:
-				grants = get_effective_model_grants_for_user(
-					role=role,
-					perms=perms,
-					username=username_for_perm,
-					users_db=access_control.users_db,
-					shared_items_store_getter=get_shared_items_store,
-					users_db_config=USERS_DB_CONFIG,
+			grants = get_effective_model_grants_for_user(
+				role=role,
+				perms=perms,
+				username=username_for_perm,
+				users_db=access_control.users_db,
+				shared_items_store_getter=get_shared_items_store,
+				users_db_config=USERS_DB_CONFIG,
+			)
+			user_id = get_user_id_for_username(access_control.users_db, username_for_perm)
+			known_models = set()
+			try:
+				cache = get_model_cache(USERS_DB_CONFIG)
+				for folder in cache.list_folders():
+					for item in cache.list_items(folder):
+						known_models.add((folder, item))
+			except Exception:
+				pass
+			# Keep prompt values as plain names; resolve at get_full_path time.
+			# normalize_only strips own UUID legacy prefixes; never fabricates storage
+			# prefixes (view_all + shared root names stay byte-identical).
+			if experimental_model_isolation_enabled():
+				if prompt_has_foreign_uuid_model(prompt_to_validate, user_id):
+					return web.json_response(
+						{"error": "Model not allowed", "code": "MODEL_NOT_ALLOWED"},
+						status=403,
+					)
+				rewrite_prompt_model_names(
+					prompt_to_validate,
+					user_id,
+					grants,
+					known_models=known_models if known_models else None,
+					normalize_only=True,
 				)
-				allowed_set = allowed_set_from_grants(grants)
-				known_models = set()
 				try:
-					cache = get_model_cache(USERS_DB_CONFIG)
-					for folder in cache.list_folders():
-						for item in cache.list_items(folder):
-							known_models.add((folder, item))
+					if (
+						isinstance(data, dict)
+						and "prompt" in data
+						and isinstance(data["prompt"], dict)
+					):
+						data["prompt"] = prompt_to_validate
+					elif isinstance(data, dict):
+						data = prompt_to_validate
+					body_bytes = json.dumps(data).encode("utf-8")
 				except Exception:
 					pass
+			if not can_view_all:
+				allowed_set = allowed_set_from_grants(grants)
 				valid, err_msg = validate_prompt_models(
 					allowed_set,
 					allow_all=False,
@@ -514,6 +564,22 @@ watcher.register(app)
 
 install_node_interceptor()
 
+# Register isolation roots before cache refresh so existing UUID trees are indexed
+try:
+	from .utils.model_isolation import register_all_isolation_folders
+
+	register_all_isolation_folders()
+except Exception:
+	pass
+
+# Patch get_filename_list / get_full_path for plain-name resolution (idempotent)
+try:
+	from .utils.isolation_folder_hooks import install_isolation_folder_path_hooks
+
+	install_isolation_folder_path_hooks()
+except Exception:
+	pass
+
 # Populate model cache on startup so GET /models can use it (best-effort)
 try:
 	from .utils.model_cache import get_model_cache
@@ -536,7 +602,7 @@ def _handle_experimental_critical_failure(reason: str) -> None:
 				reason=reason,
 				recovery_action=action,
 				failure_count=failure_count,
-				occurred_at=datetime.now(timezone.utc).isoformat(),
+				occurred_at=datetime.now(UTC).isoformat(),
 				details=details,
 			)
 		except Exception as _ntfy_exc:
@@ -568,8 +634,8 @@ def _handle_experimental_critical_failure(reason: str) -> None:
 _s3_runtime = None
 if EXPERIMENTAL_FEATURES:
 	try:
-		from .utils.s3_mounter import init_s3_manager
 		from .globals import users_db as _users_db_for_sync
+		from .utils.s3_mounter import init_s3_manager
 
 		_s3_runtime = init_s3_manager(DATA_DIR, users_db=_users_db_for_sync)
 		if _s3_runtime.mount_or_sync():
@@ -624,6 +690,32 @@ except Exception:
 		app.add_routes(routes)
 	except Exception:
 		pass  # ComfyUI may handle route registration automatically
+
+if experimental_install_other_nodes_deps_enabled():
+	try:
+		import threading
+
+		from .utils.node_deps_installer import scan_and_install_node_dependencies
+
+		def _bg_installer():
+			try:
+				print(
+					"[MSS-Login] Starting background installation of other custom node dependencies..."
+				)
+				res = scan_and_install_node_dependencies()
+				print(
+					f"[MSS-Login] Node dependency installer completed. "
+					f"Nodes scanned: {res.get('nodes_scanned', 0)}, "
+					f"conflicts resolved: {res.get('conflicts_resolved_count', 0)}"
+				)
+			except Exception as e:
+				print(f"[MSS-Login] Node dependency installer error: {e}", file=sys.stderr)
+
+		threading.Thread(
+			target=_bg_installer, daemon=True, name="mss_login_node_deps_installer"
+		).start()
+	except Exception as e:
+		print(f"[MSS-Login] Failed to start node dependency installer: {e}", file=sys.stderr)
 
 print("------------------------------------------")
 print("[MSS-Login] Security System Initialized.")

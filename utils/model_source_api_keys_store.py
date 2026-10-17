@@ -96,7 +96,7 @@ class _SqliteApiKeysStore:
 		self._conn = conn
 		self._secret_key = secret_key
 
-	def get_key(self, user_id: str, source: str) -> Optional[str]:
+	def get_key(self, user_id: str, source: str) -> str | None:
 		if source not in SOURCES:
 			return None
 		row = self._conn.execute(
@@ -112,10 +112,11 @@ class _SqliteApiKeysStore:
 	def set_key(self, user_id: str, source: str, api_key: str) -> bool:
 		if source not in SOURCES:
 			return False
-		from .encryption import encrypt_value
+		from .encryption import encrypt_and_verify
 
-		encrypted = encrypt_value(self._secret_key, (api_key or "").strip())
-		if not encrypted and (api_key or "").strip():
+		plain = (api_key or "").strip()
+		encrypted = encrypt_and_verify(self._secret_key, plain) if plain else ""
+		if plain and not encrypted:
 			return False
 		now = time.time()
 		try:
@@ -165,7 +166,7 @@ class _PostgresApiKeysStore:
 		self._conn = conn
 		self._secret_key = secret_key
 
-	def get_key(self, user_id: str, source: str) -> Optional[str]:
+	def get_key(self, user_id: str, source: str) -> str | None:
 		if source not in SOURCES:
 			return None
 		cur = self._conn.cursor()
@@ -184,10 +185,11 @@ class _PostgresApiKeysStore:
 	def set_key(self, user_id: str, source: str, api_key: str) -> bool:
 		if source not in SOURCES:
 			return False
-		from .encryption import encrypt_value
+		from .encryption import encrypt_and_verify
 
-		encrypted = encrypt_value(self._secret_key, (api_key or "").strip())
-		if not encrypted and (api_key or "").strip():
+		plain = (api_key or "").strip()
+		encrypted = encrypt_and_verify(self._secret_key, plain) if plain else ""
+		if plain and not encrypted:
 			return False
 		now = time.time()
 		try:
@@ -246,7 +248,7 @@ class _MySQLApiKeysStore:
 		self._conn = conn
 		self._secret_key = secret_key
 
-	def get_key(self, user_id: str, source: str) -> Optional[str]:
+	def get_key(self, user_id: str, source: str) -> str | None:
 		if source not in SOURCES:
 			return None
 		cur = self._conn.cursor()
@@ -265,20 +267,19 @@ class _MySQLApiKeysStore:
 	def set_key(self, user_id: str, source: str, api_key: str) -> bool:
 		if source not in SOURCES:
 			return False
-		from .encryption import encrypt_value
+		from .encryption import encrypt_and_verify
 
-		encrypted = encrypt_value(self._secret_key, (api_key or "").strip())
-		if not encrypted and (api_key or "").strip():
+		plain = (api_key or "").strip()
+		encrypted = encrypt_and_verify(self._secret_key, plain) if plain else ""
+		if plain and not encrypted:
 			return False
 		now = time.time()
 		try:
 			cur = self._conn.cursor()
 			cur.execute(
-				"INSERT INTO {} (user_id, source, api_key_encrypted, created_at) "
+				f"INSERT INTO {TABLE} (user_id, source, api_key_encrypted, created_at) "
 				"VALUES (%s, %s, %s, %s) ON DUPLICATE KEY UPDATE "
-				"api_key_encrypted = VALUES(api_key_encrypted), created_at = VALUES(created_at)".format(
-					TABLE
-				),
+				"api_key_encrypted = VALUES(api_key_encrypted), created_at = VALUES(created_at)",
 				(user_id, source, encrypted or "", now),
 			)
 			self._conn.commit()
@@ -320,7 +321,7 @@ class _MySQLApiKeysStore:
 		return [r[0] for r in rows]
 
 
-_store: Optional[_SqliteApiKeysStore | _PostgresApiKeysStore | _MySQLApiKeysStore] = None
+_store: _SqliteApiKeysStore | _PostgresApiKeysStore | _MySQLApiKeysStore | None = None
 
 
 def get_model_source_api_keys_store(config: dict, secret_key: str = ""):

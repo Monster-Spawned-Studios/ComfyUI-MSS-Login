@@ -61,6 +61,20 @@ Implemented or wrapped by `routes/workflow_routes.py`:
 
 See [Workflow & intercepted endpoints](workflow-endpoints.md).
 
+## Comfy Portal Endpoint (per-user)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| GET | `/api/cpe/workflow/list` | Auth + `can_access_api`; lists the caller's workflows |
+| GET | `/api/cpe/workflow/get?filename=` | Auth; user file first, then shared |
+| POST | `/api/cpe/workflow/save` | Auth + `can_modify_workflows` |
+| GET | `/api/cpe/workflow/get-and-convert?filename=` | Auth; API graphs in-process; UI graphs via embedded Playwright when enabled |
+| POST | `/api/cpe/workflow/convert` | Auth; body = UI workflow JSON object |
+| GET | `/api/cpe/health` | Auth for remote clients; truthful browser status |
+| GET | `/api/cpe/system/storage` | Auth; disk bytes for `DATA_DIR` (`path`, `total`, `used`, `free`) |
+
+Paths also work without the `/api` prefix (`/cpe/...`). Response format matches [comfy-portal-endpoint](https://github.com/ShunL12324/comfy-portal-endpoint). See [Mobile and Comfy Portal](../integrations/comfy-portal.md).
+
 ## MSS-Login-specific (not ComfyUI core)
 
 | Method | Path | Purpose |
@@ -80,6 +94,9 @@ Requires `can_download_models`. Bearer auth only; suitable for mobile apps.
 |--------|------|---------|
 | GET | `/mss-login/api/model-download/sources` | Sources, key presence, capabilities |
 | GET | `/mss-login/api/model-download/folders` | Valid `folder_type` names |
+| GET/PUT | `/mss-login/api/model-download/preferences` | `civitai_host` (.com / .red) |
+| GET | `/mss-login/api/model-download/civitai/search` | Browse/search CivitAI |
+| GET | `/mss-login/api/model-download/huggingface/search` | Search Hugging Face Hub |
 | PUT | `/mss-login/api/model-download/api-keys` | Store per-user CivitAI/HF keys |
 | POST | `/mss-login/api/model-download/download` | Queue download |
 | GET | `/mss-login/api/model-download/jobs/{job_id}` | Poll one job |

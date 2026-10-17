@@ -1,104 +1,116 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Launch ComfyUI (Local)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "uv",
-            "args": [
-                "run",
-                "--group",
-                "comfyui",
-                "comfy",
-                "--workspace",
-                "${workspaceFolder}/ComfyUI",
-                "--launch",
-                "--",
-                "--port",
-                "8188",
-                "--host",
-                "0.0.0.0"
-            ],
-            "cwd": "${workspaceFolder}",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "Install ComfyUI (Mac M-Series)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "uv",
-            "args": [
-                "run",
-                "--group",
-                "comfyui",
-                "comfy",
-                "--url=file://${workspaceFolder}/ComfyUI",
-                "install",
-                "--m-series",
-                "--fast-deps"
-            ],
-            "env": {
-                "UV_PROJECT": "${workspaceFolder}/",
-                "UV_PYTHON": "${workspaceFolder}/.venv/bin/python3",
-            },
-            "preLaunchTask": "Install ComfyUI Dependencies`",
-            "cwd": "${workspaceFolder}/ComfyUI",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "Install ComfyUI (Linux CUDA/NVIDIA)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "uv",
-            "args": [
-                "run",
-                "--group",
-                "comfyui",
-                "comfy",
-                "--workspace=${workspaceFolder}/ComfyUI",
-                "install",
-                "--nvidia",
-                "--fast-deps"
-            ],
-            "cwd": "${workspaceFolder}/ComfyUI",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "Install ComfyUI (Linux AMD/NVIDIA)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "uv",
-            "args": [
-                "run",
-                "--group",
-                "comfyui",
-                "comfy",
-                "--workspace=${workspaceFolder}/ComfyUI",
-                "install",
-                "--amd",
-                "--fast-deps"
-            ],
-            "cwd": "${workspaceFolder}/ComfyUI",
-            "console": "integratedTerminal"
-        },
-        {
-            "name": "Install ComfyUI (CPU Only)",
-            "type": "debugpy",
-            "request": "launch",
-            "module": "uv",
-            "args": [
-                "run",
-                "--group",
-                "comfyui",
-                "comfy",
-                "--workspace=${workspaceFolder}/ComfyUI",
-                "install",
-                "--cpu",
-                "--fast-deps"
-            ],
-            "cwd": "${workspaceFolder}/ComfyUI",
-            "console": "integratedTerminal"
-        }
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "ComfyUI + MSS-Login (debug)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/.vscode/scripts/launch_comfyui_debug.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "args": ["--listen", "127.0.0.1", "--port", "8188"],
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "DEBUG_MODE": "true",
+        "PYTHONUNBUFFERED": "1",
+        "MSS_LOGIN_DATA_DIR": "${env:MSS_LOGIN_DATA_DIR:${workspaceFolder}/.local-mss-data}"
+      },
+      "preLaunchTask": "Prepare ComfyUI for MSS-Login",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "presentation": { "group": "comfyui", "order": 1 }
+    },
+    {
+      "name": "ComfyUI + MSS-Login (listen 0.0.0.0)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/.vscode/scripts/launch_comfyui_debug.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "args": ["--listen", "0.0.0.0", "--port", "8188"],
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "DEBUG_MODE": "true",
+        "PYTHONUNBUFFERED": "1",
+        "MSS_LOGIN_DATA_DIR": "${env:MSS_LOGIN_DATA_DIR:${workspaceFolder}/.local-mss-data}"
+      },
+      "preLaunchTask": "Prepare ComfyUI for MSS-Login",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "presentation": { "group": "comfyui", "order": 2 }
+    },
+    {
+      "name": "ComfyUI + MSS-Login (CPU flags)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/.vscode/scripts/launch_comfyui_debug.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false,
+      "args": ["--listen", "127.0.0.1", "--port", "8188", "--cpu"],
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "DEBUG_MODE": "true",
+        "PYTHONUNBUFFERED": "1",
+        "MSS_LOGIN_DATA_DIR": "${env:MSS_LOGIN_DATA_DIR:${workspaceFolder}/.local-mss-data}",
+        "CUDA_VISIBLE_DEVICES": ""
+      },
+      "preLaunchTask": "Prepare ComfyUI for MSS-Login",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "presentation": { "group": "comfyui", "order": 3 }
+    },
+    {
+      "name": "Configure ComfyUI test instance",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/.vscode/scripts/ensure_comfyui.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": [
+        "--write-settings-only",
+        "--path",
+        "${input:comfyuiPath}",
+        "--auto-install",
+        "${input:autoInstallComfyUI}",
+        "--flavor",
+        "${input:comfyInstallFlavor}"
+      ],
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "presentation": { "group": "comfyui-setup", "order": 1 }
+    },
+    {
+      "name": "Install / repair ComfyUI from saved settings",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/.vscode/scripts/ensure_comfyui.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": ["--mss-src", "${workspaceFolder}", "--save-settings"],
+      "env": { "UV_PROJECT": "${workspaceFolder}" },
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "presentation": { "group": "comfyui-setup", "order": 2 }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "comfyuiPath",
+      "type": "promptString",
+      "description": "Manual path to the testing ComfyUI instance (folder with main.py, or where one should be created).",
+      "default": "${workspaceFolder}/ComfyUI"
+    },
+    {
+      "id": "autoInstallComfyUI",
+      "type": "pickString",
+      "description": "If that path does not exist / has no main.py, automatically generate a ComfyUI server? (toggle)",
+      "options": ["yes", "no"],
+      "default": "yes"
+    },
+    {
+      "id": "comfyInstallFlavor",
+      "type": "pickString",
+      "description": "Install flavor when auto-generating ComfyUI",
+      "options": ["cpu", "nvidia", "amd", "m-series"],
+      "default": "cpu"
+    }
+  ]
 }

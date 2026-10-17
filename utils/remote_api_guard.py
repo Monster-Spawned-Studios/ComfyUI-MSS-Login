@@ -8,14 +8,15 @@ count as auth; if not provided, any present token is treated as valid.
 """
 
 import ipaddress
-from typing import Callable, Optional
+from collections.abc import Callable
+from typing import Optional
 
 from aiohttp import web
 
 from .debug_log import debug_write
 from .ip_filter import get_ip
 
-# Default CIDRs considered "local" (Docker-aware: 172.17.0.0/16 is default bridge)
+# Default CIDRs considered "local" (Docker-aware and Tailscale-aware)
 DEFAULT_LOCAL_CIDRS = [
 	"127.0.0.0/8",
 	"::1/128",
@@ -24,10 +25,13 @@ DEFAULT_LOCAL_CIDRS = [
 	"192.168.0.0/16",
 	"192.168.1.0/24",
 	"172.17.0.0/16",
+	"100.64.0.0/10",
+	"fd7a:115c:a1e0::/48",
 ]
 
+
 # Path prefixes that are considered "protected API" (require auth when remote)
-PROTECTED_API_PREFIXES = ("/prompt", "/api/prompt", "/api/queue", "/queue", "/api/")
+PROTECTED_API_PREFIXES = ("/prompt", "/api/prompt", "/api/queue", "/queue", "/api/", "/cpe")
 
 # Paths or prefixes that are always allowed without auth (even if under /api/)
 PUBLIC_API_PATHS = (
@@ -102,7 +106,7 @@ def _is_cloudflared_local_request(request: web.Request, client_ip: str, local_ci
 def create_remote_api_guard_middleware(
 	require_auth_for_remote_api: bool = True,
 	local_network_cidrs: list = None,
-	token_validator: Optional[Callable[[web.Request], bool]] = None,
+	token_validator: Callable[[web.Request], bool] | None = None,
 	cloudflare_proxy: bool = False,
 	cloudflared_local_bypass: bool = False,
 ):

@@ -1,0 +1,120 @@
+name: Bug report
+description: Report a bug or unexpected behavior in mss-login
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Fill in the fields below — do not replace this form with a free-form Markdown dump.
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear, short description of what went wrong.
+      placeholder: What broke, and when did you notice it?
+    validations:
+      required: true
+  - type: checkboxes
+    id: area
+    attributes:
+      label: Area
+      description: Select every area that applies.
+      options:
+        - label: Login / registration / logout
+        - label: MFA / 2FA / TOTP
+        - label: API tokens (e.g. Comfy Portal, external clients)
+        - label: RBAC / permissions / roles (Admin, Power, User, Guest)
+        - label: UI enforcement (hidden menus, blocked actions)
+        - label: Workflow save/load/delete blocking
+        - label: User environment / per-user folders
+        - label: IP filtering (whitelist/blacklist)
+        - label: NSFW Guard / gallery integration
+        - label: Settings panel or admin UI
+        - label: Other (describe in Additional context)
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: To reproduce
+      description: Minimal steps to reproduce the problem.
+      placeholder: |
+        1. Go to / do '...'
+        2. Click / run '...'
+        3. See error or wrong behavior
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened (error message, screenshot note, or console output if relevant).
+    validations:
+      required: true
+  - type: input
+    id: comfyui_version
+    attributes:
+      label: ComfyUI version
+      description: From the ComfyUI UI or `git describe`.
+      placeholder: e.g. v0.3.x or commit hash
+    validations:
+      required: true
+  - type: input
+    id: mss_login_version
+    attributes:
+      label: mss-login version
+      description: From pyproject.toml or Settings → mss-login if shown.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: e.g. Windows 11, macOS 14, Ubuntu 22.04
+    validations:
+      required: true
+  - type: dropdown
+    id: install_type
+    attributes:
+      label: Install type
+      options:
+        - portable
+        - venv
+        - Docker
+        - comfy-cli
+        - other
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - SQLite
+        - PostgreSQL
+        - Unknown
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or errors
+      description: Paste relevant server logs, browser console errors, or mss-login.log excerpts (redact secrets/tokens).
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Config snippets with secrets removed, steps already tried, etc.
+    validations:
+      required: false

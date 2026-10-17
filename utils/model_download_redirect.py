@@ -14,9 +14,8 @@ from typing import Any
 
 from ..constants import CONFIG_FILE_PATH
 from .folder_paths_compat import get_models_root
-from .model_isolation import isolation_models_base, sanitize_user_segment
 from .json_utils import load_json_file, save_json_file
-
+from .model_isolation import isolation_models_base, sanitize_user_segment
 
 _PATHISH_KEYWORDS = ("path", "dir", "folder", "destination", "dest", "download", "save", "output")
 

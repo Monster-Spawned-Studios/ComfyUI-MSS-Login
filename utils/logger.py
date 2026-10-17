@@ -8,10 +8,10 @@ import os
 import tarfile
 import threading
 import time
-
-from pathlib import Path
+from collections.abc import Callable
 from datetime import datetime
-from typing import List, Optional, Callable
+from pathlib import Path
+from typing import List, Optional
 
 LEVELS = {"INFO", "WARNING", "ERROR", "DEBUG"}
 
@@ -26,11 +26,11 @@ class Logger:
 	def __init__(
 		self,
 		log_file: str | Path,
-		log_levels: List[str],
-		callback: Optional[Callable[[str], None]] = None,
-		rotation_max_bytes: Optional[int] = None,
-		rotation_interval_hours: Optional[float] = None,
-		rotation_archive_dir: Optional[str] = None,
+		log_levels: list[str],
+		callback: Callable[[str], None] | None = None,
+		rotation_max_bytes: int | None = None,
+		rotation_interval_hours: float | None = None,
+		rotation_archive_dir: str | None = None,
 	):
 		if not all(level in LEVELS for level in log_levels):
 			raise ValueError(f"Invalid log levels provided. Valid levels are: {LEVELS}")
@@ -126,6 +126,13 @@ class Logger:
 		elif level == "ERROR":
 			self.logger.error(message)
 		elif level == "DEBUG":
+			try:
+				from ..constants import filter_debug_messages_enabled
+
+				if filter_debug_messages_enabled():
+					return
+			except Exception:
+				pass
 			self.logger.debug(message)
 
 	def log_message(self, level: str, message: str) -> None:
@@ -213,11 +220,11 @@ class Logger:
 		self._log_console("INFO", f"User: '{username}' logged out from IP: {ip}")
 
 	def log_jwt_if_debug(self, token: str, username: str) -> None:
-		"""When DEBUG_MODE is on: write JWT token to log file and ComfyUI console. Do not call when DEBUG_MODE is off."""
+		"""When DEBUG_MODE is on: write JWT token to log file and ComfyUI console. Do not call when DEBUG_MODE is off or debug messages filtered."""
 		try:
-			from ..constants import DEBUG_MODE
+			from ..constants import DEBUG_MODE, filter_debug_messages_enabled
 
-			if not DEBUG_MODE:
+			if not DEBUG_MODE or filter_debug_messages_enabled():
 				return
 			msg = f"JWT token (DEBUG_MODE): {token}"
 			with self._lock:

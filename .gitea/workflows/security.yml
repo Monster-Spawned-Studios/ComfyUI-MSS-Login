@@ -1,0 +1,232 @@
+# Security: secrets scan (Gitleaks), dependency audit (pip-audit), and OSV scan.
+# Gitea-compatible: single job, no actions/upload-artifact — zip reports and attach to ntfy in-job.
+# Push/PR: only when dependency or security-relevant paths change. Also weekly
+# Monday 12:00 America/Denver (cron UTC) and workflow_dispatch.
+name: Security scan
+
+on:
+  push:
+    branches: [development, production, release/*]
+    paths:
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "web/frontend/package.json"
+      - "web/frontend/pnpm-lock.yaml"
+      - "osv-scanner.toml"
+      - ".gitleaks.toml"
+      - "scripts/ci/install-gitleaks.sh"
+      - ".gitea/workflows/security.yml"
+      - ".gitea/workflows/ntfy-notify-reusable.yml"
+  pull_request:
+    branches: [development, production, release/*]
+    paths:
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "web/frontend/package.json"
+      - "web/frontend/pnpm-lock.yaml"
+      - "osv-scanner.toml"
+      - ".gitleaks.toml"
+      - "scripts/ci/install-gitleaks.sh"
+      - ".gitea/workflows/security.yml"
+      - ".gitea/workflows/ntfy-notify-reusable.yml"
+  schedule:
+    # Monday 12:00 America/Denver (MDT = 18:00 UTC; during MST this is 11:00 local)
+    - cron: "0 18 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_BIN_DIR: ${{ github.workspace }}/.ci-bin
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+
+      - name: Install Gitleaks (pinned release asset)
+        shell: bash
+        run: bash scripts/ci/install-gitleaks.sh
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Install OSV-Scanner
+        run: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
+
+      - name: Run Gitleaks
+        id: gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports/gitleaks
+          report="ci-reports/gitleaks/gitleaks-report.txt"
+          {
+            echo "MSS-Login Gitleaks report"
+            echo "========================="
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+            echo
+          } > "${report}"
+          set +e
+          "${GITLEAKS_BIN_DIR}/gitleaks" detect --source . -v --config .gitleaks.toml \
+            --report-path ci-reports/gitleaks/gitleaks-report.json --report-format json >> "${report}" 2>&1
+          status=$?
+          set -e
+          echo >> "${report}"
+          if [ "$status" -eq 0 ]; then
+            echo "Result: PASS (no leaks)." | tee -a "${report}"
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "Result: FAIL (exit ${status})." | tee -a "${report}"
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$status"
+
+      - name: Run pip-audit
+        id: pip_audit
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports/pip-audit
+          report="ci-reports/pip-audit/pip-audit-report.txt"
+          {
+            echo "MSS-Login pip-audit report"
+            echo "=========================="
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+            echo
+          } > "${report}"
+          set +e
+          pip-audit -r requirements-ci.txt --extra-index-url https://download.pytorch.org/whl/cu128 >> "${report}" 2>&1
+          status=$?
+          set -e
+          echo >> "${report}"
+          if [ "$status" -eq 0 ]; then
+            echo "Result: PASS." | tee -a "${report}"
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "Result: FAIL (exit ${status})." | tee -a "${report}"
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$status"
+
+      - name: Run OSV-Scanner
+        id: osv
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports/osv
+          report="ci-reports/osv/osv-scan-report.txt"
+          {
+            echo "MSS-Login OSV-Scanner report"
+            echo "============================"
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+            echo "Targets: uv.lock, web/frontend/pnpm-lock.yaml"
+            echo
+          } > "${report}"
+          set +e
+          osv-scanner scan \
+            --config osv-scanner.toml \
+            -L uv.lock \
+            -L web/frontend/pnpm-lock.yaml \
+            --format table >> "${report}" 2>&1
+          status=$?
+          set -e
+          osv-scanner scan \
+            --config osv-scanner.toml \
+            -L uv.lock \
+            -L web/frontend/pnpm-lock.yaml \
+            --format json \
+            --output-file ci-reports/osv/osv-scan-report.json || true
+          echo >> "${report}"
+          if [ "$status" -eq 0 ]; then
+            echo "Result: PASS." | tee -a "${report}"
+            echo "result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "Result: FAIL (exit ${status})." | tee -a "${report}"
+            echo "result=failure" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$status"
+
+      - name: Package reports and notify via ntfy
+        if: always()
+        env:
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+          SECRETS_RESULT: ${{ steps.gitleaks.outcome }}
+          DEPS_RESULT: ${{ steps.pip_audit.outcome }}
+          OSV_RESULT: ${{ steps.osv.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          {
+            echo "MSS-Login Security Scan bundle"
+            echo "=============================="
+            echo "secrets: ${SECRETS_RESULT:-unknown}"
+            echo "dependencies: ${DEPS_RESULT:-unknown}"
+            echo "osv-scan: ${OSV_RESULT:-unknown}"
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+          } > ci-reports/SUMMARY.txt
+
+          archive="ci-reports/security-scan-reports.zip"
+          if command -v zip >/dev/null 2>&1; then
+            (cd ci-reports && zip -qr security-scan-reports.zip SUMMARY.txt gitleaks pip-audit osv 2>/dev/null || zip -qr security-scan-reports.zip .)
+          else
+            archive="ci-reports/security-scan-reports.tar.gz"
+            tar -C ci-reports -czf security-scan-reports.tar.gz SUMMARY.txt gitleaks pip-audit osv 2>/dev/null || tar -C ci-reports -czf security-scan-reports.tar.gz .
+          fi
+
+          all_ok=true
+          for r in "${SECRETS_RESULT:-}" "${DEPS_RESULT:-}" "${OSV_RESULT:-}"; do
+            if [ "$r" != "success" ]; then
+              all_ok=false
+              break
+            fi
+          done
+          if [ "$all_ok" = "true" ]; then
+            export TITLE="MSS-Login Security — All checks passed"
+            export PRIORITY="3"
+            export TAGS="white_check_mark,lock"
+          else
+            export TITLE="MSS-Login Security — Issues found"
+            export PRIORITY="5"
+            export TAGS="warning,lock"
+          fi
+          export MESSAGE="$(printf '=== Secrets scan (Gitleaks) ===\nResult: %s\n\n=== Dependency audit (pip-audit) ===\nResult: %s\n\n=== OSV Vulnerability Scan ===\nResult: %s\n\nReport: attached %s\n' \
+            "${SECRETS_RESULT:-unknown}" "${DEPS_RESULT:-unknown}" "${OSV_RESULT:-unknown}" "$(basename "$archive")")"
+          export ATTACHMENT_PATH="${archive}"
+          export ATTACHMENT_FILENAME="$(basename "$archive")"
+          export SKIP_IF_UNCONFIGURED="true"
+          bash scripts/ci/ntfy_publish.sh
+
+          # Fail the job if any scan step failed (ntfy already sent).
+          if [ "$all_ok" != "true" ]; then
+            exit 1
+          fi

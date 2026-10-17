@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>Version 0.0.3</strong> — Latest release includes Extension Tabs API, IP filtering improvements, and performance optimizations
+  <strong>Version 0.0.7</strong> — Latest release includes Extension Tabs API, IP filtering improvements, and performance optimizations
 </p>
 
 ---
@@ -39,7 +39,10 @@
 
 **ComfyUI mss_login** is a comprehensive security layer that adds:
 
-- Role‑Based Access Control (RBAC)
+- Role‑Based Access Control (RBAC) with **owner** registration (role at create time)
+- Encrypted per-user CivitAI/HuggingFace keys and ntfy tokens in the users DB
+- Model download permission (`can_download_models`) for MSS-Login and Civicomfy routes
+- Optional S3/B2 storage (experimental) with FUSE or boto3
 - UI element gating
 - Workflow save/delete blocking
 - Transparent user folder isolation
@@ -51,6 +54,8 @@
 - **NSFW Guard API** - Public API for NSFW detection and enforcement
 - **Gallery integration** - Manual image flagging and metadata-based tagging
 - **Extension Tabs API** - Allow other extensions to add custom tabs to the admin panel
+
+Documentation: see [docs/](docs/index.md) (MkDocs), including [Experimental Settings](docs/experimental/index.md) and [Secrets and database](docs/guide/secrets-and-database.md).
 
 It replaces the older Sentinel system with a faster, cleaner, more modular architecture—fully rewritten for reliability and future expansion.
 
@@ -147,9 +152,9 @@ from api import check_tensor_nsfw, is_sfw_enforced_for_user
 
 # In your custom node
 if is_sfw_enforced_for_user():
-    if check_tensor_nsfw(image_tensor):
-        # Block or replace NSFW content
-        image_tensor = torch.zeros_like(image_tensor)
+	if check_tensor_nsfw(image_tensor):
+		# Block or replace NSFW content
+		image_tensor = torch.zeros_like(image_tensor)
 ```
 
 **Gallery Integration:**
@@ -667,15 +672,17 @@ Per-version notes live under [`readme/changelogs/`](./readme/changelogs/).
 The [**Create Release**](.github/workflows/create-release.yml) workflow prepares each publish:
 
 1. Resolves the version (manual input, auto patch bump from the latest tag, or `release/X.Y.Z` branch name).
-2. Runs [`scripts/release_prepare.py`](./scripts/release_prepare.py) to sync [`pyproject.toml`](./pyproject.toml) and create `readme/changelogs/X.Y.Z.md` when missing.
+2. Runs [`scripts/release_prepare.py`](./scripts/release_prepare.py) to sync [`pyproject.toml`](./pyproject.toml), [`README.md`](./README.md), [`uv.lock`](./uv.lock), the login page (`web/html/login.html`), [`readme/CHANGES.md`](./readme/CHANGES.md), and `readme/changelogs/X.Y.Z.md` when missing.
 3. Builds bullets from `git log` since the previous semver tag (plus optional workflow inputs).
-4. Commits to `release/X.Y.Z`, creates the GitHub release, and triggers [**Publish to ComfyUI registry**](.github/workflows/publish.yml).
+4. Commits those version fields to `release/X.Y.Z` and copies the same files onto `production` and `development`.
+5. Stages the node files, runs [`scripts/add_copyright.py`](./scripts/add_copyright.py) on that tree, then compresses the copyright-stamped files into the release zip.
+6. Creates the GitHub release and triggers [**Publish to ComfyUI registry**](.github/workflows/publish.yml).
 
 Optional **workflow_dispatch** inputs: `changelog_title`, `changelog_notes`. You do not need to pre-create changelog files; if one already exists for that version, CI leaves it unchanged.
 
 [`publish.yml`](.github/workflows/publish.yml) verifies `pyproject.toml` matches the release branch before registry publish so version detection stays aligned with tags.
 
-### Changlog
+### Changelog
 
 A changelog can be found in the corresponding '[CHANGES.md](./readme/CHANGES.md)' file in the [readme](./readme/) folder. All changes are documented there.
 

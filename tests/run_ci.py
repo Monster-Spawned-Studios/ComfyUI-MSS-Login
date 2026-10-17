@@ -15,7 +15,6 @@ import os
 import subprocess
 import sys
 
-
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -74,12 +73,26 @@ def main() -> int:
 	steps.append(("Path traversal", os.path.join(TESTS_DIR, "run_path_traversal_tests.py")))
 	if not args.path_only:
 		steps.append(("Sanitizer", os.path.join(TESTS_DIR, "run_sanitizer_tests.py")))
+		steps.append(("Auth compatibility", os.path.join(TESTS_DIR, "run_auth_compat_tests.py")))
+		steps.append(
+			("Auth HTML hardening", os.path.join(TESTS_DIR, "run_auth_html_hardening_tests.py"))
+		)
+		steps.append(("Login background", os.path.join(TESTS_DIR, "run_login_background_tests.py")))
 		steps.append(
 			("Navigation detection", os.path.join(TESTS_DIR, "run_navigation_detection_tests.py"))
 		)
 		steps.append(("Model isolation", os.path.join(TESTS_DIR, "run_model_isolation_tests.py")))
 		steps.append(
+			(
+				"Isolation plain names",
+				os.path.join(TESTS_DIR, "run_isolation_plain_names_tests.py"),
+			)
+		)
+		steps.append(
 			("Experimental failsafe", os.path.join(TESTS_DIR, "run_experimental_failsafe_tests.py"))
+		)
+		steps.append(
+			("Experimental settings", os.path.join(TESTS_DIR, "run_experimental_settings_tests.py"))
 		)
 		steps.append(
 			("Model download queue", os.path.join(TESTS_DIR, "run_model_download_queue_tests.py"))
@@ -90,10 +103,40 @@ def main() -> int:
 				os.path.join(TESTS_DIR, "run_model_download_destination_tests.py"),
 			)
 		)
+		steps.append(
+			("Model download search", os.path.join(TESTS_DIR, "run_model_download_search_tests.py"))
+		)
+		steps.append(
+			(
+				"Portal download hardening",
+				os.path.join(TESTS_DIR, "run_portal_download_hardening_tests.py"),
+			)
+		)
+
 		steps.append(("View path safety", os.path.join(TESTS_DIR, "run_view_path_safety_tests.py")))
 		steps.append(("Trash bin", os.path.join(TESTS_DIR, "run_trash_bin_tests.py")))
 		steps.append(("NTFY + quarantine", os.path.join(TESTS_DIR, "run_ntfy_quarantine_tests.py")))
 		steps.append(("Release prepare", os.path.join(TESTS_DIR, "run_release_prepare_tests.py")))
+		steps.append(("CPE workflows", os.path.join(TESTS_DIR, "run_cpe_workflow_tests.py")))
+		steps.append(("CPE auth", os.path.join(TESTS_DIR, "run_cpe_auth_tests.py")))
+		steps.append(
+			("Install deps plan", os.path.join(TESTS_DIR, "run_install_deps_plan_tests.py"))
+		)
+		steps.append(("User isolation", os.path.join(TESTS_DIR, "run_user_isolation_tests.py")))
+		steps.append(("Avatar upload", os.path.join(TESTS_DIR, "run_avatar_tests.py")))
+		steps.append(("Owner role", os.path.join(TESTS_DIR, "run_owner_role_tests.py")))
+		steps.append(("CSP host base URL", os.path.join(TESTS_DIR, "run_csp_host_tests.py")))
+		steps.append(("Schema drift", os.path.join(TESTS_DIR, "run_schema_drift_tests.py")))
+		steps.append(("Update notice", os.path.join(TESTS_DIR, "run_update_notice_tests.py")))
+		steps.append(
+			("Tailscale network & JWT", os.path.join(TESTS_DIR, "run_tailscale_network_tests.py"))
+		)
+		steps.append(
+			(
+				"New features (workflows, debug filter, sqlite encryption, models, node deps, log redaction)",
+				os.path.join(TESTS_DIR, "run_new_features_tests.py"),
+			)
+		)
 	if not args.no_lint:
 		steps.append(("Ruff check", None))  # special
 		steps.append(("Ruff format", None))

@@ -233,13 +233,15 @@ label {
 input {
     background-color: #09090b;
     color: #ffffff;
-    width: 250px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 0.5rem;
     font-size: 1rem;
     border: 1px solid #3f3f46;
-    border-radius: 0.25rem;
+    border-radius: 0.5rem;
     transition: 0.2s;
-    outline: None;
+    outline: none;
 }
 
 input:enabled:hover {
@@ -247,7 +249,7 @@ input:enabled:hover {
 }
 
 input:enabled:focus {
-    border-color: #60a5fa;
+    border-color: #9660fa;
 }
 
 input:disabled {
@@ -257,6 +259,60 @@ input:disabled {
 
 input.error {
     border-color: #ef4444;
+}
+
+/* Remember-me checkbox: unlayered overrides beat Tailwind @layer components
+   so global `input { width: 100% }` / `label { display: block }` do not stretch it. */
+.form-field.mss-auth-remember {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+}
+
+.form-field.mss-auth-remember input.mss-auth-checkbox,
+input.mss-auth-checkbox[type="checkbox"] {
+    width: 1rem;
+    min-width: 1rem;
+    max-width: 1rem;
+    height: 1rem;
+    padding: 0;
+    margin: 0;
+    flex-shrink: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid #52525b;
+    border-radius: 0.25rem;
+    background-color: #09090b;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: 0.75rem;
+    cursor: pointer;
+}
+
+.form-field.mss-auth-remember input.mss-auth-checkbox:checked,
+input.mss-auth-checkbox[type="checkbox"]:checked {
+    border-color: #9660fa;
+    background-color: #9660fa;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.5 8.5L6.5 11.5L12.5 4.5' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.form-field.mss-auth-remember input.mss-auth-checkbox:enabled:focus,
+input.mss-auth-checkbox[type="checkbox"]:enabled:focus {
+    border-color: #9660fa;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(150, 96, 250, 0.4);
+}
+
+label.mss-auth-remember-label {
+    display: inline;
+    margin: 0;
+    width: auto;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #e4e4e7;
+    cursor: pointer;
 }
 
 .btn {
@@ -447,13 +503,13 @@ a:active {
     }
 
     input:enabled:focus {
-        border-color: #60a5fa;
+        border-color: #9660fa;
     }
 
     .btn {
         background-color: #9660fa;
         border-color: #7c60fa;
-        color: #18181b;
+        color: #ffffff;
     }
 }
 
@@ -779,4 +835,145 @@ a:active {
         background: rgba(59, 130, 246, 0.95);
         border-color: rgba(255, 255, 255, 0.4);
     }
+}
+
+.mss-login-avatar-img {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    object-fit: cover;
+    display: block;
+}
+
+.mss-login-profile-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 12040;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+}
+
+.mss-login-profile-menu {
+    position: relative;
+    z-index: 12050;
+    width: min(320px, 92vw);
+    min-width: 220px;
+    background: rgba(18, 20, 28, 0.98);
+    color: #f5f5f7;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 14px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+    padding: 12px 14px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    text-align: center;
+}
+
+.mss-login-profile-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: 4px 36px 10px;
+    gap: 8px;
+}
+
+.mss-login-profile-name {
+    flex: 1;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    opacity: 0.9;
+    text-align: center;
+}
+
+.mss-login-profile-close {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #f5f5f7;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mss-login-profile-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.mss-login-profile-item {
+    display: block;
+    width: 100%;
+    text-align: center;
+    background: transparent;
+    border: none;
+    color: #f5f5f7;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.mss-login-profile-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.mss-login-profile-logout {
+    color: #fca5a5;
+}
+
+/* Tailscale / Local Network Quick Login Card */
+.local-login-card {
+    margin-bottom: 1rem;
+    padding: 0.85rem;
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    text-align: left;
+}
+
+.local-login-header {
+    font-size: 0.85rem;
+    color: #60a5fa;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.local-login-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.local-login-quick-btn {
+    background: #2563eb;
+    color: #ffffff;
+    border: 1px solid #3b82f6;
+    border-radius: 6px;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.local-login-quick-btn:hover {
+    background: #1d4ed8;
 }

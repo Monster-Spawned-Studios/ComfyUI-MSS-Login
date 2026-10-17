@@ -1,0 +1,57 @@
+name: Security report
+description: Report a security vulnerability (handled privately)
+title: "[Security] "
+labels: ["security", "needs-review"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not post working exploits or sensitive data in this issue.**
+        For critical findings, prefer the [contact page](https://monsterspawned.studio/contact/) or email [site-admin@monsterspawned.studio](mailto:site-admin@monsterspawned.studio?subject=Security%20Notification).
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      options:
+        - Potential secret or credential exposure
+        - Authentication or authorization bypass
+        - Injection (e.g. SQL, XSS, path traversal)
+        - Insecure default or misconfiguration
+        - Other (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Enough detail for maintainers to assess and reproduce, without sharing real credentials or PII.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce (if applicable)
+      description: Minimal steps to reproduce, without sharing real credentials or PII.
+    validations:
+      required: false
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: What an attacker could do if this is exploited (e.g. access another user’s data, bypass login).
+    validations:
+      required: true
+  - type: textarea
+    id: suggested_fix
+    attributes:
+      label: Suggested fix (optional)
+      description: Ideas for mitigation or fix, if you have any.
+    validations:
+      required: false
+  - type: textarea
+    id: contact
+    attributes:
+      label: Contact
+      description: If you prefer to report privately, note how maintainers can reach you (or say you will use the security policy / off-platform contact).
+    validations:
+      required: false

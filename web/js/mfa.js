@@ -34,14 +34,6 @@
 		sessionStorage.removeItem(STORAGE_KEY_MODE);
 	}
 
-	function setCookieFromJwt(jwtToken) {
-		let cookieString = "jwt_token=" + jwtToken + "; path=/; HttpOnly; SameSite=Strict";
-		if (window.location.protocol === "https:") {
-			cookieString += "; Secure";
-		}
-		document.cookie = cookieString;
-	}
-
 	function redirectToLogin() {
 		clearMfaStorage();
 		window.location.href = "/login";
@@ -58,13 +50,6 @@
 			if (!verifySection && !setupSection) {
 				return;
 			}
-			var pathname = typeof window !== "undefined" && window.location && window.location.pathname;
-
-			// #region agent log
-			try {
-				fetch("http://127.0.0.1:7242/ingest/bdf8b85f-87b3-445e-aa3d-4ace3a22d3ae", { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "9c3a72" }, body: JSON.stringify({ sessionId: "9c3a72", location: "mfa.js:init", message: "mfa_init_run", data: { pathname: pathname, hasVerify: !!verifySection, hasSetup: !!setupSection }, hypothesisId: "B", timestamp: Date.now() }) }).catch(function () {});
-			} catch (e) {}
-			// #endregion
 
 			this.token = sessionStorage.getItem(STORAGE_KEY_TOKEN);
 			this.mode = sessionStorage.getItem(STORAGE_KEY_MODE);
@@ -176,19 +161,20 @@
 			fetch("/mss-login/api/mfa/verify", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
+				credentials: "same-origin",
 				body: JSON.stringify(body),
 			})
 				.then(function (r) {
 					return r.json();
 				})
 				.then(function (result) {
-					if (result.jwt_token) {
-						setCookieFromJwt(result.jwt_token);
+					if (result && !result.error && (result.jwt_token || result.redirect_url)) {
+						// Server sets HttpOnly session cookie; do not mirror jwt_token in JS.
 						clearMfaStorage();
 						addToast(result.message || "Login successful", "success");
 						window.location.href = result.redirect_url || "/";
 					} else {
-						addToast(result.error || "Invalid code", "error");
+						addToast((result && result.error) || "Invalid code", "error");
 						if (btn) {
 							btn.disabled = false;
 							btn.textContent = "Verify";
@@ -222,6 +208,7 @@
 			fetch("/mss-login/api/mfa/verify-setup", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
+				credentials: "same-origin",
 				body: JSON.stringify({ mfa_temp_token: this.token, code: code }),
 			})
 				.then(function (r) {
@@ -239,6 +226,7 @@
 					return fetch("/mss-login/api/mfa/verify", {
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
+						credentials: "same-origin",
 						body: JSON.stringify({ mfa_temp_token: self.token, code: code }),
 					});
 				})
@@ -248,8 +236,8 @@
 				})
 				.then(function (verifyData) {
 					if (!verifyData) return;
-					if (verifyData.jwt_token) {
-						setCookieFromJwt(verifyData.jwt_token);
+					if (!verifyData.error && (verifyData.jwt_token || verifyData.redirect_url)) {
+						// Server sets HttpOnly session cookie; do not mirror jwt_token in JS.
 						clearMfaStorage();
 						addToast(verifyData.message || "MFA enabled. Login successful.", "success");
 						window.location.href = verifyData.redirect_url || "/";

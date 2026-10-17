@@ -10,8 +10,8 @@ Metadata columns are intentionally backend-neutral:
 """
 
 import os
-from pathlib import Path
 import time
+from pathlib import Path
 from typing import Optional
 
 TABLE = "shared_items"
@@ -414,7 +414,7 @@ class _MySQLSharedStore:
 		]
 
 
-_store: Optional[_SqliteSharedStore | _PostgresSharedStore | _MySQLSharedStore] = None
+_store: _SqliteSharedStore | _PostgresSharedStore | _MySQLSharedStore | None = None
 
 
 def get_shared_items_store(config: dict):

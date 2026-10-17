@@ -5,7 +5,8 @@ MSS-Login enforces safe-for-work (SFW) policies for users who have SFW checking 
 ## Policy per user
 
 - Each user has an `sfw_check` flag in the user database (default: **enforced** / block NSFW).
-- During a prompt, the server tracks which user submitted the workflow so worker-thread saves use the correct policy.
+- Toggle it per user in **Settings → MSS-Login → Users & Roles** (SFW Check column). The enforcement cache is cleared on save so the change applies immediately.
+- During a prompt, the queue item is stamped with the submitter so worker-thread `SaveImage` / `PreviewImage` and `/view` use that user's policy (including Comfy Portal `POST /prompt`).
 - Owners may receive ntfy notifications on blocks and generated images (see [Configuration](configuration.md#push-notifications-ntfy)).
 
 ## Layer 1: Save-time interception (node interceptor)

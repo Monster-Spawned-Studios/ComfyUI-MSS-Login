@@ -1,9 +1,10 @@
 # --- START OF FILE routes/auth.py ---
 import json
 import os
+import re
 import sqlite3
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import jwt
 from aiohttp import web
@@ -19,14 +20,17 @@ from ..constants import (
 	LOADING_TIMEOUT_SECONDS,
 	MAX_TOKEN_EXPIRE_MINUTES,
 	SESSION_TOKEN_STORE_CONFIG,
+	TOKEN_EXPIRE_MINUTES,
 	USERS_DB_CONFIG,
 	WEB_DIR,
 	experimental_loading_screen_enabled,
 	experimental_mfa_enabled,
+	experimental_tailscale_local_auth_enabled,
 )
 from ..globals import access_control, jwt_auth, logger, routes, timeout, users_db
 from ..utils import user_env
 from ..utils.api_token_store import get_api_token_store
+from ..utils.auth_cookies import clear_auth_cookies, set_auth_cookie, truthy_remember_me
 from ..utils.bootstrap import ensure_groups_config, ensure_guest_user
 from ..utils.input_sanitizer import (
 	sanitize_backup_code_input,
@@ -42,20 +46,127 @@ from ..utils.mfa_temp_store import create_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
 from ..utils.request_navigation import is_browser_navigation
 from ..utils.session_token_store import get_session_token_store
-from ..utils.user_console_log import append as user_console_append
+from ..utils.tailscale_network import (
+	detect_network_info,
+	is_trusted_tailscale_or_local,
+	user_can_login_locally_without_auth,
+)
 from ..utils.updater import get_local_version
+from ..utils.user_console_log import append as user_console_append
 from ..utils.validate import validate_password, validate_username
+
+_LOGIN_VERSION_RE = re.compile(
+	r"(MSS-Login - v)(?:\{\{VERSION\}\}|[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.]+)*)"
+)
+
+
+_GUEST_LOGIN_BLOCK_ENABLED = (
+	'<button class="btn mss-auth-btn" type="button" id="guest-login-btn">'
+	"Guest Login</button>"
+	'<input type="hidden" id="guest_login_flag" name="guest_login" value="false">'
+)
+
+
+def _inject_login_version(html: str, version: str) -> str:
+	"""Fill the login-page version from pyproject (placeholder or previously stamped semver)."""
+	if "{{VERSION}}" in html:
+		html = html.replace("{{VERSION}}", version)
+	updated, replaced = _LOGIN_VERSION_RE.subn(rf"\g<1>{version}", html, count=1)
+	return updated if replaced else html
+
+
+def _inject_login_guest_block(html: str, *, allow_guest: bool) -> str:
+	"""Omit guest button/flag when guest JWT is disabled; inject fixed markup when enabled."""
+	replacement = _GUEST_LOGIN_BLOCK_ENABLED if allow_guest else ""
+	if "{{GUEST_LOGIN_BLOCK}}" in html:
+		return html.replace("{{GUEST_LOGIN_BLOCK}}", replacement)
+	# Legacy stamped HTML without placeholder: strip guest controls when disabled.
+	if not allow_guest:
+		html = re.sub(
+			r'<button[^>]*\bid=["\']guest-login-btn["\'][^>]*>.*?</button>',
+			"",
+			html,
+			flags=re.IGNORECASE | re.DOTALL,
+		)
+		html = re.sub(
+			r'<input[^>]*\bid=["\']guest_login_flag["\'][^>]*>', "", html, flags=re.IGNORECASE
+		)
+	return html
+
+
+def _inject_login_background_json(html: str) -> str:
+	"""Embed public login-background payload for first paint (CSP-safe JSON script)."""
+	from ..utils.login_background import get_public_login_background
+
+	payload = get_public_login_background()
+	blob = json.dumps(payload, separators=(",", ":"))
+	if "{{LOGIN_BG_JSON}}" in html:
+		return html.replace("{{LOGIN_BG_JSON}}", blob)
+	return html
+
+
+def _apply_login_cookie(
+	resp: web.Response, token: str, request: web.Request, *, remember_me: bool = False
+) -> None:
+	"""Set browser session cookie; persistent only when remember_me is True."""
+	_secure = is_https_request(request)
+	max_age = int(TOKEN_EXPIRE_MINUTES) * 60 if remember_me else None
+	set_auth_cookie(resp, token, secure=_secure, remember_me=remember_me, max_age_seconds=max_age)
+
+
+def _authenticated_admin_username(request: web.Request) -> str | None:
+	"""Return the username if the request has a valid admin/owner session or API token."""
+	token = jwt_auth.get_token_from_request(request)
+	if not token:
+		return None
+	username = None
+	try:
+		api_store = get_api_token_store(API_TOKEN_STORE_CONFIG)
+		api_user = api_store.get_user_for_token(token)
+		if api_user is not None:
+			_user_id, username = api_user
+		else:
+			payload = jwt_auth.decode_access_token(token)
+			username = payload.get("username")
+	except Exception:
+		return None
+	if not username:
+		return None
+	try:
+		_uid, rec = users_db.get_user(username)
+	except Exception:
+		return None
+	if not rec:
+		return None
+	groups = [str(g).lower() for g in rec.get("groups", [])]
+	if rec.get("admin") or "admin" in groups or "owner" in groups:
+		return username
+	return None
 
 
 @routes.get("/register")
 async def get_register(request: web.Request) -> web.Response:
-	"""Serve the register page."""
+	"""Serve the register page.
+
+	Public only for the first admin (empty user database). After that, an
+	authenticated admin session is required so the form is not a brute-force
+	target from the login page.
+	"""
+	has_users = bool(users_db.load_users())
+	session_admin = _authenticated_admin_username(request)
+	if has_users and not session_admin:
+		if is_browser_navigation(request):
+			return web.HTTPFound("/login")
+		return web.json_response(
+			{"error": "Admin authentication required to register users"}, status=403
+		)
 	path = os.path.join(HTML_DIR, "register.html")
 	if not os.path.exists(path):
 		return web.Response(text="register.html not found", status=404)
 	with open(path, "r", encoding="utf-8") as f:
 		html_content = f.read()
-	if not users_db.load_users():
+	# Hide admin credential fields for first-run bootstrap and for already-authed admins.
+	if not has_users or session_admin:
 		html_content = html_content.replace("{{ X-Admin-User }}", "true")
 	else:
 		html_content = html_content.replace("{{ X-Admin-User }}", "false")
@@ -70,7 +181,6 @@ async def post_register(request: web.Request) -> web.Response:
 	new_username = sanitize_username(sanitized_data.get("new_user_username"))
 	new_password = sanitize_password_input(sanitized_data.get("new_user_password"))
 	username = sanitize_username(sanitized_data.get("username"))
-	password = sanitize_password_input(sanitized_data.get("password"))
 
 	ok, msg = validate_username(new_username)
 	if not ok:
@@ -79,17 +189,25 @@ async def post_register(request: web.Request) -> web.Response:
 	if not ok:
 		return web.json_response({"error": msg}, status=400)
 
-	admin_user = users_db.get_admin_user()
-	is_first_admin = admin_user[0] is None
+	# Bootstrap only when the user DB is empty. Existing users (including
+	# owner-only accounts) must never re-trigger first-admin / owner minting.
+	existing_users = users_db.load_users()
+	is_first_admin = not bool(existing_users)
+	session_admin = _authenticated_admin_username(request)
 
 	if not is_first_admin:
-		if not users_db.check_username_password(username, password):
+		if session_admin:
+			username = session_admin
+		else:
 			timeout.add_failed_attempt(ip)
-			return web.json_response({"error": "Invalid admin credentials"}, status=403)
+			return web.json_response(
+				{"error": "Admin authentication required to register users"}, status=403
+			)
 
 	if None not in users_db.get_user(new_username):
 		return web.json_response({"error": "Username exists"}, status=400)
 
+	# Non-bootstrap registrations create regular users, not admins/owners
 	users_db.add_user(str(uuid.uuid4()), new_username, new_password, is_first_admin)
 
 	# Create directory immediately
@@ -169,7 +287,9 @@ async def get_loading_tips(request: web.Request) -> web.Response:
 async def get_loading(request: web.Request) -> web.Response:
 	"""Serve the loading page (between login and ComfyUI) when experimental loading_screen is enabled.
 	Otherwise redirect to /. Requires valid JWT; unauthenticated users are redirected by JWT middleware.
-	This is an MSS-Login intermediate page and does not conflict with ComfyUI's in-app loading at /.
+
+	Pre-ComfyUI interstitial only: does not replace or inject into ComfyUI's default splash at /.
+	Clients navigate fully to / after Continue/timeout so the frontend package can show its own loader.
 	"""
 	if not experimental_loading_screen_enabled():
 		return web.HTTPFound("/")
@@ -193,8 +313,55 @@ async def get_login(request: web.Request) -> web.Response:
 	"""Serve the login page with version injected from pyproject.toml."""
 	if not users_db.load_users():
 		return web.HTTPFound("/register")
-	if jwt_auth.get_token_from_request(request):
-		return web.HTTPFound("/logout")
+	existing_token = jwt_auth.get_token_from_request(request)
+	clear_stale_session = False
+	if existing_token:
+		if jwt_auth.is_token_valid(existing_token):
+			redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+			return web.HTTPFound(redirect_url)
+		# Invalid/expired/revoked leftover cookie must not bounce to /logout
+		# (that path previously caused a /login ↔ /logout redirect loop).
+		clear_stale_session = True
+
+	# Check for Tailscale / reverse proxy identity headers on trusted local/Tailscale connections
+	if experimental_tailscale_local_auth_enabled() and is_trusted_tailscale_or_local(request):
+		for header in (
+			"Tailscale-User-Login",
+			"Remote-User",
+			"X-Remote-User",
+			"X-Forwarded-User",
+			"X-Webauth-User",
+		):
+			hdr_val = request.headers.get(header)
+			if hdr_val:
+				candidate = sanitize_username(hdr_val.strip().split("@")[0])
+				groups_cfg = access_control._load_group_config()
+				if user_can_login_locally_without_auth(candidate, users_db, groups_cfg):
+					user_id, _ = users_db.get_user(candidate)
+					if user_id:
+						user_env.get_user_workflow_dir(candidate)
+						no_exp = _user_can_have_non_expiring_jwt(candidate)
+						token = jwt_auth.create_access_token(
+							{"id": user_id, "username": candidate}, no_expiration=no_exp
+						)
+						try:
+							payload = jwt_auth.decode_access_token(token)
+							jti = payload.get("jti")
+							exp = payload.get("exp")
+							exp_at_iso = (
+								datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
+							)
+							if jti:
+								get_session_token_store(
+									SESSION_TOKEN_STORE_CONFIG
+								).register_session(jti, user_id, candidate, exp_at_iso)
+						except Exception:
+							pass
+						redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+						resp = web.HTTPFound(redirect_url)
+						_apply_login_cookie(resp, token, request, remember_me=False)
+						return resp
+
 	path = os.path.join(HTML_DIR, "login.html")
 	if not os.path.exists(path):
 		return web.Response(text="login.html not found", status=404)
@@ -204,8 +371,15 @@ async def get_login(request: web.Request) -> web.Response:
 	except OSError:
 		return web.Response(text="login.html not found", status=404)
 	version = get_local_version()
-	html = html.replace("{{VERSION}}", version)
-	return web.Response(text=html, content_type="text/html")
+	html = _inject_login_version(html, version)
+	# Reload-safe: reflect admin toggle without requiring process restart.
+	allow_guest = bool(getattr(constants_module, "ALLOW_GUEST_JWT", False))
+	html = _inject_login_guest_block(html, allow_guest=allow_guest)
+	html = _inject_login_background_json(html)
+	resp = web.Response(text=html, content_type="text/html")
+	if clear_stale_session:
+		clear_auth_cookies(resp, secure=is_https_request(request))
+	return resp
 
 
 @routes.get("/mfa")
@@ -226,7 +400,19 @@ async def get_mfa(request: web.Request) -> web.Response:
 
 @routes.post("/login")
 async def post_login(request: web.Request) -> web.Response:
-	sanitized_data = request.get("_sanitized_data", {})
+	# Prefer middleware-sanitized data (form or JSON). Fallback for JSON if middleware missed it.
+	sanitized_data = dict(request.get("_sanitized_data") or {})
+	if (
+		not sanitized_data
+		and request.can_read_body
+		and "application/json" in (request.content_type or "")
+	):
+		try:
+			body = await request.json()
+			if isinstance(body, dict):
+				sanitized_data.update(body)
+		except Exception:
+			pass
 	ip = get_ip(request)
 
 	if str(sanitized_data.get("guest_login", "false")).lower() == "true":
@@ -246,7 +432,7 @@ async def post_login(request: web.Request) -> web.Response:
 			payload = jwt_auth.decode_access_token(token)
 			jti = payload.get("jti")
 			exp = payload.get("exp")
-			exp_at_iso = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat() if exp else None
+			exp_at_iso = datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
 			if jti:
 				get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
 					jti, guest_id, "guest", exp_at_iso
@@ -261,17 +447,20 @@ async def post_login(request: web.Request) -> web.Response:
 		logger.login_success(ip, "guest")
 		timeout.remove_failed_attempts(ip)
 		redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
-		_secure = is_https_request(request)
+		# Guest logins are always session cookies (not persisted).
 		if is_browser_navigation(request):
 			resp = web.HTTPFound(redirect_url)
-			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+			_apply_login_cookie(resp, token, request, remember_me=False)
 			return resp
 		resp = web.json_response(
 			{"message": "Guest login", "jwt_token": token, "redirect_url": redirect_url}
 		)
-		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+		_apply_login_cookie(resp, token, request, remember_me=False)
 		return resp
 
+	remember_me = truthy_remember_me(
+		sanitized_data.get("remember_me") or sanitized_data.get("remember")
+	)
 	username = sanitize_username(sanitized_data.get("username"))
 	password = sanitize_password_input(sanitized_data.get("password"))
 
@@ -290,6 +479,7 @@ async def post_login(request: web.Request) -> web.Response:
 					"message": "MFA verification required",
 					"mfa_required": True,
 					"mfa_temp_token": mfa_temp,
+					"remember_me": remember_me,
 				},
 				status=200,
 			)
@@ -310,6 +500,7 @@ async def post_login(request: web.Request) -> web.Response:
 						"message": "MFA setup required for admin accounts",
 						"mfa_setup_required": True,
 						"mfa_temp_token": mfa_temp,
+						"remember_me": remember_me,
 					},
 					status=200,
 				)
@@ -322,6 +513,7 @@ async def post_login(request: web.Request) -> web.Response:
 						"message": "MFA setup required for your role",
 						"mfa_setup_required": True,
 						"mfa_temp_token": mfa_temp,
+						"remember_me": remember_me,
 					},
 					status=200,
 				)
@@ -334,7 +526,7 @@ async def post_login(request: web.Request) -> web.Response:
 			payload = jwt_auth.decode_access_token(token)
 			jti = payload.get("jti")
 			exp = payload.get("exp")
-			exp_at_iso = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat() if exp else None
+			exp_at_iso = datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
 			if jti:
 				get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
 					jti, user_id, username, exp_at_iso
@@ -355,15 +547,19 @@ async def post_login(request: web.Request) -> web.Response:
 		logger.login_success(ip, username)
 		timeout.remove_failed_attempts(ip)
 		redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
-		_secure = is_https_request(request)
 		if is_browser_navigation(request):
 			resp = web.HTTPFound(redirect_url)
-			resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+			_apply_login_cookie(resp, token, request, remember_me=remember_me)
 			return resp
 		resp = web.json_response(
-			{"message": "Login successful", "jwt_token": token, "redirect_url": redirect_url}
+			{
+				"message": "Login successful",
+				"jwt_token": token,
+				"redirect_url": redirect_url,
+				"remember_me": remember_me,
+			}
 		)
-		resp.set_cookie("jwt_token", token, httponly=True, samesite="Strict", secure=_secure)
+		_apply_login_cookie(resp, token, request, remember_me=remember_me)
 		return resp
 
 	timeout.add_failed_attempt(ip)
@@ -379,17 +575,162 @@ async def post_login(request: web.Request) -> web.Response:
 			f"Failed login attempt for username '{username}' from IP: {ip}",
 		)
 	except Exception as e:
-		logger.error(f"[auth.py] post_login: send_notification: {str(e)}")
+		logger.error(f"[auth.py] post_login: send_notification: {e!s}")
 	return web.json_response({"error": "Invalid credentials"}, status=401)
 
 
-@routes.get("/logout")
-async def get_logout(request: web.Request) -> web.Response:
+@routes.get("/mss-login/api/auth/local-login-status")
+async def api_local_login_status(request: web.Request) -> web.Response:
+	"""Return status of local login capability for the calling client."""
+	is_enabled = experimental_tailscale_local_auth_enabled()
+	net_info = detect_network_info(request)
+	is_local = bool(net_info.get("is_trusted"))
+	eligible_users = []
+	if is_enabled and is_local:
+		groups_cfg = access_control._load_group_config()
+		all_users = users_db.load_users() or {}
+		for u in sorted(all_users.keys()):
+			if user_can_login_locally_without_auth(u, users_db, groups_cfg):
+				eligible_users.append(u)
+	return web.json_response(
+		{
+			"enabled": is_enabled,
+			"is_local": is_local,
+			"network_type": net_info.get("network_type", "remote"),
+			"client_ip": net_info.get("client_ip", ""),
+			"eligible_users": eligible_users,
+		}
+	)
+
+
+routes.get("/api/mss-login/api/auth/local-login-status")(api_local_login_status)
+
+
+@routes.post("/mss-login/api/auth/local-login")
+async def api_local_login(request: web.Request) -> web.Response:
+	"""One-click local login without authentication for permitted roles (Owner/Admin)."""
+	ip = get_ip(request)
+	if not experimental_tailscale_local_auth_enabled():
+		return web.json_response(
+			{"error": "Tailscale/Local network authentication is not enabled."}, status=403
+		)
+	if not is_trusted_tailscale_or_local(request):
+		return web.json_response(
+			{
+				"error": "Local login without authentication is only permitted from Tailscale or local networks."
+			},
+			status=403,
+		)
+
+	# Extract requested username
+	sanitized_data = request.get("_sanitized_data", {})
+	username = sanitize_username(sanitized_data.get("username"))
+	if not username:
+		try:
+			body = await request.json()
+			if isinstance(body, dict):
+				username = sanitize_username(body.get("username"))
+		except Exception:
+			pass
+
+	if not username:
+		return web.json_response({"error": "Username is required for local login."}, status=400)
+
+	groups_cfg = access_control._load_group_config()
+	if not user_can_login_locally_without_auth(username, users_db, groups_cfg):
+		logger.login_failed(ip, username)
+		return web.json_response(
+			{
+				"error": f"User '{username}' is not permitted to log in locally without authentication."
+			},
+			status=403,
+		)
+
+	user_id, user_rec = users_db.get_user(username)
+	if not user_id:
+		return web.json_response({"error": "User not found."}, status=404)
+
+	user_env.get_user_workflow_dir(username)
+	no_exp = _user_can_have_non_expiring_jwt(username)
+	token = jwt_auth.create_access_token(
+		{"id": user_id, "username": username}, no_expiration=no_exp
+	)
+
+	try:
+		payload = jwt_auth.decode_access_token(token)
+		jti = payload.get("jti")
+		exp = payload.get("exp")
+		exp_at_iso = datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
+		if jti:
+			get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
+				jti, user_id, username, exp_at_iso
+			)
+	except Exception as e:
+		logger.error(f"[auth.py] api_local_login: register_session: {e}")
+
+	if DEBUG_MODE:
+		logger.log_jwt_if_debug(token, username)
+	else:
+		logger.log_jwt_created_console_only(username)
+
+	user_console_append(username, f"Local JWT token created for user: {username}")
+	logger.login_success(ip, username)
+	timeout.remove_failed_attempts(ip)
+	redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+
+	if is_browser_navigation(request):
+		resp = web.HTTPFound(redirect_url)
+		_apply_login_cookie(resp, token, request, remember_me=False)
+		return resp
+
+	resp = web.json_response(
+		{"message": "Local login successful", "jwt_token": token, "redirect_url": redirect_url}
+	)
+	_apply_login_cookie(resp, token, request, remember_me=False)
+	return resp
+
+
+routes.post("/api/mss-login/api/auth/local-login")(api_local_login)
+
+
+def _end_session(request: web.Request) -> None:
+	"""
+	Revoke only the current browser session JWT (jti in session_token_store).
+
+	Never revokes long-lived API tokens from api_token_store (Generate Token /
+	external apps). Opaque API tokens are skipped (not JWT dotted form).
+	"""
+	token = jwt_auth.get_token_from_request(request)
+	# Opaque API tokens are not JWTs — leave them alone.
+	if not token or token.count(".") < 2:
+		return
+	try:
+		payload = jwt_auth.decode_access_token(token)
+	except Exception:
+		try:
+			payload = jwt.decode(token, options={"verify_signature": False, "verify_exp": False})
+		except Exception:
+			return
+	jti = payload.get("jti")
+	if not jti:
+		return
+	try:
+		get_session_token_store(SESSION_TOKEN_STORE_CONFIG).revoke_session(jti)
+	except Exception as e:
+		logger.error(f"[auth.py] _end_session: revoke_session: {e}")
+
+
+def _logout_redirect(request: web.Request) -> web.Response:
+	"""End browser UI session and clear session cookies; preserve API tokens."""
 	username = None
 	try:
+		_end_session(request)
 		token = jwt_auth.get_token_from_request(request)
 		if token and token.count(".") >= 2:
-			payload = jwt_auth.decode_access_token(token)
+			try:
+				payload = jwt_auth.decode_access_token(token)
+			except Exception:
+				payload = {}
 			username = payload.get("username")
 			if username:
 				ip = get_ip(request)
@@ -400,10 +741,22 @@ async def get_logout(request: web.Request) -> web.Response:
 				)
 				logger.logout(ip, username)
 	except Exception as e:
-		logger.error(f"[auth.py] get_logout: send_notification: {str(e)}")
+		logger.error(f"[auth.py] get_logout: send_notification: {e!s}")
 	resp = web.HTTPFound("/login")
-	resp.del_cookie("jwt_token", path="/")
+	_secure = is_https_request(request)
+	clear_auth_cookies(resp, secure=_secure)
 	return resp
+
+
+@routes.get("/logout")
+async def get_logout(request: web.Request) -> web.Response:
+	return _logout_redirect(request)
+
+
+@routes.post("/logout")
+async def post_logout(request: web.Request) -> web.Response:
+	"""Same as GET /logout; used by the in-app profile menu so the JWT is revoked first."""
+	return _logout_redirect(request)
 
 
 def _role_requires_mfa(username: str) -> bool:

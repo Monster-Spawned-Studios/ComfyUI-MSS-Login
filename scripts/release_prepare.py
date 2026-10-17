@@ -16,6 +16,38 @@ from pathlib import Path
 _VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$")
 _SEMVER_TAG_RE = re.compile(r"^v?([0-9]+\.[0-9]+\.[0-9]+)(?:[-+].*)?$")
 _VERSION_LINE_RE = re.compile(r'^(\s*version\s*=\s*["\'])([^"\']+)(["\']\s*)$', re.MULTILINE)
+_LOGIN_VERSION_RE = re.compile(
+	r"(MSS-Login - v)(?:\{\{VERSION\}\}|[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.]+)*)"
+)
+_UV_LOCK_MSS_RE = re.compile(r'(?m)^(name = "mss-login"\nversion = ")([^"]+)(")')
+_README_VERSION_RE = re.compile(
+	r"(<strong>Version\s+)([0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?)(</strong>)", re.IGNORECASE
+)
+
+# Paths copied into the GitHub/Gitea release zip (repo-relative).
+RELEASE_ZIP_ITEMS = (
+	"readme",
+	"routes",
+	"scripts",
+	"users",
+	"web",
+	"utils",
+	"__init__.py",
+	"api.py",
+	"config.defaults.json",
+	"constants.py",
+	"globals.py",
+	"mss_login.py",
+	"nodes.py",
+	"pyproject.toml",
+	"requirements.txt",
+	"requirements_cpu.txt",
+	"requirements_cuda.txt",
+	"requirements_metal.txt",
+	"README.md",
+	".env.example",
+)
+_ZIP_SKIP_DIR_NAMES = {"__pycache__", "node_modules", ".git", ".venv"}
 
 
 def _repo_root(explicit: str | None) -> Path:
@@ -120,11 +152,7 @@ def update_readme_version(repo_root: Path, version: str) -> bool:
 	if not readme_path.is_file():
 		return False
 	content = readme_path.read_text(encoding="utf-8")
-
-	pattern = re.compile(
-		r"(<strong>Version\s+)([0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?)(</strong>)", re.IGNORECASE
-	)
-	match = pattern.search(content)
+	match = _README_VERSION_RE.search(content)
 	if not match:
 		return False
 
@@ -132,9 +160,115 @@ def update_readme_version(repo_root: Path, version: str) -> bool:
 	if current_version == version:
 		return False
 
-	new_content = pattern.sub(rf"\g<1>{version}\g<3>", content, count=1)
+	new_content = _README_VERSION_RE.sub(rf"\g<1>{version}\g<3>", content, count=1)
 	readme_path.write_text(new_content, encoding="utf-8")
 	return True
+
+
+def update_login_page_version(repo_root: Path, version: str) -> bool:
+	"""Stamp ``MSS-Login - vX.Y.Z`` on the login page (placeholder or prior semver)."""
+	path = repo_root / "web" / "html" / "login.html"
+	if not path.is_file():
+		return False
+	content = path.read_text(encoding="utf-8")
+	new_content, replaced = _LOGIN_VERSION_RE.subn(rf"\g<1>{version}", content, count=1)
+	if not replaced or new_content == content:
+		return False
+	path.write_text(new_content, encoding="utf-8")
+	return True
+
+
+def update_uv_lock_version(repo_root: Path, version: str) -> bool:
+	"""Keep the virtual ``mss-login`` package version in uv.lock aligned."""
+	path = repo_root / "uv.lock"
+	if not path.is_file():
+		return False
+	content = path.read_text(encoding="utf-8")
+	match = _UV_LOCK_MSS_RE.search(content)
+	if not match or match.group(2) == version:
+		return False
+	new_content = _UV_LOCK_MSS_RE.sub(rf"\g<1>{version}\g<3>", content, count=1)
+	path.write_text(new_content, encoding="utf-8")
+	return True
+
+
+def versioned_release_paths(repo_root: Path, version: str) -> list[Path]:
+	"""Files that carry the project version and should be committed / synced."""
+	return [
+		repo_root / "pyproject.toml",
+		repo_root / "uv.lock",
+		repo_root / "README.md",
+		repo_root / "readme" / "CHANGES.md",
+		changelog_path(repo_root, version),
+		repo_root / "web" / "html" / "login.html",
+	]
+
+
+def inject_login_version(html: str, version: str) -> str:
+	"""Replace the login-page version placeholder or stamped semver in HTML."""
+	if "{{VERSION}}" in html:
+		html = html.replace("{{VERSION}}", version)
+	updated, replaced = _LOGIN_VERSION_RE.subn(rf"\g<1>{version}", html, count=1)
+	return updated if replaced else html
+
+
+def package_release_zip(repo_root: Path, version: str, dest_zip: Path) -> Path:
+	"""Copy release files, run add_copyright.py on the staging tree, then zip.
+
+	Copyright headers are applied only to the zip payload, not the git tree.
+	"""
+	import shutil
+	import tempfile
+	import zipfile
+
+	version = validate_version(version)
+	dest_zip = Path(dest_zip)
+	if not dest_zip.is_absolute():
+		dest_zip = (repo_root / dest_zip).resolve()
+	dest_zip.parent.mkdir(parents=True, exist_ok=True)
+
+	copyright_script = repo_root / "scripts" / "add_copyright.py"
+	notice = repo_root / "docs" / "COPYRIGHT"
+	if not copyright_script.is_file():
+		raise FileNotFoundError(f"add_copyright.py not found: {copyright_script}")
+
+	with tempfile.TemporaryDirectory(prefix="mss-login-release-") as tmp:
+		stage = Path(tmp)
+		for item in RELEASE_ZIP_ITEMS:
+			src = repo_root / item
+			if not src.exists():
+				continue
+			dest = stage / item
+			if src.is_dir():
+				shutil.copytree(
+					src, dest, ignore=shutil.ignore_patterns(*_ZIP_SKIP_DIR_NAMES, "*.pyc")
+				)
+			else:
+				dest.parent.mkdir(parents=True, exist_ok=True)
+				shutil.copy2(src, dest)
+
+		cmd = [
+			sys.executable,
+			str(copyright_script),
+			"--directory",
+			str(stage),
+			"--copyright-notice",
+			str(notice),
+			"--recursive",
+			"--update",
+		]
+		result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True, check=False)
+		if result.returncode != 0:
+			detail = (result.stderr or result.stdout or "").strip() or f"exit {result.returncode}"
+			raise RuntimeError(f"add_copyright.py failed: {detail}")
+
+		if dest_zip.exists():
+			dest_zip.unlink()
+		with zipfile.ZipFile(dest_zip, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+			for path in sorted(stage.rglob("*")):
+				if path.is_file():
+					archive.write(path, path.relative_to(stage).as_posix())
+	return dest_zip
 
 
 def update_changes_markdown(repo_root: Path, version: str, title: str) -> bool:
@@ -196,11 +330,15 @@ def prepare_release(
 		cl_path.write_text(body, encoding="utf-8")
 		changed = True
 
-	# Update README.md version
 	readme_changed = update_readme_version(repo_root, version)
 	changed = changed or readme_changed
 
-	# Update readme/CHANGES.md
+	login_changed = update_login_page_version(repo_root, version)
+	changed = changed or login_changed
+
+	lock_changed = update_uv_lock_version(repo_root, version)
+	changed = changed or lock_changed
+
 	changes_changed = update_changes_markdown(repo_root, version, title)
 	changed = changed or changes_changed
 
@@ -232,10 +370,42 @@ def main(argv: list[str] | None = None) -> int:
 	parser.add_argument(
 		"--print-version", action="store_true", help="Print current pyproject version and exit"
 	)
+	parser.add_argument(
+		"--print-version-files",
+		action="store_true",
+		help="Print repo-relative paths that carry the project version (one per line) and exit",
+	)
+	parser.add_argument(
+		"--package-zip",
+		default="",
+		help="Stage release files, apply copyright headers, write this zip path, then exit",
+	)
 	args = parser.parse_args(argv)
 
 	root = _repo_root(args.repo_root)
 	pyproject = root / "pyproject.toml"
+
+	if args.print_version_files:
+		try:
+			version = (args.version or "").strip() or read_pyproject_version(pyproject)
+			version = validate_version(version)
+		except (OSError, ValueError) as exc:
+			print(f"Error: {exc}", file=sys.stderr)
+			return 1
+		for path in versioned_release_paths(root, version):
+			if path.exists():
+				print(path.relative_to(root).as_posix())
+		return 0
+
+	if args.package_zip:
+		try:
+			version = (args.version or "").strip() or read_pyproject_version(pyproject)
+			package_release_zip(root, version, Path(args.package_zip))
+			print(f"Wrote {args.package_zip}")
+		except (ValueError, FileNotFoundError, OSError, RuntimeError) as exc:
+			print(f"Error: {exc}", file=sys.stderr)
+			return 1
+		return 0
 
 	if args.print_version:
 		try:

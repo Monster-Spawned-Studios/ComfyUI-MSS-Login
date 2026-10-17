@@ -7,10 +7,10 @@ Runs in background on startup; does not block ComfyUI. Compatible with ComfyUI M
 import asyncio
 import json
 import os
-from os.path import join
 import shutil
 import subprocess
 import sys
+from os.path import join
 from time import time
 from typing import Any
 
@@ -29,6 +29,77 @@ def _read_config_json(path: str) -> dict:
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _LAST_CHECK_PATH = os.path.join(_REPO_ROOT, ".last_update_check")
 _CACHE: dict[str, Any] = {}
+_STATUS_FILENAME = "update_status.json"
+
+
+def _status_path() -> str:
+	"""Persisted update status under DATA_DIR (survives restart / cold cache)."""
+	from .data_dir import get_data_dir
+
+	return os.path.join(get_data_dir(), _STATUS_FILENAME)
+
+
+def _persist_cached_status() -> None:
+	"""Write current in-memory update status to DATA_DIR for login-page reuse."""
+	payload = {
+		"current_version": _CACHE.get("current_version") or get_local_version(),
+		"latest_version": _CACHE.get("latest_version") or "",
+		"update_available": bool(_CACHE.get("update_available", False)),
+		"mode": _CACHE.get("mode", "notify"),
+		"changelog_url": _CACHE.get("changelog_url", ""),
+		"release_url": _CACHE.get("release_url", ""),
+		"changelog_body": _CACHE.get("changelog_body", ""),
+	}
+	try:
+		path = _status_path()
+		os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+		with open(path, "w", encoding="utf-8") as f:
+			json.dump(payload, f, indent=2)
+	except OSError:
+		pass
+
+
+def _hydrate_cache_from_disk() -> None:
+	"""Load persisted status into _CACHE when memory cache is cold."""
+	if _CACHE.get("latest_version") or _CACHE.get("update_available") is True:
+		return
+	path = _status_path()
+	if not os.path.isfile(path):
+		return
+	try:
+		with open(path, "r", encoding="utf-8") as f:
+			data = json.load(f)
+		if not isinstance(data, dict):
+			return
+		for key in (
+			"current_version",
+			"latest_version",
+			"update_available",
+			"mode",
+			"changelog_url",
+			"release_url",
+			"changelog_body",
+		):
+			if key in data and key not in _CACHE:
+				_CACHE[key] = data[key]
+		# Always restore update_available / latest when present on disk
+		if "update_available" in data:
+			_CACHE["update_available"] = bool(data["update_available"])
+		if data.get("latest_version"):
+			_CACHE["latest_version"] = data["latest_version"]
+		if data.get("current_version"):
+			_CACHE["current_version"] = data["current_version"]
+		if data.get("release_url"):
+			_CACHE["release_url"] = data["release_url"]
+		if data.get("changelog_url"):
+			_CACHE["changelog_url"] = data["changelog_url"]
+		if data.get("changelog_body") is not None and "changelog_body" not in _CACHE:
+			_CACHE["changelog_body"] = data["changelog_body"]
+		if data.get("mode"):
+			_CACHE.setdefault("mode", data["mode"])
+	except (OSError, json.JSONDecodeError, TypeError):
+		pass
+
 
 # DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
 DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
@@ -102,13 +173,13 @@ async def check_for_update(
 	try:
 		import aiohttp
 
-		async with aiohttp.ClientSession() as session:
-			async with session.get(
-				check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)
-			) as resp:
-				if resp.status != 200:
-					return False, ""
-				body = await resp.text()
+		async with (
+			aiohttp.ClientSession() as session,
+			session.get(check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)) as resp,
+		):
+			if resp.status != 200:
+				return False, ""
+			body = await resp.text()
 		data = json.loads(body)
 		release_url = ""
 
@@ -175,14 +246,14 @@ async def check_for_update_branch(
 	try:
 		import aiohttp
 
-		async with aiohttp.ClientSession() as session:
-			async with session.get(
-				check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)
-			) as resp:
-				if resp.status != 200:
-					return False, ""
-				body = await resp.text()
-				ct = resp.headers.get("Content-Type") or ""
+		async with (
+			aiohttp.ClientSession() as session,
+			session.get(check_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)) as resp,
+		):
+			if resp.status != 200:
+				return False, ""
+			body = await resp.text()
+			ct = resp.headers.get("Content-Type") or ""
 		latest = _parse_version_from_content(body, ct)
 		if not latest:
 			return False, ""
@@ -195,14 +266,29 @@ async def check_for_update_branch(
 
 def get_cached_status() -> dict[str, Any]:
 	"""Return last cached update check result for API route."""
+	_hydrate_cache_from_disk()
 	return {
 		"current_version": _CACHE.get("current_version") or get_local_version(),
 		"latest_version": _CACHE.get("latest_version") or "",
-		"update_available": _CACHE.get("update_available", False),
+		"update_available": bool(_CACHE.get("update_available", False)),
 		"mode": _CACHE.get("mode", "notify"),
 		"changelog_url": _CACHE.get("changelog_url", ""),
 		"release_url": _CACHE.get("release_url", ""),
 		"changelog_body": _CACHE.get("changelog_body", ""),
+	}
+
+
+def get_public_update_notice() -> dict[str, Any]:
+	"""Redacted update notice safe for unauthenticated login-page clients."""
+	status = get_cached_status()
+	release_url = (status.get("release_url") or "").strip()
+	if release_url and not release_url.lower().startswith("https://"):
+		release_url = ""
+	return {
+		"update_available": bool(status.get("update_available")),
+		"current_version": status.get("current_version") or get_local_version(),
+		"latest_version": status.get("latest_version") or "",
+		"release_url": release_url,
 	}
 
 
@@ -244,14 +330,14 @@ async def _fetch_changelog_markdown(
 	try:
 		import aiohttp
 
-		async with aiohttp.ClientSession() as session:
-			async with session.get(
-				raw_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)
-			) as resp:
-				if resp.status == 200:
-					body = await resp.text()
-					if body and body.strip():
-						return body.strip()
+		async with (
+			aiohttp.ClientSession() as session,
+			session.get(raw_url, timeout=aiohttp.ClientTimeout(total=timeout_sec)) as resp,
+		):
+			if resp.status == 200:
+				body = await resp.text()
+				if body and body.strip():
+					return body.strip()
 	except Exception:
 		pass
 	return _CACHE.get("release_body", "")
@@ -433,12 +519,13 @@ async def run_update_check(app: Any, logger: Any, config: dict[str, Any]) -> Non
 	if not check_url:
 		return
 	interval_hours = max(0, int(au.get("check_interval_hours") or 24))
-	# Skip if we checked recently
+	# Skip if we checked recently (still hydrate disk status for API/login notice)
 	try:
 		if os.path.isfile(_LAST_CHECK_PATH):
 			with open(_LAST_CHECK_PATH, "r", encoding="utf-8") as f:
 				last = float(f.read().strip())
 			if time() - last < interval_hours * 3600:
+				_hydrate_cache_from_disk()
 				return
 	except Exception:
 		pass
@@ -464,6 +551,7 @@ async def run_update_check(app: Any, logger: Any, config: dict[str, Any]) -> Non
 			)
 		else:
 			_CACHE["changelog_body"] = _CACHE.get("release_body", "")
+		_persist_cached_status()
 		# release_url is set inside check_for_update when GitHub API returns html_url
 		if available and latest:
 			logger.info(

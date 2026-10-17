@@ -1,0 +1,30 @@
+name: "Pull Request Labeler"
+on:
+  pull_request_target:
+
+jobs:
+  labeler:
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          configuration-path: .github/labeler.yml
+          sync-labels: false
+
+  ntfy-notification:
+    name: Notify on MSS-Login Auto-label Results
+    needs: [labeler]
+    if: always()
+    uses: ./.github/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Auto-label — Succeeded' || 'MSS-Login Auto-label — Failed' }}
+      message: |
+        === Labeler ===
+        Result: ${{ needs.labeler.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,label' || 'warning,label' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

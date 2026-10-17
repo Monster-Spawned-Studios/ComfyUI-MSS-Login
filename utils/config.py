@@ -34,7 +34,7 @@ def _resolve_data_path(rel_or_abs: str) -> str:
 	return resolved if resolved is not None else _DATA_DIR
 
 
-def load_config(file_path: str) -> Dict[str, Any]:
+def load_config(file_path: str) -> dict[str, Any]:
 	if os.path.exists(file_path):
 		with open(file_path, "r", encoding="utf-8") as f:
 			try:

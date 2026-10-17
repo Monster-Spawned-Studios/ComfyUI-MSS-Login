@@ -1,22 +1,23 @@
 from aiohttp import web
 from server import PromptServer  # pyright: ignore[reportMissingImports]
+
 from .globals import (
+	GROUPS_CONFIG_FILE,
+	access_control,
 	app,
-	routes,
 	ip_filter,
+	jwt_auth,
+	routes,
 	sanitizer,
 	timeout,
-	jwt_auth,
-	access_control,
-	GROUPS_CONFIG_FILE,
 	users_db,
 )
-from .utils.watcher import watcher
-from .utils.bootstrap import ensure_groups_config
 
 # --- Import Routes to register them ---
 # Just importing them is enough because they use the @routes decorator from globals
-from .routes import auth, admin, user
+from .routes import admin, auth, user
+from .utils.bootstrap import ensure_groups_config
+from .utils.watcher import watcher
 
 # --- Bootstrap ---
 ensure_groups_config()
@@ -26,12 +27,14 @@ ensure_groups_config()
 CSS_DIR = "..."
 JS_DIR = "..."
 ASSETS_DIR = "..."
+DIST_DIR = "..."
 
 app.add_routes(
 	[
 		web.static("/mss-login/css", CSS_DIR),
 		web.static("/mss-login/js", JS_DIR),
 		web.static("/mss-login/assets", ASSETS_DIR),
+		web.static("/mss-login/dist", DIST_DIR),
 	]
 )
 

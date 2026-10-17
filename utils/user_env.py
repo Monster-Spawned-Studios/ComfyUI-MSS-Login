@@ -3,19 +3,21 @@ ComfyUI-MSS-Login per-user environment helpers.
 
 Responsible for:
 - Resolving the extension root
-- Managing the shared Users/ directory (plugin) and data-dir Users/ (workflows)
-- Creating / locating per-user folders (Users/<username>/...)
+- Managing the shared users/ directory under DATA_DIR (not the repo)
+- Creating / locating per-user folders (users/<username>/...)
 - Loading / saving per-user settings JSON
 - Centralizing paths for user_db.json and (renamed) mss_login_settings.js
 - Workflow storage under MSS_LOGIN_DATA_DIR (see get_user_workflow_dir)
 """
 
-import os
 import json
+import os
 import shutil
 from typing import Any, Dict, List
 
 from .data_dir import get_data_dir, get_data_subdir
+
+_USERS_MIGRATED_MARKER = ".migrated_users_to_data_dir"
 
 # -----------------------
 # Path helpers
@@ -31,12 +33,123 @@ def get_extension_root() -> str:
 	return os.path.abspath(os.path.join(here, ".."))
 
 
+def _copy_tree_missing(src: str, dst: str) -> bool:
+	"""Copy files/dirs from src into dst without overwriting existing entries."""
+	if not src or not os.path.isdir(src):
+		return False
+	if os.path.abspath(src) == os.path.abspath(dst):
+		return False
+	copied = False
+	os.makedirs(dst, exist_ok=True)
+	try:
+		for name in os.listdir(src):
+			src_item = os.path.join(src, name)
+			dst_item = os.path.join(dst, name)
+			if os.path.exists(dst_item):
+				continue
+			try:
+				if os.path.isfile(src_item):
+					shutil.copy2(src_item, dst_item)
+					copied = True
+				elif os.path.isdir(src_item):
+					shutil.copytree(src_item, dst_item, dirs_exist_ok=True)
+					copied = True
+			except OSError:
+				continue
+	except OSError:
+		return False
+	return copied
+
+
+def _legacy_users_paths() -> list[str]:
+	"""Read-only legacy capital Users/ locations (extension root + DATA_DIR)."""
+	return [os.path.join(get_extension_root(), "Users"), os.path.join(get_data_dir(), "Users")]
+
+
+def _tree_has_files(path: str) -> bool:
+	"""True if path exists and contains at least one regular file."""
+	if not path or not os.path.isdir(path):
+		return False
+	try:
+		for dirpath, _, filenames in os.walk(path):
+			if filenames:
+				return True
+	except OSError:
+		return False
+	return False
+
+
+def _legacy_fully_mirrored(src: str, dest: str) -> bool:
+	"""True when every file under src also exists at the same relative path in dest."""
+	if not src or not os.path.isdir(src):
+		return True
+	if not dest or not os.path.isdir(dest):
+		return False
+	try:
+		for dirpath, _, filenames in os.walk(src):
+			for fn in filenames:
+				rel = os.path.relpath(os.path.join(dirpath, fn), src)
+				if not os.path.isfile(os.path.join(dest, rel)):
+					return False
+	except OSError:
+		return False
+	return True
+
+
+def _remove_legacy_users_tree(path: str) -> bool:
+	"""Remove a leftover capital Users/ directory when safe."""
+	if not path or not os.path.isdir(path):
+		return False
+	try:
+		shutil.rmtree(path)
+		return not os.path.exists(path)
+	except OSError:
+		return False
+
+
+def migrate_users_dir_if_needed() -> bool:
+	"""
+	Consolidate legacy capital Users/ trees into DATA_DIR/users/.
+
+	Always merges any remaining capital Users/ sources into lowercase users/,
+	then removes leftover capital Users/ trees that are empty or fully mirrored
+	into users/. Writes a marker on first successful pass.
+	"""
+	data_dir = get_data_dir()
+	marker = os.path.join(data_dir, _USERS_MIGRATED_MARKER)
+	dest = get_data_subdir("users")
+	os.makedirs(dest, exist_ok=True)
+
+	migrated = False
+	for legacy in _legacy_users_paths():
+		# Never treat a case-folded same path as a source (e.g. macOS).
+		if os.path.abspath(legacy) == os.path.abspath(dest):
+			continue
+		if not os.path.isdir(legacy):
+			continue
+		if _copy_tree_missing(legacy, dest):
+			migrated = True
+		# Drop capital Users/ once content is under users/ (or the tree is empty).
+		if (not _tree_has_files(legacy)) or _legacy_fully_mirrored(legacy, dest):
+			if _remove_legacy_users_tree(legacy):
+				migrated = True
+
+	try:
+		if not os.path.isfile(marker):
+			with open(marker, "w", encoding="utf-8") as f:
+				f.write("migrated")
+	except OSError:
+		pass
+	return migrated
+
+
 def get_users_root() -> str:
 	"""
 	Root folder for all MSS-Login user-related files:
-	  <ext_root>/Users/
+	  <DATA_DIR>/users/
 	"""
-	root = os.path.join(get_extension_root(), "Users")
+	migrate_users_dir_if_needed()
+	root = get_data_subdir("users")
 	os.makedirs(root, exist_ok=True)
 	return root
 
@@ -44,7 +157,7 @@ def get_users_root() -> str:
 def get_user_db_path() -> str:
 	"""
 	Global user database JSON.
-	  <ext_root>/Users/user_db.json
+	  <DATA_DIR>/users/user_db.json
 	"""
 	return os.path.join(get_users_root(), "user_db.json")
 
@@ -52,10 +165,10 @@ def get_user_db_path() -> str:
 def get_frontend_settings_js_path() -> str:
 	"""
 	Location of the frontend settings JS file (renamed from sentinel_settings.js):
-	  <ext_root>/Users/mss_login_settings.js
+	  <DATA_DIR>/users/mss_login_settings.js
 
 	This file is still served as a static asset by the backend, but physically
-	lives under Users/ so everything related to MSS-Login is in one place.
+	lives under DATA_DIR/users/ so runtime data stays out of the repo.
 	"""
 	return os.path.join(get_users_root(), "mss_login_settings.js")
 
@@ -63,7 +176,7 @@ def get_frontend_settings_js_path() -> str:
 def get_user_root(username: str) -> str:
 	"""
 	Per-user root folder:
-	  <ext_root>/Users/<username>/
+	  <DATA_DIR>/users/<username>/
 	"""
 	username = (username or "guest").strip() or "guest"
 	# Prevent path traversal: username must be a single path segment
@@ -77,7 +190,7 @@ def get_user_root(username: str) -> str:
 def get_user_css_dir(username: str) -> str:
 	"""
 	Per-user CSS directory:
-	  <ext_root>/Users/<username>/css/
+	  <DATA_DIR>/users/<username>/css/
 	"""
 	path = os.path.join(get_user_root(username), "css")
 	os.makedirs(path, exist_ok=True)
@@ -87,7 +200,7 @@ def get_user_css_dir(username: str) -> str:
 def get_user_settings_path(username: str) -> str:
 	"""
 	Per-user settings JSON file:
-	  <ext_root>/Users/<username>/settings.json
+	  <DATA_DIR>/users/<username>/settings.json
 	"""
 	return os.path.join(get_user_root(username), "settings.json")
 
@@ -120,7 +233,7 @@ def _save_json_file(path: str, data: Any) -> None:
 # -----------------------
 
 
-def load_user_settings(username: str) -> Dict[str, Any]:
+def load_user_settings(username: str) -> dict[str, Any]:
 	"""
 	Load per-user settings JSON. Returns {} if missing or invalid.
 	"""
@@ -129,7 +242,7 @@ def load_user_settings(username: str) -> Dict[str, Any]:
 	return data if isinstance(data, dict) else {}
 
 
-def save_user_settings(username: str, settings: Dict[str, Any]) -> None:
+def save_user_settings(username: str, settings: dict[str, Any]) -> None:
 	"""
 	Save per-user settings JSON. Non-dicts are ignored.
 	"""
@@ -163,7 +276,7 @@ def get_gallery_root_config_path() -> str:
 	"""
 	Global config pointing at which user is used as Gallery root.
 
-	  <ext_root>/Users/gallery_root.json
+	  <DATA_DIR>/users/gallery_root.json
 
 	Stored as: { "user": "<username>" }
 	"""
@@ -199,16 +312,16 @@ def set_gallery_root_user(username: str | None) -> None:
 	_save_json_file(path, {"user": username})
 
 
-def list_user_files(username: str, max_files: int = 500) -> List[str]:
+def list_user_files(username: str, max_files: int = 500) -> list[str]:
 	"""
 	Return a relative list of files under the user's root directory.
 
-	  Users/<username>/...
+	  users/<username>/...
 
 	Limited to max_files entries to avoid insane payloads.
 	"""
 	root = get_user_root(username)
-	collected: List[str] = []
+	collected: list[str] = []
 
 	for dirpath, _, filenames in os.walk(root):
 		for fn in filenames:
@@ -222,7 +335,7 @@ def list_user_files(username: str, max_files: int = 500) -> List[str]:
 
 def purge_user_root(username: str) -> None:
 	"""
-	Delete the entire per-user folder under Users/<username>/ and recreate it.
+	Delete the entire per-user folder under users/<username>/ and recreate it.
 	"""
 	root = get_user_root(username)
 	if os.path.exists(root):
@@ -239,54 +352,94 @@ def _sanitize_username_for_path(username: str) -> str:
 
 
 def _get_plugin_workflow_dir(username: str) -> str:
-	"""Legacy plugin-root workflow dir (for migration source)."""
-	user_root = get_user_root(username)
-	return os.path.join(user_root, "workflows")
+	"""Legacy extension-root workflow dir: <ext_root>/Users/<username>/workflows/."""
+	safe = _sanitize_username_for_path(username)
+	return os.path.join(get_extension_root(), "Users", safe, "workflows")
 
 
-def _migrate_user_workflows_to_data_dir(username: str, data_wf_dir: str) -> None:
+def _legacy_data_users_workflow_dirs(username: str) -> list[str]:
+	"""Read-only legacy DATA_DIR/Users/<user>/workflows paths (no mkdir)."""
+	safe = _sanitize_username_for_path(username)
+	legacy_root = os.path.join(get_data_dir(), "Users", safe, "workflows")
+	return [os.path.join(legacy_root, "default"), legacy_root]
+
+
+def _copy_workflows_if_empty(sources: list[str], target_dir: str) -> None:
 	"""
-	One-time: copy workflows from plugin Users/<username>/workflows to data dir
-	if plugin has content and data dir is empty. Idempotent; skips if data dir has files.
+	One-time helper: copy workflows from the first non-empty source directory
+	into target_dir if target_dir is currently empty. Non-destructive.
 	"""
-	plugin_wf = _get_plugin_workflow_dir(username)
-	if not os.path.isdir(plugin_wf):
+	try:
+		if os.path.isdir(target_dir):
+			existing = [f for f in os.listdir(target_dir) if f != "default"]
+			if existing:
+				return
+	except OSError:
 		return
-	try:
-		existing = os.listdir(data_wf_dir)
-		if existing:
-			return
-	except OSError:
-		pass
-	try:
-		for name in os.listdir(plugin_wf):
-			src = os.path.join(plugin_wf, name)
-			dst = os.path.join(data_wf_dir, name)
-			if os.path.isfile(src):
-				shutil.copy2(src, dst)
-			elif os.path.isdir(src):
-				shutil.copytree(src, dst, dirs_exist_ok=True)
-	except OSError:
-		pass
+
+	for src in sources:
+		if not src or not os.path.isdir(src) or os.path.abspath(src) == os.path.abspath(target_dir):
+			continue
+		try:
+			items = os.listdir(src)
+			# Only consider it a source if it has files other than the target directory itself
+			valid_items = [item for item in items if item != "default"]
+			if not valid_items:
+				continue
+			os.makedirs(target_dir, exist_ok=True)
+			for name in valid_items:
+				src_item = os.path.join(src, name)
+				dst_item = os.path.join(target_dir, name)
+				if os.path.isfile(src_item) and not os.path.exists(dst_item):
+					shutil.copy2(src_item, dst_item)
+				elif os.path.isdir(src_item) and not os.path.exists(dst_item):
+					shutil.copytree(src_item, dst_item, dirs_exist_ok=True)
+			break
+		except OSError:
+			continue
 
 
 def get_user_workflow_dir(username: str) -> str:
 	"""
-	Per-user workflow directory under MSS_LOGIN_DATA_DIR:
-	  <data_dir>/Users/<username>/workflows/
+	Return the per-user workflow directory.
 
-	Migrates existing workflows from plugin Users/<username>/workflows/ once if present.
+	- If MSS_LOGIN_DATA_DIR is set:
+	  Stores workflows under <MSS_LOGIN_DATA_DIR>/workflows/<username>/
+	- If MSS_LOGIN_DATA_DIR is not set:
+	  Stores workflows in the configured user directory with a 'default' subfolder:
+	  <data_dir>/users/<username>/workflows/default/
 	"""
 	safe = _sanitize_username_for_path(username)
-	data_users = get_data_subdir("Users")
-	os.makedirs(data_users, exist_ok=True)
-	data_wf_dir = get_data_subdir("Users", safe, "workflows")
-	os.makedirs(data_wf_dir, exist_ok=True)
-	_migrate_user_workflows_to_data_dir(username, data_wf_dir)
-	return data_wf_dir
+	raw_env = os.environ.get("MSS_LOGIN_DATA_DIR", "").strip()
+
+	# Ensure any leftover capital Users/ is merged into lowercase users/ first.
+	migrate_users_dir_if_needed()
+
+	if raw_env:
+		base = os.path.abspath(raw_env)
+		target_dir = os.path.join(base, "workflows", safe)
+		os.makedirs(target_dir, exist_ok=True)
+		sources = [
+			get_data_subdir("users", safe, "workflows", "default"),
+			get_data_subdir("users", safe, "workflows"),
+			*_legacy_data_users_workflow_dirs(safe),
+			_get_plugin_workflow_dir(safe),
+		]
+		_copy_workflows_if_empty(sources, target_dir)
+		return target_dir
+	else:
+		target_dir = get_data_subdir("users", safe, "workflows", "default")
+		os.makedirs(target_dir, exist_ok=True)
+		sources = [
+			get_data_subdir("users", safe, "workflows"),
+			*_legacy_data_users_workflow_dirs(safe),
+			_get_plugin_workflow_dir(safe),
+		]
+		_copy_workflows_if_empty(sources, target_dir)
+		return target_dir
 
 
-def list_user_workflows(username: str) -> List[str]:
+def list_user_workflows(username: str) -> list[str]:
 	"""
 	Returns a list of workflow filenames (relative paths) for the user.
 	"""

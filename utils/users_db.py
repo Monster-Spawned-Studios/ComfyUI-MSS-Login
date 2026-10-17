@@ -15,6 +15,7 @@ import bcrypt
 
 from .encryption import decrypt_value, encrypt_value, hash_backup_code, verify_backup_code
 from .input_sanitizer import sanitize_username as _sanitize_username
+from .sanitizer import apply_legacy_xss_sanitize
 
 
 def _get_logger():
@@ -40,7 +41,7 @@ def _groups_to_json(groups: list) -> str:
 	return json.dumps([str(g) for g in groups])
 
 
-def _json_to_groups(s: Optional[str]) -> list:
+def _json_to_groups(s: str | None) -> list:
 	if not s:
 		return ["user"]
 	try:
@@ -639,7 +640,7 @@ def migrate_totp_to_new_key(config: dict, old_key: str, new_key: str) -> bool:
 class UsersDB:
 	"""Users database (unified API)."""
 
-	def __init__(self, config: dict, secret_key: str, legacy_json_path: Optional[str] = None):
+	def __init__(self, config: dict, secret_key: str, legacy_json_path: str | None = None):
 		"""Initialize the users database."""
 		self._config = config
 		self._secret_key = secret_key
@@ -674,7 +675,7 @@ class UsersDB:
 				encryption_level=config.get("encryption_level", ""),
 			)
 		self.users: dict = {}
-		self.admin_user: tuple[Optional[str], dict] = (None, {})
+		self.admin_user: tuple[str | None, dict] = (None, {})
 		if legacy_json_path:
 			self._backend.migrate_from_json(legacy_json_path)
 		self.load_users()
@@ -706,28 +707,117 @@ class UsersDB:
 			for uid, user in self.users.items():
 				self._backend.update(uid, user, self._secret_key)
 
+	@staticmethod
+	def _user_is_admin(user: dict) -> bool:
+		"""True if user has admin privilege (admin flag, admin group, or owner group)."""
+		if not user:
+			return False
+		if user.get("admin"):
+			return True
+		groups = [str(g).lower() for g in user.get("groups", [])]
+		return "admin" in groups or "owner" in groups
+
+	@staticmethod
+	def _normalize_owner_groups(groups: list, is_admin: bool) -> tuple[list[str], bool]:
+		"""Ensure owner always retains admin group and admin flag."""
+		normalized = [str(g).lower() for g in (groups or [])]
+		if "owner" in normalized:
+			if "admin" not in normalized:
+				normalized.append("admin")
+			return normalized, True
+		return normalized, bool(is_admin)
+
+	def _owner_exists_in_loaded(self) -> bool:
+		"""True if any loaded user has owner in groups (no reload)."""
+		for user in self.users.values():
+			groups = [str(g).lower() for g in user.get("groups", [])]
+			if "owner" in groups:
+				return True
+		return False
+
 	def _ensure_owner_assigned(self) -> None:
-		"""If no user has 'owner' in groups, assign owner to the first admin (migration)."""
-		for _uid, user in self.users.items():
+		"""Ensure exactly one owner exists (migration / repair).
+
+		- If no owner: promote a deterministic admin (prefer username ``mss_admin``
+		  when that account is admin; otherwise the lexicographically first admin
+		  username) so restarts do not flip ownership based on dict order.
+		- If multiple owners: keep the preferred one, demote the rest to admin.
+		"""
+		owners: list[tuple[str, dict, str]] = []
+		for uid, user in self.users.items():
 			groups = [g.lower() for g in user.get("groups", [])]
 			if "owner" in groups:
-				return
+				owners.append((uid, user, str(user.get("username") or "")))
+
+		if len(owners) > 1:
+			owners_sorted = sorted(owners, key=lambda t: t[2].lower())
+			preferred = next(
+				(t for t in owners_sorted if t[2].lower() == "mss_admin"), owners_sorted[0]
+			)
+			keep_uid = preferred[0]
+			for uid, user, _uname in owners:
+				if uid == keep_uid:
+					normalized, admin_flag = self._normalize_owner_groups(
+						user.get("groups", []), True
+					)
+					if user.get("groups") != normalized or user.get("admin") is not admin_flag:
+						user["groups"] = normalized
+						user["admin"] = admin_flag
+						self._backend.update(uid, user, self._secret_key)
+						self.users[uid] = user
+					continue
+				# Demote extra owners to admin (never leave zero admins).
+				new_groups = [
+					g for g in [str(x).lower() for x in user.get("groups", [])] if g != "owner"
+				]
+				if "admin" not in new_groups:
+					new_groups.insert(0, "admin")
+				user["groups"] = new_groups
+				user["admin"] = True
+				self._backend.update(uid, user, self._secret_key)
+				self.users[uid] = user
+			return
+
+		if owners:
+			# Heal single owner to always retain admin group/flag
+			uid, user, _uname = owners[0]
+			normalized, admin_flag = self._normalize_owner_groups(user.get("groups", []), True)
+			if user.get("groups") != normalized or user.get("admin") is not admin_flag:
+				user["groups"] = normalized
+				user["admin"] = admin_flag
+				self._backend.update(uid, user, self._secret_key)
+				self.users[uid] = user
+			return
+
 		admin_uid, admin_user = self._find_admin_in_loaded_users()
 		if not admin_uid or not admin_user:
 			return
 		groups = list(admin_user.get("groups", ["admin"]))
 		if "owner" not in [g.lower() for g in groups]:
 			admin_user["groups"] = ["owner"] + [g for g in groups if g.lower() != "owner"]
+			if "admin" not in [g.lower() for g in admin_user["groups"]]:
+				admin_user["groups"].append("admin")
+			admin_user["admin"] = True
 			self._backend.update(admin_uid, admin_user, self._secret_key)
 			self.users[admin_uid] = admin_user
 
-	def _find_admin_in_loaded_users(self) -> tuple[Optional[str], dict]:
-		"""Find the first admin in the already-loaded self.users without reloading."""
+	def _find_admin_in_loaded_users(self) -> tuple[str | None, dict]:
+		"""Find a preferred admin in the already-loaded self.users without reloading.
+
+		Prefers username ``mss_admin`` when that account is admin; otherwise the
+		lexicographically first admin username for stable migration behavior.
+		"""
+		admins: list[tuple[str, dict, str]] = []
 		for uid, user_data in self.users.items():
-			groups = [g.lower() for g in user_data.get("groups", [])]
-			if user_data.get("admin") or "admin" in groups:
+			if self._user_is_admin(user_data):
+				admins.append((uid, user_data, str(user_data.get("username") or "")))
+		if not admins:
+			return (None, {})
+		for uid, user_data, uname in admins:
+			if uname.lower() == "mss_admin":
 				return (uid, user_data)
-		return (None, {})
+		admins.sort(key=lambda t: t[2].lower())
+		return (admins[0][0], admins[0][1])
 
 	def save_users(self, users: dict) -> None:
 		"""Persist entire users dict (used by code that expects legacy behavior). Prefer update_user/add_user/delete_user."""
@@ -738,41 +828,63 @@ class UsersDB:
 	def _has_admin(self) -> bool:
 		self.load_users()
 		for _uid, user in self.users.items():
-			if user.get("admin"):
-				return True
-			groups = [g.lower() for g in user.get("groups", [])]
-			if "admin" in groups:
+			if self._user_is_admin(user):
 				return True
 		return False
 
-	def add_user(self, user_id: str, username: str, password: str, admin: bool) -> None:
-		"""Add a user to the database."""
+	def add_user(
+		self,
+		user_id: str,
+		username: str,
+		password: str,
+		admin: bool,
+		groups: list[str] | None = None,
+	) -> None:
+		"""Add a user to the database.
+
+		When ``groups`` is provided (owner create-user API), those groups are used
+		as-is (caller must not pass ``owner`` for a second owner). Otherwise the
+		legacy bootstrap/admin/user assignment applies.
+		"""
 		try:
 			self.load_users()
 			username = _sanitize_username(username)
 			if not username:
 				return
 			has_admin = self._has_admin()
+			has_owner = self._owner_exists_in_loaded()
 			if not has_admin and len(self.users) == 0:
 				admin = True
-			# First admin gets owner group
-			groups = (
-				["owner", "admin"]
-				if admin and not has_admin
-				else (["admin"] if admin else ["user"])
-			)
+			# First admin gets owner only when no owner/admin exists yet
+			grant_owner = bool(admin) and not has_admin and not has_owner
+			if groups is not None:
+				normalized = [str(g).strip().lower() for g in groups if str(g).strip()]
+				if not normalized:
+					normalized = ["user"]
+				# Never mint a second owner through this path
+				if "owner" in normalized and (has_owner or has_admin or len(self.users) > 0):
+					normalized = [g for g in normalized if g != "owner"]
+					if not normalized:
+						normalized = ["admin"] if admin else ["user"]
+				if "owner" in normalized and "admin" not in normalized:
+					normalized = list(normalized) + ["admin"]
+				is_admin_flag = "admin" in normalized or "owner" in normalized
+				assigned = normalized
+			else:
+				assigned = ["owner", "admin"] if grant_owner else (["admin"] if admin else ["user"])
+				is_admin_flag = bool(admin) or grant_owner
 			user = {
 				"username": username,
 				"password": self.hash_password(password),
-				"admin": bool(admin),
-				"groups": groups,
+				"admin": bool(is_admin_flag),
+				"groups": assigned,
 			}
 			self._backend.insert(user_id, user, self._secret_key)
 			self.users[user_id] = user
 		except Exception as e:
 			_get_logger().error(f"[MSS-Login] Failed to add user: {user_id}: {e}")
 
-	def get_user(self, username: str = "", user_id: str = "") -> tuple[Optional[str], dict]:
+	def get_user(self, username: str = "", user_id: str = "") -> tuple[str | None, dict]:
 		"""Get a user by username or user_id."""
 		self.load_users()
 		if user_id:
@@ -788,20 +900,49 @@ class UsersDB:
 		return None, {}
 
 	def check_username_password(self, username: str, password: str) -> bool:
-		"""Check if a username and password match."""
+		"""
+		Check if a username and password match.
+
+		Also accepts passwords that were hashed after the legacy XSS sanitizer
+		mutated them (pre-fix installs). On a legacy match, re-hashes with the
+		raw password so future logins use the correct form.
+		"""
 		user_id, user_data = self.get_user(username=username)
 		if not user_id or not user_data:
 			return False
-		pw = user_data.get("password", "")
-		return bcrypt.checkpw(password.encode("utf-8"), pw.encode("utf-8"))
+		stored = user_data.get("password", "") or ""
+		if not stored:
+			return False
+		try:
+			stored_bytes = stored.encode("utf-8")
+			password_bytes = password.encode("utf-8")
+			if bcrypt.checkpw(password_bytes, stored_bytes):
+				return True
+			# Legacy: middleware XSS-sanitized the password before hashing/verify.
+			legacy = apply_legacy_xss_sanitize(password)
+			if (
+				legacy
+				and legacy != password
+				and bcrypt.checkpw(legacy.encode("utf-8"), stored_bytes)
+			):
+				# Upgrade stored hash to raw password for future logins.
+				new_hash = self.hash_password(password)
+				if new_hash:
+					user_data["password"] = new_hash
+					user_data["password_hash"] = new_hash
+					self._backend.update(user_id, user_data, self._secret_key)
+					self.users[user_id] = user_data
+				return True
+			return False
+		except (ValueError, TypeError):
+			return False
 
-	def get_admin_user(self) -> tuple[Optional[str], dict] | None:
+	def get_admin_user(self) -> tuple[str | None, dict] | None:
 		"""Get the admin user."""
 		self.load_users()
 		self.admin_user = (None, {})
 		for uid, user_data in self.users.items():
-			groups = [g.lower() for g in user_data.get("groups", [])]
-			if user_data.get("admin") or "admin" in groups:
+			if self._user_is_admin(user_data):
 				self.admin_user = (uid, user_data)
 				break
 		return self.admin_user
@@ -821,7 +962,7 @@ class UsersDB:
 			)
 		return out
 
-	def get_owner_username(self) -> Optional[str]:
+	def get_owner_username(self) -> str | None:
 		"""Return the username of the user who has 'owner' in groups, or None if no owner."""
 		self.load_users()
 		for _uid, u in self.users.items():
@@ -831,14 +972,15 @@ class UsersDB:
 		return None
 
 	def update_user(
-		self, username: str, groups: list, is_admin: bool, sfw_check: Optional[bool] = None
+		self, username: str, groups: list, is_admin: bool, sfw_check: bool | None = None
 	) -> bool:
 		"""Update groups, admin, and optionally sfw_check for a user. Returns True if found and updated."""
 		user_id, user = self.get_user(username=username)
 		if not user_id:
 			return False
-		user["groups"] = [g.lower() for g in groups]
-		user["admin"] = is_admin
+		normalized_groups, normalized_admin = self._normalize_owner_groups(groups, is_admin)
+		user["groups"] = normalized_groups
+		user["admin"] = normalized_admin
 		if sfw_check is not None:
 			user["sfw_check"] = bool(sfw_check)
 		self._backend.update(user_id, user, self._secret_key)
@@ -851,14 +993,8 @@ class UsersDB:
 		user_id, user = self.get_user(username=username)
 		if not user_id:
 			return False
-		admins = sum(
-			1
-			for u in self.users.values()
-			if u.get("admin") or "admin" in [g.lower() for g in u.get("groups", [])]
-		)
-		if (
-			user.get("admin") or "admin" in [g.lower() for g in user.get("groups", [])]
-		) and admins <= 1:
+		admins = sum(1 for u in self.users.values() if self._user_is_admin(u))
+		if self._user_is_admin(user) and admins <= 1:
 			return "last_admin"
 		self._backend.delete(user_id)
 		self.users.pop(user_id, None)
@@ -875,7 +1011,7 @@ class UsersDB:
 			return False
 		return bool(user.get("mfa_enabled", False))
 
-	def mfa_setup_start(self, username: str) -> Optional[Tuple[str, str]]:
+	def mfa_setup_start(self, username: str) -> tuple[str, str] | None:
 		"""
 		Start MFA setup: generate TOTP secret and backup code, store encrypted/hashed, return (provisioning_uri, backup_code).
 		Returns None if user not found. Call mfa_verify_setup after user scans QR and enters first code.

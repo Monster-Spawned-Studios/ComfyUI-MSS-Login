@@ -1,0 +1,195 @@
+name: Create Release
+
+on:
+  push:
+    branches:
+      - release/*
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (X.X.X). Leave empty to auto-increment patch from latest tag"
+        required: false
+        default: ""
+      changelog_title:
+        description: "Changelog title suffix (optional; default from latest commit subject)"
+        required: false
+        default: ""
+      changelog_notes:
+        description: "Additional changelog notes (markdown, appended after auto-generated bullets)"
+        required: false
+        default: ""
+      pre-release:
+        description: "Whether to create a pre-release"
+        required: false
+        default: "false"
+      draft:
+        description: "Whether to create a draft release"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+  discussions: write
+  pull-requests: write
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Resolve and prepare version
+        id: version
+        run: |
+          set -euo pipefail
+          ARGS=()
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Extract inputs
+            V="${{ inputs.version }}"
+            # Remove whitespace
+            V="${V// /}"
+            if [ -n "$V" ]; then
+              ARGS+=(--version "$V")
+            fi
+            
+            TITLE="${{ inputs.changelog_title }}"
+            if [ -n "${TITLE// /}" ]; then
+              ARGS+=(--changelog-title "$TITLE")
+            fi
+            
+            NOTES="${{ inputs.changelog_notes }}"
+            if [ -n "$NOTES" ]; then
+              ARGS+=(--changelog-notes "$NOTES")
+            fi
+          else
+            # Push to release/*: use branch name e.g. release/1.2.3 -> 1.2.3
+            VERSION_NAME="${GITHUB_REF_NAME#release/}"
+            ARGS+=(--version "$VERSION_NAME")
+          fi
+          
+          python3 scripts/release_prepare.py "${ARGS[@]}"
+
+      - name: Commit version files and sync production, development, and release branch
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin production development --update-head-ok || true
+
+          mapfile -t VERSION_FILES < <(
+            python3 scripts/release_prepare.py --print-version-files --version "$VERSION"
+          )
+          if [ "${#VERSION_FILES[@]}" -eq 0 ]; then
+            echo "::error::No version files reported by release_prepare.py"
+            exit 1
+          fi
+
+          BRANCH="release/${VERSION}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            git checkout -B "$BRANCH"
+          fi
+
+          git add -- "${VERSION_FILES[@]}"
+          if git diff --staged --quiet; then
+            echo "No release file changes to commit on ${BRANCH}."
+          else
+            git commit -m "chore(release): prepare v${VERSION}"
+          fi
+          git push -u origin "$BRANCH"
+
+          SNAP="$(mktemp -d)"
+          for f in "${VERSION_FILES[@]}"; do
+            if [ -f "$f" ]; then
+              mkdir -p "$SNAP/$(dirname "$f")"
+              cp "$f" "$SNAP/$f"
+            fi
+          done
+          RELEASE_SHA="$(git rev-parse HEAD)"
+
+          for TARGET in production development; do
+            if [ "$TARGET" = "$BRANCH" ]; then
+              continue
+            fi
+            if ! git rev-parse --verify "origin/${TARGET}" >/dev/null 2>&1; then
+              echo "::warning::Skipping missing branch ${TARGET}"
+              continue
+            fi
+            git checkout -B "$TARGET" "origin/${TARGET}"
+            for f in "${VERSION_FILES[@]}"; do
+              if [ -f "$SNAP/$f" ]; then
+                mkdir -p "$(dirname "$f")"
+                cp "$SNAP/$f" "$f"
+              fi
+            done
+            git add -- "${VERSION_FILES[@]}"
+            if git diff --staged --quiet; then
+              echo "v${VERSION} already synced on ${TARGET}."
+            else
+              git commit -m "chore(release): sync v${VERSION} version fields"
+              git push origin "$TARGET"
+            fi
+          done
+
+          git checkout "$RELEASE_SHA"
+
+      - name: Add copyright headers and compress node files
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 scripts/release_prepare.py --version "$VERSION" --package-zip "MSS-Login-v${VERSION}.zip"
+
+      - name: Test Changelog
+        run: cat "readme/changelogs/${{ steps.version.outputs.version }}.md"
+
+      - name: Check if release tag exists
+        id: tag_check
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          if git rev-parse "refs/tags/${V}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${V} already exists; skipping GitHub release creation."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Release
+        if: steps.tag_check.outputs.exists != 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            readme/changelogs/${{ steps.version.outputs.version }}.md
+            MSS-Login-v${{ steps.version.outputs.version }}.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: "Release v${{ steps.version.outputs.version }}"
+          tag_name: "${{ steps.version.outputs.version }}"
+          make_latest: true
+          draft: ${{ inputs.draft || false }}
+          prerelease: ${{ inputs.pre-release || false }}
+          body_path: readme/changelogs/${{ steps.version.outputs.version }}.md
+
+  ntfy-notification:
+    name: Notify on MSS-Login Create Release Results
+    needs: [build]
+    if: always()
+    uses: ./.gitea/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Create Release — Succeeded' || 'MSS-Login Create Release — Failed' }}
+      message: |
+        === Build ===
+        Result: ${{ needs.build.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,rocket' || 'warning,rocket' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

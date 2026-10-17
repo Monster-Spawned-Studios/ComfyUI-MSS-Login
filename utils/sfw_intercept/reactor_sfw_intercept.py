@@ -4,7 +4,7 @@ import importlib.util
 import os
 import sys
 
-from ...globals import users_db, current_username_var
+from ...globals import current_username_var, users_db
 
 
 def _load_reactor_module():

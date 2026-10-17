@@ -51,6 +51,9 @@ def _install_stubs():
 		def put(self, _path):
 			return lambda fn: fn
 
+		def delete(self, _path):
+			return lambda fn: fn
+
 	class _JWT:
 		def get_token_from_request(self, request):
 			return getattr(request, "_token", None)
@@ -93,14 +96,82 @@ def _install_stubs():
 	download_mod = types.ModuleType("mss_login.utils.model_download")
 
 	async def _download_civitai_async(*_args, **_kwargs):
-		return True, ""
+		return True, "", "model.safetensors"
 
 	def _download_huggingface(*_args, **_kwargs):
-		return True, ""
+		return True, "", "weights.safetensors"
+
+	async def _civitai_search(*_a, **_k):
+		return {"items": []}, ""
+
+	async def _civitai_get(*_a, **_k):
+		return {}, ""
+
+	async def _civitai_version(*_a, **_k):
+		return {}, ""
 
 	download_mod.download_civitai_async = _download_civitai_async
 	download_mod.download_huggingface = _download_huggingface
+	download_mod.ALLOWED_CIVITAI_HOSTS = frozenset({"civitai.com", "civitai.red"})
+	download_mod.DEFAULT_CIVITAI_HOST = "civitai.com"
+	download_mod.civitai_get_model = _civitai_get
+	download_mod.civitai_get_model_version = _civitai_version
+	download_mod.civitai_search_models = _civitai_search
+	download_mod.get_civitai_host_preference = lambda *_a, **_k: "civitai.com"
+	download_mod.normalize_civitai_host = lambda h: (
+		(h or "civitai.com").strip().lower()
+		if (h or "").strip().lower() in ("civitai.com", "civitai.red")
+		else "civitai.com"
+	)
+	download_mod.resolve_model_url = lambda *_a, **_k: None
+	download_mod.search_huggingface_models = lambda *_a, **_k: ([], "")
+	download_mod.list_huggingface_repo_files = lambda *_a, **_k: ([], "")
+	download_mod.map_civitai_error_http_status = lambda err: (
+		400
+		if "400" in (err or "")
+		else 401
+		if "401" in (err or "")
+		else 429
+		if "429" in (err or "")
+		else 502
+	)
+	download_mod.set_civitai_host_preference = lambda *_a, **_k: "civitai.com"
+	download_mod.check_disk_and_size = lambda *_a, **_k: None
+	download_mod.extract_civitai_file_sha256 = lambda *_a, **_k: None
+	download_mod.file_already_complete = lambda *_a, **_k: False
+	download_mod.sanitize_model_filename = lambda raw: (raw or "").strip()
 	sys.modules["mss_login.utils.model_download"] = download_mod
+
+	errors_mod = types.ModuleType("mss_login.utils.model_download_errors")
+	errors_mod.ALREADY_EXISTS = "ALREADY_EXISTS"
+	errors_mod.AUTH_REQUIRED = "AUTH_REQUIRED"
+	errors_mod.AUTH_REQUIRED_UPSTREAM = "AUTH_REQUIRED_UPSTREAM"
+	errors_mod.CHECKSUM_MISMATCH = "CHECKSUM_MISMATCH"
+	errors_mod.DOWNLOAD_NOT_ALLOWED = "DOWNLOAD_NOT_ALLOWED"
+	errors_mod.DOWNLOAD_NOT_ALLOWED_MESSAGE = (
+		"Your account does not have permission to download models."
+	)
+	errors_mod.FILE_TOO_LARGE = "FILE_TOO_LARGE"
+	errors_mod.INSUFFICIENT_DISK = "INSUFFICIENT_DISK"
+	errors_mod.INVALID_REQUEST = "INVALID_REQUEST"
+	errors_mod.INVALID_SOURCE = "INVALID_SOURCE"
+	errors_mod.NOT_FOUND = "NOT_FOUND"
+	errors_mod.RATE_LIMITED = "RATE_LIMITED"
+
+	def _error_payload(code, message):
+		return {"error": code, "message": message, "code": code}
+
+	def _json_error(code, message, status):
+		return web.json_response(_error_payload(code, message), status=status)
+
+	errors_mod.error_payload = _error_payload
+	errors_mod.json_error = _json_error
+	sys.modules["mss_login.utils.model_download_errors"] = errors_mod
+
+	rate_mod = types.ModuleType("mss_login.utils.download_rate_limit")
+	rate_mod.check_rate_limit = lambda *_a, **_k: True
+	rate_mod.reset_rate_limits = lambda: None
+	sys.modules["mss_login.utils.download_rate_limit"] = rate_mod
 
 	isolation_mod = types.ModuleType("mss_login.utils.model_isolation")
 	isolation_mod.maybe_isolated_destination = lambda *_args, **_kwargs: None
@@ -131,11 +202,63 @@ def _install_stubs():
 		"can_download_models", False
 	)
 	policy_mod.user_can_manage_model_sharing = lambda role, perms: False
+	policy_mod.user_can_view_all_models = lambda role, perms: role in ("admin", "owner")
 	sys.modules["mss_login.utils.model_visibility_policy"] = policy_mod
 
+	history_mod = types.ModuleType("mss_login.utils.model_download_history_store")
+	history_mod.extract_civitai_metadata = lambda *_a, **_k: {
+		"description": "",
+		"trigger_words": [],
+		"model_id": "",
+		"model_name": "",
+		"model_version_id": "",
+	}
+
+	class _HistoryStore:
+		def upsert(self, _rec):
+			return True
+
+		def get(self, _job_id):
+			return None
+
+		def list_for_user(self, *_a, **_k):
+			return []
+
+		def list_resumable(self, *_a, **_k):
+			return []
+
+		def update_fields(self, *_a, **_k):
+			return True
+
+	history_mod.get_model_download_history_store = lambda _cfg: _HistoryStore()
+	sys.modules["mss_login.utils.model_download_history_store"] = history_mod
+
+	class _SharedStore:
+		def __init__(self):
+			self.grants = []
+
+		def add(self, user_id, folder, item_name, **kwargs):
+			self.grants.append(
+				{"user_id": user_id, "folder": folder, "item_name": item_name, **kwargs}
+			)
+
+	_shared = _SharedStore()
 	shared_mod = types.ModuleType("mss_login.utils.shared_items_store")
-	shared_mod.get_shared_items_store = lambda _cfg: None
+	shared_mod.get_shared_items_store = lambda _cfg: _shared
 	sys.modules["mss_login.utils.shared_items_store"] = shared_mod
+
+	s3_mod = types.ModuleType("mss_login.utils.s3_mounter")
+	s3_mod.get_mount_manager = lambda: None
+	sys.modules["mss_login.utils.s3_mounter"] = s3_mod
+
+	compat_mod = types.ModuleType("mss_login.utils.folder_paths_compat")
+	compat_mod.resolve_local_model_destination = lambda folder, uid: (
+		os.path.join(_PROJECT_ROOT, "tests", "_tmp_dl", folder),
+		os.path.join(_PROJECT_ROOT, "tests", "_tmp_dl"),
+	)
+	sys.modules["mss_login.utils.folder_paths_compat"] = compat_mod
+
+	return _shared
 
 
 class _Req:
@@ -158,7 +281,7 @@ def run_tests():
 			print(f"  ok: {msg}")
 		return cond
 
-	_install_stubs()
+	shared_store = _install_stubs()
 	mod = _load_module(
 		"mss_login.routes.model_download",
 		os.path.join(_ROUTES_DIR, "model_download.py"),
@@ -182,15 +305,27 @@ def run_tests():
 	resp = asyncio.run(mod.api_model_download_jobs(_Req()))
 	ok(isinstance(resp, web.Response), "jobs endpoint returns response object")
 	ok(resp.status == 403, "jobs endpoint denies users without can_download_models")
+	deny_body = json.loads(resp.text)
+	ok(deny_body.get("error") == "DOWNLOAD_NOT_ALLOWED", "403 uses DOWNLOAD_NOT_ALLOWED code")
+	ok("permission" in (deny_body.get("message") or "").lower(), "403 includes human message")
 	mod._role_and_perms = lambda _request: ("user", {"can_download_models": True}, "alice")
 	resp = asyncio.run(mod.api_model_download_jobs(_Req()))
 	ok(resp.status == 200, "jobs endpoint allows users with can_download_models")
 
 	print("TestCancelRunningJob")
 	job_id = "job-running"
-	mod._JOBS_BY_ID[job_id] = {"job_id": job_id, "user_id": "uid-alice", "status": "running"}
+	mod._JOBS_BY_ID[job_id] = {
+		"job_id": job_id,
+		"user_id": "uid-alice",
+		"status": "running",
+		"cancel_requested": False,
+	}
 	resp = asyncio.run(mod.api_model_download_cancel(_Req(job_id=job_id)))
-	ok(resp.status == 400, "running job cancel is rejected safely")
+	ok(resp.status == 200, "running job cancel sets cancel_requested")
+	ok(
+		mod._JOBS_BY_ID[job_id].get("cancel_requested") is True,
+		"running job has cancel_requested flag",
+	)
 	mod._JOBS_BY_ID.clear()
 
 	print("TestMobileClientEndpoints")
@@ -224,6 +359,78 @@ def run_tests():
 	ok(job_body.get("job", {}).get("job_id") == job_id, "job payload returned")
 	resp = asyncio.run(mod.api_model_download_job_get(_Req(job_id="missing")))
 	ok(resp.status == 404, "unknown job returns 404")
+
+	print("TestNarrowAutoGrant")
+	shared_store.grants.clear()
+	# Isolation off: no auto-grant
+	mod.experimental_model_isolation_enabled = lambda: False
+	mod._auto_grant_downloaded_item(
+		target_user_id="uid-alice",
+		folder_type="checkpoints",
+		saved_rel="only.safetensors",
+		destination_type="local",
+		granted_by_user_id="uid-alice",
+		granted_by_role="user",
+	)
+	ok(len(shared_store.grants) == 0, "isolation off does not auto-grant")
+	# Isolation on: grant only exact item
+	mod.experimental_model_isolation_enabled = lambda: True
+	mod._auto_grant_downloaded_item(
+		target_user_id="uid-alice",
+		folder_type="checkpoints",
+		saved_rel="only.safetensors",
+		destination_type="local",
+		granted_by_user_id="uid-alice",
+		granted_by_role="user",
+	)
+	ok(len(shared_store.grants) == 1, "isolation on grants exactly one item")
+	ok(
+		shared_store.grants[0]["item_name"] == "uid-alice/only.safetensors",
+		"grant uses user prefix + exact filename",
+	)
+	mod.experimental_model_isolation_enabled = lambda: False
+
+	print("TestS3Boto3DestinationResolve")
+	mount_root = os.path.join(_PROJECT_ROOT, "tests", "_tmp_s3_mount")
+	models_root = os.path.join(mount_root, "models")
+
+	class _Mgr:
+		def __init__(self):
+			self.models_root = models_root
+			self._boto3 = True
+			self.uploads = []
+
+		def is_mounted(self):
+			return False
+
+		def _in_boto3_mode(self):
+			return self._boto3
+
+		def get_models_folder_path(self, folder_type):
+			return os.path.join(self.models_root, folder_type)
+
+		def upload_file(self, local_path, s3_key):
+			self.uploads.append((local_path, s3_key))
+			return {"key": s3_key}
+
+	mgr = _Mgr()
+	mod.get_mount_manager = lambda: mgr
+	dest, base = mod._resolve_destination_path(
+		{"destination_type": "s3", "folder_type": "checkpoints"}, "uid-alice"
+	)
+	ok(dest == os.path.join(models_root, "checkpoints"), "boto3 mode stages under models root")
+	ok(base == os.path.realpath(models_root), "boto3 base_dir is models root")
+	os.makedirs(dest, exist_ok=True)
+	staged = os.path.join(dest, "new.safetensors")
+	with open(staged, "wb") as f:
+		f.write(b"x")
+	mod._upload_s3_staged_download(dest, "new.safetensors")
+	ok(len(mgr.uploads) == 1, "boto3 upload called after staged download")
+	ok(
+		mgr.uploads[0][1] == "models/checkpoints/new.safetensors",
+		"upload key is under models/{folder}/...",
+	)
+	mod.get_mount_manager = lambda: None
 
 	print()
 	if failed:

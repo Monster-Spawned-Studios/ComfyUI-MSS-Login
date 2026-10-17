@@ -7,14 +7,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .json_utils import load_json_file, save_json_file
 
 
 def _utc_now_iso() -> str:
-	return datetime.now(timezone.utc).isoformat()
+	return datetime.now(UTC).isoformat()
 
 
 def _get_paths() -> dict:
@@ -42,7 +42,7 @@ def get_quarantine_settings() -> dict:
 	}
 
 
-def _load_records() -> List[dict]:
+def _load_records() -> list[dict]:
 	paths = _get_paths()
 	data = load_json_file(paths["records_path"], {"items": []})
 	if isinstance(data, dict):
@@ -52,20 +52,20 @@ def _load_records() -> List[dict]:
 	return []
 
 
-def _save_records(items: List[dict]) -> None:
+def _save_records(items: list[dict]) -> None:
 	paths = _get_paths()
 	os.makedirs(paths["root"], exist_ok=True)
 	save_json_file(paths["records_path"], {"items": items})
 
 
-def list_quarantine_items() -> List[dict]:
+def list_quarantine_items() -> list[dict]:
 	"""List quarantine records newest-first."""
 	items = _load_records()
 	items.sort(key=lambda x: str(x.get("quarantined_at", "")), reverse=True)
 	return items
 
 
-def mark_quarantine_item_reviewed(record_id: str) -> Optional[dict]:
+def mark_quarantine_item_reviewed(record_id: str) -> dict | None:
 	"""Mark a quarantined item reviewed and persist the update."""
 	items = _load_records()
 	for item in items:
@@ -99,7 +99,7 @@ def quarantine_image_file(
 
 	base_name = os.path.basename(real_source)
 	quarantined_at = _utc_now_iso()
-	unique_prefix = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+	unique_prefix = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 	dest_name = f"{unique_prefix}_{base_name}"
 	dest_path = os.path.join(paths["images_dir"], dest_name)
 	while os.path.exists(dest_path):
@@ -116,11 +116,9 @@ def quarantine_image_file(
 		return {"status": "error", "error": str(exc)}
 
 	record_id = hashlib.sha1(
-		f"{dest_path}|{quarantined_at}|{username}|{workflow_name}".encode("utf-8")
+		f"{dest_path}|{quarantined_at}|{username}|{workflow_name}".encode()
 	).hexdigest()
-	delete_after_ts = int(datetime.now(timezone.utc).timestamp()) + (
-		max(1, int(retention_days)) * 86400
-	)
+	delete_after_ts = int(datetime.now(UTC).timestamp()) + (max(1, int(retention_days)) * 86400)
 	record = {
 		"id": record_id,
 		"file_name": base_name,
@@ -142,11 +140,11 @@ def quarantine_image_file(
 	return {"status": "ok", "record": record}
 
 
-def cleanup_expired_quarantine(*, now_ts: Optional[int] = None) -> dict:
+def cleanup_expired_quarantine(*, now_ts: int | None = None) -> dict:
 	"""Delete unreviewed quarantined files past retention and prune records."""
-	current_ts = int(now_ts or datetime.now(timezone.utc).timestamp())
+	current_ts = int(now_ts or datetime.now(UTC).timestamp())
 	items = _load_records()
-	kept: List[dict] = []
+	kept: list[dict] = []
 	deleted = 0
 	missing = 0
 	for item in items:

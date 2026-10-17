@@ -34,11 +34,17 @@ Remote clients (`REQUIRE_AUTH_FOR_REMOTE_API=true`) must send Bearer auth; paths
 |--------|------|---------|
 | GET | `/mss-login/api/model-download/sources` | Sources, which keys are set, and capabilities |
 | GET | `/mss-login/api/model-download/folders` | Valid `folder_type` values (e.g. `checkpoints`, `loras`) |
+| GET/PUT | `/mss-login/api/model-download/preferences` | Per-user prefs (e.g. `civitai_host`: `civitai.com` or `civitai.red`) |
+| GET | `/mss-login/api/model-download/civitai/search` | Browse/search CivitAI (see search params below) |
+| GET | `/mss-login/api/model-download/civitai/models/{id}` | CivitAI model metadata |
+| GET | `/mss-login/api/model-download/civitai/model-versions/{id}` | CivitAI version + files |
+| GET | `/mss-login/api/model-download/huggingface/search` | Hugging Face Hub search (`safetensors=true` optional) |
+| GET | `/mss-login/api/model-download/huggingface/files` | List model files in a HF repo (`repo_id=org/model`) |
 | GET | `/mss-login/api/model-download/api-keys` | Which sources have keys (not the secrets) |
-| PUT | `/mss-login/api/model-download/api-keys` | Set or clear a source API key |
-| POST | `/mss-login/api/model-download/download` | Queue a download job |
+| PUT | `/mss-login/api/model-download/api-keys` | Set or clear a source API key (Fernet in users DB) |
+| POST | `/mss-login/api/model-download/download` | Queue a download job (uses **caller's** encrypted key) |
 | GET | `/mss-login/api/model-download/jobs` | List your jobs + queue stats |
-| GET | `/mss-login/api/model-download/jobs/{job_id}` | Single job (polling) |
+| GET | `/mss-login/api/model-download/jobs/{job_id}` | Single job (polling; no WebSocket progress channel) |
 | POST | `/mss-login/api/model-download/jobs/{job_id}/cancel` | Cancel a **queued** job |
 
 Alternate prefix (same handlers): `/api/mss-login/api/model-download/...`
@@ -63,11 +69,35 @@ Example response:
       "s3": false,
       "model_isolation": true
     },
-    "civitai_fields": ["model_version_id", "type", "format", "size", "fp"],
+    "civitai_fields": ["model_version_id", "type", "format", "size", "fp", "civitai_host"],
     "huggingface_fields": ["repo_id", "filename", "subfolder"]
   }
 }
 ```
+
+## CivitAI search
+
+```http
+GET /mss-login/api/model-download/civitai/search?query=anime&types=LORA&sort=Most%20Downloaded&primaryFileOnly=true&civitai_host=civitai.com
+```
+
+| Param | Notes |
+|-------|--------|
+| `query` | Text search. **Do not combine with `page`** (CivitAI returns 400). Use `cursor` / `next_cursor` for more pages. |
+| `page` | Browse-only (empty query). |
+| `cursor` | Continue a text search from a previous `next_cursor`. |
+| `types`, `sort`, `baseModels`, `nsfw`, `primaryFileOnly` | Forwarded to CivitAI. |
+| `civitai_host` | `civitai.com` or `civitai.red` for this request. |
+
+Upstream client errors are mapped to matching MSS statuses (`400`, `401`, `403`, `404`, `429`). Network / upstream 5xx become `502`.
+
+## Hugging Face files
+
+```http
+GET /mss-login/api/model-download/huggingface/files?repo_id=owner/model-name
+```
+
+Returns downloadable model files (`.safetensors`, `.ckpt`, `.pt`, `.pth`, `.bin`, `.onnx`, `.gguf`) with `path`, `filename`, `subfolder`, `size`, and `extension`.
 
 ## Store API keys
 
@@ -99,7 +129,8 @@ Authorization: Bearer <token>
   "destination_type": "local",
   "format": "SafeTensor",
   "size": "pruned",
-  "fp": "fp16"
+  "fp": "fp16",
+  "filename": "my-checkpoint.safetensors"
 }
 ```
 
@@ -109,7 +140,9 @@ Authorization: Bearer <token>
 | `model_version_id` | CivitAI | Also accepts `modelVersionId` |
 | `folder_type` | no | Default `checkpoints`; use `GET .../folders` |
 | `destination_type` | no | `local` (default) or `s3` if experimental S3 enabled |
-| `type`, `format`, `size`, `fp` | no | CivitAI download query parameters |
+| `type`, `format`, `size`, `fp` | no | CivitAI download query parameters (select a specific file variant) |
+| `filename` / `save_as` | no | Preferred save-as basename under `folder_type` (wins over Content-Disposition) |
+| `civitai_host` | no | Per-request host override |
 
 ## Queue Hugging Face download
 
@@ -120,9 +153,12 @@ Authorization: Bearer <token>
   "filename": "model.safetensors",
   "folder_type": "checkpoints",
   "destination_type": "local",
-  "subfolder": "optional/subfolder"
+  "subfolder": "optional/subfolder",
+  "save_as": "custom-name.safetensors"
 }
 ```
+
+`filename` is the remote file in the repo. Optional `save_as` renames the downloaded file under the destination folder (basename only).
 
 ## Poll job status
 
@@ -173,14 +209,40 @@ When `experimental.model_isolation` is enabled, downloads go to per-user folders
 
 Requires sharing permission; uses the target user’s stored CivitAI/HF key.
 
+## Short aliases (Comfy Portal)
+
+Same handlers as above (Bearer + `can_download_models`):
+
+| Method | Path |
+|--------|------|
+| POST | `/mss/models/download` |
+| GET | `/mss/models/download/{job_id}` |
+| DELETE | `/mss/models/download/{job_id}` (cancel; also works for running jobs via `cancel_requested`) |
+
+Alternate: `/api/mss/models/download…`. Cancel remains available as `POST …/jobs/{job_id}/cancel`.
+
 ## Errors
 
-| HTTP | Meaning |
-|------|---------|
-| 401 | Missing or invalid token |
-| 403 | No `can_download_models`, S3 disabled, or sharing not allowed |
-| 400 | Invalid body, missing API key for source, bad `folder_type` |
-| 404 | Unknown `job_id` or `target_username` |
+Error bodies use a dual shape for Portal and legacy clients:
+
+```json
+{"error":"DOWNLOAD_NOT_ALLOWED","message":"Your account does not have permission to download models.","code":"DOWNLOAD_NOT_ALLOWED"}
+```
+
+| HTTP | `error` code | Meaning |
+|------|--------------|---------|
+| 401 | `AUTH_REQUIRED` | Missing or invalid token |
+| 403 | `DOWNLOAD_NOT_ALLOWED` | No `can_download_models` (or sharing not allowed for `target_username`) |
+| 400 | `INVALID_SOURCE` | Bad source or disallowed URL |
+| 400 | `AUTH_REQUIRED_UPSTREAM` | Missing CivitAI/HF API key for the source |
+| 400 | `INVALID_REQUEST` | Invalid JSON / folder / fields |
+| 400 | `FILE_TOO_LARGE` / `INSUFFICIENT_DISK` / `CHECKSUM_MISMATCH` / `ALREADY_EXISTS` | Download guards (also on failed jobs as `error_code`) |
+| 404 | `NOT_FOUND` | Unknown `job_id` or `target_username` |
+| 429 | `RATE_LIMITED` | Per-user request budget exceeded |
+
+## ComfyUI nodes
+
+With MSS-Login installed, workflows can use **MSS Model Download** and **MSS Download Status** (category MSS-Login/Models). Nodes enforce `can_download_models` for the queue user, call the same download service, and emit Comfy `/ws` progress (`progress_mode`: `per_model` or `overall`). Portal has no browse UI — pass a full URL and/or CivitAI `model_version_id` / HF `repo_id`+`filename`.
 
 ## See also
 

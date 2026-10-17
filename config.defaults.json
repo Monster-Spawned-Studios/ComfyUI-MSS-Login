@@ -43,6 +43,7 @@
 	"require_auth_for_remote_api": true,
 	"local_network_cidrs": [],
 	"debug_mode": false,
+	"filter_debug_messages": false,
 	"allow_guest_jwt": false,
 	"mfa_disabled": true,
 	"auto_install_deps": true,
@@ -87,7 +88,17 @@
 		"s3": false,
 		"loading_screen": false,
 		"news": false,
-		"model_isolation": false
+		"model_isolation": false,
+		"tailscale_local_auth": false,
+		"install_other_nodes_deps": false,
+		"login_background": false
+	},
+	"login_background": {
+		"enabled": false,
+		"source": "url",
+		"url": "",
+		"local_path": "",
+		"media_kind": "auto"
 	},
 	"s3_storage": {
 		"enabled": false,

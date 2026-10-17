@@ -1,19 +1,16 @@
 # --- START OF FILE utils/nsfw_guard.py ---
-import os
 import json
+import os
+from datetime import UTC, datetime, timezone
 from functools import lru_cache
-from datetime import datetime, timezone
-from typing import Optional, Tuple, Dict
-
-from PIL import Image
-from PIL import PngImagePlugin
-from PIL.ExifTags import TAGS
-from transformers import pipeline
+from typing import Dict, Optional, Tuple
 
 import folder_paths
-import comfy.model_management as model_management
+from comfy import model_management
+from PIL import Image, PngImagePlugin
+from PIL.ExifTags import TAGS
 
-from ...globals import users_db, current_username_var
+from ...globals import current_username_var, users_db
 
 # --- CONFIGURATION ---
 # Using Falconsai for stricter detection
@@ -35,10 +32,10 @@ _SFW_CACHE = {}  # {username: (sfw_flag, last_logged_username)}
 _LAST_LOGGED_USER = None
 
 
-def _extract_workflow_context(path: str) -> Tuple[str, str]:
+def _extract_workflow_context(path: str) -> tuple[str, str]:
 	"""Best-effort extraction of workflow name and generation time from image metadata."""
 	workflow_name = "unknown"
-	generated_at = datetime.now(timezone.utc).isoformat()
+	generated_at = datetime.now(UTC).isoformat()
 	try:
 		with Image.open(path) as img:
 			info = img.info if isinstance(img.info, dict) else {}
@@ -83,7 +80,7 @@ def _extract_workflow_context(path: str) -> Tuple[str, str]:
 	return workflow_name, generated_at
 
 
-def _get_nsfw_tag(path: str) -> Optional[Dict]:
+def _get_nsfw_tag(path: str) -> dict | None:
 	"""
 	Get NSFW tag directly from image metadata.
 
@@ -320,9 +317,7 @@ def _set_nsfw_tag(path: str, is_nsfw: bool, score: float, label: str):
 
 					# Store NSFW data in UserComment (tag 0x9286 in Exif IFD)
 					nsfw_data = json.dumps({"is_nsfw": is_nsfw, "score": score, "label": label})
-					exif_dict["Exif"][piexif.ExifIFD.UserComment] = f"NSFW:{nsfw_data}".encode(
-						"utf-8"
-					)
+					exif_dict["Exif"][piexif.ExifIFD.UserComment] = f"NSFW:{nsfw_data}".encode()
 
 					# Add to Windows-readable fields (only overwrite if NSFW, preserve existing if SFW)
 					if is_nsfw:
@@ -641,7 +636,20 @@ def _get_nsfw_pipeline():
 	"""
 	Load the HuggingFace image-classification pipeline.
 	Handles auto-downloading and device selection (CUDA/MPS/CPU).
+
+	transformers is imported lazily so a broken transformers/kernels stack
+	cannot prevent MSS-Login from loading as a ComfyUI custom node.
 	"""
+	# Lazy import: keep transformers off the custom-node import path.
+	try:
+		from transformers import pipeline
+	except Exception as e:
+		print(
+			f"[mss-login::NSFWGuard] ❌ CRITICAL: transformers unavailable "
+			f"(NSFW detection disabled). Error: {e}"
+		)
+		return None
+
 	base = folder_paths.base_path
 	local_model_dir = os.path.join(base, "models", "nsfw_detector", MODEL_FOLDER_NAME)
 
@@ -677,7 +685,7 @@ def _get_nsfw_pipeline():
 		return None
 
 
-def _classify_image_path(path: str, use_cache: bool = True) -> Optional[Tuple[str, float]]:
+def _classify_image_path(path: str, use_cache: bool = True) -> tuple[str, float] | None:
 	"""
 	Helper to run classification on an image file path.
 	Checks cache first, only scans if not cached.

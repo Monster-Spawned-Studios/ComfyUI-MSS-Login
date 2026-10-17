@@ -4,32 +4,52 @@
 This module contains the routes for the admin API.
 """
 
+import asyncio
+import os
+import uuid
+
 from aiohttp import web
 
 from ..constants import (
 	CONFIG_FILE_PATH,
 	DEFAULT_GROUP_CONFIG_PATH,
+	DEFAULT_LOCAL_PRIVATE_CIDRS,
 	GROUPS_CONFIG_FILE,
+	TAILSCALE_CIDRS,
 	USERS_DB_CONFIG,
+	_normalize_encryption_level,
+	experimental_tailscale_local_auth_enabled,
+	filter_debug_messages_enabled,
 	get_domain,
-	get_experimental_flags,
 	get_experimental_failsafe_settings,
+	get_experimental_flags,
 	reload_allow_guest_jwt,
 	reload_api_token_store_config,
-	reload_experimental_features,
 	reload_experimental_failsafe,
+	reload_experimental_features,
+	reload_local_network_cidrs,
 	reload_users_db_config,
 	save_experimental_failsafe_settings,
 )
-from ..globals import ip_filter, jwt_auth, logger, routes, users_db
+from ..globals import access_control, ip_filter, jwt_auth, logger, routes, users_db
 from ..utils.admin_logic import delete_user_record, patch_user_group
 from ..utils.api_token_store import reset_api_token_store
 from ..utils.bootstrap import _apply_owner_max_merge, load_default_groups
+from ..utils.data_dir import get_data_dir
+from ..utils.input_sanitizer import sanitize_password_input, sanitize_username
+from ..utils.ip_filter import get_ip
 from ..utils.json_utils import load_json_file, save_json_file
 from ..utils.model_cache import get_model_cache
+from ..utils.model_download_redirect import (
+	get_configured_route_patterns,
+	get_effective_route_patterns,
+	save_configured_route_patterns,
+)
+from ..utils.model_visibility_policy import user_can_manage_model_sharing, user_can_update_mss_login
 from ..utils.ntfy_notifier import (
 	EVENT_KEYS,
 	get_ntfy_config,
+	notify_user_created,
 	save_ntfy_config,
 	send_notification,
 	verify_signed_action_token,
@@ -42,15 +62,12 @@ from ..utils.quarantine_store import (
 	quarantine_image_file,
 )
 from ..utils.shared_items_store import get_shared_items_store
-from ..utils.updater import get_cached_status
+from ..utils.tailscale_network import detect_network_info
+from ..utils.updater import get_cached_status, get_public_update_notice, perform_update
 from ..utils.user_console_log import get_lines as get_user_console_lines
 from ..utils.user_console_log import list_users as list_console_users
-from ..utils.model_download_redirect import (
-	get_configured_route_patterns,
-	get_effective_route_patterns,
-	save_configured_route_patterns,
-)
-from ..utils.model_visibility_policy import user_can_manage_model_sharing
+from ..utils.user_env import get_user_workflow_dir
+from ..utils.validate import validate_password, validate_username
 
 
 def is_admin(request):
@@ -62,9 +79,38 @@ def is_admin(request):
 	Returns:
 	    bool: True if the user is an admin, False otherwise.
 	"""
+	username = None
+	try:
+		username = request.get("user") if hasattr(request, "get") else None
+	except Exception:
+		username = None
+	if username:
+		try:
+			_, u = users_db.get_user(username)
+			if u:
+				groups = [g.lower() for g in (u.get("groups") or [])]
+				return u.get("admin", False) or "admin" in groups or "owner" in groups
+		except Exception:
+			pass
 	token = jwt_auth.get_token_from_request(request)
 	if not token:
 		return False
+	# API token store first
+	try:
+		from ..utils.api_token_store import get_api_token_store
+
+		api_cfg = getattr(jwt_auth, "api_token_store_config", None) or {}
+		api_store = get_api_token_store(api_cfg)
+		api_user = api_store.get_user_for_token(token)
+		if api_user is not None:
+			_uid, uname = api_user
+			_, u = users_db.get_user(uname)
+			if not u:
+				return False
+			groups = [g.lower() for g in (u.get("groups") or [])]
+			return u.get("admin", False) or "admin" in groups or "owner" in groups
+	except Exception:
+		pass
 	try:
 		p = jwt_auth.decode_access_token(token)
 		_, u = users_db.get_user(p["username"])
@@ -76,9 +122,37 @@ def is_admin(request):
 
 def _get_caller_username_and_groups(request):
 	"""Return (username, groups) for the authenticated caller, or (None, [])."""
+	username = None
+	try:
+		username = request.get("user") if hasattr(request, "get") else None
+	except Exception:
+		username = None
+	if username:
+		try:
+			_, u = users_db.get_user(username)
+			if u:
+				groups = [g.lower() for g in (u.get("groups") or [])]
+				return username, groups
+		except Exception:
+			pass
 	token = jwt_auth.get_token_from_request(request)
 	if not token:
 		return None, []
+	try:
+		from ..utils.api_token_store import get_api_token_store
+
+		api_cfg = getattr(jwt_auth, "api_token_store_config", None) or {}
+		api_store = get_api_token_store(api_cfg)
+		api_user = api_store.get_user_for_token(token)
+		if api_user is not None:
+			_uid, uname = api_user
+			_, u = users_db.get_user(uname)
+			if not u:
+				return None, []
+			groups = [g.lower() for g in (u.get("groups") or [])]
+			return uname, groups
+	except Exception:
+		pass
 	try:
 		p = jwt_auth.decode_access_token(token)
 		username = p.get("username")
@@ -113,6 +187,14 @@ def _get_caller_role_and_permissions(request):
 def _can_manage_model_sharing(request) -> bool:
 	role, perms, _ = _get_caller_role_and_permissions(request)
 	return user_can_manage_model_sharing(role, perms)
+
+
+def can_access_console(request) -> bool:
+	"""True if caller is admin, owner, or has can_view_console permission."""
+	if is_admin(request) or is_owner(request):
+		return True
+	role, perms, _ = _get_caller_role_and_permissions(request)
+	return perms.get("can_view_console", False) is True
 
 
 @routes.get("/mss-login/api/settings/guest-jwt")
@@ -253,7 +335,9 @@ def _resolve_ntfy_quarantine_source_path(raw_path: str) -> str | None:
 		return None
 	try:
 		import os
+
 		import folder_paths  # type: ignore[import-untyped]
+
 		from ..utils.data_dir import get_data_subdir
 
 		candidate = os.path.realpath(raw_path)
@@ -326,6 +410,48 @@ routes.get("/api/mss-login/api/quarantine")(api_quarantine_list)
 routes.post("/api/mss-login/api/quarantine/{record_id}/review")(api_quarantine_mark_reviewed)
 
 
+_EXPERIMENTAL_FEATURE_KEYS = (
+	"mfa",
+	"s3",
+	"loading_screen",
+	"news",
+	"model_isolation",
+	"tailscale_local_auth",
+	"install_other_nodes_deps",
+	"login_background",
+)
+
+
+def _experimental_block_from_cfg(cfg: dict) -> dict:
+	"""Normalize stored experimental.* flags for API responses (config values, not env-effective)."""
+	block = cfg.get("experimental") if isinstance(cfg, dict) else None
+	if not isinstance(block, dict):
+		block = {}
+	return {key: bool(block.get(key, False)) for key in _EXPERIMENTAL_FEATURE_KEYS}
+
+
+def compute_experimental_restart_reasons(
+	prev_master: bool, prev_flags: dict, new_master: bool, new_flags: dict
+) -> list[str]:
+	"""Return human-readable restart reasons for experimental config deltas.
+
+	S3 mount/sync and the node-deps startup scan initialize at process start.
+	Other flags reload live via reload_experimental_features().
+	"""
+	reasons: list[str] = []
+	prev_s3 = bool(prev_flags.get("s3"))
+	new_s3 = bool(new_flags.get("s3"))
+	s3_flag_changed = prev_s3 != new_s3
+	master_changed = bool(prev_master) != bool(new_master)
+	if s3_flag_changed or (master_changed and (prev_s3 or new_s3)):
+		reasons.append("S3 storage mount/sync")
+	prev_deps = bool(prev_flags.get("install_other_nodes_deps"))
+	new_deps = bool(new_flags.get("install_other_nodes_deps"))
+	if (not prev_deps) and new_deps:
+		reasons.append("Node dependency auto-install (startup scan)")
+	return reasons
+
+
 @routes.get("/mss-login/api/settings/experimental")
 async def api_get_experimental(request):
 	"""Return experimental_features (master) and experimental (per-feature flags). Authenticated; any user can read."""
@@ -335,15 +461,7 @@ async def api_get_experimental(request):
 	try:
 		cfg = load_json_file(CONFIG_FILE_PATH, {})
 		master = bool(cfg.get("experimental_features", False))
-		block = cfg.get("experimental")
-		if not isinstance(block, dict):
-			block = {}
-		experimental = {
-			"mfa": bool(block.get("mfa", False)),
-			"s3": bool(block.get("s3", False)),
-			"loading_screen": bool(block.get("loading_screen", False)),
-			"news": bool(block.get("news", False)),
-		}
+		experimental = _experimental_block_from_cfg(cfg if isinstance(cfg, dict) else {})
 		return web.json_response({"experimental_features": master, "experimental": experimental})
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
@@ -351,7 +469,152 @@ async def api_get_experimental(request):
 
 @routes.put("/mss-login/api/settings/experimental")
 async def api_put_experimental(request):
-	"""Update experimental per-feature flags (Admin only). Body: { experimental: { mfa?, s3?, loading_screen?, news? } }."""
+	"""Update experimental master switch and per-feature flags (Admin only)."""
+	if not is_admin(request):
+		return web.json_response({"error": "Admin only"}, status=403)
+	try:
+		data = await request.json()
+		if not isinstance(data, dict):
+			return web.json_response({"error": "Invalid body"}, status=400)
+		cfg = load_json_file(CONFIG_FILE_PATH, {})
+		if not isinstance(cfg, dict):
+			cfg = {}
+		prev_master = bool(cfg.get("experimental_features", False))
+		prev_flags = _experimental_block_from_cfg(cfg)
+		if "experimental_features" in data:
+			cfg["experimental_features"] = bool(data["experimental_features"])
+		block = cfg.get("experimental")
+		if not isinstance(block, dict):
+			block = {}
+		incoming = data.get("experimental")
+		if isinstance(incoming, dict):
+			for key in _EXPERIMENTAL_FEATURE_KEYS:
+				if key in incoming:
+					block[key] = bool(incoming[key])
+		cfg["experimental"] = block
+		new_master = bool(cfg.get("experimental_features", False))
+		new_flags = _experimental_block_from_cfg(cfg)
+		restart_reasons = compute_experimental_restart_reasons(
+			prev_master, prev_flags, new_master, new_flags
+		)
+		save_json_file(CONFIG_FILE_PATH, cfg)
+		reload_experimental_features()
+		return web.json_response(
+			{
+				"status": "ok",
+				"experimental_features": new_master,
+				"experimental": get_experimental_flags(),
+				"restart_required": bool(restart_reasons),
+				"restart_reasons": restart_reasons,
+			}
+		)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/experimental")(api_get_experimental)
+routes.put("/api/mss-login/api/settings/experimental")(api_put_experimental)
+
+
+@routes.get("/mss-login/api/settings/login-background")
+async def api_get_login_background_settings(request):
+	"""Return login background appearance settings (owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	from ..constants import experimental_login_background_enabled
+	from ..utils.login_background import get_login_background_settings
+
+	settings = get_login_background_settings()
+	return web.json_response(
+		{
+			**settings,
+			"experimental_active": experimental_login_background_enabled(),
+			"data_dir_hint": "login-background/",
+		}
+	)
+
+
+@routes.put("/mss-login/api/settings/login-background")
+async def api_put_login_background_settings(request):
+	"""Update login background appearance settings (owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	from ..constants import experimental_login_background_enabled
+	from ..utils.login_background import save_login_background_settings
+
+	try:
+		data = await request.json()
+	except Exception:
+		return web.json_response({"error": "Invalid JSON"}, status=400)
+	try:
+		saved = save_login_background_settings(data if isinstance(data, dict) else {})
+	except ValueError as e:
+		return web.json_response({"error": str(e)}, status=400)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+	return web.json_response(
+		{"status": "ok", **saved, "experimental_active": experimental_login_background_enabled()}
+	)
+
+
+@routes.get("/mss-login/api/login-background")
+async def api_get_public_login_background(request):
+	"""Public payload for the login page background layer."""
+	from ..utils.login_background import get_public_login_background
+
+	return web.json_response(get_public_login_background())
+
+
+@routes.get("/mss-login/api/login-background/media")
+async def api_get_login_background_media(request):
+	"""Stream local login background media when experimental+enabled."""
+	from ..utils.login_background import get_local_media_file
+
+	path, ctype = get_local_media_file()
+	if not path:
+		return web.Response(status=404, text="Not found")
+	return web.FileResponse(path, headers={"Content-Type": ctype or "application/octet-stream"})
+
+
+routes.get("/api/mss-login/api/settings/login-background")(api_get_login_background_settings)
+routes.put("/api/mss-login/api/settings/login-background")(api_put_login_background_settings)
+routes.get("/api/mss-login/api/login-background")(api_get_public_login_background)
+routes.get("/api/mss-login/api/login-background/media")(api_get_login_background_media)
+
+
+@routes.get("/mss-login/api/settings/tailscale-auth")
+async def api_get_tailscale_auth(request):
+	"""Return Tailscale/Local network authentication status and diagnostic info."""
+	token = jwt_auth.get_token_from_request(request)
+	if not token or not jwt_auth.is_token_valid(token):
+		return web.json_response({"error": "Authentication required"}, status=401)
+	try:
+		cfg = load_json_file(CONFIG_FILE_PATH, {})
+		master = bool(cfg.get("experimental_features", False))
+		block = cfg.get("experimental") or {}
+		enabled = bool(block.get("tailscale_local_auth", False))
+		net_info = detect_network_info(request)
+		return web.json_response(
+			{
+				"enabled": enabled,
+				"experimental_features": master,
+				"is_active": bool(master and enabled),
+				"client_ip": net_info.get("client_ip", ""),
+				"peer_ip": net_info.get("peer_ip", ""),
+				"network_type": net_info.get("network_type", "remote"),
+				"is_trusted_network": bool(net_info.get("is_trusted")),
+				"tailscale_cidrs": list(TAILSCALE_CIDRS),
+				"default_local_cidrs": list(DEFAULT_LOCAL_PRIVATE_CIDRS),
+				"custom_local_cidrs": list(cfg.get("local_network_cidrs") or []),
+			}
+		)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+@routes.put("/mss-login/api/settings/tailscale-auth")
+async def api_put_tailscale_auth(request):
+	"""Update Tailscale/Local network authentication toggle (Admin only)."""
 	if not is_admin(request):
 		return web.json_response({"error": "Admin only"}, status=403)
 	try:
@@ -364,21 +627,94 @@ async def api_put_experimental(request):
 		block = cfg.get("experimental")
 		if not isinstance(block, dict):
 			block = {}
-		incoming = data.get("experimental")
-		if isinstance(incoming, dict):
-			for key in ("mfa", "s3", "loading_screen", "news"):
-				if key in incoming:
-					block[key] = bool(incoming[key])
+
+		if "enabled" in data:
+			val = bool(data["enabled"])
+			block["tailscale_local_auth"] = val
+			if val and data.get("enable_master"):
+				cfg["experimental_features"] = True
+
+		if "experimental_features" in data:
+			cfg["experimental_features"] = bool(data["experimental_features"])
+
 		cfg["experimental"] = block
 		save_json_file(CONFIG_FILE_PATH, cfg)
 		reload_experimental_features()
-		return web.json_response({"status": "ok", "experimental": get_experimental_flags()})
+
+		return web.json_response(
+			{
+				"status": "ok",
+				"enabled": bool(block.get("tailscale_local_auth", False)),
+				"experimental_features": bool(cfg.get("experimental_features", False)),
+				"is_active": experimental_tailscale_local_auth_enabled(),
+			}
+		)
 	except Exception as e:
 		return web.json_response({"error": str(e)}, status=500)
 
 
-routes.get("/api/mss-login/api/settings/experimental")(api_get_experimental)
-routes.put("/api/mss-login/api/settings/experimental")(api_put_experimental)
+routes.get("/api/mss-login/api/settings/tailscale-auth")(api_get_tailscale_auth)
+routes.put("/api/mss-login/api/settings/tailscale-auth")(api_put_tailscale_auth)
+
+
+@routes.get("/mss-login/api/settings/local-cidrs")
+async def api_get_local_cidrs(request):
+	"""Return configured local network CIDRs. Accessible to authenticated users."""
+	token = jwt_auth.get_token_from_request(request)
+	if not token or not jwt_auth.is_token_valid(token):
+		return web.json_response({"error": "Authentication required"}, status=401)
+	cfg = load_json_file(CONFIG_FILE_PATH, {})
+	return web.json_response(
+		{
+			"local_network_cidrs": list(cfg.get("local_network_cidrs") or []),
+			"tailscale_cidrs": list(TAILSCALE_CIDRS),
+			"default_local_cidrs": list(DEFAULT_LOCAL_PRIVATE_CIDRS),
+		}
+	)
+
+
+@routes.put("/mss-login/api/settings/local-cidrs")
+async def api_put_local_cidrs(request):
+	"""Update custom local network CIDRs (Owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	try:
+		import ipaddress
+
+		data = await request.json()
+		if not isinstance(data, dict):
+			return web.json_response({"error": "Invalid body"}, status=400)
+		cidrs_in = data.get("local_network_cidrs")
+		if not isinstance(cidrs_in, list):
+			return web.json_response({"error": "local_network_cidrs must be a list"}, status=400)
+
+		valid_cidrs = []
+		for entry in cidrs_in:
+			entry_str = str(entry).strip()
+			if not entry_str:
+				continue
+			try:
+				ipaddress.ip_network(entry_str, strict=False)
+				valid_cidrs.append(entry_str)
+			except ValueError:
+				return web.json_response(
+					{"error": f"Invalid IP address or CIDR format: '{entry_str}'"}, status=400
+				)
+
+		cfg = load_json_file(CONFIG_FILE_PATH, {})
+		if not isinstance(cfg, dict):
+			cfg = {}
+		cfg["local_network_cidrs"] = valid_cidrs
+		save_json_file(CONFIG_FILE_PATH, cfg)
+		reload_local_network_cidrs()
+
+		return web.json_response({"status": "ok", "local_network_cidrs": valid_cidrs})
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/local-cidrs")(api_get_local_cidrs)
+routes.put("/api/mss-login/api/settings/local-cidrs")(api_put_local_cidrs)
 
 
 @routes.get("/mss-login/api/settings/experimental-failsafe")
@@ -434,11 +770,76 @@ async def api_admin_consoles_user(request):
 		return web.json_response({"error": "Admin only"}, status=403)
 	username = request.match_info.get("username", "")
 	lines = get_user_console_lines(username)
+	if filter_debug_messages_enabled():
+		markers = ("[DEBUG]", "DEBUG:", "[mss-login::DEBUG]", "DEBUG_MODE")
+		lines = [line for line in lines if not any(m in line for m in markers)]
 	return web.json_response({"username": username, "lines": lines})
 
 
 routes.get("/api/mss-login/api/admin/consoles")(api_admin_consoles_list)
 routes.get("/api/mss-login/api/admin/consoles/{username}")(api_admin_consoles_user)
+
+
+@routes.get("/mss-login/api/settings/debug-filter")
+async def api_get_debug_filter(request):
+	"""Return current debug filter setting (Owner, Admin, or users with can_view_console)."""
+	if not can_access_console(request):
+		return web.json_response({"error": "Unauthorized"}, status=403)
+	return web.json_response({"filter_debug_messages": filter_debug_messages_enabled()})
+
+
+@routes.put("/mss-login/api/settings/debug-filter")
+async def api_put_debug_filter(request):
+	"""Update debug filter setting (Owner, Admin, or users with can_view_console)."""
+	if not can_access_console(request):
+		return web.json_response({"error": "Unauthorized"}, status=403)
+	try:
+		data = await request.json()
+		val = bool(data.get("filter_debug_messages", False))
+		cfg = load_json_file(CONFIG_FILE_PATH, {})
+		cfg["filter_debug_messages"] = val
+		save_json_file(CONFIG_FILE_PATH, cfg)
+		return web.json_response({"status": "ok", "filter_debug_messages": val})
+	except Exception as e:
+		logger.error(f"[admin.py] api_put_debug_filter: {e}")
+		return web.json_response({"error": "Internal error"}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/debug-filter")(api_get_debug_filter)
+routes.put("/api/mss-login/api/settings/debug-filter")(api_put_debug_filter)
+
+
+@routes.post("/mss-login/api/admin/install-node-deps")
+async def api_admin_install_node_deps(request: web.Request) -> web.Response:
+	"""Scan and install custom node dependencies (Admin only)."""
+	if not is_admin(request):
+		return web.json_response({"error": "Admin only"}, status=403)
+	try:
+		from ..utils.node_deps_installer import scan_and_install_node_dependencies
+
+		data = {}
+		try:
+			data = await request.json()
+			if not isinstance(data, dict):
+				data = {}
+		except Exception:
+			data = {}
+
+		dry_run = bool(data.get("dry_run", False))
+		custom_nodes_dir = data.get("custom_nodes_dir")
+		if custom_nodes_dir and not isinstance(custom_nodes_dir, str):
+			custom_nodes_dir = None
+
+		result = scan_and_install_node_dependencies(
+			custom_nodes_dir=custom_nodes_dir, dry_run=dry_run
+		)
+		return web.json_response(result)
+	except Exception as e:
+		logger.error(f"[admin.py] api_admin_install_node_deps: {e}")
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.post("/api/mss-login/api/admin/install-node-deps")(api_admin_install_node_deps)
 
 
 @routes.get("/mss-login/api/groups")
@@ -464,15 +865,24 @@ routes.get("/api/mss-login/api/groups")(api_groups)
 
 @routes.put("/mss-login/api/groups")
 async def api_update_groups(request: web.Request) -> web.Response:
-	"""Update groups (admin only)."""
+	"""Update groups (admin only; admin-role perms require owner)."""
 	if not is_admin(request):
 		return web.json_response({"error": "Admin only"}, status=403)
 	try:
 		data = await request.json()
 		new_groups = data.get("groups", {})
+		caller_is_owner = is_owner(request)
+		# Only the owner may change administrator group permissions
+		if any(str(g).lower() == "admin" for g in new_groups) and not caller_is_owner:
+			return web.json_response(
+				{"error": "Only the owner can change administrator permissions"}, status=403
+			)
 		current = load_json_file(GROUPS_CONFIG_FILE, {})
 		for g, perms in new_groups.items():
 			g_lower = g.lower()
+			# Owner column is immutable (always rebuilt via max-merge)
+			if g_lower == "owner":
+				continue
 			if g_lower not in current:
 				current[g_lower] = {}
 			for k, v in perms.items():
@@ -498,6 +908,64 @@ async def api_users(request: web.Request) -> web.Response:
 
 routes.get("/api/mss-login/api/users")(api_users)
 
+_CREATE_USER_ROLES = frozenset({"admin", "power", "user", "guest"})
+
+
+@routes.post("/mss-login/api/users")
+async def api_create_user(request: web.Request) -> web.Response:
+	"""Create a user with an assigned role. Owner only. Cannot mint a second owner."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	try:
+		data = await request.json()
+	except Exception:
+		return web.json_response({"error": "Invalid JSON"}, status=400)
+	if not isinstance(data, dict):
+		return web.json_response({"error": "Invalid JSON"}, status=400)
+
+	# Prefer raw password from body (sanitizer may have mutated password fields elsewhere)
+	new_username = sanitize_username(data.get("username") or data.get("new_user_username") or "")
+	raw_password = data.get("password") or data.get("new_user_password") or ""
+	new_password = sanitize_password_input(raw_password)
+	role = str(data.get("role") or data.get("group") or "user").strip().lower()
+
+	ok, msg = validate_username(new_username)
+	if not ok:
+		return web.json_response({"error": msg}, status=400)
+	ok, msg = validate_password(new_password)
+	if not ok:
+		return web.json_response({"error": msg}, status=400)
+	if role == "owner":
+		return web.json_response(
+			{
+				"error": "Cannot create a second owner via this endpoint. Transfer ownership from Users & Roles."
+			},
+			status=400,
+		)
+	if role not in _CREATE_USER_ROLES:
+		return web.json_response(
+			{"error": f"Invalid role. Allowed: {', '.join(sorted(_CREATE_USER_ROLES))}"}, status=400
+		)
+	if None not in users_db.get_user(new_username):
+		return web.json_response({"error": "Username exists"}, status=400)
+
+	groups = [role]
+	is_admin_flag = role == "admin"
+	users_db.add_user(str(uuid.uuid4()), new_username, new_password, is_admin_flag, groups=groups)
+	try:
+		get_user_workflow_dir(new_username)
+	except Exception:
+		pass
+	try:
+		caller, _ = _get_caller_username_and_groups(request)
+		notify_user_created(new_username, caller or "owner", get_ip(request))
+	except Exception:
+		pass
+	return web.json_response({"status": "ok", "username": new_username, "role": role}, status=201)
+
+
+routes.post("/api/mss-login/api/users")(api_create_user)
+
 
 @routes.put("/mss-login/api/users/{target_user}")
 async def api_update_user_route(request: web.Request) -> web.Response:
@@ -517,7 +985,10 @@ async def api_update_user_route(request: web.Request) -> web.Response:
 
 	groups = [g.lower() for g in data.get("groups", [])]
 	wants_owner = "owner" in groups
-	is_admin_flag = "admin" in groups
+	# Owner always implies admin privilege
+	if wants_owner and "admin" not in groups:
+		groups = list(groups) + ["admin"]
+	is_admin_flag = "admin" in groups or wants_owner
 	sfw_check = data.get("sfw_check", None)
 
 	# Owner cannot be demoted via this API
@@ -527,7 +998,8 @@ async def api_update_user_route(request: web.Request) -> web.Response:
 			status=403,
 		)
 
-	# Assigning owner: only current owner can assign (transfer); max one owner
+	# Assigning owner: only current owner can assign (transfer); max one owner.
+	# Require confirm_transfer so a casual role dropdown save cannot steal ownership.
 	if wants_owner and not target_is_owner:
 		if owner_username is None:
 			# No owner yet: _ensure_owner_assigned will run on next load; allow this assign
@@ -544,16 +1016,28 @@ async def api_update_user_route(request: web.Request) -> web.Response:
 				{"error": "Only the current owner can assign the owner role (transfer)."},
 				status=403,
 			)
-		# Transfer: target becomes owner, caller (current owner) becomes admin
-		success = patch_user_group(
-			target, ["owner", "admin"] if is_admin_flag else ["owner"], True, sfw_check
-		)
+		if not data.get("confirm_transfer"):
+			return web.json_response(
+				{
+					"error": "Ownership transfer requires confirm_transfer=true. Use Transfer ownership in Users & Roles."
+				},
+				status=400,
+			)
+		# Transfer: target becomes owner+admin, caller (current owner) becomes admin
+		success = patch_user_group(target, ["owner", "admin"], True, sfw_check)
 		if success and caller_username:
 			patch_user_group(caller_username, ["admin"], True, None)
 		return web.json_response({"status": "ok"}) if success else web.Response(status=404)
 
 	success = patch_user_group(target, groups, is_admin_flag, sfw_check)
 	if success:
+		if sfw_check is not None:
+			try:
+				from ..utils.sfw_intercept.nsfw_guard import clear_sfw_cache
+
+				clear_sfw_cache(target)
+			except Exception:
+				pass
 		return web.json_response({"status": "ok"})
 	return web.Response(status=404)
 
@@ -637,9 +1121,8 @@ async def api_put_users_db_config(request):
 		udb["mysql_port"] = data.get("mysql_port", udb.get("mysql_port", 3306))
 		udb["mysql_database"] = data.get("mysql_database", udb.get("mysql_database", "mss_login"))
 		udb["mysql_user"] = data.get("mysql_user", udb.get("mysql_user", "mss_login"))
-		udb["encryption_level"] = (
-			data.get("encryption_level") or udb.get("encryption_level") or ""
-		).strip()
+		raw_enc = (data.get("encryption_level") or udb.get("encryption_level") or "").strip()
+		udb["encryption_level"] = _normalize_encryption_level(raw_enc)
 		cfg["users_db"] = udb
 		save_json_file(CONFIG_FILE_PATH, cfg)
 		reload_users_db_config()
@@ -647,7 +1130,7 @@ async def api_put_users_db_config(request):
 			{"status": "ok", "message": "Restart required for new backend to take effect."}
 		)
 	except Exception as e:
-		logger.error(f"[admin.py] api_put_users_db_config: {str(e)}")
+		logger.error(f"[admin.py] api_put_users_db_config: {e!s}")
 		return web.json_response({"error": "Internal server error"}, status=500)
 
 
@@ -745,6 +1228,52 @@ async def api_get_update_status(request):
 
 
 routes.get("/api/mss-login/api/update-status")(api_get_update_status)
+
+
+@routes.get("/mss-login/api/update-notice")
+async def api_get_update_notice(request):
+	"""Public redacted update notice for the login page (no changelog body)."""
+	try:
+		return web.json_response(get_public_update_notice())
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/update-notice")(api_get_update_notice)
+
+
+@routes.post("/mss-login/api/update-apply")
+async def api_update_apply(request):
+	"""Apply MSS-Login self-update. Requires can_update_mss_login."""
+	try:
+		role, perms, username = access_control._get_user_role_and_permissions(request)
+	except Exception:
+		role, perms, username = "guest", {}, None
+	if not username:
+		return web.json_response({"error": "Authentication required"}, status=401)
+	if not user_can_update_mss_login(role, perms):
+		return web.json_response(
+			{"error": "Update permission required (can_update_mss_login)"}, status=403
+		)
+	try:
+		repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+		loop = asyncio.get_event_loop()
+		success, msg = await loop.run_in_executor(
+			None, lambda: perform_update(repo_root, get_data_dir(), logger)
+		)
+		return web.json_response(
+			{
+				"success": bool(success),
+				"message": msg
+				or ("Update applied. Restart ComfyUI to finish." if success else "Update failed."),
+			},
+			status=200 if success else 500,
+		)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.post("/api/mss-login/api/update-apply")(api_update_apply)
 
 
 @routes.get("/mss-login/api/ip-lists")

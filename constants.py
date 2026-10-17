@@ -8,7 +8,7 @@ import os
 import sys
 import uuid
 import warnings
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 # External data directory (~/.comfyui-mss-login or MSS_LOGIN_DATA_DIR); untouched by git pull.
 from .utils.data_dir import ensure_data_dir, get_data_dir
@@ -72,6 +72,7 @@ HTML_DIR = os.path.join(WEB_DIR, "html")
 CSS_DIR = os.path.join(WEB_DIR, "css")
 JS_DIR = os.path.join(WEB_DIR, "js")
 ASSETS_DIR = os.path.join(WEB_DIR, "assets")
+DIST_DIR = os.path.join(WEB_DIR, "dist")
 
 # --- Load config (runtime config in data dir; defaults from repo config.defaults.json) ---
 CONFIG_FILE_PATH = os.path.join(DATA_DIR, "config.json")
@@ -163,14 +164,48 @@ def _persist_ephemeral_key(key: str) -> None:
 		pass
 
 
+def resolve_secret_key(
+	env_value: str, *, load_ephemeral=None, persist_ephemeral=None, generate_key=None
+) -> tuple[str, bool]:
+	"""
+	Resolve SECRET_KEY from env or a stable ephemeral file.
+
+	Returns (key, created_new_ephemeral).
+	When env_value is empty, reuses an existing ephemeral key instead of rotating
+	on every process start (required for SQLCipher + JWT stability).
+	"""
+	key = (env_value or "").strip()
+	if key:
+		return key, False
+	_load = load_ephemeral if load_ephemeral is not None else _load_ephemeral_key
+	_persist = persist_ephemeral if persist_ephemeral is not None else _persist_ephemeral_key
+	_gen = generate_key
+	existing = (_load() or "").strip()
+	if existing:
+		return existing, False
+	if _gen is None:
+		new_key = "".join([str(uuid.uuid4().hex) for _ in range(128)])
+	else:
+		new_key = _gen()
+	_persist(new_key)
+	return new_key, True
+
+
 # --- Configuration Values ---
 LOG_LEVELS = config_data.get("log_levels", ["INFO"])
 _secret_key_env = config_data.get("secret_key_env", "SECRET_KEY")
-SECRET_KEY = (os.getenv(_secret_key_env) or "").strip()
-if not SECRET_KEY:
-	warnings.warn("[MSS-Login] SECRET_KEY not set. Using random key (logouts on restart).")
-	SECRET_KEY = "".join([str(uuid.uuid4().hex) for _ in range(128)])
-	_persist_ephemeral_key(SECRET_KEY)
+_env_secret = (os.getenv(_secret_key_env) or "").strip()
+SECRET_KEY, _ephemeral_created = resolve_secret_key(_env_secret)
+if not _env_secret:
+	if _ephemeral_created:
+		warnings.warn(
+			"[MSS-Login] SECRET_KEY not set. Using ephemeral key (set SECRET_KEY for production)."
+		)
+	else:
+		warnings.warn(
+			"[MSS-Login] SECRET_KEY not set. Reusing ephemeral key from data dir "
+			"(set SECRET_KEY for production)."
+		)
 
 TOKEN_EXPIRE_MINUTES = 60 * config_data.get("access_token_expiration_hours", 12)
 MAX_TOKEN_EXPIRE_MINUTES = 60 * config_data.get("max_access_token_expiration_hours", 8760)
@@ -197,6 +232,13 @@ CLOUDFLARE_PROXY = config_data.get("cloudflare_proxy", False)
 CLOUDFLARED_LOCAL_BYPASS = config_data.get("cloudflared_local_bypass", False)
 SEPERATE_USERS = config_data.get("seperate_users", True)
 MANAGER_ADMIN_ONLY = config_data.get("manager_admin_only", True)
+# Embedded Playwright UI→API convert for Comfy Portal (JWT/Bearer-injected; no public bypass).
+CPE_EMBEDDED_CONVERT = config_data.get("cpe_embedded_convert", True)
+# Short-lived JWT TTL (minutes) when minting a convert-only session for Playwright.
+try:
+	CPE_CONVERT_TOKEN_MINUTES = int(config_data.get("cpe_convert_token_minutes", 5))
+except (TypeError, ValueError):
+	CPE_CONVERT_TOKEN_MINUTES = 5
 MATCH_HEADERS = {"X-Forwarded-Proto": "https"}
 
 
@@ -471,10 +513,50 @@ except (TypeError, ValueError):
 REQUIRE_AUTH_FOR_REMOTE_API = config_data.get("require_auth_for_remote_api", True)
 LOCAL_NETWORK_CIDRS = config_data.get("local_network_cidrs") or []
 
-# DEBUG_MODE: load from environment (Docker/Compose) then config.json for diagnosis
-DEBUG_MODE_FROM_ENV = str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
+# Tailscale and local private network CIDRs (RFC 6598 CGNAT, RFC 1918, loopback, ULA)
+TAILSCALE_IPV4_CIDR = "100.64.0.0/10"
+TAILSCALE_IPV6_CIDR = "fd7a:115c:a1e0::/48"
+TAILSCALE_CIDRS = [TAILSCALE_IPV4_CIDR, TAILSCALE_IPV6_CIDR]
+DEFAULT_LOCAL_PRIVATE_CIDRS = [
+	"127.0.0.0/8",
+	"::1/128",
+	"10.0.0.0/8",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"169.254.0.0/16",
+	"fe80::/10",
+	"fc00::/7",
+]
+
+
+def reload_local_network_cidrs() -> list:
+	"""Re-read config and refresh LOCAL_NETWORK_CIDRS."""
+	global LOCAL_NETWORK_CIDRS
+	cfg = _load_config(CONFIG_FILE_PATH)
+	LOCAL_NETWORK_CIDRS = cfg.get("local_network_cidrs") or []
+	return list(LOCAL_NETWORK_CIDRS)
+
+
+# DEBUG_MODE: load from environment (LOGIN_DEBUG_MODE, DEBUG_MODE, MSS_LOGIN_DEBUG_MODE) then config.json for diagnosis
+DEBUG_MODE_FROM_ENV = (
+	str(os.environ.get("LOGIN_DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
+	or str(os.environ.get("DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
+	or str(os.environ.get("MSS_LOGIN_DEBUG_MODE", "")).strip().lower() in ("1", "true", "yes")
+)
 DEBUG_MODE = DEBUG_MODE_FROM_ENV or bool(config_data.get("debug_mode", False))
 DEBUG_LOG_PATH = os.path.join(CURRENT_DIR, "logs", "debug.log")
+
+
+def filter_debug_messages_enabled() -> bool:
+	"""True if debug messages should be filtered/suppressed in Web UI and CLI console."""
+	env_val = str(os.environ.get("FILTER_DEBUG_MESSAGES", "")).strip().lower()
+	if env_val in ("1", "true", "yes"):
+		return True
+	if env_val in ("0", "false", "no"):
+		return False
+	cfg = _load_config(CONFIG_FILE_PATH)
+	return bool(cfg.get("filter_debug_messages", False))
+
 
 AUTO_INSTALL_DEPS = bool(config_data.get("auto_install_deps", True))
 _auto_install_env = str(os.environ.get("AUTO_INSTALL_DEPS", "")).strip().lower()
@@ -576,6 +658,21 @@ def experimental_model_isolation_enabled() -> bool:
 	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("model_isolation"))
 
 
+def experimental_tailscale_local_auth_enabled() -> bool:
+	"""True if master experimental is on and tailscale_local_auth feature is enabled."""
+	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("tailscale_local_auth"))
+
+
+def experimental_install_other_nodes_deps_enabled() -> bool:
+	"""True if master experimental is on and install_other_nodes_deps feature is enabled."""
+	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("install_other_nodes_deps"))
+
+
+def experimental_login_background_enabled() -> bool:
+	"""True if master experimental is on and login_background feature is enabled."""
+	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("login_background"))
+
+
 def get_experimental_flags() -> dict:
 	"""Return dict of per-feature flags for /me and settings."""
 	return {
@@ -584,6 +681,9 @@ def get_experimental_flags() -> dict:
 		"loading_screen": experimental_loading_screen_enabled(),
 		"news": experimental_news_enabled(),
 		"model_isolation": experimental_model_isolation_enabled(),
+		"tailscale_local_auth": experimental_tailscale_local_auth_enabled(),
+		"install_other_nodes_deps": experimental_install_other_nodes_deps_enabled(),
+		"login_background": experimental_login_background_enabled(),
 	}
 
 
@@ -701,7 +801,7 @@ def apply_experimental_safety_reset(reason: str, recovery_action: str = "config_
 		failsafe = {}
 	failsafe["failure_count"] = int(failsafe.get("failure_count", 0) or 0) + 1
 	failsafe["last_failure_reason"] = (reason or "unknown_failure").strip()[:500]
-	failsafe["last_failure_at"] = datetime.now(timezone.utc).isoformat()
+	failsafe["last_failure_at"] = datetime.now(UTC).isoformat()
 	failsafe["last_recovery_action"] = (recovery_action or "config_reset").strip()
 	if "enabled" not in failsafe:
 		failsafe["enabled"] = True

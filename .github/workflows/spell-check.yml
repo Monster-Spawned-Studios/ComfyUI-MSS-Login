@@ -1,21 +1,140 @@
-# Spell-check documentation and code comments (codespell).
-# See: https://github.com/codespell-project/actions-codespell
+# Spell-check documentation and code comments (cspell).
+# Writes a report artifact and attaches it to the ntfy notification.
 name: Spell check
 
 on:
-    push:
-        branches: [development, production]
-    pull_request:
-        branches: [development, production]
+  push:
+    branches: [development, production]
+  pull_request:
+    branches: [development, production]
+
+# actions: write is required for actions/upload-artifact@v4 with a restricted token.
+permissions:
+  contents: read
+  actions: write
 
 jobs:
-    codespell:
-        name: Codespell
-        runs-on: ubuntu-latest
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v6
-            - name: Install cSpell
-              run: npm install -g cspell
-            - name: Run cSpell
-              run: cspell --config .vscode/cspell.json "**"
+  cspell:
+    name: Spell check (cspell)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install cspell
+        run: npm install -g cspell@8.19.4
+
+      - name: Verify dictionaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .vscode/cspell.json
+          test -f .vscode/dictionaries/mss-login.txt
+          test -f .vscode/dictionaries/comfyui.txt
+          test -f .vscode/dictionaries/monsterspawnedstudios.txt
+          echo "cspell config and dictionaries present."
+
+      - name: Run cspell
+        id: cspell
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          report="ci-reports/cspell-report.txt"
+          {
+            echo "MSS-Login cspell report"
+            echo "======================"
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+            echo "Event: ${GITHUB_EVENT_NAME:-unknown}"
+            echo
+          } > "${report}"
+
+          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
+            git fetch origin "${GITHUB_BASE_REF}" --depth=1 || true
+            mapfile -t changed < <(git diff --name-only --diff-filter=ACMRT "origin/${GITHUB_BASE_REF}...HEAD" 2>/dev/null || true)
+          else
+            mapfile -t changed < <(git diff --name-only --diff-filter=ACMRT HEAD~1...HEAD 2>/dev/null || true)
+          fi
+
+          if [ "${#changed[@]}" -gt 0 ]; then
+            echo "Checking ${#changed[@]} changed file(s)." | tee -a "${report}"
+            set +e
+            cspell --config .vscode/cspell.json --no-progress --show-context --no-must-find-files "${changed[@]}" >> "${report}" 2>&1
+            status=$?
+            set -e
+          else
+            echo "No changed-file list; scanning project files from cspell config." | tee -a "${report}"
+            set +e
+            cspell --config .vscode/cspell.json --no-progress --show-context "**/*" >> "${report}" 2>&1
+            status=$?
+            set -e
+          fi
+
+          echo >> "${report}"
+          if [ "$status" -eq 0 ]; then
+            echo "Result: PASS (no spelling issues)." | tee -a "${report}"
+            echo "outcome=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "Result: ISSUES FOUND (exit ${status})." | tee -a "${report}"
+            echo "outcome=issues" >> "$GITHUB_OUTPUT"
+          fi
+          # Config/tool failures are hard errors; spelling findings stay soft.
+          if [ "$status" -gt 1 ]; then
+            echo "outcome=failure" >> "$GITHUB_OUTPUT"
+            exit "$status"
+          fi
+          exit 0
+
+      - name: Ensure report file exists
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          if [ ! -f ci-reports/cspell-report.txt ]; then
+            {
+              echo "MSS-Login cspell report"
+              echo "======================"
+              echo "Report missing: cspell step did not produce output."
+              echo "Job conclusion: ${{ job.status }}"
+            } > ci-reports/cspell-report.txt
+          fi
+
+      - name: Upload cspell report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: cspell-report
+          path: ci-reports/cspell-report.txt
+          if-no-files-found: warn
+          retention-days: 14
+          overwrite: true
+          include-hidden-files: false
+
+  ntfy-notification:
+    name: Notify on Spell Check Results
+    needs: [cspell]
+    if: always()
+    uses: ./.github/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Spell Check — Passed' || 'MSS-Login Spell Check — Issues found' }}
+      message: |
+        === Spell check (cspell) ===
+        Result: ${{ needs.cspell.result }}
+        Report: attached cspell-report.txt (when artifact upload succeeded)
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,abc' || 'warning,abc' }}
+      ref_name: ${{ github.ref_name }}
+      attachment_artifact: cspell-report
+      attachment_filename: cspell-report.txt
+    secrets: inherit

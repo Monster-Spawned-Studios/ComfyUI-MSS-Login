@@ -1,17 +1,20 @@
 # --- START OF FILE utils/access_control.py ---
-import os
-import json
-import heapq
-import copy
 import contextvars
-from aiohttp import web
+import copy
+import heapq
+import json
+import os
+
 import folder_paths
+from aiohttp import web
+from execution import MAXIMUM_HISTORY_SIZE, PromptQueue
 from server import PromptServer
-from execution import PromptQueue, MAXIMUM_HISTORY_SIZE
-from .users_db import UsersDB
+
 from .api_token_store import get_api_token_store
 from .data_dir import get_data_subdir
 from .debug_log import debug_write
+from .user_isolation import safe_user_dir_segment, user_id_from_queue_item, username_from_queue_item
+from .users_db import UsersDB
 
 # Map Permission Keys -> URL Paths to Block
 EXTENSION_BLOCK_MAP = {
@@ -163,6 +166,18 @@ class AccessControl:
 			is_userdata_workflow = path.startswith(
 				("/api/userdata/workflows", "/api/userdata/workflows:")
 			)
+			is_cpe_api = path.startswith(("/api/cpe/", "/cpe/"))
+			mutating_methods = ("POST", "PUT", "DELETE", "PATCH")
+			try:
+				from .cpe_workflows import cpe_path_requires_modify_workflows
+			except Exception:
+
+				def cpe_path_requires_modify_workflows(p, m):
+					if (m or "").upper() not in mutating_methods:
+						return False
+					if p in ("/api/cpe/workflow/convert", "/cpe/workflow/convert"):
+						return False
+					return (p or "").startswith(("/api/cpe/workflow", "/cpe/workflow"))
 
 			if is_queue and perms.get("can_run") is False:
 				debug_write(
@@ -186,7 +201,11 @@ class AccessControl:
 				)
 				return web.json_response({"error": "MSS-Login: Upload Denied"}, status=403)
 
-			if is_userdata_workflow and request.method in ("POST", "PUT", "DELETE", "PATCH"):
+			needs_modify_workflows = (
+				is_userdata_workflow and request.method in mutating_methods
+			) or cpe_path_requires_modify_workflows(path, request.method)
+
+			if needs_modify_workflows:
 				can_modify = perms.get("can_modify_workflows")
 				if can_modify is None:
 					can_modify = role != "guest"
@@ -223,7 +242,7 @@ class AccessControl:
 						{"error": "MSS-Login: S3 Storage Access Denied"}, status=403
 					)
 
-			if not is_queue and not is_upload and path.startswith("/api/"):
+			if not is_queue and not is_upload and (path.startswith("/api/") or is_cpe_api):
 				if perms.get("can_access_api") is False:
 					debug_write(
 						{
@@ -249,19 +268,44 @@ class AccessControl:
 	def get_current_user_id(self):
 		return self._current_user.get() or self.__current_user_id
 
+	@staticmethod
+	def _normalize_user_id(user_id) -> str | None:
+		"""Normalize user ids for stamp/filter compares (UUID str vs other types)."""
+		if user_id is None:
+			return None
+		text = str(user_id).strip()
+		return text or None
+
+	def _user_id_matches(self, stamped_user_id, current_user_id) -> bool:
+		left = self._normalize_user_id(stamped_user_id)
+		right = self._normalize_user_id(current_user_id)
+		if left is None or right is None:
+			return False
+		return left == right
+
+	def _lookup_user_record(self, user_key: str | None) -> dict | None:
+		"""Resolve a users_db record from a user_id (UUID) or username."""
+		if not user_key or user_key == "public":
+			return None
+		try:
+			_uid, rec = self.users_db.get_user(user_id=user_key)
+			if rec:
+				return rec
+			_uid, rec = self.users_db.get_user(username=user_key)
+			if rec:
+				return rec
+		except Exception:
+			return None
+		return None
+
 	def _is_current_user_admin_or_owner(self) -> bool:
 		"""Return True if the current user has admin or owner role."""
 		user_id = self.get_current_user_id()
-		if not user_id or user_id == "public":
+		user_rec = self._lookup_user_record(user_id)
+		if not user_rec:
 			return False
-		try:
-			_, user_rec = self.users_db.get_user(user_id)
-			if not user_rec:
-				return False
-			groups = [g.lower() for g in user_rec.get("groups", [])]
-			return "admin" in groups or "owner" in groups or bool(user_rec.get("admin"))
-		except Exception:
-			return False
+		groups = [g.lower() for g in user_rec.get("groups", [])]
+		return "admin" in groups or "owner" in groups or bool(user_rec.get("admin"))
 
 	def _get_output_base(self):
 		"""Base directory for user output under MSS_LOGIN_DATA_DIR."""
@@ -276,18 +320,28 @@ class AccessControl:
 		return get_data_subdir("input")
 
 	def get_user_output_directory(self):
-		return os.path.join(self._get_output_base(), self.get_current_user_id() or "public")
+		directory = os.path.join(
+			self._get_output_base(), safe_user_dir_segment(self.get_current_user_id())
+		)
+		os.makedirs(directory, exist_ok=True)
+		return directory
 
 	def get_user_temp_directory(self):
-		return os.path.join(self._get_temp_base(), self.get_current_user_id() or "public")
+		directory = os.path.join(
+			self._get_temp_base(), safe_user_dir_segment(self.get_current_user_id())
+		)
+		os.makedirs(directory, exist_ok=True)
+		return directory
 
 	def get_user_input_directory(self):
-		directory = os.path.join(self._get_input_base(), self.get_current_user_id() or "public")
+		directory = os.path.join(
+			self._get_input_base(), safe_user_dir_segment(self.get_current_user_id())
+		)
 		os.makedirs(directory, exist_ok=True)
 		return directory
 
 	def add_user_specific_folder_paths(self, json_data):
-		user_id = self.get_current_user_id() or "public"
+		user_id = safe_user_dir_segment(self.get_current_user_id())
 		if isinstance(json_data, dict):
 			for k, v in json_data.items():
 				if k == "filename_prefix":
@@ -338,8 +392,8 @@ class AccessControl:
 		self.__prompt_queue.wipe_history = self.user_queue_wipe_history
 
 	def user_queue_put(self, item):
-		current_user_id = self.get_current_user_id()
-		_, user_rec = self.users_db.get_user(current_user_id)
+		current_user_id = self._normalize_user_id(self.get_current_user_id())
+		user_rec = self._lookup_user_record(current_user_id)
 
 		if user_rec:
 			if os.path.exists(self.groups_config_file):
@@ -351,14 +405,26 @@ class AccessControl:
 					perms = cfg.get(role, {})
 					if perms.get("can_run") is False:
 						print(f"[AccessControl] Blocked execution for {current_user_id}")
-						return
+						# Fail closed: never silently drop a prompt (Portal/clients
+						# would see a successful path with no queue progress).
+						raise PermissionError(
+							"MSS-Login: Execution Denied (can_run is false for this role)"
+						)
+				except PermissionError:
+					raise
 				except Exception:
 					pass
 
+		stamp_username = None
+		if user_rec:
+			stamp_username = user_rec.get("username")
+		# Always stamp a normalized string user_id so SEPERATE_USERS queue/history
+		# filters match Portal Bearer/API-token identity comparisons.
+		stamp = {"user_id": current_user_id, "username": stamp_username}
 		if isinstance(item, tuple):
-			new_item = (*item, {"user_id": current_user_id})
+			new_item = (*item, stamp)
 		else:
-			new_item = (item, {"user_id": current_user_id})
+			new_item = (item, stamp)
 		self.__prompt_queue_put(new_item)
 
 	def user_queue_get(self, timeout=None):
@@ -371,6 +437,26 @@ class AccessControl:
 			task_id = self.__prompt_queue.task_counter
 			self.__prompt_queue.currently_running[task_id] = entry
 			self.__prompt_queue.task_counter += 1
+			# Worker threads do not inherit the HTTP request ContextVar. Stamp
+			# this job's user onto the worker so SaveImage/LoadImage and
+			# get_output_directory() resolve the submitter's isolated folders.
+			job_user = user_id_from_queue_item(entry)
+			if job_user:
+				self.set_current_user_id(job_user, set_fallback=True)
+			job_name = username_from_queue_item(entry)
+			if job_name:
+				try:
+					from ..globals import current_username_var
+
+					current_username_var.set(job_name)
+				except Exception:
+					pass
+				try:
+					from .sfw_intercept.nsfw_guard import set_latest_prompt_user
+
+					set_latest_prompt_user(job_name)
+				except Exception:
+					pass
 			self.server.queue_updated()
 			return (entry, task_id)
 
@@ -390,7 +476,7 @@ class AccessControl:
 					"completed": kwargs.get("completed"),
 					"messages": kwargs.get("messages") or [],
 				},
-				"user_id": meta.get("user_id"),
+				"user_id": self._normalize_user_id(meta.get("user_id")),
 			}
 			if history_result:
 				self.__prompt_queue.history[prompt_tuple[1]].update(history_result)
@@ -414,12 +500,16 @@ class AccessControl:
 			pending = []
 			for item in self.__prompt_queue.currently_running.values():
 				meta = item[-1] if isinstance(item[-1], dict) else None
-				if not show_all and (not meta or meta.get("user_id") != current_user):
+				if not show_all and (
+					not meta or not self._user_id_matches(meta.get("user_id"), current_user)
+				):
 					continue
 				running.append(unwrap(item))
 			for item in self.__prompt_queue.queue:
 				meta = item[-1] if isinstance(item[-1], dict) else None
-				if not show_all and (not meta or meta.get("user_id") != current_user):
+				if not show_all and (
+					not meta or not self._user_id_matches(meta.get("user_id"), current_user)
+				):
 					continue
 				pending.append(unwrap(item))
 			return (running, copy.deepcopy(pending))
@@ -433,7 +523,10 @@ class AccessControl:
 				self.__prompt_queue.queue = [
 					i
 					for i in self.__prompt_queue.queue
-					if not (isinstance(i[-1], dict) and i[-1].get("user_id") == current_user)
+					if not (
+						isinstance(i[-1], dict)
+						and self._user_id_matches(i[-1].get("user_id"), current_user)
+					)
 				]
 			self.server.queue_updated()
 
@@ -448,7 +541,7 @@ class AccessControl:
 				meta = item[-1] if isinstance(item[-1], dict) else None
 				if (
 					meta
-					and meta.get("user_id") == self.get_current_user_id()
+					and self._user_id_matches(meta.get("user_id"), self.get_current_user_id())
 					and func(unwrap(item))
 				):
 					self.__prompt_queue.queue.pop(i)
@@ -464,7 +557,9 @@ class AccessControl:
 				filtered = dict(self.__prompt_queue.history)
 			else:
 				filtered = {
-					k: v for k, v in self.__prompt_queue.history.items() if v.get("user_id") == user
+					k: v
+					for k, v in self.__prompt_queue.history.items()
+					if self._user_id_matches(v.get("user_id"), user)
 				}
 			if prompt_id:
 				return {prompt_id: filtered.get(prompt_id)} if prompt_id in filtered else {}
@@ -485,5 +580,7 @@ class AccessControl:
 			else:
 				u = self.get_current_user_id()
 				self.__prompt_queue.history = {
-					k: v for k, v in self.__prompt_queue.history.items() if v.get("user_id") != u
+					k: v
+					for k, v in self.__prompt_queue.history.items()
+					if not self._user_id_matches(v.get("user_id"), u)
 				}

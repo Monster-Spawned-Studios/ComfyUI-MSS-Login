@@ -18,17 +18,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Run Ruff format check
-        uses: astral-sh/ruff-action@v3
+        uses: astral-sh/ruff-action@v4.1.0
         with:
           args: "format --check --diff"
           src: "."
           version: "latest"
 
       - name: Run Ruff lint check
-        uses: astral-sh/ruff-action@v3
+        uses: astral-sh/ruff-action@v4.1.0
         with:
           args: "check --output-format=github"
           src: "."
@@ -40,13 +40,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Ruff format
-        uses: astral-sh/ruff-action@v3
+        uses: astral-sh/ruff-action@v4.1.0
         with:
           args: "format"
           src: "."
@@ -54,7 +54,7 @@ jobs:
         continue-on-error: true
 
       - name: Run Ruff lint fix
-        uses: astral-sh/ruff-action@v3
+        uses: astral-sh/ruff-action@v4.1.0  
         with:
           args: "check --fix"
           src: "."
@@ -91,3 +91,21 @@ jobs:
               git push
             fi
           fi
+
+  ntfy-notification:
+    name: Notify on MSS-Login Auto-format Results
+    needs: [format-check, auto-format]
+    if: always()
+    uses: ./.github/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Auto-format — Succeeded' || 'MSS-Login Auto-format — Issues found' }}
+      message: |
+        === Format Check ===
+        Result: ${{ needs.format-check.result }}
+
+        === Auto Format ===
+        Result: ${{ needs.auto-format.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,art' || 'warning,art' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

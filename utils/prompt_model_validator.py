@@ -6,6 +6,8 @@ Used to block POST /prompt when the workflow references models the user is not p
 
 from typing import Any, Optional
 
+from .model_visibility_policy import grant_matches_item, normalize_model_name
+
 # Map: node class_type -> list of (folder, input_key) for that node.
 # Folder names must match folder_paths / model_filter_middleware (checkpoints, loras, vae, etc.).
 # ComfyUI API format: prompt is a dict of node_id -> { "class_type": "...", "inputs": { "key": value } }.
@@ -14,6 +16,7 @@ NODE_MODEL_INPUTS: dict[str, list[tuple[str, str]]] = {
 	"CheckpointLoaderSimple": [("checkpoints", "ckpt_name")],
 	"CheckpointLoader": [("checkpoints", "ckpt_name")],
 	"unet_load": [("diffusion_models", "unet_name")],
+	"UNETLoader": [("diffusion_models", "unet_name")],
 	# LoRA
 	"LoraLoader": [("loras", "lora_name")],
 	"LoraLoaderModel": [("loras", "lora_name")],
@@ -79,7 +82,7 @@ def _looks_like_model_file(value: str) -> bool:
 
 
 def extract_model_references(
-	prompt: dict[str, Any], known_models: Optional[set[tuple[str, str]]] = None
+	prompt: dict[str, Any], known_models: set[tuple[str, str]] | None = None
 ) -> set[tuple[str, str]]:
 	"""
 	Extract (folder, item_name) from a ComfyUI API-format prompt.
@@ -125,19 +128,45 @@ def validate_prompt_models(
 	allowed_set: set[tuple[str, str]],
 	allow_all: bool,
 	prompt: dict[str, Any],
-	known_models: Optional[set[tuple[str, str]]] = None,
-) -> tuple[bool, Optional[str]]:
+	known_models: set[tuple[str, str]] | None = None,
+) -> tuple[bool, str | None]:
 	"""
 	Validate that every model reference in the prompt is in the allowed set.
-	allowed_set: set of (folder, item_name) the user may use.
+	allowed_set: set of (folder, item_name) the user may use (storage or flat).
 	allow_all: if True, skip validation (admin or can_view_all_comfyui_items).
 	known_models: optional set of (folder, item_name) for catch-all filename resolution.
 	Returns (is_valid, error_message). error_message is set when is_valid is False.
+
+	Dual-reads plain display names against storage-shaped grant rows (and aliases).
 	"""
 	if allow_all:
 		return (True, None)
+
+	# Index allowed names by folder (plus legacy aliases)
+	by_folder: dict[str, set[str]] = {}
+	for folder, item_name in allowed_set:
+		norm = normalize_model_name(item_name)
+		by_folder.setdefault(folder, set()).add(norm)
+		# Alias folders so unet ↔ diffusion_models grants both match
+		if folder == "diffusion_models":
+			by_folder.setdefault("unet", set()).add(norm)
+		elif folder == "unet":
+			by_folder.setdefault("diffusion_models", set()).add(norm)
+		elif folder == "text_encoders":
+			by_folder.setdefault("clip", set()).add(norm)
+		elif folder == "clip":
+			by_folder.setdefault("text_encoders", set()).add(norm)
+
 	refs = extract_model_references(prompt, known_models=known_models)
 	for folder, item_name in refs:
-		if (folder, item_name) not in allowed_set:
-			return (False, f"Model not allowed: {folder}/{item_name}")
+		allowed_norms = by_folder.get(folder) or set()
+		# Also check normalized folder
+		folder_n = _normalize_folder(folder)
+		if folder_n != folder:
+			allowed_norms = allowed_norms | (by_folder.get(folder_n) or set())
+		if (folder, item_name) in allowed_set or (folder_n, item_name) in allowed_set:
+			continue
+		if grant_matches_item(normalize_model_name(item_name), allowed_norms):
+			continue
+		return (False, f"Model not allowed: {folder}/{item_name}")
 	return (True, None)

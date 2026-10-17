@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any
 
 from .json_utils import load_json_file, save_json_file
@@ -17,7 +17,7 @@ _ALLOWED_IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")
 
 
 def _utc_now_iso() -> str:
-	return datetime.now(timezone.utc).isoformat()
+	return datetime.now(UTC).isoformat()
 
 
 def _sanitize_user_segment(user: str | None) -> str:
@@ -178,7 +178,7 @@ def trash_image_file(
 	os.makedirs(user_dir, exist_ok=True)
 
 	base_name = os.path.basename(real_source)
-	unique = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+	unique = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 	dest_name = f"{unique}_{secrets.token_hex(4)}_{base_name}"
 	dest_path = os.path.join(user_dir, dest_name)
 	while os.path.exists(dest_path):
@@ -194,7 +194,7 @@ def trash_image_file(
 
 	settings = get_trash_settings()
 	record_id = secrets.token_hex(16)
-	now_ts = int(datetime.now(timezone.utc).timestamp())
+	now_ts = int(datetime.now(UTC).timestamp())
 	record = {
 		"id": record_id,
 		"owner_user": owner_user,
@@ -303,7 +303,7 @@ def empty_trash(
 
 
 def cleanup_expired_trash(*, now_ts: int | None = None) -> dict[str, int]:
-	current_ts = int(now_ts or datetime.now(timezone.utc).timestamp())
+	current_ts = int(now_ts or datetime.now(UTC).timestamp())
 	items = _load_records()
 	kept: list[dict[str, Any]] = []
 	deleted = 0

@@ -1,9 +1,11 @@
 # --- START OF FILE utils/node_interceptor.py ---
-import torch
-import nodes
-import numpy as np
-from PIL import Image
+import folder_paths
 import latent_preview
+import numpy as np
+import torch
+from PIL import Image
+
+import nodes
 
 from ...globals import current_username_var, users_db
 from ...utils.ntfy_notifier import notify_image_generated
@@ -12,7 +14,6 @@ from ...utils.sfw_intercept.nsfw_guard import (
 	_get_nsfw_pipeline,
 	is_sfw_enforced_for_current_session,
 )
-import folder_paths
 
 # --- CONFIGURATION ---
 SCORE_THRESHOLD = 0.50

@@ -14,9 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Run Ruff
-        uses: astral-sh/ruff-action@v3
+        uses: astral-sh/ruff-action@v4.1.0
         with:
           args: "check --output-format=github"
           src: "."
@@ -27,9 +27,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Run Ruff format check
-        uses: astral-sh/ruff-action@v3
+        uses: astral-sh/ruff-action@v4.1.0
         with:
           args: "format --check --diff"
           src: "."
@@ -40,10 +40,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Run Ruff fix
-        uses: astral-sh/ruff-action@v3
+        uses: astral-sh/ruff-action@v4.1.0
         with:
           args: "check --fix --output-format=github"
           src: "."
           version: "latest"
+
+  ntfy-notification:
+    name: Notify on MSS-Login Code Quality Results
+    needs: [ruff, ruff-format, ruff-fix]
+    if: always()
+    uses: ./.github/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login Code Quality — All checks passed' || 'MSS-Login Code Quality — Issues found' }}
+      message: |
+        === Ruff ===
+        Result: ${{ needs.ruff.result }}
+
+        === Ruff Format ===
+        Result: ${{ needs.ruff-format.result }}
+
+        === Ruff Fix ===
+        Result: ${{ needs.ruff-fix.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,hammer_and_wrench' || 'warning,hammer_and_wrench' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

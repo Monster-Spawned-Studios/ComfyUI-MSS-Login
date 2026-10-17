@@ -32,16 +32,26 @@ function addToast(message, type) {
  * Enable DEBUG_MODE based on the DEBUG_MODE environment variable.
  */
 function isDebugMode() {
-  return fetch("/mss-login/api/debug-mode").then(response => response.json()).then(data => data.debugMode);
+  return fetch("/mss-login/api/debug-mode", { credentials: "same-origin" })
+    .then(response => {
+      if (!response.ok) {
+        return { debugMode: false, filterDebugMessages: true };
+      }
+      return response.json();
+    })
+    .then(data => !!(data && data.debugMode && !data.filterDebugMessages))
+    .catch(() => false);
 }
 
 /**
  * Write a debug message to the console.
  */
 function debug(message) {
-  if (isDebugMode()) {
-    console.log(message);
-  }
+  isDebugMode().then(allowed => {
+    if (allowed) {
+      console.log(message);
+    }
+  }).catch(() => {});
 }
 
 /**

@@ -149,11 +149,16 @@ class _SqliteModelCache:
 		total = 0
 		for folder in folder_names:
 			try:
-				import folder_paths
+				from .isolation_folder_hooks import get_raw_filename_list
 
-				names = folder_paths.get_filename_list(folder)
+				names = get_raw_filename_list(folder)
 			except Exception:
-				names = []
+				try:
+					import folder_paths
+
+					names = folder_paths.get_filename_list(folder)
+				except Exception:
+					names = []
 			for item_name in names:
 				item_name = (item_name or "").strip()
 				if not item_name:
@@ -215,11 +220,16 @@ class _PostgresModelCache:
 		total = 0
 		for folder in folder_names:
 			try:
-				import folder_paths
+				from .isolation_folder_hooks import get_raw_filename_list
 
-				names = folder_paths.get_filename_list(folder)
+				names = get_raw_filename_list(folder)
 			except Exception:
-				names = []
+				try:
+					import folder_paths
+
+					names = folder_paths.get_filename_list(folder)
+				except Exception:
+					names = []
 			for item_name in names:
 				item_name = (item_name or "").strip()
 				if not item_name:
@@ -289,11 +299,16 @@ class _MySQLModelCache:
 		total = 0
 		for folder in folder_names:
 			try:
-				import folder_paths
+				from .isolation_folder_hooks import get_raw_filename_list
 
-				names = folder_paths.get_filename_list(folder)
+				names = get_raw_filename_list(folder)
 			except Exception:
-				names = []
+				try:
+					import folder_paths
+
+					names = folder_paths.get_filename_list(folder)
+				except Exception:
+					names = []
 			for item_name in names:
 				item_name = (item_name or "").strip()
 				if not item_name:
@@ -301,8 +316,8 @@ class _MySQLModelCache:
 				try:
 					cur = self._conn.cursor()
 					cur.execute(
-						"INSERT INTO {} (folder, item_name, updated_at) VALUES (%s, %s, %s) "
-						"ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)".format(TABLE),
+						f"INSERT INTO {TABLE} (folder, item_name, updated_at) VALUES (%s, %s, %s) "
+						"ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)",
 						(folder, item_name, now),
 					)
 					total += 1
@@ -345,7 +360,7 @@ class _MySQLModelCache:
 		return row is None
 
 
-_store: Optional[_SqliteModelCache | _PostgresModelCache | _MySQLModelCache] = None
+_store: _SqliteModelCache | _PostgresModelCache | _MySQLModelCache | None = None
 
 
 def get_model_cache(config: dict):

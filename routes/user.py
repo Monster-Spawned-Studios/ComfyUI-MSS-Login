@@ -1,13 +1,16 @@
 # --- START OF FILE routes/user.py ---
-from aiohttp import web
-from ..constants import EXPERIMENTAL_FEATURES, get_experimental_flags
-from ..globals import routes, jwt_auth, users_db
-from ..utils import user_env
-from ..utils.path_safety import is_safe_filename, resolve_path_under
-from ..utils.trash_store import empty_trash, list_trash_items, restore_trash_item
-import folder_paths
 import os
 import shutil
+
+import folder_paths
+from aiohttp import web
+
+from ..constants import EXPERIMENTAL_FEATURES, get_experimental_flags
+from ..globals import access_control, jwt_auth, routes, users_db
+from ..utils import user_env
+from ..utils.model_visibility_policy import user_can_download_models, user_can_update_mss_login
+from ..utils.path_safety import is_safe_filename, resolve_path_under
+from ..utils.trash_store import empty_trash, list_trash_items, restore_trash_item
 
 # Root of ComfyUI
 COMFY_ROOT = folder_paths.base_path
@@ -26,6 +29,9 @@ def get_global_workflows_root() -> str:
 		os.path.join(COMFY_ROOT, "user", "default", "workflows"),
 		os.path.join(COMFY_ROOT, "user_data", "workflows"),
 	]
+	data_dir_env = os.environ.get("MSS_LOGIN_DATA_DIR", "").strip()
+	if data_dir_env:
+		candidates.insert(0, os.path.join(os.path.abspath(data_dir_env), "workflows", "default"))
 	for p in candidates:
 		if os.path.isdir(p):
 			return p
@@ -103,7 +109,7 @@ async def api_me(request: web.Request) -> web.Response:
 	# Capture host base URL from first admin/owner connection when not set by env or DB
 	if username and (is_admin or "owner" in groups):
 		try:
-			from ..constants import clear_host_base_url_cache, USERS_DB_CONFIG, _is_safe_base_url
+			from ..constants import USERS_DB_CONFIG, _is_safe_base_url, clear_host_base_url_cache
 			from ..utils.app_settings_store import get_app_settings_store
 
 			if not (os.getenv("HOST_BASE_URL") or "").strip():
@@ -125,6 +131,8 @@ async def api_me(request: web.Request) -> web.Response:
 				"groups": ["guest"],
 				"is_admin": False,
 				"mfa_enabled": False,
+				"can_update_mss_login": False,
+				"can_download_models": False,
 				"experimental_features": EXPERIMENTAL_FEATURES,
 				"experimental": get_experimental_flags(),
 			}
@@ -141,6 +149,16 @@ async def api_me(request: web.Request) -> web.Response:
 		users_db.get_mfa_enabled(username) if username and username.lower() != "guest" else False
 	)
 
+	can_update = False
+	can_download = False
+	try:
+		_role, perms, _ = access_control._get_user_role_and_permissions(request)
+		can_update = user_can_update_mss_login(_role or role, perms or {})
+		can_download = user_can_download_models(_role or role, perms or {})
+	except Exception:
+		can_update = user_can_update_mss_login(role, {})
+		can_download = user_can_download_models(role, {})
+
 	return web.json_response(
 		{
 			"username": username,
@@ -148,6 +166,8 @@ async def api_me(request: web.Request) -> web.Response:
 			"groups": groups,
 			"is_admin": is_admin,
 			"mfa_enabled": mfa_enabled,
+			"can_update_mss_login": can_update,
+			"can_download_models": can_download,
 			"experimental_features": EXPERIMENTAL_FEATURES,
 			"experimental": get_experimental_flags(),
 		}

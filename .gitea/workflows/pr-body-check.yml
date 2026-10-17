@@ -1,0 +1,93 @@
+# Require non-empty PR description (project-wide "no blank PRs").
+# Gitea-compatible: reads the event payload with Python (no actions/github-script).
+name: PR body check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+    branches: [development, production]
+
+permissions:
+  pull-requests: read
+  contents: read
+
+jobs:
+  pr-body:
+    name: PR description required
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR body
+        shell: bash
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import sys
+
+          path = os.environ.get("GITHUB_EVENT_PATH") or ""
+          if not path or not os.path.isfile(path):
+              print("GITHUB_EVENT_PATH missing; skipping PR body check.")
+              sys.exit(0)
+
+          with open(path, encoding="utf-8") as fh:
+              event = json.load(fh)
+
+          pr = event.get("pull_request") or {}
+          author = pr.get("user") or {}
+          login = str(author.get("login") or "").lower()
+          author_type = str(author.get("type") or "").lower()
+          known_bot_prefixes = ("dependabot", "copilot", "claude", "cursor", "github-actions", "gitea-actions")
+          is_bot = (
+              author_type == "bot"
+              or login.endswith("[bot]")
+              or login.endswith("-bot")
+              or any(login == p or login.startswith(f"{p}-") for p in known_bot_prefixes)
+          )
+          if is_bot:
+              print(f"Skipping PR body and template checks for bot author: {author.get('login') or 'unknown'}")
+              sys.exit(0)
+
+          body = pr.get("body") or ""
+          stripped = re.sub(r"<!--[\s\S]*?-->", "", body)
+          stripped = re.sub(r"\s", "", stripped)
+          min_length = 80
+          has_template_section = bool(
+              re.search(r"##\s*(Description|Type of change|Bug|Scope|Behavior|Checklist)", body, re.I)
+          )
+          failed = False
+          if len(stripped) < min_length:
+              print(
+                  "PR description is required and must be at least "
+                  f"{min_length} non-whitespace characters. "
+                  "Please use one of the templates (General, Bug fix, Feature, Documentation, Config/tooling) and fill it in."
+              )
+              failed = True
+          if not has_template_section:
+              print(
+                  "PR description must use one of the repository templates "
+                  "(General, Bug fix, Feature, Documentation, Config/tooling). "
+                  'Use the template links in the default description or add a "## Description" (or similar) section.'
+              )
+              failed = True
+          print("PR body length (after stripping):", len(stripped))
+          sys.exit(1 if failed else 0)
+          PY
+
+  ntfy-notification:
+    name: Notify on MSS-Login PR Body Check Results
+    needs: [pr-body]
+    if: always()
+    uses: ./.gitea/workflows/ntfy-notify-reusable.yml
+    with:
+      title: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'MSS-Login PR Body Check — Passed' || 'MSS-Login PR Body Check — Failed' }}
+      message: |
+        === Pr Body ===
+        Result: ${{ needs.pr-body.result }}
+      priority: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && '3' || '5' }}
+      tags: ${{ (!contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')) && 'white_check_mark,memo' || 'warning,memo' }}
+      ref_name: ${{ github.ref_name }}
+    secrets: inherit

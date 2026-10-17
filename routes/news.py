@@ -7,12 +7,12 @@ Gated by experimental_features; returns 404 when disabled or when news.md is mis
 import html
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from email.utils import format_datetime
 
 from aiohttp import web
 
-from ..constants import get_host_base_url, experimental_news_enabled
+from ..constants import experimental_news_enabled, get_host_base_url
 from ..globals import routes
 from ..utils.data_dir import get_data_dir
 
@@ -52,7 +52,7 @@ def _format_rfc822_date(date_str: str) -> str:
 	"""Validate YYYY-MM-DD and return RFC 822 formatted date, or empty string on error."""
 	try:
 		dt = datetime.strptime(date_str.strip()[:10], "%Y-%m-%d")
-		dt = dt.replace(tzinfo=timezone.utc)
+		dt = dt.replace(tzinfo=UTC)
 		return format_datetime(dt, usegmt=True)
 	except (ValueError, TypeError):
 		return ""

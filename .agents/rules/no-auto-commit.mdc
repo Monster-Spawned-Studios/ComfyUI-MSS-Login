@@ -1,0 +1,47 @@
+---
+description: Never commit or push unless the user explicitly authorizes it in the instructions or after the work is done
+alwaysApply: true
+always_on: true
+trigger: always_on
+applyTo: "**"
+---
+
+# Do not auto-commit or auto-push
+
+Agents must **not** create git commits or push to remotes unless the user has given **explicit** permission.
+
+## When commits / pushes are allowed
+
+Only proceed with `git commit`, `git push`, or opening a PR when **one** of these is true:
+
+1. **Explicit in the current instructions** — the user (or the task prompt for this turn) clearly asks to commit, push, create a PR, or run `/commit-multi-changes` / an equivalent multi-commit skill.
+2. **Explicit after the changes are made** — the user reviews the completed work (or the proposed commit plan) and then says to commit, push, or create a PR.
+
+## When commits / pushes are not allowed
+
+- Finishing a feature, fix, CI repair, docs update, or refactor is **not** permission to commit or push.
+- Implied intent (“make CI green”, “get this on the branch”, “ship it”) without the words commit / push / PR is **not** enough.
+- Prior turns that allowed a commit do **not** authorize later commits; re-check each turn.
+- Do not commit “so the user can pull” or “so Actions will run” unless they asked to commit/push.
+
+## Required behavior without authorization
+
+1. Leave all changes **uncommitted** and **unpushed**.
+2. Summarize what changed and which paths were touched.
+3. Wait for the user to ask to commit (and separately to push, if needed).
+
+## When the user does authorize a commit
+
+- Prefer small, topic-scoped commits; for large or multi-topic dumps use [`.agents/skills/commit-multi-changes/SKILL.md`](../skills/commit-multi-changes/SKILL.md) (propose a plan, wait for approval, then commit).
+- Follow commit signing in [AGENTS.md](../../AGENTS.md) when credentials are available.
+- Do **not** push unless the user also explicitly asks to push (or to create/update a PR that requires a push).
+
+## Never stage Cursor memory / local agent state
+
+Even when a commit is authorized, **exclude** Cursor memory and local agent state from `git add` / commits (these belong in `.gitignore`):
+
+- Anything under `.cursor/` (including `.cursor/hooks/state/`, continual-learning index files, rules caches)
+- `continual-learning-index.json`, `continual-learning.json`, and other hook-state JSON under `.cursor/hooks/`
+- Agent transcript stores, personal/agent store dumps, and similar local memory files
+
+Do not use `git add -f` / force-add to override ignores for these paths. Updating `AGENTS.md` learned sections is fine when authorized; committing the raw Cursor index/transcript machinery is not.

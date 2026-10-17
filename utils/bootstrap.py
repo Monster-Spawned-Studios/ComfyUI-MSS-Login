@@ -1,10 +1,11 @@
 # --- START OF FILE utils/bootstrap.py ---
 import os
 import uuid
-from ..constants import GROUPS_CONFIG_FILE, DEFAULT_GROUP_CONFIG_PATH
-from .json_utils import load_json_file, save_json_file
-from .admin_logic import patch_user_group
+
+from ..constants import DEFAULT_GROUP_CONFIG_PATH, GROUPS_CONFIG_FILE
 from ..globals import logger, users_db
+from .admin_logic import patch_user_group
+from .json_utils import load_json_file, save_json_file
 
 
 def load_default_groups():
@@ -21,6 +22,8 @@ def load_default_groups():
 				"can_have_api_tokens": True,
 				"can_have_non_expiring_jwt": True,
 				"can_view_console": True,
+				"can_login_locally_without_auth": True,
+				"can_update_mss_login": True,
 			},
 			"admin": {
 				"can_run": True,
@@ -31,6 +34,8 @@ def load_default_groups():
 				"can_have_api_tokens": True,
 				"can_have_non_expiring_jwt": False,
 				"can_view_console": False,
+				"can_login_locally_without_auth": True,
+				"can_update_mss_login": True,
 			},
 			"power": {
 				"can_run": True,
@@ -40,6 +45,8 @@ def load_default_groups():
 				"can_see_restricted_settings": False,
 				"can_have_api_tokens": True,
 				"can_have_non_expiring_jwt": False,
+				"can_login_locally_without_auth": False,
+				"can_update_mss_login": False,
 			},
 			"user": {
 				"can_run": True,
@@ -49,6 +56,8 @@ def load_default_groups():
 				"can_see_restricted_settings": False,
 				"can_have_api_tokens": False,
 				"can_have_non_expiring_jwt": False,
+				"can_login_locally_without_auth": False,
+				"can_update_mss_login": False,
 			},
 			"guest": {
 				"can_run": False,
@@ -58,6 +67,8 @@ def load_default_groups():
 				"can_see_restricted_settings": False,
 				"can_have_api_tokens": False,
 				"can_have_non_expiring_jwt": False,
+				"can_login_locally_without_auth": False,
+				"can_update_mss_login": False,
 			},
 		}
 	return cfg

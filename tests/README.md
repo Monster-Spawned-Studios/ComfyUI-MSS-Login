@@ -28,7 +28,17 @@ These run without loading ComfyUI or `folder_paths`, so they work in CI and on m
 | Script | What it tests |
 |--------|----------------|
 | `run_path_traversal_tests.py` | `utils.path_safety`: path traversal prevention, safe filenames/folders, `resolve_path_under`, attack vectors. |
-| `run_sanitizer_tests.py` | `utils.input_sanitizer` and `utils.validate`: username/password sanitization and validation. |
+| `run_sanitizer_tests.py` | `utils.input_sanitizer`, `utils.validate`, and password-field XSS exemption. |
+| `run_auth_compat_tests.py` | Password XSS exemption, legacy dual-verify/rehash, ephemeral SECRET_KEY reuse, JSON credential sanitization. |
+| `run_owner_role_tests.py` | Owner counts as admin; `add_user` never mints a second owner; explicit role groups; `update_user` restores admin when saving owner-only groups; prefers `mss_admin` / demotes duplicate owners. |
+| `run_csp_host_tests.py` | CSP `connect-src` includes `HOST_BASE_URL` (http + wss) for reverse-proxy hosts. |
+| `run_schema_drift_tests.py` | Live SQLite/SQLCipher schema vs `utils/db_schema.py`; Fernet secret decrypt after reopen. |
+| `run_update_notice_tests.py` | Public update-notice redaction, DATA_DIR persist/hydrate, `can_update_mss_login` defaults. |
+| `run_cpe_workflow_tests.py` | Per-user Comfy Portal Endpoint workflow list/get/save helpers (no ComfyUI). |
+| `run_cpe_auth_tests.py` | CPE/Portal JSON 401 policy for `/cpe/*`, convert vs save mutate RBAC, remote-guard `/cpe` prefix. |
+| `run_install_deps_plan_tests.py` | PyTorch backend detection (Metal / cu130 / cu128 / CPU). |
+| `run_user_isolation_tests.py` | Per-user output-dir segments, `/prompt` vs `/api/prompt`, queue user stamps. |
+| `run_avatar_tests.py` | Avatar upload sanitization (PNG re-encode, SVG/HTML reject, guest block). |
 
 Examples:
 
@@ -72,3 +82,4 @@ The project has a `test_path_traversal.py` module written for pytest. Pytest col
 
 - **Path safety**: safe filename/folder segment, basename extraction, path resolution under a base dir, path-under check, and explicit path traversal attack vectors (e.g. `..`, encoded slashes, long paths, unicode).
 - **Sanitizer / validate**: username and password sanitization (null bytes, length, allowed chars), and `validate_username` / `validate_password` rules.
+- **Isolation plain names**: `tests/run_isolation_plain_names_tests.py` — listing/shadowing, owner shared-model regression (`unet`/`diffusion_models`), legacy vs foreign UUID prefixes, grants, symlink escape, and prompt middleware byte-identity for shared names.

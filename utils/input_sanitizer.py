@@ -32,7 +32,7 @@ def _strip_control_and_null(value: str) -> str:
 	return _CONTROL_AND_NULL.sub("", value)
 
 
-def sanitize_username(value: Optional[str], max_len: int = USERNAME_MAX_LEN) -> str:
+def sanitize_username(value: str | None, max_len: int = USERNAME_MAX_LEN) -> str:
 	"""
 	Sanitize a username for safe storage and use in paths/DB.
 
@@ -50,7 +50,7 @@ def sanitize_username(value: Optional[str], max_len: int = USERNAME_MAX_LEN) -> 
 	return s[:max_len]
 
 
-def sanitize_password_input(value: Optional[str], max_len: int = PASSWORD_MAX_LEN) -> str:
+def sanitize_password_input(value: str | None, max_len: int = PASSWORD_MAX_LEN) -> str:
 	"""
 	Sanitize password input before hashing/verification.
 
@@ -66,7 +66,7 @@ def sanitize_password_input(value: Optional[str], max_len: int = PASSWORD_MAX_LE
 	return s[:max_len]
 
 
-def sanitize_label(value: Optional[str], max_len: int = LABEL_MAX_LEN) -> str:
+def sanitize_label(value: str | None, max_len: int = LABEL_MAX_LEN) -> str:
 	"""
 	Sanitize a label (e.g. API token label) for safe storage.
 
@@ -80,7 +80,7 @@ def sanitize_label(value: Optional[str], max_len: int = LABEL_MAX_LEN) -> str:
 
 
 def sanitize_token_hash_prefix(
-	value: Optional[str],
+	value: str | None,
 	min_len: int = TOKEN_HASH_PREFIX_MIN_LEN,
 	max_len: int = TOKEN_HASH_PREFIX_MAX_LEN,
 ) -> str:
@@ -98,7 +98,7 @@ def sanitize_token_hash_prefix(
 	return s[:max_len]
 
 
-def sanitize_totp_code(value: Optional[str], max_len: int = 8) -> str:
+def sanitize_totp_code(value: str | None, max_len: int = 8) -> str:
 	"""
 	Sanitize TOTP/MFA code input (digits only, typical length 6).
 	"""
@@ -109,7 +109,7 @@ def sanitize_totp_code(value: Optional[str], max_len: int = 8) -> str:
 	return s[:max_len]
 
 
-def sanitize_backup_code_input(value: Optional[str], max_len: int = 16) -> str:
+def sanitize_backup_code_input(value: str | None, max_len: int = 16) -> str:
 	"""
 	Sanitize backup code input (alphanumeric, no spaces/dashes).
 	"""
@@ -120,7 +120,7 @@ def sanitize_backup_code_input(value: Optional[str], max_len: int = 16) -> str:
 	return s[:max_len]
 
 
-def sanitize_prompt_text(value: Optional[str], max_len: int = 1024) -> str:
+def sanitize_prompt_text(value: str | None, max_len: int = 1024) -> str:
 	"""
 	Sanitize freeform prompt-like text for display or storage.
 

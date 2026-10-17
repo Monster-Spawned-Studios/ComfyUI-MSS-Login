@@ -9,7 +9,7 @@ import hashlib
 import json
 import os
 import secrets
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -44,13 +44,13 @@ def _iso_expires(expire_hours: float) -> str:
 	"""Return expires_iso. If expire_hours <= 0, return never-expires sentinel."""
 	if expire_hours <= 0:
 		return NEVER_EXPIRES_ISO
-	t = datetime.now(timezone.utc) + timedelta(hours=expire_hours)
+	t = datetime.now(UTC) + timedelta(hours=expire_hours)
 	return t.isoformat()
 
 
 def _iso_now() -> str:
 	"""Return current UTC time as ISO-8601 string."""
-	return datetime.now(timezone.utc).isoformat()
+	return datetime.now(UTC).isoformat()
 
 
 def _is_expired(expires_iso: str) -> bool:
@@ -58,7 +58,7 @@ def _is_expired(expires_iso: str) -> bool:
 		if not expires_iso or expires_iso == NEVER_EXPIRES_ISO:
 			return False
 		t = datetime.fromisoformat(expires_iso.replace("Z", "+00:00"))
-		return datetime.now(timezone.utc) >= t
+		return datetime.now(UTC) >= t
 	except Exception:
 		return True
 
@@ -548,7 +548,7 @@ def _get_mysql_store(host: str, port: int, database: str, user: str, password: s
 _api_token_store_instance = None
 
 
-def get_api_token_store(config: Optional[dict] = None):
+def get_api_token_store(config: dict | None = None):
 	"""Build or return the singleton API token store from config.
 	Uses same DB as users (backend, sqlite_path, postgres_* from USERS_DB_CONFIG).
 	config can be { "api_token_store": { ... } } or the inner { "backend", "json_path", ... }.
