@@ -189,9 +189,7 @@ def _model_grant_check(request: web.Request, workflow_payload: object) -> web.Re
 		)
 		# Dual-read: normalize own UUID prefix to plain; validate via grant dual-read
 		prompt_for_check = json.loads(json.dumps(prompt))
-		rewrite_prompt_model_names(
-			prompt_for_check, user_id, grants, normalize_only=True
-		)
+		rewrite_prompt_model_names(prompt_for_check, user_id, grants, normalize_only=True)
 		allowed_set = allowed_set_from_grants(grants)
 		valid, err_msg = validate_prompt_models(
 			allowed_set, allow_all=False, prompt=prompt_for_check

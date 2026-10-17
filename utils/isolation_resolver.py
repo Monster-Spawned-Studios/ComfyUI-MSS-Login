@@ -12,11 +12,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from ..constants import experimental_model_isolation_enabled
-from .model_isolation import (
-	isolation_folder_root,
-	isolation_user_folder,
-	sanitize_user_segment,
-)
+from .model_isolation import isolation_folder_root, isolation_user_folder, sanitize_user_segment
 from .model_visibility_policy import normalize_model_name
 
 # ComfyUI legacy folder aliases (bidirectional)
@@ -28,8 +24,7 @@ _FOLDER_ALIASES: dict[str, str] = {
 }
 
 _UUID_RE = re.compile(
-	r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-	re.IGNORECASE,
+	r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
 )
 
 Origin = Literal["user", "shared", "granted"]
@@ -262,9 +257,7 @@ def resolve_model_name(
 			own_rel = _own_isolation_rel(folder_norm, user_id, rest)
 			if own_rel is not None:
 				return ResolvedName(
-					storage_name=f"{viewer_seg}/{own_rel}",
-					origin="user",
-					folder=folder_norm,
+					storage_name=f"{viewer_seg}/{own_rel}", origin="user", folder=folder_norm
 				)
 			# Own prefix but missing → None (generic miss)
 			return None
@@ -280,9 +273,7 @@ def resolve_model_name(
 	own_rel = _own_isolation_rel(folder_norm, user_id, raw)
 	if own_rel is not None:
 		return ResolvedName(
-			storage_name=f"{viewer_seg}/{own_rel}",
-			origin="user",
-			folder=folder_norm,
+			storage_name=f"{viewer_seg}/{own_rel}", origin="user", folder=folder_norm
 		)
 
 	grant = _grant_storage_for_suffix(folder_norm, raw, grants)
@@ -344,7 +335,9 @@ def _list_shared_display_names(folder: str) -> list[str]:
 	return out
 
 
-def _grant_display_suffixes(folder: str, grants: list[dict] | None, user_id: str | None) -> list[str]:
+def _grant_display_suffixes(
+	folder: str, grants: list[dict] | None, user_id: str | None
+) -> list[str]:
 	"""Plain suffixes for grants in this folder."""
 	_ = user_id
 	out: list[str] = []
@@ -365,11 +358,7 @@ def _grant_display_suffixes(folder: str, grants: list[dict] | None, user_id: str
 
 
 def list_display_names(
-	folder: str,
-	user_id: str | None,
-	*,
-	grants: list[dict] | None = None,
-	view_all: bool = False,
+	folder: str, user_id: str | None, *, grants: list[dict] | None = None, view_all: bool = False
 ) -> list[str]:
 	"""
 	User-facing model names for a folder: shared ∪ own relpaths ∪ granted suffixes.

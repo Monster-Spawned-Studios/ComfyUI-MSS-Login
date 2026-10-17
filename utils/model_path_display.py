@@ -12,11 +12,7 @@ import copy
 from typing import Any
 
 from ..constants import experimental_model_isolation_enabled
-from .isolation_resolver import (
-	foreign_uuid_prefix,
-	is_uuid_segment,
-	resolve_model_name,
-)
+from .isolation_resolver import foreign_uuid_prefix, is_uuid_segment, resolve_model_name
 from .model_isolation import sanitize_user_segment
 from .model_visibility_policy import normalize_model_name
 from .prompt_model_validator import (
@@ -102,11 +98,7 @@ def to_storage_name(
 		# Leave unchanged; callers reject with a generic error
 		return name
 	resolved = resolve_model_name(
-		folder or "",
-		name,
-		viewer_user_id,
-		grants=grants,
-		view_all=view_all,
+		folder or "", name, viewer_user_id, grants=grants, view_all=view_all
 	)
 	if resolved is not None:
 		return resolved.storage_name
