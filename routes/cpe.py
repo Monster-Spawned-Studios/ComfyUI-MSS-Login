@@ -43,7 +43,10 @@ from ..utils.cpe_workflows import (
 	storage_payload,
 	success_convert_payload,
 )
-from ..utils.model_path_display import rewrite_prompt_model_names
+from ..utils.model_path_display import (
+	prompt_has_foreign_uuid_model,
+	rewrite_prompt_model_names,
+)
 from ..utils.model_visibility_policy import (
 	allowed_set_from_grants,
 	get_effective_model_grants_for_user,
@@ -110,10 +113,21 @@ def _model_grant_check(request: web.Request, workflow_payload: object) -> web.Re
 		role, perms, username = access_control._get_user_role_and_permissions(request)
 	except Exception:
 		return None
-	if user_can_view_all_models(role, perms):
-		return None
 	try:
 		users_db = access_control.users_db
+		user_id = get_user_id_for_username(users_db, username)
+		if prompt_has_foreign_uuid_model(prompt, user_id):
+			return web.json_response(
+				{
+					"status": "error",
+					"error": "Model not allowed",
+					"code": "MODEL_NOT_ALLOWED",
+					"message": "Model not allowed",
+				},
+				status=403,
+			)
+		if user_can_view_all_models(role, perms):
+			return None
 		grants = get_effective_model_grants_for_user(
 			role=role,
 			perms=perms,
@@ -122,10 +136,11 @@ def _model_grant_check(request: web.Request, workflow_payload: object) -> web.Re
 			shared_items_store_getter=get_shared_items_store,
 			users_db_config=USERS_DB_CONFIG,
 		)
-		user_id = get_user_id_for_username(users_db, username)
-		# Dual-read: accept flat UI names by mapping to storage before validate
+		# Dual-read: normalize own UUID prefix to plain; validate via grant dual-read
 		prompt_for_check = json.loads(json.dumps(prompt))
-		rewrite_prompt_model_names(prompt_for_check, user_id, grants)
+		rewrite_prompt_model_names(
+			prompt_for_check, user_id, grants, normalize_only=True
+		)
 		allowed_set = allowed_set_from_grants(grants)
 		valid, err_msg = validate_prompt_models(
 			allowed_set, allow_all=False, prompt=prompt_for_check

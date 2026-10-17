@@ -26,6 +26,7 @@ import folder_paths  # pyright: ignore[reportMissingImports]
 from aiohttp import web
 
 from ..constants import experimental_model_isolation_enabled
+from .isolation_resolver import list_display_names, resolve_model_name
 from .model_path_display import (
 	map_experiment_items_to_display,
 	map_item_list_to_display,
@@ -43,6 +44,7 @@ from .model_visibility_policy import (
 	user_can_view_all_models,
 )
 from .path_safety import is_safe_folder_segment
+from .prompt_model_validator import NODE_MODEL_INPUTS, _looks_like_model_file
 
 # Folder names we treat as "asset" lists (models, loras, vae, embeddings, etc.)
 # Includes ComfyUI Model Library folders: ultralytics, mmdets, sams, classifiers, configs.
@@ -263,7 +265,14 @@ def create_model_filter_middleware(
 		folder: str, full_list: list[str], role: str, perms: dict, grants: list, user_id: str | None
 	):
 		full_list = _strip_s3_items(full_list, folder, role, perms)
-		if user_can_view_all_models(role, perms):
+		view_all = user_can_view_all_models(role, perms)
+		if experimental_model_isolation_enabled():
+			# Single list builder: shared ∪ own ∪ granted (plain names, shadowing)
+			display = list_display_names(
+				folder, user_id, grants=grants, view_all=view_all
+			)
+			return _strip_s3_items(display, folder, role, perms)
+		if view_all:
 			return _flatten_strings(full_list, user_id, role, perms, grants)
 		if not grants:
 			return []
@@ -383,16 +392,54 @@ def create_model_filter_middleware(
 			role, perms, username, grants, user_id = _grants_for(request)
 			view_all = user_can_view_all_models(role, perms)
 			resp = await handler(request)
-			if view_all:
 
-				def _flatten_view_all(data):
+			def _filter_and_flatten(data):
+				# When isolation is on, rebuild loader combos from list_display_names
+				# so view_all never exposes other users' UUID prefixes.
+				if experimental_model_isolation_enabled() and isinstance(data, dict):
+					folder_by_key: dict[str, str] = {}
+					for _cls, mappings in NODE_MODEL_INPUTS.items():
+						for folder, input_key in mappings:
+							folder_by_key.setdefault(input_key, folder)
+					for _node_name, node_info in data.items():
+						if not isinstance(node_info, dict):
+							continue
+						inp = node_info.get("input")
+						if not isinstance(inp, dict):
+							continue
+						for section in ("required", "optional"):
+							section_map = inp.get(section)
+							if not isinstance(section_map, dict):
+								continue
+							for key, spec in list(section_map.items()):
+								if not isinstance(spec, (list, tuple)) or not spec:
+									continue
+								combo = spec[0]
+								if not isinstance(combo, list) or not combo:
+									continue
+								if not all(isinstance(x, str) for x in combo):
+									continue
+								looks_like_models = any(
+									_looks_like_model_file(x) or "/" in x.replace("\\", "/")
+									for x in combo
+								)
+								if not looks_like_models:
+									continue
+								folder = folder_by_key.get(key) or ""
+								if folder:
+									mapped = list_display_names(
+										folder, user_id, grants=grants, view_all=view_all
+									)
+								else:
+									mapped = map_item_list_to_display(
+										combo, user_id, view_all=view_all, grants=grants
+									)
+								section_map[key] = [mapped, *list(spec[1:])]
+					return data
+				if view_all:
 					return map_object_info_combos_to_display(
 						data, user_id, view_all=True, grants=grants
 					)
-
-				return await _maybe_filter_json_response(resp, _flatten_view_all)
-
-			def _filter_and_flatten(data):
 				filtered = _filter_object_info_combos(data, grants)
 				return map_object_info_combos_to_display(
 					filtered, user_id, view_all=False, grants=grants
@@ -410,7 +457,12 @@ def create_model_filter_middleware(
 		if len(parts) >= 3:
 			folder = _map_legacy(parts[1])
 			filename = "/".join(parts[2:])
-			storage = to_storage_name(filename, user_id, grants, folder=folder)
+			resolved = resolve_model_name(
+				folder, filename, user_id, grants=grants, view_all=view_all
+			)
+			storage = resolved.storage_name if resolved is not None else to_storage_name(
+				filename, user_id, grants, folder=folder, view_all=view_all
+			)
 			if not view_all:
 				allowed = {
 					g["norm_item_name"]
