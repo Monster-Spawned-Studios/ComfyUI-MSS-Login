@@ -1,0 +1,10 @@
+# Frontend is a single package; workspace file also holds pnpm settings (pnpm >=11).
+packages:
+  - "."
+
+# OSV GHSA-68fv-2mgg-jv7q: source-map-js < 1.2.2
+overrides:
+  source-map-js: ">=1.2.2"
+
+allowBuilds:
+  pnpm: false

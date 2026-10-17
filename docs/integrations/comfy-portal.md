@@ -23,7 +23,11 @@ MSS-Login does not require a proprietary Portal protocol. Configure Portal with 
    POST /mss-login/generate_token
    ```
 
-3. Configure Portal to send `Authorization: Bearer <token>` (or the token mechanism Portal supports).
+3. Configure Portal to send `Authorization: Bearer <token>` on HTTP **and** the same token on the WebSocket:
+
+   `wss://host/ws?token=<api-token>`
+
+   Prefer the **API token** over a browser login JWT. Session JWTs are subject to idle revoke (default **5 minutes**); long-lived API tokens are not. Without `?token=` / `?access_token=` on `/ws`, Portal cannot receive live `progress` / `executing` / `status` updates.
 
 Ensure the user's role has `can_run` and `can_access_api`. Remote clients (including cellular / non-LAN IPs) must send a **valid** token; the remote API guard allows `/api/cpe/*` and `/cpe/*` only when the token is present and valid.
 
@@ -89,6 +93,17 @@ For a custom mobile client, prefer this flow:
 
 Avoid scraping HTML login pages or cookies unless you control a WebView session.
 
+## Model downloads (CivitAI / Hugging Face)
+
+Stock Comfy Portal has **no** built-in CivitAI/HF search UI. Use:
+
+- **Web (ComfyUI):** Settings → mss-login → Model download (users with `can_download_models`) for browse/search and queue.
+- **Portal / headless:** queue via REST or the **MSS Model Download** workflow node with a full model URL and/or CivitAI `model_version_id` / Hugging Face `repo_id` + `filename`.
+
+API: [Model download API](../guide/model-download-api.md). Short aliases: `POST /mss/models/download`, `GET|DELETE /mss/models/download/{job_id}` (same auth and `can_download_models` as `/mss-login/api/model-download/*`).
+
+Permission denial returns **403** with `{"error":"DOWNLOAD_NOT_ALLOWED","message":"Your account does not have permission to download models."}`.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
@@ -98,11 +113,14 @@ Avoid scraping HTML login pages or cookies unless you control a WebView session.
 | 403 on `/prompt` | `can_run` false for role |
 | 403 `MODEL_NOT_ALLOWED` | Workflow references models user cannot access (also on CPE save / get-and-convert for API-format graphs) |
 | 403 on `/view` | NSFW policy blocked output, or filename from another user's history under `SEPERATE_USERS` |
+| Progress stuck / no live updates in Portal | Missing `?token=` on `/ws`, or using a **session JWT** that was idle-revoked (default 5 min). Use a long-lived **API token** on Bearer **and** `wss://host/ws?token=<api-token>`. Latent image previews over WS are disabled on purpose; `progress` / `executing` / `status` still flow when the socket is authenticated |
+| Empty `/queue` or `/history` while a job runs | Wrong or expired token (401), or identity mismatch — regenerate API token; do not mix another user's credentials |
 | Portal cannot sync UI workflows | Playwright/Chromium missing, or convert failed; install `cpe-convert` group + Chromium, or save API-format workflows |
 | 503 on get-and-convert (UI graph) | See `/cpe/health` browser status; check logs for Playwright errors |
 | 401 JSON on `/cpe/workflow/list` or `/api/cpe/…` | Missing/invalid token, or remote API guard (non-LAN IP without Bearer) |
 | Empty workflow list in Portal | No JSON files in that user's data-dir workflow folder yet; save one or copy into `users/<name>/workflows/` |
 | HTML redirect to `/login` on non-CPE paths | Client sent `Accept: text/html` or `Sec-Fetch-Mode: navigate`; CPE/API paths return JSON 401 instead |
+| 403 `DOWNLOAD_NOT_ALLOWED` on model download | Role lacks `can_download_models` |
 
 ### Debug tips
 

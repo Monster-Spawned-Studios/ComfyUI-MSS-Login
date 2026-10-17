@@ -17,13 +17,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - name: Add copyright headers
-        run: python scripts/add_copyright.py --directory . --copyright-notice docs/COPYRIGHT --recursive --update
+        # Idempotent check: update headers when needed, but do not fail the PR job
+        # solely because files were rewritten (push job can commit separately).
+        run: |
+          set -euo pipefail
+          python scripts/add_copyright.py --directory . --copyright-notice docs/COPYRIGHT --recursive --update
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Copyright header pass completed for PR (no push from this job)."
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

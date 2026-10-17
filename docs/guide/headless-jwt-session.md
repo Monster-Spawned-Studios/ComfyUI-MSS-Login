@@ -16,8 +16,10 @@ Connect with the token in the URL (or via cookie if your client sends it):
 
 Use the WebSocket for:
 
-- Real-time queue and execution updates
-- Current image preview while a prompt is running
+- Real-time queue and execution updates (`progress`, `executing`, `status`)
+- Prefer a long-lived **API token** (Generate Token) rather than a browser session JWT — session JWTs can be idle-revoked (default 5 minutes), which breaks Portal reconnects mid-generation
+
+**Latent image previews over WebSocket are disabled** by MSS-Login (NSFW leakage reduction). Progress events still flow; fetch final images via `GET /view` after history completes.
 
 Same token format (JWT or API token) as REST.
 

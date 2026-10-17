@@ -133,6 +133,9 @@ def run_tests():
 				async def release(self):
 					return None
 
+				def close(self):
+					return None
+
 				async def __aenter__(self):
 					return self
 
@@ -149,7 +152,7 @@ def run_tests():
 				async def __aexit__(self, *a):
 					return False
 
-				def get(self, *a, **k):
+				async def get(self, *a, **k):
 					return FakeResp()
 
 			with patch.object(md.aiohttp, "ClientSession", FakeSession):

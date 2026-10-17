@@ -57,9 +57,5 @@
   "suggestionNumChanges": 3,
   "numSuggestions": 10,
   "minRandomLength": 5,
-  "reporters": [
-    "default",
-    ["@cspell/cspell-reporter-json", { "outFile": "spell-check-results.json" }]
-  ],
   "files": ["**/*"]
 }

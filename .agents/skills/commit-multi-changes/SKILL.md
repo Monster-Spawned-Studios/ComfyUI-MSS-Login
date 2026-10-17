@@ -7,7 +7,7 @@ description: Splits large working-tree changes into topic-scoped multi-stage git
 
 Invoke as **`/commit-multi-changes`**. Agent-agnostic project skill under `.agents/skills/`.
 
-Splits significant working-tree changes into small, topic-scoped commits. Invoking this skill (or an explicit multi-commit ask) **is** permission to commit. Completing implementation work alone is **not**. Never push unless the user also asks to push.
+Splits significant working-tree changes into small, topic-scoped commits. Invoking this skill (or an explicit multi-commit ask) **is** permission to commit. Completing implementation work alone is **not** — see [`.agents/rules/no-auto-commit.mdc`](../../rules/no-auto-commit.mdc). Never push unless the user also asks to push. Do not start Stage 2 (`git add` / `git commit`) until the user has approved the plan (or given an equivalent explicit go-ahead after the changes exist).
 
 ## Hard constraints
 
@@ -16,6 +16,7 @@ Splits significant working-tree changes into small, topic-scoped commits. Invoki
 - Never log `MSS_SSH_PASS` or private key material
 - Exclude secrets (`.env`, credentials, private keys); warn and skip
 - Do not stage `.venv`, `node_modules`, or other ignored junk
+- Never stage Cursor memory / local agent state: `.cursor/**`, `.cursor/hooks/state/**`, `continual-learning*.json`, agent transcript/store dumps (see [`.agents/rules/no-auto-commit.mdc`](../../rules/no-auto-commit.mdc))
 - Keep stages digestible; avoid one mega-commit for 500+ lines
 
 Follow [AGENTS.md](../../../AGENTS.md) commit signing: try SSH signing with `MSS_SSH_PRIV_KEY` / `MSS_SSH_PASS` when available; else system SSH agent; else unsigned commit.

@@ -100,6 +100,12 @@ def main() -> int:
 		steps.append(
 			("Model download search", os.path.join(TESTS_DIR, "run_model_download_search_tests.py"))
 		)
+		steps.append(
+			(
+				"Portal download hardening",
+				os.path.join(TESTS_DIR, "run_portal_download_hardening_tests.py"),
+			)
+		)
 
 		steps.append(("View path safety", os.path.join(TESTS_DIR, "run_view_path_safety_tests.py")))
 		steps.append(("Trash bin", os.path.join(TESTS_DIR, "run_trash_bin_tests.py")))

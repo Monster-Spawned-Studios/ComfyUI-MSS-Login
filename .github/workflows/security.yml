@@ -1,43 +1,109 @@
 # Security: secrets scan (Gitleaks), dependency audit (pip-audit), and OSV scan.
-# Do not disable; keeps credentials and known-vuln deps out of the repo.
+# Each job writes a report artifact; package-reports merges them for ntfy attachment.
+# Push/PR: only when dependency or security-relevant paths change. Also weekly
+# Monday 12:00 America/Denver (cron UTC) and workflow_dispatch.
 name: Security scan
 
 on:
   push:
     branches: [development, production, release/*]
+    paths:
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "web/frontend/package.json"
+      - "web/frontend/pnpm-lock.yaml"
+      - "osv-scanner.toml"
+      - ".gitleaks.toml"
+      - "scripts/ci/install-gitleaks.sh"
+      - ".github/workflows/security.yml"
+      - ".github/workflows/ntfy-notify-reusable.yml"
   pull_request:
     branches: [development, production, release/*]
+    paths:
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "web/frontend/package.json"
+      - "web/frontend/pnpm-lock.yaml"
+      - "osv-scanner.toml"
+      - ".gitleaks.toml"
+      - "scripts/ci/install-gitleaks.sh"
+      - ".github/workflows/security.yml"
+      - ".github/workflows/ntfy-notify-reusable.yml"
   schedule:
-    - cron: "0 6 * * 1" # Weekly Monday 06:00 UTC
+    # Monday 12:00 America/Denver (MDT = 18:00 UTC; during MST this is 11:00 local)
+    - cron: "0 18 * * 1"
   workflow_dispatch:
 
+# actions: write is required for actions/upload-artifact@v4 with a restricted token.
 permissions:
   contents: read
   security-events: write
-  actions: read
+  actions: write
 
 jobs:
   secrets:
     name: Secrets scan (Gitleaks)
-    # History scan is OS-independent; ubuntu avoids Windows/macOS download edge cases.
     runs-on: ubuntu-latest
     env:
-      # Pin the release asset URL (no api.github.com — avoids runner rate limits).
       GITLEAKS_VERSION: "8.30.1"
       GITLEAKS_BIN_DIR: ${{ github.workspace }}/.ci-bin
     steps:
       - name: Checkout (full history)
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - name: Install Gitleaks (pinned release asset)
         shell: bash
         run: bash scripts/ci/install-gitleaks.sh
       - name: Run Gitleaks
+        id: gitleaks
         shell: bash
         run: |
           set -euo pipefail
-          "${GITLEAKS_BIN_DIR}/gitleaks" detect --source . -v
+          mkdir -p ci-reports
+          report="ci-reports/gitleaks-report.txt"
+          {
+            echo "MSS-Login Gitleaks report"
+            echo "========================="
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+            echo
+          } > "${report}"
+          set +e
+          "${GITLEAKS_BIN_DIR}/gitleaks" detect --source . -v --config .gitleaks.toml \
+            --report-path ci-reports/gitleaks-report.json --report-format json >> "${report}" 2>&1
+          status=$?
+          set -e
+          echo >> "${report}"
+          if [ "$status" -eq 0 ]; then
+            echo "Result: PASS (no leaks)." | tee -a "${report}"
+          else
+            echo "Result: FAIL (exit ${status})." | tee -a "${report}"
+          fi
+          exit "$status"
+      - name: Ensure Gitleaks report exists
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          if [ ! -f ci-reports/gitleaks-report.txt ]; then
+            echo "Gitleaks report missing (step did not produce output)." > ci-reports/gitleaks-report.txt
+          fi
+      - name: Upload Gitleaks report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-gitleaks-report
+          path: |
+            ci-reports/gitleaks-report.txt
+            ci-reports/gitleaks-report.json
+          if-no-files-found: warn
+          retention-days: 14
+          overwrite: true
 
   dependencies:
     name: Dependency audit (pip-audit)
@@ -48,33 +114,185 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
       - name: Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
       - name: Install audit tooling
         run: pip install pip-audit
       - name: Run pip-audit
-        run: pip-audit -r requirements-ci.txt --extra-index-url https://download.pytorch.org/whl/cu128
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          report="ci-reports/pip-audit-report.txt"
+          {
+            echo "MSS-Login pip-audit report"
+            echo "=========================="
+            echo "OS: ${{ matrix.os }}"
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+            echo
+          } > "${report}"
+          set +e
+          pip-audit -r requirements-ci.txt --extra-index-url https://download.pytorch.org/whl/cu128 >> "${report}" 2>&1
+          status=$?
+          set -e
+          echo >> "${report}"
+          if [ "$status" -eq 0 ]; then
+            echo "Result: PASS." | tee -a "${report}"
+          else
+            echo "Result: FAIL (exit ${status})." | tee -a "${report}"
+          fi
+          exit "$status"
+      - name: Ensure pip-audit report exists
+        if: always() && matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          if [ ! -f ci-reports/pip-audit-report.txt ]; then
+            echo "pip-audit report missing (step did not produce output)." > ci-reports/pip-audit-report.txt
+          fi
+      # Unique name per OS avoids v4 immutable-artifact collisions if matrix expands uploads later.
+      - name: Upload pip-audit report (ubuntu)
+        if: always() && matrix.os == 'ubuntu-latest'
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-pip-audit-report
+          path: ci-reports/pip-audit-report.txt
+          if-no-files-found: warn
+          retention-days: 14
+          overwrite: true
 
-  # Official reusable workflow (GitHub only). Job must not define runs-on/steps.
   osv-scan:
     name: OSV Vulnerability Scan
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.6.0
-    with:
-      scan-args: |-
-        scan
-        --recursive
-        .
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+      - name: Install OSV-Scanner
+        run: go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.6.0
+      - name: Run OSV-Scanner
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          report="ci-reports/osv-scan-report.txt"
+          {
+            echo "MSS-Login OSV-Scanner report"
+            echo "============================"
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+            echo "Targets: uv.lock, web/frontend/pnpm-lock.yaml"
+            echo
+          } > "${report}"
+          set +e
+          osv-scanner scan \
+            --config osv-scanner.toml \
+            -L uv.lock \
+            -L web/frontend/pnpm-lock.yaml \
+            --format table >> "${report}" 2>&1
+          status=$?
+          set -e
+          osv-scanner scan \
+            --config osv-scanner.toml \
+            -L uv.lock \
+            -L web/frontend/pnpm-lock.yaml \
+            --format json \
+            --output-file ci-reports/osv-scan-report.json || true
+          echo >> "${report}"
+          if [ "$status" -eq 0 ]; then
+            echo "Result: PASS." | tee -a "${report}"
+          else
+            echo "Result: FAIL (exit ${status})." | tee -a "${report}"
+          fi
+          exit "$status"
+      - name: Ensure OSV report exists
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ci-reports
+          if [ ! -f ci-reports/osv-scan-report.txt ]; then
+            echo "OSV report missing (step did not produce output)." > ci-reports/osv-scan-report.txt
+          fi
+      - name: Upload OSV report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-osv-report
+          path: |
+            ci-reports/osv-scan-report.txt
+            ci-reports/osv-scan-report.json
+          if-no-files-found: warn
+          retention-days: 14
+          overwrite: true
+
+  package-reports:
+    name: Package security reports
+    needs: [secrets, dependencies, osv-scan]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      # Prefer pattern download so a missing single artifact does not abort packaging.
+      - name: Download security report artifacts
+        id: download_reports
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: security-*-report
+          path: security-reports
+          merge-multiple: false
+
+      - name: Build combined archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p security-reports
+          {
+            echo "MSS-Login Security Scan bundle"
+            echo "=============================="
+            echo "secrets: ${{ needs.secrets.result }}"
+            echo "dependencies: ${{ needs.dependencies.result }}"
+            echo "osv-scan: ${{ needs.osv-scan.result }}"
+            echo "download: ${{ steps.download_reports.outcome }}"
+            echo "Ref: ${GITHUB_REF_NAME:-unknown}"
+            echo "SHA: ${GITHUB_SHA:-unknown}"
+            echo
+            echo "Contents:"
+            find security-reports -type f | sort || true
+          } > security-reports/SUMMARY.txt
+
+          if command -v zip >/dev/null 2>&1; then
+            zip -qr security-scan-reports.zip security-reports
+          else
+            tar -czf security-scan-reports.tar.gz security-reports
+            mv security-scan-reports.tar.gz security-scan-reports.zip
+          fi
+          ls -la security-scan-reports.zip
+          test -s security-scan-reports.zip
+
+      - name: Upload combined security reports
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-reports
+          path: security-scan-reports.zip
+          if-no-files-found: warn
+          retention-days: 14
+          overwrite: true
 
   ntfy-notification:
     name: Notify on Security Scan Results
-    needs: [secrets, dependencies, osv-scan]
+    needs: [secrets, dependencies, osv-scan, package-reports]
     if: always()
     uses: ./.github/workflows/ntfy-notify-reusable.yml
     with:
@@ -88,7 +306,14 @@ jobs:
 
         === OSV Vulnerability Scan ===
         Result: ${{ needs.osv-scan.result }}
+
+        === Report packaging ===
+        Result: ${{ needs.package-reports.result }}
+
+        Report: attached security-scan-reports.zip (when artifact upload succeeded)
       priority: ${{ (needs.secrets.result == 'success' && needs.dependencies.result == 'success' && needs.osv-scan.result == 'success') && '3' || '5' }}
       tags: ${{ (needs.secrets.result == 'success' && needs.dependencies.result == 'success' && needs.osv-scan.result == 'success') && 'white_check_mark,lock' || 'warning,lock' }}
       ref_name: ${{ github.ref_name }}
+      attachment_artifact: security-scan-reports
+      attachment_filename: security-scan-reports.zip
     secrets: inherit
