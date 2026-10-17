@@ -70,6 +70,13 @@ Follow [`.agents/rules/planning-artifacts.mdc`](.agents/rules/planning-artifacts
 
 Store project status, session notes, implementation plans, and agent prompts under **`_planning/`** (gitignored). Do **not** drop `PROJECT-STATUS.md`, scratch prompts, or similar working files in the repository root. Keep release docs in `docs/` / `readme/`; keep always-on rules in `.agents/rules/` with this file kept in sync.
 
+### Gitea vs GitHub CLIs
+
+Follow [`.agents/rules/gitea-tea-cli.mdc`](.agents/rules/gitea-tea-cli.mdc) (always-on, agent-agnostic).
+
+- **Gitea** (`gitea` remote on `git.monsterspawned.studio`): use the **`tea`** CLI for PRs, issues, and related API work (`tea pulls create --remote gitea …`). Do **not** use `gh` for Gitea.
+- **GitHub** (`origin` on `github.com`): use the **`gh`** CLI only.
+
 ### Do not auto-commit or auto-push
 
 Follow [`.agents/rules/no-auto-commit.mdc`](.agents/rules/no-auto-commit.mdc) (always-on, agent-agnostic).
@@ -93,7 +100,7 @@ For significant change sets (~500+ lines) or multi-topic dumps, invoke **`/commi
 
 - Do not commit or push unless the user explicitly authorizes it in the turn’s instructions or after the changes are done; see [`.agents/rules/no-auto-commit.mdc`](.agents/rules/no-auto-commit.mdc).
 - Never commit Cursor memory / local agent state (`.cursor/`, continual-learning hook index files under `.cursor/hooks/state/`, transcript/store dumps); keep them gitignored and out of `git add`.
-- When asked to commit, split changes into small, digestible, topic-scoped commits rather than one large dump; leave push to the user after review unless they explicitly ask to push; when push is requested, push both `origin` and `gitea` when those remotes exist.
+- When asked to commit, split changes into small, digestible, topic-scoped commits rather than one large dump; leave push to the user after review unless they explicitly ask to push; when push is requested, push both `origin` and `gitea` when those remotes exist, but if the user names a single remote (often Gitea-only for PRs), use only that remote. For Gitea PRs/issues use `tea` (`--remote gitea`); for GitHub use `gh` — never use `gh` against the Gitea host.
 - Only the owner (last-owner / admin-owner) may edit administrator group permissions; admins must not unlock that matrix for themselves.
 - Owner-only user registration belongs in the avatar menu and MSS-Login dialog (with role chosen at create time); do not force owners through a separate `/register` navigation for that flow.
 - Keep MSS-Login purple/red branding (`#9660fa` and claw logo) for Login and Security Policy UI; do not switch accents to blue or Civicomfy terracotta; keep login Remember Me compact/inline (not a full-width stretched control).
