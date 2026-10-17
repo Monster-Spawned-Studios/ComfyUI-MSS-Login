@@ -9,7 +9,6 @@ import folder_paths
 from comfy import model_management
 from PIL import Image, PngImagePlugin
 from PIL.ExifTags import TAGS
-from transformers import pipeline
 
 from ...globals import current_username_var, users_db
 
@@ -637,7 +636,20 @@ def _get_nsfw_pipeline():
 	"""
 	Load the HuggingFace image-classification pipeline.
 	Handles auto-downloading and device selection (CUDA/MPS/CPU).
+
+	transformers is imported lazily so a broken transformers/kernels stack
+	cannot prevent MSS-Login from loading as a ComfyUI custom node.
 	"""
+	# Lazy import: keep transformers off the custom-node import path.
+	try:
+		from transformers import pipeline
+	except Exception as e:
+		print(
+			f"[mss-login::NSFWGuard] ❌ CRITICAL: transformers unavailable "
+			f"(NSFW detection disabled). Error: {e}"
+		)
+		return None
+
 	base = folder_paths.base_path
 	local_model_dir = os.path.join(base, "models", "nsfw_detector", MODEL_FOLDER_NAME)
 
