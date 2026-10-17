@@ -23,10 +23,7 @@ def _execution_context() -> tuple[str | None, str | None]:
 
 		ctx = get_executing_context()
 		if ctx is not None:
-			return (
-				getattr(ctx, "prompt_id", None) or None,
-				getattr(ctx, "node_id", None) or None,
-			)
+			return (getattr(ctx, "prompt_id", None) or None, getattr(ctx, "node_id", None) or None)
 	except Exception:
 		pass
 	try:
@@ -41,11 +38,7 @@ def _execution_context() -> tuple[str | None, str | None]:
 
 
 def _emit_progress(
-	value: int,
-	maximum: int,
-	label: str = "",
-	*,
-	pb_holder: list | None = None,
+	value: int, maximum: int, label: str = "", *, pb_holder: list | None = None
 ) -> None:
 	"""Best-effort Comfy progress for Portal / frontend (reuses one ProgressBar)."""
 	value = int(value)

@@ -44,10 +44,7 @@ from .model_visibility_policy import (
 	user_can_view_all_models,
 )
 from .path_safety import is_safe_folder_segment
-from .prompt_model_validator import (
-	_looks_like_model_file,
-	folder_for_node_input,
-)
+from .prompt_model_validator import _looks_like_model_file, folder_for_node_input
 
 # Folder names we treat as "asset" lists (models, loras, vae, embeddings, etc.)
 # Includes ComfyUI Model Library folders: ultralytics, mmdets, sams, classifiers, configs.
@@ -443,9 +440,7 @@ def create_model_filter_middleware(
 										mapped = [
 											x
 											for x in mapped
-											if grant_matches_item(
-												normalize_model_name(x), allowed
-											)
+											if grant_matches_item(normalize_model_name(x), allowed)
 										]
 									elif not view_all:
 										mapped = []

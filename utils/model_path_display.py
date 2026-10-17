@@ -284,9 +284,7 @@ def rewrite_prompt_model_names(
 
 
 def flatten_prompt_model_names_for_display(
-	prompt: dict[str, Any],
-	viewer_user_id: str | None,
-	grants: list[dict] | None = None,
+	prompt: dict[str, Any], viewer_user_id: str | None, grants: list[dict] | None = None
 ) -> dict[str, Any]:
 	"""
 	Return a deep-copied prompt with model filenames flattened to plain names.
@@ -297,9 +295,7 @@ def flatten_prompt_model_names_for_display(
 		return prompt
 
 	cloned = copy.deepcopy(prompt)
-	rewrite_prompt_model_names(
-		cloned, viewer_user_id, grants, normalize_only=True
-	)
+	rewrite_prompt_model_names(cloned, viewer_user_id, grants, normalize_only=True)
 	# Also strip any remaining UUID first segments via to_display_name
 	for _node_id, node in cloned.items():
 		if not isinstance(node, dict):
@@ -313,9 +309,7 @@ def flatten_prompt_model_names_for_display(
 				continue
 			if not _looks_like_model_file(value) and "/" not in value.replace("\\", "/"):
 				continue
-			folder = folder_for_node_input(
-				class_type if isinstance(class_type, str) else None, key
-			)
+			folder = folder_for_node_input(class_type if isinstance(class_type, str) else None, key)
 			_ = folder
 			inputs[key] = to_display_name(
 				value.strip(), viewer_user_id, view_all=False, grants=grants
@@ -323,9 +317,7 @@ def flatten_prompt_model_names_for_display(
 	return cloned
 
 
-def prompt_has_foreign_uuid_model(
-	prompt: dict[str, Any], viewer_user_id: str | None
-) -> bool:
+def prompt_has_foreign_uuid_model(prompt: dict[str, Any], viewer_user_id: str | None) -> bool:
 	"""True if any model-looking input uses another user's UUID prefix."""
 	if not isinstance(prompt, dict):
 		return False
@@ -341,9 +333,7 @@ def prompt_has_foreign_uuid_model(
 			for _folder, input_key in NODE_MODEL_INPUTS.get(class_type) or []:
 				value = inputs.get(input_key)
 				checked.add(input_key)
-				if isinstance(value, str) and foreign_uuid_prefix(
-					value.strip(), viewer_user_id
-				):
+				if isinstance(value, str) and foreign_uuid_prefix(value.strip(), viewer_user_id):
 					return True
 		for key, value in inputs.items():
 			if key in checked:

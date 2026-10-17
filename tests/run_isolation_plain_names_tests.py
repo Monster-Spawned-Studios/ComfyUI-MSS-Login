@@ -397,10 +397,7 @@ def run_tests() -> int:
 
 		print("TestCpeOutboundFlatten")
 		stored = {
-			"1": {
-				"class_type": "UNETLoader",
-				"inputs": {"unet_name": f"{USER_A}/x.safetensors"},
-			},
+			"1": {"class_type": "UNETLoader", "inputs": {"unet_name": f"{USER_A}/x.safetensors"}},
 			"2": {
 				"class_type": "LoraLoaderModelOnly",
 				"inputs": {"lora_name": f"{USER_A}/lora.safetensors"},

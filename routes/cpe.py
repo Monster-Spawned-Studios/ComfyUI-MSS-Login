@@ -335,8 +335,7 @@ async def handle_cpe_convert(request: web.Request) -> web.Response:
 		if denied is not None:
 			return denied
 		return web.json_response(
-			success_convert_payload(_flatten_api_workflow(request, workflow_data)),
-			status=200,
+			success_convert_payload(_flatten_api_workflow(request, workflow_data)), status=200
 		)
 
 	auth_token = _auth_token_for_convert(request)
