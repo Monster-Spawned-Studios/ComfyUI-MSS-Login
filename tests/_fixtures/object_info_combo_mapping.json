@@ -1,0 +1,15 @@
+{
+  "_comment": "Trimmed class/input map for object_info combo tests (not a full object_info dump).",
+  "classes": {
+    "UltralyticsDetectorProvider": {"model_name": ["ultralytics_bbox+bbox/", "ultralytics_segm+segm/"]},
+    "SAMLoader": {"model_name": ["sams"]},
+    "CLIPVisionLoader": {"clip_name": ["clip_vision"]},
+    "CLIPVisionLoaderMultiGPU": {"clip_name": ["clip_vision"]},
+    "CLIPVisionLoaderDisTorch2MultiGPU": {"clip_name": ["clip_vision"]},
+    "CLIPLoaderGGUF": {"clip_name": ["text_encoders"]},
+    "UpscaleModelLoader": {"model_name": ["upscale_models"]},
+    "easy cascadeLoader": {"clip_name": ["text_encoders", "sentinel:None"]},
+    "AILab_Florence2": {"model_name": ["passthrough"]},
+    "SomeCustomNode": {"model_name": ["passthrough"]}
+  }
+}

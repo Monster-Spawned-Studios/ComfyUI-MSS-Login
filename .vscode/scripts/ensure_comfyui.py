@@ -109,12 +109,7 @@ def _ensure_comfy_cli(uv_cmd: list[str], workspace: Path) -> None:
 	_run([*uv_cmd, "sync", "--group", "comfyui"], cwd=workspace)
 
 
-def _install_comfyui(
-	uv_cmd: list[str],
-	workspace: Path,
-	comfy_path: Path,
-	flavor: str,
-) -> None:
+def _install_comfyui(uv_cmd: list[str], workspace: Path, comfy_path: Path, flavor: str) -> None:
 	flags = FLAVOR_FLAGS.get(flavor)
 	if flags is None:
 		raise SystemExit(
@@ -191,10 +186,7 @@ def _link_mss_login(comfy_path: Path, mss_src: Path) -> Path:
 		target.symlink_to(mss_src, target_is_directory=True)
 		print(f"[ensure_comfyui] Symlinked {target} -> {mss_src}", flush=True)
 	except OSError as exc:
-		print(
-			f"[ensure_comfyui] Symlink failed ({exc}); copying instead (dev only).",
-			flush=True,
-		)
+		print(f"[ensure_comfyui] Symlink failed ({exc}); copying instead (dev only).", flush=True)
 		if target.exists():
 			shutil.rmtree(target)
 		shutil.copytree(
@@ -224,7 +216,9 @@ def _write_resolved_path(workspace: Path, comfy_path: Path) -> None:
 	print(f"[ensure_comfyui] Wrote resolved path to {out}", flush=True)
 
 
-def _resolve_config(args: argparse.Namespace, workspace: Path, local: dict[str, Any]) -> tuple[Path, bool, str]:
+def _resolve_config(
+	args: argparse.Namespace, workspace: Path, local: dict[str, Any]
+) -> tuple[Path, bool, str]:
 	"""Merge CLI / env / local settings / defaults into (path, auto_install, flavor)."""
 	# Path
 	path_raw = (args.path or "").strip() or (os.environ.get("COMFYUI_PATH") or "").strip()
@@ -260,9 +254,7 @@ def _resolve_config(args: argparse.Namespace, workspace: Path, local: dict[str, 
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
 	parser.add_argument(
-		"--path",
-		default=None,
-		help="ComfyUI install directory (overrides local settings / env).",
+		"--path", default=None, help="ComfyUI install directory (overrides local settings / env)."
 	)
 	parser.add_argument(
 		"--auto-install",
@@ -304,12 +296,7 @@ def main() -> int:
 		auto = True if args.auto_install is None else _truthy(args.auto_install)
 		flavor = (args.flavor or "cpu").strip()
 		_write_local_settings(
-			vscode_dir,
-			{
-				"comfyuiPath": path_raw,
-				"autoInstall": auto,
-				"installFlavor": flavor,
-			},
+			vscode_dir, {"comfyuiPath": path_raw, "autoInstall": auto, "installFlavor": flavor}
 		)
 		print(
 			"[ensure_comfyui] Settings saved. Launch 'ComfyUI + MSS-Login (debug)' to start.\n"
@@ -351,16 +338,10 @@ def main() -> int:
 
 	if args.save_settings:
 		# Persist the path string as given when possible (keep ${workspaceFolder} if used)
-		path_for_file = (args.path or "").strip() or str(
-			local.get("comfyuiPath") or comfy_path
-		)
+		path_for_file = (args.path or "").strip() or str(local.get("comfyuiPath") or comfy_path)
 		_write_local_settings(
 			vscode_dir,
-			{
-				"comfyuiPath": path_for_file,
-				"autoInstall": auto_install,
-				"installFlavor": flavor,
-			},
+			{"comfyuiPath": path_for_file, "autoInstall": auto_install, "installFlavor": flavor},
 		)
 
 	for rel in (".venv/bin/python", ".venv/Scripts/python.exe"):

@@ -31,6 +31,7 @@ def _install_pkg(data_dir: str):
 	sys.modules["mss_login"] = root_pkg
 	sys.modules["mss_login.utils"] = utils_pkg
 	const = types.ModuleType("mss_login.constants")
+	const.DATA_DIR = data_dir
 	const.experimental_model_isolation_enabled = lambda: False
 	sys.modules["mss_login.constants"] = const
 	os.environ["MSS_LOGIN_DATA_DIR"] = data_dir
@@ -39,6 +40,7 @@ def _install_pkg(data_dir: str):
 			"mss_login.utils.data_dir",
 			"mss_login.utils.updater",
 			"mss_login.utils.model_visibility_policy",
+			"mss_login.utils.model_isolation",
 		):
 			del sys.modules[key]
 

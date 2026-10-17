@@ -39,6 +39,7 @@ These run without loading ComfyUI or `folder_paths`, so they work in CI and on m
 | `run_install_deps_plan_tests.py` | PyTorch backend detection (Metal / cu130 / cu128 / CPU). |
 | `run_user_isolation_tests.py` | Per-user output-dir segments, `/prompt` vs `/api/prompt`, queue user stamps. |
 | `run_avatar_tests.py` | Avatar upload sanitization (PNG re-encode, SVG/HTML reject, guest block). |
+| `run_object_info_combo_mapping_tests.py` | `/object_info` combo rebuild by `(node class, input)`; unmapped passthrough; Ultralytics prefixes; overlap fallback. |
 
 Examples:
 
@@ -83,3 +84,4 @@ The project has a `test_path_traversal.py` module written for pytest. Pytest col
 - **Path safety**: safe filename/folder segment, basename extraction, path resolution under a base dir, path-under check, and explicit path traversal attack vectors (e.g. `..`, encoded slashes, long paths, unicode).
 - **Sanitizer / validate**: username and password sanitization (null bytes, length, allowed chars), and `validate_username` / `validate_password` rules.
 - **Isolation plain names**: `tests/run_isolation_plain_names_tests.py` — listing/shadowing, owner shared-model regression (`unet`/`diffusion_models`), legacy vs foreign UUID prefixes, grants, symlink escape, and prompt middleware byte-identity for shared names.
+- **Object info combo mapping**: `tests/run_object_info_combo_mapping_tests.py` — `(class_type, input)` ComboSource rebuild for `/object_info`, uid-strip passthrough for unmapped nodes (Florence HF IDs), Ultralytics `bbox/`/`segm/` prefixes, overlap fallback, and `NODE_MODEL_INPUTS` / prompt rewrite checks.
