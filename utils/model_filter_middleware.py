@@ -268,9 +268,7 @@ def create_model_filter_middleware(
 		view_all = user_can_view_all_models(role, perms)
 		if experimental_model_isolation_enabled():
 			# Single list builder: shared ∪ own ∪ granted (plain names, shadowing)
-			display = list_display_names(
-				folder, user_id, grants=grants, view_all=view_all
-			)
+			display = list_display_names(folder, user_id, grants=grants, view_all=view_all)
 			return _strip_s3_items(display, folder, role, perms)
 		if view_all:
 			return _flatten_strings(full_list, user_id, role, perms, grants)
@@ -460,8 +458,10 @@ def create_model_filter_middleware(
 			resolved = resolve_model_name(
 				folder, filename, user_id, grants=grants, view_all=view_all
 			)
-			storage = resolved.storage_name if resolved is not None else to_storage_name(
-				filename, user_id, grants, folder=folder, view_all=view_all
+			storage = (
+				resolved.storage_name
+				if resolved is not None
+				else to_storage_name(filename, user_id, grants, folder=folder, view_all=view_all)
 			)
 			if not view_all:
 				allowed = {

@@ -85,10 +85,7 @@ from .utils.model_download_redirect import (
 )
 from .utils.model_filter_middleware import create_model_filter_middleware
 from .utils.model_isolation import isolation_models_base
-from .utils.model_path_display import (
-	prompt_has_foreign_uuid_model,
-	rewrite_prompt_model_names,
-)
+from .utils.model_path_display import prompt_has_foreign_uuid_model, rewrite_prompt_model_names
 from .utils.model_visibility_policy import (
 	allowed_set_from_grants,
 	get_effective_model_grants_for_user,
@@ -313,8 +310,7 @@ async def workflow_interceptor_middleware(request, handler):
 			if experimental_model_isolation_enabled():
 				if prompt_has_foreign_uuid_model(prompt_to_validate, user_id):
 					return web.json_response(
-						{"error": "Model not allowed", "code": "MODEL_NOT_ALLOWED"},
-						status=403,
+						{"error": "Model not allowed", "code": "MODEL_NOT_ALLOWED"}, status=403
 					)
 				rewrite_prompt_model_names(
 					prompt_to_validate,
