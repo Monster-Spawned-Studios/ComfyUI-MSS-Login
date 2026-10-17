@@ -11,11 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..constants import experimental_model_isolation_enabled
-from .isolation_resolver import (
-	foreign_uuid_prefix,
-	is_uuid_segment,
-	resolve_model_name,
-)
+from .isolation_resolver import foreign_uuid_prefix, is_uuid_segment, resolve_model_name
 from .model_isolation import sanitize_user_segment
 from .model_visibility_policy import normalize_model_name
 from .prompt_model_validator import NODE_MODEL_INPUTS, _looks_like_model_file, _normalize_folder
@@ -96,11 +92,7 @@ def to_storage_name(
 		# Leave unchanged; callers reject with a generic error
 		return name
 	resolved = resolve_model_name(
-		folder or "",
-		name,
-		viewer_user_id,
-		grants=grants,
-		view_all=view_all,
+		folder or "", name, viewer_user_id, grants=grants, view_all=view_all
 	)
 	if resolved is not None:
 		return resolved.storage_name
@@ -258,16 +250,12 @@ def rewrite_prompt_model_names(
 				# Leave plain / non-own-prefixed names unchanged
 				continue
 			# Legacy path: map to verified storage only
-			inputs[input_key] = to_storage_name(
-				raw, viewer_user_id, grants, folder=folder_norm
-			)
+			inputs[input_key] = to_storage_name(raw, viewer_user_id, grants, folder=folder_norm)
 
 	return prompt
 
 
-def prompt_has_foreign_uuid_model(
-	prompt: dict[str, Any], viewer_user_id: str | None
-) -> bool:
+def prompt_has_foreign_uuid_model(prompt: dict[str, Any], viewer_user_id: str | None) -> bool:
 	"""True if any known loader input uses another user's UUID prefix."""
 	if not isinstance(prompt, dict):
 		return False
