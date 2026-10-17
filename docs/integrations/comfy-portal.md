@@ -57,6 +57,8 @@ With a valid API token and `can_run` + `can_access_api`:
 2. Worker restore uses that user so `SaveImage` writes under the submitter's output folder when `SEPERATE_USERS=true`.
 3. `GET /history/{id}` and `GET /view?filename=…` resolve that user's outputs (NSFW policy may still 403).
 
+When experimental model isolation is on, Portal model lists and CPE convert/get-and-convert API prompts use **plain filenames only** (no `{user_uuid}/…` prefixes). That keeps ComfyUI “value not in list” errors from firing on isolation paths; load-time hooks resolve plain names back to on-disk UUID folders. See [model isolation](../guide/model-isolation.md).
+
 Tokens are accepted from `Authorization: Bearer`, cookie `jwt_token`, or query `token` / `access_token`.
 
 ### Embedded UI→API convert (recommended)

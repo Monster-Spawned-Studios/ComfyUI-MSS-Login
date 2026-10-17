@@ -15,21 +15,36 @@ NODE_MODEL_INPUTS: dict[str, list[tuple[str, str]]] = {
 	# Checkpoints
 	"CheckpointLoaderSimple": [("checkpoints", "ckpt_name")],
 	"CheckpointLoader": [("checkpoints", "ckpt_name")],
+	"unCLIPCheckpointLoader": [("checkpoints", "ckpt_name")],
+	"ImageOnlyCheckpointLoader": [("checkpoints", "ckpt_name")],
 	"unet_load": [("diffusion_models", "unet_name")],
 	"UNETLoader": [("diffusion_models", "unet_name")],
 	# LoRA
 	"LoraLoader": [("loras", "lora_name")],
-	"LoraLoaderModel": [("loras", "lora_name")],
+	"LoraLoaderModelOnly": [("loras", "lora_name")],
+	"LoraLoaderModel": [("loras", "lora_name")],  # legacy alias
 	# VAE
 	"VAELoader": [("vae", "vae_name")],
 	"VAEDecode": [],  # no model file
 	"VAEEncode": [],
-	# CLIP / text encoders (DualCLIPLoader has two)
-	"CLIPLoader": [("clip", "clip_name")],
+	# CLIP / text encoders (use text_encoders; clip aliases dual-read in resolver)
+	"CLIPLoader": [("text_encoders", "clip_name")],
 	"DualCLIPLoader": [("text_encoders", "clip_name1"), ("text_encoders", "clip_name2")],
+	"TripleCLIPLoader": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+	],
+	"QuadrupleCLIPLoader": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+		("text_encoders", "clip_name4"),
+	],
 	"CLIPVisionLoader": [("clip_vision", "clip_name")],
 	# ControlNet, upscale, etc.
 	"ControlNetLoader": [("controlnet", "control_net_name")],
+	"DiffControlNetLoader": [("controlnet", "control_net_name")],
 	"LoadControlNet": [("controlnet", "control_net_name")],
 	"UpscaleModelLoader": [("upscale_models", "model_name")],
 	"StyleModelLoader": [("style_models", "style_model_name")],
@@ -81,6 +96,16 @@ def _looks_like_model_file(value: str) -> bool:
 	return any(val.endswith(ext) for ext in _MODEL_FILE_EXTENSIONS)
 
 
+def folder_for_node_input(class_type: str | None, input_key: str) -> str | None:
+	"""Return the model folder for a (class_type, input_key), or None if unknown."""
+	if not class_type or not input_key:
+		return None
+	for folder, key in NODE_MODEL_INPUTS.get(class_type) or []:
+		if key == input_key:
+			return _normalize_folder(folder)
+	return None
+
+
 def extract_model_references(
 	prompt: dict[str, Any], known_models: set[tuple[str, str]] | None = None
 ) -> set[tuple[str, str]]:
@@ -90,7 +115,7 @@ def extract_model_references(
 	Returns set of (folder, item_name); folder is normalized (e.g. clip -> text_encoders).
 	When known_models is provided (set of (folder, item_name)), also scans all node inputs
 	for string values that look like model filenames and resolves them via known_models
-	(catch-all for custom/unknown node types).
+	(catch-all for custom/unknown node types) using plain/storage dual-read.
 	"""
 	out: set[tuple[str, str]] = set()
 	if not isinstance(prompt, dict):
@@ -102,6 +127,7 @@ def extract_model_references(
 		if not class_type or not isinstance(class_type, str):
 			continue
 		mappings = NODE_MODEL_INPUTS.get(class_type)
+		seen_keys: set[str] = set()
 		if mappings:
 			inputs = node.get("inputs")
 			if isinstance(inputs, dict):
@@ -111,15 +137,19 @@ def extract_model_references(
 						item_name = value.strip()
 						folder_norm = _normalize_folder(folder)
 						out.add((folder_norm, item_name))
+						seen_keys.add(input_key)
 		# Catch-all: any input value that looks like a model file
 		if known_models:
 			inputs = node.get("inputs")
 			if isinstance(inputs, dict):
-				for _key, value in inputs.items():
+				for key, value in inputs.items():
+					if key in seen_keys:
+						continue
 					if isinstance(value, str) and value.strip() and _looks_like_model_file(value):
 						item_name = value.strip()
+						norm_item = normalize_model_name(item_name)
 						for folder, name in known_models:
-							if name == item_name:
+							if grant_matches_item(norm_item, {normalize_model_name(name)}):
 								out.add((_normalize_folder(folder), item_name))
 	return out
 

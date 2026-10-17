@@ -44,7 +44,10 @@ from .model_visibility_policy import (
 	user_can_view_all_models,
 )
 from .path_safety import is_safe_folder_segment
-from .prompt_model_validator import NODE_MODEL_INPUTS, _looks_like_model_file
+from .prompt_model_validator import (
+	_looks_like_model_file,
+	folder_for_node_input,
+)
 
 # Folder names we treat as "asset" lists (models, loras, vae, embeddings, etc.)
 # Includes ComfyUI Model Library folders: ultralytics, mmdets, sams, classifiers, configs.
@@ -387,8 +390,8 @@ def create_model_filter_middleware(
 				),
 			)
 
-		# --- object_info combo filtering ---
-		if path in ("/object_info",):
+		# --- object_info combo filtering (full + /object_info/{NodeClass}) ---
+		if path == "/object_info" or path.startswith("/object_info/"):
 			role, perms, username, grants, user_id = _grants_for(request)
 			view_all = user_can_view_all_models(role, perms)
 			resp = await handler(request)
@@ -397,11 +400,7 @@ def create_model_filter_middleware(
 				# When isolation is on, rebuild loader combos from list_display_names
 				# so view_all never exposes other users' UUID prefixes.
 				if experimental_model_isolation_enabled() and isinstance(data, dict):
-					folder_by_key: dict[str, str] = {}
-					for _cls, mappings in NODE_MODEL_INPUTS.items():
-						for folder, input_key in mappings:
-							folder_by_key.setdefault(input_key, folder)
-					for _node_name, node_info in data.items():
+					for node_name, node_info in data.items():
 						if not isinstance(node_info, dict):
 							continue
 						inp = node_info.get("input")
@@ -425,7 +424,8 @@ def create_model_filter_middleware(
 								)
 								if not looks_like_models:
 									continue
-								folder = folder_by_key.get(key) or ""
+								# Per (class_type, input_key) — avoids clip_name / model_name collisions
+								folder = folder_for_node_input(node_name, key) or ""
 								if folder:
 									mapped = list_display_names(
 										folder, user_id, grants=grants, view_all=view_all
@@ -434,6 +434,23 @@ def create_model_filter_middleware(
 									mapped = map_item_list_to_display(
 										combo, user_id, view_all=view_all, grants=grants
 									)
+									if not view_all and grants:
+										# Grant-filter unknown combos (isolation path skips
+										# _filter_object_info_combos for these keys)
+										allowed = {
+											g["norm_item_name"]
+											for g in grants
+											if g.get("norm_item_name")
+										}
+										mapped = [
+											x
+											for x in mapped
+											if grant_matches_item(
+												normalize_model_name(x), allowed
+											)
+										]
+									elif not view_all:
+										mapped = []
 								section_map[key] = [mapped, *list(spec[1:])]
 					return data
 				if view_all:
