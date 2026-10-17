@@ -10,17 +10,60 @@ import asyncio
 import json
 import time
 
+from ..utils.isolation_resolver import is_uuid_segment
 from ..utils.model_download_errors import DOWNLOAD_NOT_ALLOWED, DOWNLOAD_NOT_ALLOWED_MESSAGE
 from ..utils.model_download_progress import aggregate_progress
 from ..utils.model_visibility_policy import user_can_download_models
 
 
-def _emit_progress(value: int, maximum: int, label: str = "") -> None:
-	"""Best-effort Comfy progress for Portal / frontend."""
+def _execution_context() -> tuple[str | None, str | None]:
+	"""Return (prompt_id, node_id) so Portal can bind WS progress to the running node."""
+	try:
+		from comfy_execution.utils import get_executing_context
+
+		ctx = get_executing_context()
+		if ctx is not None:
+			return (
+				getattr(ctx, "prompt_id", None) or None,
+				getattr(ctx, "node_id", None) or None,
+			)
+	except Exception:
+		pass
+	try:
+		from server import PromptServer
+
+		ps = PromptServer.instance
+		prompt_id = getattr(ps, "last_prompt_id", None)
+		node_id = getattr(ps, "last_node_id", None)
+		return prompt_id or None, node_id or None
+	except Exception:
+		return None, None
+
+
+def _emit_progress(
+	value: int,
+	maximum: int,
+	label: str = "",
+	*,
+	pb_holder: list | None = None,
+) -> None:
+	"""Best-effort Comfy progress for Portal / frontend (reuses one ProgressBar)."""
+	value = int(value)
+	maximum = max(int(maximum), 1)
+	prompt_id, node_id = _execution_context()
 	try:
 		from comfy.utils import ProgressBar
 
-		pb = ProgressBar(maximum)
+		pb = None
+		if pb_holder is not None:
+			if pb_holder and getattr(pb_holder[0], "total", None) == maximum:
+				pb = pb_holder[0]
+			else:
+				pb_holder.clear()
+				pb = ProgressBar(maximum)
+				pb_holder.append(pb)
+		else:
+			pb = ProgressBar(maximum)
 		pb.update_absolute(value)
 		return
 	except Exception:
@@ -28,12 +71,28 @@ def _emit_progress(value: int, maximum: int, label: str = "") -> None:
 	try:
 		from server import PromptServer
 
-		payload = {"value": int(value), "max": int(maximum)}
+		payload: dict = {"value": value, "max": maximum}
 		if label:
 			payload["text"] = label
-		PromptServer.instance.send_sync("progress", payload)
+		if prompt_id:
+			payload["prompt_id"] = str(prompt_id)
+		if node_id:
+			payload["node"] = str(node_id)
+		# Third arg scopes the event to the prompt's client when available (Portal WS).
+		PromptServer.instance.send_sync("progress", payload, prompt_id)
 	except Exception:
 		pass
+
+
+def _plain_model_name(name: str) -> str:
+	"""Strip isolation UUID first segment so loaders/Portal see a plain filename."""
+	raw = (name or "").replace("\\", "/").strip()
+	if not raw:
+		return name
+	parts = raw.split("/")
+	if len(parts) >= 2 and is_uuid_segment(parts[0]):
+		return "/".join(parts[1:])
+	return raw
 
 
 def _resolve_prompt_user() -> tuple[str | None, str | None, str, dict]:
@@ -89,6 +148,7 @@ def _wait_jobs(
 	from ..routes import model_download as md
 
 	finished: dict[str, dict] = {}
+	pb_holder: list = []
 	while len(finished) < len(job_ids):
 		snapshots = []
 		for jid in job_ids:
@@ -108,7 +168,7 @@ def _wait_jobs(
 		value, maximum, label = aggregate_progress(
 			snapshots, mode=progress_mode, active_job_id=active
 		)
-		_emit_progress(value, maximum, label)
+		_emit_progress(value, maximum, label, pb_holder=pb_holder)
 		if len(finished) >= len(job_ids):
 			break
 		time.sleep(poll_seconds)
@@ -209,8 +269,9 @@ class MSSModelDownload:
 			msg = job.get("error") or status
 			raise RuntimeError(f"{code}: {msg}")
 		name = job.get("filename") or job.get("saved_relpath") or job_id
+		name = _plain_model_name(str(name))
 		_emit_progress(100, 100, f"Completed {name}")
-		return (str(name),)
+		return (name,)
 
 
 class MSSDownloadStatus:

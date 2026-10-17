@@ -354,7 +354,7 @@ def run_tests() -> int:
 		env.display.rewrite_prompt_model_names(prompt_o, OWNER, [], normalize_only=True)
 		ok(json.dumps(prompt_o, sort_keys=True) == before, "owner shared name unchanged")
 
-		print("TestRewriteNoCatchAll")
+		print("TestRewriteCatchAllPlainUnchanged")
 		prompt_c = {
 			"1": {
 				"class_type": "SomeCustomNode",
@@ -370,8 +370,86 @@ def run_tests() -> int:
 		ok(
 			prompt_c["1"]["inputs"]["text"] == "note.safetensors"
 			and prompt_c["1"]["inputs"]["other"] == "x.safetensors",
-			"free-text .safetensors inputs are not rewritten",
+			"plain free-text .safetensors inputs stay plain after normalize",
 		)
+
+		print("TestMultiFolderLoaders")
+		ok(
+			env.pmv.folder_for_node_input("LoraLoaderModelOnly", "lora_name") == "loras",
+			"LoraLoaderModelOnly → loras",
+		)
+		ok(
+			env.pmv.folder_for_node_input("CLIPLoader", "clip_name") == "text_encoders",
+			"CLIPLoader clip_name → text_encoders",
+		)
+		ok(
+			env.pmv.folder_for_node_input("CLIPVisionLoader", "clip_name") == "clip_vision",
+			"CLIPVisionLoader clip_name → clip_vision (no collision)",
+		)
+		ok(
+			env.pmv.folder_for_node_input("TripleCLIPLoader", "clip_name3") == "text_encoders",
+			"TripleCLIPLoader clip_name3 → text_encoders",
+		)
+		ok(
+			env.pmv.folder_for_node_input("UNETLoader", "unet_name") == "diffusion_models",
+			"UNETLoader → diffusion_models",
+		)
+
+		print("TestCpeOutboundFlatten")
+		stored = {
+			"1": {
+				"class_type": "UNETLoader",
+				"inputs": {"unet_name": f"{USER_A}/x.safetensors"},
+			},
+			"2": {
+				"class_type": "LoraLoaderModelOnly",
+				"inputs": {"lora_name": f"{USER_A}/lora.safetensors"},
+			},
+			"3": {
+				"class_type": "DualCLIPLoader",
+				"inputs": {
+					"clip_name1": f"{USER_A}/clip_a.safetensors",
+					"clip_name2": f"{USER_B}/clip_b.safetensors",
+				},
+			},
+		}
+		flat = env.display.flatten_prompt_model_names_for_display(
+			stored,
+			USER_A,
+			[
+				_grant("diffusion_models", f"{USER_A}/x.safetensors"),
+				_grant("loras", f"{USER_A}/lora.safetensors"),
+			],
+		)
+		ok(flat["1"]["inputs"]["unet_name"] == "x.safetensors", "CPE flatten UNET plain")
+		ok(flat["2"]["inputs"]["lora_name"] == "lora.safetensors", "CPE flatten LoRA plain")
+		ok(
+			flat["3"]["inputs"]["clip_name1"] == "clip_a.safetensors"
+			and flat["3"]["inputs"]["clip_name2"] == "clip_b.safetensors",
+			"CPE flatten DualCLIP strips UUID prefixes",
+		)
+		ok(
+			stored["1"]["inputs"]["unet_name"] == f"{USER_A}/x.safetensors",
+			"flatten deep-copies (source unchanged)",
+		)
+
+		print("TestPortalMultiLoaderValidate")
+		grants_multi = [
+			_grant("diffusion_models", f"{USER_A}/x.safetensors"),
+			_grant("loras", f"{USER_A}/lora.safetensors"),
+			_grant("loras", "anima-base-1-masterpiece-v51.safetensors"),
+		]
+		portal_prompt = {
+			"10": {"class_type": "UNETLoader", "inputs": {"unet_name": "x.safetensors"}},
+			"11": {
+				"class_type": "LoraLoaderModelOnly",
+				"inputs": {"lora_name": "anima-base-1-masterpiece-v51.safetensors"},
+			},
+		}
+		v_portal, err_portal = env.pmv.validate_prompt_models(
+			env.vis.allowed_set_from_grants(grants_multi), False, portal_prompt
+		)
+		ok(v_portal, f"Portal multi-loader plain names validate ({err_portal})")
 
 	print(f"\n{run - failed}/{run} passed")
 	return 1 if failed else 0

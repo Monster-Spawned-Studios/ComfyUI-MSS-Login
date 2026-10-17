@@ -17,7 +17,12 @@ import os
 
 from aiohttp import web
 
-from ..constants import CPE_CONVERT_TOKEN_MINUTES, DATA_DIR, USERS_DB_CONFIG
+from ..constants import (
+	CPE_CONVERT_TOKEN_MINUTES,
+	DATA_DIR,
+	USERS_DB_CONFIG,
+	experimental_model_isolation_enabled,
+)
 from ..globals import jwt_auth, routes
 from ..utils import user_env
 from ..utils.cpe_convert import (
@@ -43,7 +48,11 @@ from ..utils.cpe_workflows import (
 	storage_payload,
 	success_convert_payload,
 )
-from ..utils.model_path_display import prompt_has_foreign_uuid_model, rewrite_prompt_model_names
+from ..utils.model_path_display import (
+	flatten_prompt_model_names_for_display,
+	prompt_has_foreign_uuid_model,
+	rewrite_prompt_model_names,
+)
 from ..utils.model_visibility_policy import (
 	allowed_set_from_grants,
 	get_effective_model_grants_for_user,
@@ -97,6 +106,51 @@ def _auth_token_for_convert(request: web.Request) -> str | None:
 		)
 	except Exception:
 		return None
+
+
+def _viewer_for_flatten(request: web.Request) -> tuple[str | None, list[dict]]:
+	"""Return (user_id, grants) for outbound plain-name flattening."""
+	try:
+		from ..globals import access_control
+
+		role, perms, username = access_control._get_user_role_and_permissions(request)
+		users_db = access_control.users_db
+		user_id = get_user_id_for_username(users_db, username)
+		grants = get_effective_model_grants_for_user(
+			role=role,
+			perms=perms,
+			username=username,
+			users_db=users_db,
+			shared_items_store_getter=get_shared_items_store,
+			users_db_config=USERS_DB_CONFIG,
+		)
+		return user_id, grants
+	except Exception:
+		return None, []
+
+
+def _flatten_api_workflow(request: web.Request, workflow: object) -> object:
+	"""Deep-copy API prompt with UUID isolation prefixes stripped for Portal clients."""
+	if not experimental_model_isolation_enabled():
+		return workflow
+	if not isinstance(workflow, dict) or not looks_like_api_prompt(workflow):
+		return workflow
+	user_id, grants = _viewer_for_flatten(request)
+	return flatten_prompt_model_names_for_display(workflow, user_id, grants)
+
+
+def _flatten_convert_payload(request: web.Request, payload: dict) -> dict:
+	"""Mutate convert success payload so data.workflow uses plain model filenames."""
+	if not isinstance(payload, dict):
+		return payload
+	data = payload.get("data")
+	if not isinstance(data, dict):
+		return payload
+	wf = data.get("workflow")
+	flattened = _flatten_api_workflow(request, wf)
+	if flattened is not wf:
+		data["workflow"] = flattened
+	return payload
 
 
 def _model_grant_check(request: web.Request, workflow_payload: object) -> web.Response | None:
@@ -244,10 +298,12 @@ async def handle_cpe_get_and_convert(request: web.Request) -> web.Response:
 
 	filename_out = meta.get("filename") or filename
 	if looks_like_api_prompt(workflow_data):
-		payload = success_convert_payload(workflow_data, filename=filename_out)
 		denied = _model_grant_check(request, workflow_data)
 		if denied is not None:
 			return denied
+		payload = success_convert_payload(
+			_flatten_api_workflow(request, workflow_data), filename=filename_out
+		)
 		return web.json_response(payload, status=200)
 
 	auth_token = _auth_token_for_convert(request)
@@ -260,6 +316,7 @@ async def handle_cpe_get_and_convert(request: web.Request) -> web.Response:
 		denied = _model_grant_check(request, wf)
 		if denied is not None:
 			return denied
+		_flatten_convert_payload(request, payload)
 	return web.json_response(payload, status=conv_status)
 
 
@@ -277,7 +334,10 @@ async def handle_cpe_convert(request: web.Request) -> web.Response:
 		denied = _model_grant_check(request, workflow_data)
 		if denied is not None:
 			return denied
-		return web.json_response(success_convert_payload(workflow_data), status=200)
+		return web.json_response(
+			success_convert_payload(_flatten_api_workflow(request, workflow_data)),
+			status=200,
+		)
 
 	auth_token = _auth_token_for_convert(request)
 	conv_status, payload = await _convert_ui_or_error(workflow_data, auth_token=auth_token)
@@ -288,6 +348,7 @@ async def handle_cpe_convert(request: web.Request) -> web.Response:
 		denied = _model_grant_check(request, wf)
 		if denied is not None:
 			return denied
+		_flatten_convert_payload(request, payload)
 	return web.json_response(payload, status=conv_status)
 
 

@@ -8,13 +8,19 @@ plain (user-facing) names; folder_paths hooks resolve them at load time.
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from ..constants import experimental_model_isolation_enabled
 from .isolation_resolver import foreign_uuid_prefix, is_uuid_segment, resolve_model_name
 from .model_isolation import sanitize_user_segment
 from .model_visibility_policy import normalize_model_name
-from .prompt_model_validator import NODE_MODEL_INPUTS, _looks_like_model_file, _normalize_folder
+from .prompt_model_validator import (
+	NODE_MODEL_INPUTS,
+	_looks_like_model_file,
+	_normalize_folder,
+	folder_for_node_input,
+)
 
 
 def _norm_path(item_name: str) -> str:
@@ -204,6 +210,18 @@ def map_object_info_combos_to_display(
 	return payload
 
 
+def _normalize_own_prefix(raw: str, viewer_seg: str) -> str:
+	own_prefix = f"{viewer_seg}/"
+	if raw.startswith(own_prefix) or raw.lower().startswith(own_prefix.lower()):
+		return raw[len(viewer_seg) + 1 :]
+	# Any UUID first segment → strip to plain for display/outbound (own handled above;
+	# foreign cases are rejected separately before this runs on /prompt).
+	parts = raw.split("/", 1)
+	if len(parts) == 2 and is_uuid_segment(parts[0]):
+		return parts[1]
+	return raw
+
+
 def rewrite_prompt_model_names(
 	prompt: dict[str, Any],
 	viewer_user_id: str | None,
@@ -215,9 +233,9 @@ def rewrite_prompt_model_names(
 	"""
 	Normalize model filename inputs in an API-format prompt.
 
-	Default (normalize_only=True): strip the viewer's own UUID prefix to a plain
-	name so ComfyUI validate_inputs agrees with patched get_filename_list.
-	Does not fabricate storage prefixes. Only touches known NODE_MODEL_INPUTS keys.
+	Default (normalize_only=True): strip UUID prefixes to plain names so ComfyUI
+	validate_inputs agrees with patched get_filename_list. Does not fabricate
+	storage prefixes. Touches NODE_MODEL_INPUTS keys and any model-looking strings.
 
 	Mutates and returns the same prompt dict. No-op when isolation is off.
 	"""
@@ -226,7 +244,6 @@ def rewrite_prompt_model_names(
 		return prompt
 
 	viewer_seg = sanitize_user_segment(viewer_user_id)
-	own_prefix = f"{viewer_seg}/"
 
 	for _node_id, node in prompt.items():
 		if not isinstance(node, dict):
@@ -235,28 +252,81 @@ def rewrite_prompt_model_names(
 		inputs = node.get("inputs")
 		if not isinstance(inputs, dict):
 			continue
-		if not isinstance(class_type, str):
-			continue
-		mappings = NODE_MODEL_INPUTS.get(class_type) or []
-		for folder, input_key in mappings:
-			value = inputs.get(input_key)
-			if not isinstance(value, str) or not value.strip():
-				continue
-			raw = value.strip().replace("\\", "/")
-			folder_norm = _normalize_folder(folder)
-			if normalize_only:
-				if raw.startswith(own_prefix) or raw.lower().startswith(own_prefix.lower()):
-					inputs[input_key] = raw[len(viewer_seg) + 1 :]
-				# Leave plain / non-own-prefixed names unchanged
-				continue
-			# Legacy path: map to verified storage only
-			inputs[input_key] = to_storage_name(raw, viewer_user_id, grants, folder=folder_norm)
+		rewritten: set[str] = set()
+		if isinstance(class_type, str):
+			mappings = NODE_MODEL_INPUTS.get(class_type) or []
+			for folder, input_key in mappings:
+				value = inputs.get(input_key)
+				if not isinstance(value, str) or not value.strip():
+					continue
+				raw = value.strip().replace("\\", "/")
+				folder_norm = _normalize_folder(folder)
+				if normalize_only:
+					inputs[input_key] = _normalize_own_prefix(raw, viewer_seg)
+				else:
+					inputs[input_key] = to_storage_name(
+						raw, viewer_user_id, grants, folder=folder_norm
+					)
+				rewritten.add(input_key)
+		# Catch-all for unmapped loaders / extra model-like strings
+		if normalize_only:
+			for key, value in list(inputs.items()):
+				if key in rewritten:
+					continue
+				if not isinstance(value, str) or not value.strip():
+					continue
+				if not _looks_like_model_file(value):
+					continue
+				raw = value.strip().replace("\\", "/")
+				inputs[key] = _normalize_own_prefix(raw, viewer_seg)
 
 	return prompt
 
 
-def prompt_has_foreign_uuid_model(prompt: dict[str, Any], viewer_user_id: str | None) -> bool:
-	"""True if any known loader input uses another user's UUID prefix."""
+def flatten_prompt_model_names_for_display(
+	prompt: dict[str, Any],
+	viewer_user_id: str | None,
+	grants: list[dict] | None = None,
+) -> dict[str, Any]:
+	"""
+	Return a deep-copied prompt with model filenames flattened to plain names.
+
+	Used for CPE convert/get responses so Portal never sees UUID isolation prefixes.
+	"""
+	if not isinstance(prompt, dict):
+		return prompt
+
+	cloned = copy.deepcopy(prompt)
+	rewrite_prompt_model_names(
+		cloned, viewer_user_id, grants, normalize_only=True
+	)
+	# Also strip any remaining UUID first segments via to_display_name
+	for _node_id, node in cloned.items():
+		if not isinstance(node, dict):
+			continue
+		inputs = node.get("inputs")
+		if not isinstance(inputs, dict):
+			continue
+		class_type = node.get("class_type")
+		for key, value in list(inputs.items()):
+			if not isinstance(value, str) or not value.strip():
+				continue
+			if not _looks_like_model_file(value) and "/" not in value.replace("\\", "/"):
+				continue
+			folder = folder_for_node_input(
+				class_type if isinstance(class_type, str) else None, key
+			)
+			_ = folder
+			inputs[key] = to_display_name(
+				value.strip(), viewer_user_id, view_all=False, grants=grants
+			)
+	return cloned
+
+
+def prompt_has_foreign_uuid_model(
+	prompt: dict[str, Any], viewer_user_id: str | None
+) -> bool:
+	"""True if any model-looking input uses another user's UUID prefix."""
 	if not isinstance(prompt, dict):
 		return False
 	for _node_id, node in prompt.items():
@@ -264,10 +334,24 @@ def prompt_has_foreign_uuid_model(prompt: dict[str, Any], viewer_user_id: str | 
 			continue
 		class_type = node.get("class_type")
 		inputs = node.get("inputs")
-		if not isinstance(class_type, str) or not isinstance(inputs, dict):
+		if not isinstance(inputs, dict):
 			continue
-		for _folder, input_key in NODE_MODEL_INPUTS.get(class_type) or []:
-			value = inputs.get(input_key)
-			if isinstance(value, str) and foreign_uuid_prefix(value.strip(), viewer_user_id):
+		checked: set[str] = set()
+		if isinstance(class_type, str):
+			for _folder, input_key in NODE_MODEL_INPUTS.get(class_type) or []:
+				value = inputs.get(input_key)
+				checked.add(input_key)
+				if isinstance(value, str) and foreign_uuid_prefix(
+					value.strip(), viewer_user_id
+				):
+					return True
+		for key, value in inputs.items():
+			if key in checked:
+				continue
+			if not isinstance(value, str) or not value.strip():
+				continue
+			if not _looks_like_model_file(value):
+				continue
+			if foreign_uuid_prefix(value.strip(), viewer_user_id):
 				return True
 	return False
