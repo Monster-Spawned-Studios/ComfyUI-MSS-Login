@@ -83,6 +83,12 @@ def main() -> int:
 		)
 		steps.append(("Model isolation", os.path.join(TESTS_DIR, "run_model_isolation_tests.py")))
 		steps.append(
+			(
+				"Isolation plain names",
+				os.path.join(TESTS_DIR, "run_isolation_plain_names_tests.py"),
+			)
+		)
+		steps.append(
 			("Experimental failsafe", os.path.join(TESTS_DIR, "run_experimental_failsafe_tests.py"))
 		)
 		steps.append(

@@ -82,3 +82,4 @@ The project has a `test_path_traversal.py` module written for pytest. Pytest col
 
 - **Path safety**: safe filename/folder segment, basename extraction, path resolution under a base dir, path-under check, and explicit path traversal attack vectors (e.g. `..`, encoded slashes, long paths, unicode).
 - **Sanitizer / validate**: username and password sanitization (null bytes, length, allowed chars), and `validate_username` / `validate_password` rules.
+- **Isolation plain names**: `tests/run_isolation_plain_names_tests.py` — listing/shadowing, owner shared-model regression (`unet`/`diffusion_models`), legacy vs foreign UUID prefixes, grants, symlink escape, and prompt middleware byte-identity for shared names.

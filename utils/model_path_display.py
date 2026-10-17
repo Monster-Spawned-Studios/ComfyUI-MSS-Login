@@ -2,8 +2,8 @@
 Display flattening for experimental model isolation paths.
 
 On disk and in grants, isolated models stay as "{user_uuid}/file.safetensors".
-List APIs and loader combos expose a flat display name; inbound prompts are
-rewritten back to the storage path before ComfyUI resolves files.
+List APIs and loader combos expose a flat display name. Prompt values stay as
+plain (user-facing) names; folder_paths hooks resolve them at load time.
 """
 
 from __future__ import annotations
@@ -11,6 +11,11 @@ from __future__ import annotations
 from typing import Any
 
 from ..constants import experimental_model_isolation_enabled
+from .isolation_resolver import (
+	foreign_uuid_prefix,
+	is_uuid_segment,
+	resolve_model_name,
+)
 from .model_isolation import sanitize_user_segment
 from .model_visibility_policy import normalize_model_name
 from .prompt_model_validator import NODE_MODEL_INPUTS, _looks_like_model_file, _normalize_folder
@@ -38,10 +43,11 @@ def to_display_name(
 	Return the UI-facing model name.
 
 	- Isolation off: unchanged.
-	- view_all: strip only the viewer's own UUID prefix.
-	- otherwise: strip the leading user segment when the item matches a grant
-	  (covers own and shared-from-other isolation paths).
+	- Leading UUID segment (own or other): strip to plain relative name so loader
+	  combos never expose another user's UUID prefix.
+	- Grant match: strip first segment when storage-shaped.
 	"""
+	_ = view_all
 	if not experimental_model_isolation_enabled():
 		return item_name
 	name = _norm_path(item_name)
@@ -50,10 +56,11 @@ def to_display_name(
 	viewer_seg = sanitize_user_segment(viewer_user_id)
 	prefix = f"{viewer_seg}/"
 	if name.startswith(prefix) or name.lower().startswith(prefix.lower()):
-		# Preserve remainder casing from original
 		return name[len(viewer_seg) + 1 :]
-	if view_all:
-		return name
+	parts = name.split("/")
+	if len(parts) >= 2 and is_uuid_segment(parts[0]):
+		# Never show other users' UUID prefixes in loader-facing lists
+		return "/".join(parts[1:])
 	for g in grants or []:
 		storage = _norm_path(g.get("item_name") or "")
 		if not storage:
@@ -72,60 +79,32 @@ def to_storage_name(
 	grants: list[dict] | None = None,
 	*,
 	folder: str | None = None,
+	view_all: bool = False,
 ) -> str:
 	"""
 	Map a flat (or already-prefixed) display name back to the storage path.
 
-	Dual-read order:
-	1. Exact grant match
-	2. "{viewer_seg}/{display}" grant match
-	3. Grant whose suffix after the first segment equals display
-	4. Isolation default: prepend viewer segment when display has no slash
+	Uses isolation_resolver: prefixes only when the own isolation file exists or
+	a grant matches. Never fabricates a UUID prefix for shared library names.
 	"""
 	if not experimental_model_isolation_enabled():
 		return display_name
 	name = _norm_path(display_name)
 	if not name:
 		return display_name
-	viewer_seg = sanitize_user_segment(viewer_user_id)
-	folder_norm = (folder or "").strip()
-	candidates = []
-	for g in grants or []:
-		g_folder = (g.get("folder") or "").strip()
-		if folder_norm and g_folder and g_folder != folder_norm:
-			# Allow legacy folder aliases
-			if not (
-				(folder_norm == "unet" and g_folder == "diffusion_models")
-				or (folder_norm == "diffusion_models" and g_folder == "unet")
-				or (folder_norm == "clip" and g_folder == "text_encoders")
-				or (folder_norm == "text_encoders" and g_folder == "clip")
-			):
-				continue
-		item = g.get("item_name")
-		if isinstance(item, str) and item.strip():
-			candidates.append(item.strip().replace("\\", "/"))
-
-	norm_name = normalize_model_name(name)
-	for storage in candidates:
-		if normalize_model_name(storage) == norm_name:
-			return storage
-
-	prefixed = f"{viewer_seg}/{name}"
-	norm_prefixed = normalize_model_name(prefixed)
-	for storage in candidates:
-		if normalize_model_name(storage) == norm_prefixed:
-			return storage
-
-	for storage in candidates:
-		if "/" not in storage:
-			continue
-		suffix = storage.split("/", 1)[1]
-		if normalize_model_name(suffix) == norm_name:
-			return storage
-
-	if "/" in name:
+	if foreign_uuid_prefix(name, viewer_user_id):
+		# Leave unchanged; callers reject with a generic error
 		return name
-	return prefixed
+	resolved = resolve_model_name(
+		folder or "",
+		name,
+		viewer_user_id,
+		grants=grants,
+		view_all=view_all,
+	)
+	if resolved is not None:
+		return resolved.storage_name
+	return name
 
 
 def map_item_list_to_display(
@@ -144,6 +123,9 @@ def map_item_list_to_display(
 		display = to_display_name(item, viewer_user_id, view_all=view_all, grants=grants)
 		key = normalize_model_name(display)
 		if key in seen:
+			continue
+		# Drop entries that would still expose a foreign UUID prefix
+		if "/" in display and is_uuid_segment(display.split("/", 1)[0]):
 			continue
 		seen.add(key)
 		out.append(display)
@@ -170,6 +152,8 @@ def map_experiment_items_to_display(
 			key = normalize_model_name(display)
 			if key in seen:
 				continue
+			if "/" in display and is_uuid_segment(display.split("/", 1)[0]):
+				continue
 			seen.add(key)
 			cloned = dict(it)
 			cloned["name"] = display
@@ -178,6 +162,8 @@ def map_experiment_items_to_display(
 			display = to_display_name(it, viewer_user_id, view_all=view_all, grants=grants)
 			key = normalize_model_name(display)
 			if key in seen:
+				continue
+			if "/" in display and is_uuid_segment(display.split("/", 1)[0]):
 				continue
 			seen.add(key)
 			out.append(display)
@@ -232,14 +218,23 @@ def rewrite_prompt_model_names(
 	grants: list[dict] | None = None,
 	*,
 	known_models: set[tuple[str, str]] | None = None,
+	normalize_only: bool = True,
 ) -> dict[str, Any]:
 	"""
-	Rewrite model filename inputs in an API-format prompt to storage paths.
+	Normalize model filename inputs in an API-format prompt.
+
+	Default (normalize_only=True): strip the viewer's own UUID prefix to a plain
+	name so ComfyUI validate_inputs agrees with patched get_filename_list.
+	Does not fabricate storage prefixes. Only touches known NODE_MODEL_INPUTS keys.
 
 	Mutates and returns the same prompt dict. No-op when isolation is off.
 	"""
+	_ = known_models
 	if not experimental_model_isolation_enabled() or not isinstance(prompt, dict):
 		return prompt
+
+	viewer_seg = sanitize_user_segment(viewer_user_id)
+	own_prefix = f"{viewer_seg}/"
 
 	for _node_id, node in prompt.items():
 		if not isinstance(node, dict):
@@ -248,40 +243,43 @@ def rewrite_prompt_model_names(
 		inputs = node.get("inputs")
 		if not isinstance(inputs, dict):
 			continue
-		rewritten_keys: set[str] = set()
-		if isinstance(class_type, str):
-			mappings = NODE_MODEL_INPUTS.get(class_type) or []
-			for folder, input_key in mappings:
-				value = inputs.get(input_key)
-				if not isinstance(value, str) or not value.strip():
-					continue
-				folder_norm = _normalize_folder(folder)
-				inputs[input_key] = to_storage_name(
-					value.strip(), viewer_user_id, grants, folder=folder_norm
-				)
-				rewritten_keys.add(input_key)
-
-		# Catch-all for unknown nodes / extra model-like strings
-		for key, value in list(inputs.items()):
-			if key in rewritten_keys:
-				continue
+		if not isinstance(class_type, str):
+			continue
+		mappings = NODE_MODEL_INPUTS.get(class_type) or []
+		for folder, input_key in mappings:
+			value = inputs.get(input_key)
 			if not isinstance(value, str) or not value.strip():
 				continue
-			if not _looks_like_model_file(value):
+			raw = value.strip().replace("\\", "/")
+			folder_norm = _normalize_folder(folder)
+			if normalize_only:
+				if raw.startswith(own_prefix) or raw.lower().startswith(own_prefix.lower()):
+					inputs[input_key] = raw[len(viewer_seg) + 1 :]
+				# Leave plain / non-own-prefixed names unchanged
 				continue
-			raw = value.strip()
-			folder_hint: str | None = None
-			if known_models:
-				# Prefer folder from known storage or display match
-				for folder, name in known_models:
-					if normalize_model_name(name) == normalize_model_name(raw):
-						folder_hint = folder
-						break
-					if normalize_model_name(_strip_first_segment(name)) == normalize_model_name(
-						raw
-					):
-						folder_hint = folder
-						break
-			inputs[key] = to_storage_name(raw, viewer_user_id, grants, folder=folder_hint)
+			# Legacy path: map to verified storage only
+			inputs[input_key] = to_storage_name(
+				raw, viewer_user_id, grants, folder=folder_norm
+			)
 
 	return prompt
+
+
+def prompt_has_foreign_uuid_model(
+	prompt: dict[str, Any], viewer_user_id: str | None
+) -> bool:
+	"""True if any known loader input uses another user's UUID prefix."""
+	if not isinstance(prompt, dict):
+		return False
+	for _node_id, node in prompt.items():
+		if not isinstance(node, dict):
+			continue
+		class_type = node.get("class_type")
+		inputs = node.get("inputs")
+		if not isinstance(class_type, str) or not isinstance(inputs, dict):
+			continue
+		for _folder, input_key in NODE_MODEL_INPUTS.get(class_type) or []:
+			value = inputs.get(input_key)
+			if isinstance(value, str) and foreign_uuid_prefix(value.strip(), viewer_user_id):
+				return True
+	return False

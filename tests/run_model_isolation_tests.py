@@ -305,9 +305,11 @@ def run_tests():
 		"view_all strips own UUID prefix",
 	)
 	ok(
-		display.to_display_name("other-user/other.safetensors", uid, view_all=True)
-		== "other-user/other.safetensors",
-		"view_all keeps other users' UUID prefixes",
+		display.to_display_name(
+			"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb/other.safetensors", uid, view_all=True
+		)
+		== "other.safetensors",
+		"view_all strips other users' UUID prefixes in loader-facing display",
 	)
 	grants_disp = [
 		policy_on._normalized_record({"folder": "checkpoints", "item_name": storage}),
@@ -344,18 +346,18 @@ def run_tests():
 	prompt = {
 		"1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "dream.safetensors"}}
 	}
-	display.rewrite_prompt_model_names(prompt, uid, grants_disp)
+	display.rewrite_prompt_model_names(prompt, uid, grants_disp, normalize_only=True)
 	ok(
-		prompt["1"]["inputs"]["ckpt_name"] == storage,
-		"prompt rewrite maps flat loader name to storage",
+		prompt["1"]["inputs"]["ckpt_name"] == "dream.safetensors",
+		"prompt normalize_only keeps flat loader name plain",
 	)
 	legacy_prompt = {
 		"1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": storage}}
 	}
-	display.rewrite_prompt_model_names(legacy_prompt, uid, grants_disp)
+	display.rewrite_prompt_model_names(legacy_prompt, uid, grants_disp, normalize_only=True)
 	ok(
-		legacy_prompt["1"]["inputs"]["ckpt_name"] == storage,
-		"prompt rewrite leaves legacy prefixed names unchanged",
+		legacy_prompt["1"]["inputs"]["ckpt_name"] == "dream.safetensors",
+		"prompt normalize_only strips own legacy UUID prefix to plain",
 	)
 
 	_install_fake_constants(enabled=False)
