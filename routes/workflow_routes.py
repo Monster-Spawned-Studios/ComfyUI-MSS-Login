@@ -89,28 +89,13 @@ if _data_dir_env:
 def get_current_user(request):
 	"""
 	Extract username from the request (API token or JWT).
-	Tries API token store first (for Bearer tokens from Comfy Portal, Krita, etc.),
-	then JWT decode. Falls back to 'guest' on any error / no token.
-	"""
-	token = jwt_auth.get_token_from_request(request)
-	if not token:
-		return "guest"
-	try:
-		from ..constants import API_TOKEN_STORE_CONFIG
-		from ..utils.api_token_store import get_api_token_store
 
-		api_store = get_api_token_store(API_TOKEN_STORE_CONFIG)
-		api_user = api_store.get_user_for_token(token)
-		if api_user is not None:
-			_user_id, username = api_user
-			return username or "guest"
-	except Exception:
-		pass
-	try:
-		payload = jwt_auth.decode_access_token(token)
-		return payload.get("username", "guest")
-	except Exception:
-		return "guest"
+	Uses shared identity (revoke / id-match). Does not re-check MFA — Comfy Portal
+	Bearer and long-lived API tokens remain valid after MFA enrollment.
+	Falls back to 'guest' on any error / no token.
+	"""
+	_uid, username = jwt_auth.resolve_request_identity(request, touch_idle=False)
+	return username or "guest"
 
 
 def user_is_admin(username: str) -> bool:

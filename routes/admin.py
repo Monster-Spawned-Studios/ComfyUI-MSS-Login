@@ -71,49 +71,14 @@ from ..utils.validate import validate_password, validate_username
 
 
 def is_admin(request):
-	"""Check if the user is an admin.
-
-	Args:
-	    request (web.Request): The request object.
-
-	Returns:
-	    bool: True if the user is an admin, False otherwise.
-	"""
-	username = None
-	try:
-		username = request.get("user") if hasattr(request, "get") else None
-	except Exception:
-		username = None
-	if username:
-		try:
-			_, u = users_db.get_user(username)
-			if u:
-				groups = [g.lower() for g in (u.get("groups") or [])]
-				return u.get("admin", False) or "admin" in groups or "owner" in groups
-		except Exception:
-			pass
-	token = jwt_auth.get_token_from_request(request)
-	if not token:
+	"""Check if the user is an admin (full identity: API token / JWT revoke / id-match)."""
+	_uid, username = jwt_auth.resolve_request_identity(request, touch_idle=False)
+	if not username:
 		return False
-	# API token store first
 	try:
-		from ..utils.api_token_store import get_api_token_store
-
-		api_cfg = getattr(jwt_auth, "api_token_store_config", None) or {}
-		api_store = get_api_token_store(api_cfg)
-		api_user = api_store.get_user_for_token(token)
-		if api_user is not None:
-			_uid, uname = api_user
-			_, u = users_db.get_user(uname)
-			if not u:
-				return False
-			groups = [g.lower() for g in (u.get("groups") or [])]
-			return u.get("admin", False) or "admin" in groups or "owner" in groups
-	except Exception:
-		pass
-	try:
-		p = jwt_auth.decode_access_token(token)
-		_, u = users_db.get_user(p["username"])
+		_, u = users_db.get_user(username)
+		if not u:
+			return False
 		groups = [g.lower() for g in (u.get("groups") or [])]
 		return u.get("admin", False) or "admin" in groups or "owner" in groups
 	except Exception:
@@ -122,42 +87,10 @@ def is_admin(request):
 
 def _get_caller_username_and_groups(request):
 	"""Return (username, groups) for the authenticated caller, or (None, [])."""
-	username = None
-	try:
-		username = request.get("user") if hasattr(request, "get") else None
-	except Exception:
-		username = None
-	if username:
-		try:
-			_, u = users_db.get_user(username)
-			if u:
-				groups = [g.lower() for g in (u.get("groups") or [])]
-				return username, groups
-		except Exception:
-			pass
-	token = jwt_auth.get_token_from_request(request)
-	if not token:
+	_uid, username = jwt_auth.resolve_request_identity(request, touch_idle=False)
+	if not username:
 		return None, []
 	try:
-		from ..utils.api_token_store import get_api_token_store
-
-		api_cfg = getattr(jwt_auth, "api_token_store_config", None) or {}
-		api_store = get_api_token_store(api_cfg)
-		api_user = api_store.get_user_for_token(token)
-		if api_user is not None:
-			_uid, uname = api_user
-			_, u = users_db.get_user(uname)
-			if not u:
-				return None, []
-			groups = [g.lower() for g in (u.get("groups") or [])]
-			return uname, groups
-	except Exception:
-		pass
-	try:
-		p = jwt_auth.decode_access_token(token)
-		username = p.get("username")
-		if not username:
-			return None, []
 		_, u = users_db.get_user(username)
 		if not u:
 			return None, []
@@ -200,8 +133,8 @@ def can_access_console(request) -> bool:
 @routes.get("/mss-login/api/settings/guest-jwt")
 async def api_get_guest_jwt(request):
 	"""Return allow_guest_jwt (authenticated; any user can read)."""
-	token = jwt_auth.get_token_from_request(request)
-	if not token:
+	_uid, username = jwt_auth.resolve_request_identity(request, touch_idle=False)
+	if not username:
 		return web.json_response({"error": "Authentication required"}, status=401)
 	try:
 		cfg = load_json_file(CONFIG_FILE_PATH, {})
@@ -283,8 +216,8 @@ routes.put("/api/mss-login/api/settings/model-isolation-download-patterns")(
 @routes.get("/mss-login/api/settings/ntfy")
 async def api_get_ntfy_settings(request):
 	"""Return ntfy config (topic, enabled_events). Authenticated; read available to all."""
-	token = jwt_auth.get_token_from_request(request)
-	if not token:
+	_uid, username = jwt_auth.resolve_request_identity(request, touch_idle=False)
+	if not username:
 		return web.json_response({"error": "Authentication required"}, status=401)
 	cfg = get_ntfy_config()
 	return web.json_response(
@@ -845,6 +778,11 @@ routes.post("/api/mss-login/api/admin/install-node-deps")(api_admin_install_node
 @routes.get("/mss-login/api/groups")
 async def api_groups(request: web.Request) -> web.Response:
 	"""Return groups (admin only)."""
+	if not is_admin(request):
+		_uid, username = jwt_auth.resolve_request_identity(request, touch_idle=False)
+		if not username:
+			return web.json_response({"error": "Authentication required"}, status=401)
+		return web.json_response({"error": "Admin only"}, status=403)
 	default_cfg = load_default_groups()
 	current = load_json_file(GROUPS_CONFIG_FILE, default_cfg)
 	if not isinstance(current, dict):

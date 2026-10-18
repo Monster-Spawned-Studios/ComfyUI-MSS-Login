@@ -43,11 +43,29 @@ app.add_routes(
 
 app.middlewares.append(ip_filter.create_ip_filter_middleware())
 app.middlewares.append(sanitizer.create_sanitizer_middleware())
-app.middlewares.append(timeout.create_time_out_middleware(limited=("/login", "/register", "/mfa")))
+from .utils.timeout import CREDENTIAL_LIMITED_PATHS
+
+app.middlewares.append(timeout.create_time_out_middleware(limited=CREDENTIAL_LIMITED_PATHS))
 app.middlewares.append(
 	jwt_auth.create_jwt_middleware(
-		public=("/login", "/logout", "/register", "/mfa"),
-		public_prefixes=("/mss-login", "/mss-login/api/mfa", "/assets"),
+		public=(
+			"/login",
+			"/logout",
+			"/register",
+			"/mfa",
+			"/generate_token",
+			"/mss-login/generate_token",
+			"/mss-login/api/mfa/verify",
+			"/mss-login/api/mfa/setup",
+			"/mss-login/api/mfa/verify-setup",
+		),
+		public_prefixes=(
+			"/mss-login/css",
+			"/mss-login/js",
+			"/mss-login/assets",
+			"/mss-login/dist",
+			"/assets",
+		),
 	)
 )
 

@@ -33,13 +33,26 @@ DEFAULT_LOCAL_CIDRS = [
 # Path prefixes that are considered "protected API" (require auth when remote)
 PROTECTED_API_PREFIXES = ("/prompt", "/api/prompt", "/api/queue", "/queue", "/api/", "/cpe")
 
-# Paths or prefixes that are always allowed without auth (even if under /api/)
+# Paths or prefixes that are always allowed without auth (even if under /api/).
+# Do NOT include the whole /mss-login tree — AUDIT-002 default-deny covers that.
 PUBLIC_API_PATHS = (
 	"/login",
 	"/register",
 	"/logout",
-	"/mss-login",
-	"/mss-login-gallery",
+	"/mss-login/css",
+	"/mss-login/js",
+	"/mss-login/assets",
+	"/mss-login/dist",
+	"/mss-login/generate_token",
+	"/mss-login/api/mfa/verify",
+	"/mss-login/api/auth/local-login",
+	"/mss-login/api/auth/local-login-status",
+	"/mss-login/api/login-background",
+	"/mss-login/api/news/feed.xml",
+	"/mss-login/api/bg-music",
+	"/mss-login/loading-tips.json",
+	"/mss-login/api/update-notice",
+	"/mss-login/api/is-https",
 	"/generate_token",
 	"/static",
 	"/assets",

@@ -18,26 +18,8 @@ from ..utils.log_redactor import redact_log_text
 
 def _authenticated_username(request: web.Request) -> str | None:
 	"""Return username for a valid session/API token, else None."""
-	token = jwt_auth.get_token_from_request(request)
-	if not token:
-		return None
-	try:
-		from ..utils.api_token_store import get_api_token_store
-
-		api_cfg = getattr(jwt_auth, "api_token_store_config", None) or {}
-		api_store = get_api_token_store(api_cfg)
-		api_user = api_store.get_user_for_token(token)
-		if api_user is not None:
-			_uid, uname = api_user
-			return uname
-	except Exception:
-		pass
-	try:
-		payload = jwt_auth.decode_access_token(token)
-		username = payload.get("username") if payload else None
-		return username if username else None
-	except Exception:
-		return None
+	_uid, username = jwt_auth.resolve_request_identity(request, touch_idle=False)
+	return username
 
 
 def _is_admin_username(username: str | None) -> bool:

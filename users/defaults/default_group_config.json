@@ -131,10 +131,10 @@
         "can_update_mss_login": false
     },
     "guest": {
-        "can_run": true,
+        "can_run": false,
         "can_upload": false,
         "can_access_manager": false,
-        "can_access_api": true,
+        "can_access_api": false,
         "can_see_restricted_settings": false,
         "can_have_api_tokens": false,
         "can_have_non_expiring_jwt": false,

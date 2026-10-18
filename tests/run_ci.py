@@ -142,6 +142,21 @@ def main() -> int:
 				os.path.join(TESTS_DIR, "run_login_timeout_persist_tests.py"),
 			)
 		)
+		steps.append(
+			("Lockout hardening", os.path.join(TESTS_DIR, "run_lockout_hardening_tests.py"))
+		)
+		steps.append(
+			("Guest defaults (AUDIT-001)", os.path.join(TESTS_DIR, "run_guest_defaults_tests.py"))
+		)
+		steps.append(
+			(
+				"Trusted proxy IP (AUDIT-013)",
+				os.path.join(TESTS_DIR, "run_trusted_proxy_ip_tests.py"),
+			)
+		)
+		steps.append(
+			("Route policy (AUDIT-002)", os.path.join(TESTS_DIR, "run_route_policy_tests.py"))
+		)
 
 		steps.append(("View path safety", os.path.join(TESTS_DIR, "run_view_path_safety_tests.py")))
 		steps.append(("Trash bin", os.path.join(TESTS_DIR, "run_trash_bin_tests.py")))

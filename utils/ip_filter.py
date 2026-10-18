@@ -1,6 +1,10 @@
 """
 IP filter: whitelist and blacklist from the same DB store as lockout (no file-based lists).
 Whitelist/blacklist are stored in ip_whitelist and ip_blacklist; blacklist supports expiry (temporary) and permaban (NULL).
+
+Client IP resolution (AUDIT-013 / NEW-A): forwarding headers are trusted ONLY when
+request.remote is in trusted_proxies (empty by default). Proxy-hop trust is separate
+from local_network_cidrs client trust.
 """
 
 import ipaddress
@@ -24,40 +28,102 @@ def _is_cloudflare_proxy_enabled() -> bool:
 		return False
 
 
-def get_ip(request: web.Request) -> str:
-	"""Extract the real client IP address from request headers or remote address.
-
-	When cloudflare_proxy is enabled, Cloudflare-specific headers are trusted:
-	  CF-Connecting-IP > True-Client-IP > Cf-Pseudo-IPv4
-
-	Standard proxy headers are always checked as fallbacks:
-	  X-Forwarded-For (first hop) > X-Real-IP > request.remote
-	"""
-	ip = None
-	cf_enabled = _is_cloudflare_proxy_enabled()
-
-	if cf_enabled:
-		ip = request.headers.get("CF-Connecting-IP")
-		if not ip:
-			ip = request.headers.get("True-Client-IP")
-		if not ip:
-			ip = request.headers.get("Cf-Pseudo-IPv4")
-
-	if not ip:
-		forwarded = request.headers.get("X-Forwarded-For")
-		if forwarded:
-			ip = forwarded.split(",")[0].strip()
-	if not ip:
-		ip = request.headers.get("X-Real-IP")
-	if not ip:
-		ip = request.remote
-
+def _get_trusted_proxies() -> list[str]:
+	"""Return configured trusted proxy CIDRs/IPs (empty default = fail closed on headers)."""
 	try:
-		ip = str(ipaddress.ip_address(ip))
-	except ValueError:
-		ip = ""
+		from ..constants import TRUSTED_PROXIES
 
-	return ip
+		return list(TRUSTED_PROXIES or [])
+	except Exception:
+		return []
+
+
+def is_trusted_proxy_peer(peer_ip: str, trusted_proxies: list[str] | None = None) -> bool:
+	"""Return True if peer_ip matches an entry in trusted_proxies (IP or CIDR)."""
+	if not peer_ip:
+		return False
+	cidrs = trusted_proxies if trusted_proxies is not None else _get_trusted_proxies()
+	if not cidrs:
+		return False
+	try:
+		addr = ipaddress.ip_address(peer_ip.strip())
+	except ValueError:
+		return False
+	for entry in cidrs:
+		if not entry or not isinstance(entry, str):
+			continue
+		entry = entry.strip()
+		try:
+			net = ipaddress.ip_network(entry, strict=False)
+			if addr in net:
+				return True
+		except ValueError:
+			try:
+				if addr == ipaddress.ip_address(entry):
+					return True
+			except ValueError:
+				continue
+	return False
+
+
+def _normalize_ip(ip: str | None) -> str:
+	if not ip:
+		return ""
+	try:
+		return str(ipaddress.ip_address(ip.strip()))
+	except ValueError:
+		return ""
+
+
+def get_ip(request: web.Request, trusted_proxies: list[str] | None = None) -> str:
+	"""Extract the real client IP. Fail closed on spoofable headers.
+
+	Rules:
+	- If request.remote is NOT in trusted_proxies: return peer only (ignore all
+	  forwarding headers). Empty trusted_proxies (default) means headers are never trusted.
+	- If peer IS trusted and cloudflare_proxy: prefer CF-Connecting-IP.
+	- Else if peer is trusted: walk X-Forwarded-For right-to-left, skipping trusted hops;
+	  take the first untrusted hop (true client).
+	- Else fall back to request.remote.
+	- Invalid / undeterminable → "" (callers that gate auth must fail closed).
+	"""
+	peer = _normalize_ip(getattr(request, "remote", None) or "")
+	cidrs = trusted_proxies if trusted_proxies is not None else _get_trusted_proxies()
+	peer_trusted = is_trusted_proxy_peer(peer, cidrs) if peer else False
+
+	if not peer_trusted:
+		return peer
+
+	# Peer is a trusted proxy — may read forwarding headers.
+	cf_enabled = _is_cloudflare_proxy_enabled()
+	if cf_enabled:
+		for hdr in ("CF-Connecting-IP", "True-Client-IP", "Cf-Pseudo-IPv4"):
+			candidate = _normalize_ip(request.headers.get(hdr))
+			if candidate:
+				return candidate
+
+	forwarded = request.headers.get("X-Forwarded-For")
+	if forwarded:
+		# Right-to-left: skip trusted hops; first untrusted is the client.
+		hops = [h.strip() for h in forwarded.split(",") if h.strip()]
+		for hop in reversed(hops):
+			norm = _normalize_ip(hop)
+			if not norm:
+				continue
+			if is_trusted_proxy_peer(norm, cidrs):
+				continue
+			return norm
+		# All hops trusted — use leftmost (original client) if valid, else peer
+		if hops:
+			left = _normalize_ip(hops[0])
+			if left:
+				return left
+
+	real_ip = _normalize_ip(request.headers.get("X-Real-IP"))
+	if real_ip:
+		return real_ip
+
+	return peer
 
 
 def is_https_request(request: web.Request) -> bool:
@@ -222,6 +288,11 @@ class IPFilter:
 		@web.middleware
 		async def ip_filter_middleware(request: web.Request, handler) -> web.Response:
 			ip = get_ip(request)
+
+			# Never deny a trusted proxy peer itself (hop trust ≠ client trust).
+			peer = getattr(request, "remote", "") or ""
+			if is_trusted_proxy_peer(peer):
+				return await handler(request)
 
 			if not self.is_allowed(ip, request):
 				return await handle_access_denied(

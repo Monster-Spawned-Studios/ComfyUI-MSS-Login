@@ -85,7 +85,17 @@ def _install_debug_stubs(*, username=None, is_admin=False):
 		def decode_access_token(self, _tok):
 			if not username:
 				raise ValueError("no user")
-			return {"username": username}
+			return {"username": username, "id": "uid"}
+
+		def resolve_request_identity(self, _req, *, touch_idle=True):
+			if not username:
+				return None, None
+			return "uid", username
+
+		def resolve_token_identity(self, _tok, *, touch_idle=False):
+			if not username:
+				return None, None
+			return "uid", username
 
 	class _UsersDb:
 		def get_user(self, uname):

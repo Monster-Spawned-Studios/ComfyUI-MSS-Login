@@ -39,6 +39,7 @@ def _load_timeout():
 
 	ip_mod.IPFilter = IPFilter
 	ip_mod.get_ip = lambda _req: "0.0.0.0"
+	ip_mod.is_trusted_proxy_peer = lambda ip, trusted=None: False
 	sys.modules["utils.ip_filter"] = ip_mod
 
 	aiohttp = types.ModuleType("aiohttp")
@@ -74,6 +75,7 @@ def test_timeout_persists_across_restart(failed: list[str]) -> None:
 	t1 = mod.Timeout(_FakeFilter(), blacklist_after_attempts=0, state_path=state_path)
 	for _ in range(3):
 		t1.add_failed_attempt("203.0.113.9")
+	t1._save_state()  # debounced writes: force flush for restart simulation
 	_ok(t1.get_failed_attempts("203.0.113.9") == 3, "3 failed attempts recorded", failed)
 	timed_out, n, remaining = t1.check_is_timed_out("203.0.113.9")
 	_ok(timed_out and n == 3 and remaining > 0, "IP timed out after 3 failures", failed)
@@ -86,6 +88,7 @@ def test_timeout_persists_across_restart(failed: list[str]) -> None:
 	_ok(timed_out2 and n2 == 3 and rem2 > 0, "timeout survives restart", failed)
 
 	t2.remove_failed_attempts("203.0.113.9")
+	t2._save_state()
 	t3 = mod.Timeout(_FakeFilter(), blacklist_after_attempts=0, state_path=state_path)
 	_ok(t3.get_failed_attempts("203.0.113.9") == 0, "clear persists across restart", failed)
 	timed_out3, _, _ = t3.check_is_timed_out("203.0.113.9")
