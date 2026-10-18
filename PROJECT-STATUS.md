@@ -2,6 +2,11 @@
 
 ## 2026-10-17
 
+- **Symptom (Portal/API PNG metadata):** Output PNGs from Portal/API jobs had a `prompt` tEXt chunk but no `workflow` chunk; `/api/history` `extra_data.extra_pnginfo` was empty. Dragging those images back into ComfyUI could not restore the original graph.
+- **Root cause:** CPE `get-and-convert` / `convert` returned only the API prompt in `data.workflow`. Portal clients then `POST /prompt` with `{"prompt": <api>}` and no `extra_data.extra_pnginfo.workflow`, so core SaveImage had nothing to embed. Not caused by NSFW re-save, `--disable-metadata`, or `/view`.
+- **Fix:** Additive CPE fields `data.ui_workflow` + `data.extra_data` (API `data.workflow` unchanged). `/prompt` middleware preserves client `extra_data` and, when `cpe.embed_ui_workflow` (default true), fills missing `extra_pnginfo.workflow` from a per-user TTL cache keyed by API structure fingerprint (sorted node_id+class_type; ignores seeds/text). No fixed/template workflow injection.
+- **Security:** 2 MiB size cap (`cpe.ui_workflow_max_bytes`); drop embed on foreign UUID prefixes or absolute server paths; strip own uid prefixes via `to_display_name`; cache keyed by authenticated user id only; grant check must pass before cache put.
+- **Caveat:** Embedded UI graph shows *saved* widget values from convert time; the `prompt` chunk remains the source of truth for what ran.
 - **Symptom:** Every live `/api/history` entry had `status == {"completed": None, "messages": []}` — no `status_str`, no `execution_*` message timestamps, and no usable error/cancel flag for `jobs.normalize_history_item`.
 - **Root cause:** MSS-Login’s `user_queue_task_done` override ignored ComfyUI core’s `status=ExecutionStatus(...)` and `process_item=` (v0.37.4); it only read legacy `completed=` / `messages=` kwargs that core never passes.
 - **Fix:** Forward `status` (NamedTuple `_asdict` or mapping) and apply `process_item` to the core prompt tuple before 5-element normalization; keep legacy kwargs fallback and `**kwargs` forward-compat; stamp `user_id` as before.

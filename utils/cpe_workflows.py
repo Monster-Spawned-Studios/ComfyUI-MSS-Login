@@ -321,13 +321,26 @@ def get_and_convert_payload(
 
 
 def success_convert_payload(
-	workflow_api: dict[str, Any], filename: str | None = None
+	workflow_api: dict[str, Any],
+	filename: str | None = None,
+	*,
+	ui_workflow: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-	"""CPE convert / get-and-convert success body."""
+	"""CPE convert / get-and-convert success body.
+
+	``data.workflow`` is always the API prompt (CPE contract). When a UI graph
+	was converted, optional ``ui_workflow`` / ``extra_data`` are additive so
+	clients can embed the original graph in PNG metadata. Omit both when the
+	stored file was already API format (do not fabricate a UI graph).
+	"""
+	data: dict[str, Any] = {"workflow": workflow_api}
+	if isinstance(ui_workflow, dict) and ui_workflow:
+		data["ui_workflow"] = ui_workflow
+		data["extra_data"] = {"extra_pnginfo": {"workflow": ui_workflow}}
 	payload: dict[str, Any] = {
 		"status": "success",
 		"message": "Workflow converted successfully",
-		"data": {"workflow": workflow_api},
+		"data": data,
 	}
 	if filename:
 		payload["filename"] = filename

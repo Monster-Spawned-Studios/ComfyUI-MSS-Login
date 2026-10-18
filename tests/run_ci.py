@@ -174,6 +174,12 @@ def main() -> int:
 				os.path.join(TESTS_DIR, "run_cpe_shared_guest_workflows_tests.py"),
 			)
 		)
+		steps.append(
+			(
+				"Workflow metadata pass-through",
+				os.path.join(TESTS_DIR, "run_workflow_metadata_tests.py"),
+			)
+		)
 	if not args.no_lint:
 		steps.append(("Ruff check", None))  # special
 		steps.append(("Ruff format", None))

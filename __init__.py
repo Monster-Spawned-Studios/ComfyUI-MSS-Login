@@ -319,18 +319,6 @@ async def workflow_interceptor_middleware(request, handler):
 					known_models=known_models if known_models else None,
 					normalize_only=True,
 				)
-				try:
-					if (
-						isinstance(data, dict)
-						and "prompt" in data
-						and isinstance(data["prompt"], dict)
-					):
-						data["prompt"] = prompt_to_validate
-					elif isinstance(data, dict):
-						data = prompt_to_validate
-					body_bytes = json.dumps(data).encode("utf-8")
-				except Exception:
-					pass
 			if not can_view_all:
 				allowed_set = allowed_set_from_grants(grants)
 				valid, err_msg = validate_prompt_models(
@@ -344,6 +332,30 @@ async def workflow_interceptor_middleware(request, handler):
 						{"error": err_msg or "Model not allowed", "code": "MODEL_NOT_ALLOWED"},
 						status=403,
 					)
+			# Pass-through client_id / extra_data; sanitize or fill-in UI workflow
+			# for PNG embedding (cpe.embed_ui_workflow). Never inject a template.
+			try:
+				from .utils.workflow_metadata import apply_prompt_extra_data
+
+				data = apply_prompt_extra_data(
+					data if isinstance(data, dict) else prompt_to_validate,
+					prompt_to_validate,
+					user_id=user_id,
+				)
+				body_bytes = json.dumps(data).encode("utf-8")
+			except Exception:
+				try:
+					if (
+						isinstance(data, dict)
+						and "prompt" in data
+						and isinstance(data["prompt"], dict)
+					):
+						data["prompt"] = prompt_to_validate
+					elif isinstance(data, dict):
+						data = prompt_to_validate
+					body_bytes = json.dumps(data).encode("utf-8")
+				except Exception:
+					pass
 
 		# Re-inject body so ComfyUI handler can read it
 		async def _read():

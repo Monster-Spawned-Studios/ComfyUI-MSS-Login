@@ -210,8 +210,14 @@ def _model_grant_check(
 	return None
 
 
-async def _convert_ui_or_error(workflow_data: dict, *, auth_token: str | None) -> tuple[int, dict]:
-	"""Run UI→API conversion; return (status, payload)."""
+async def _convert_ui_or_error(
+	workflow_data: dict, *, auth_token: str | None, user_id: str | None = None
+) -> tuple[int, dict]:
+	"""Run UI→API conversion; return (status, payload).
+
+	On success, include additive sanitized ``ui_workflow`` / ``extra_data``.
+	Cache fill-in is deferred until after ``_model_grant_check`` succeeds.
+	"""
 	try:
 		api_prompt = await convert_ui_workflow(workflow_data, auth_token=auth_token)
 		if not isinstance(api_prompt, dict) or not looks_like_api_prompt(api_prompt):
@@ -220,7 +226,15 @@ async def _convert_ui_or_error(workflow_data: dict, *, auth_token: str | None) -
 				"message": "Workflow conversion failed",
 				"details": "Converter returned a non-API workflow payload",
 			}
-		return 200, success_convert_payload(api_prompt)
+		from ..utils.workflow_metadata import cpe_embed_settings, sanitize_ui_workflow
+
+		cleaned = None
+		embed = cpe_embed_settings()
+		if embed["embed_ui_workflow"]:
+			cleaned = sanitize_ui_workflow(
+				workflow_data, user_id, max_bytes=embed["ui_workflow_max_bytes"]
+			)
+		return 200, success_convert_payload(api_prompt, ui_workflow=cleaned)
 	except RuntimeError as exc:
 		return 503, {
 			"status": "error",
@@ -233,6 +247,30 @@ async def _convert_ui_or_error(workflow_data: dict, *, auth_token: str | None) -
 			"message": "Workflow conversion failed",
 			"details": str(exc) or ui_convert_unavailable_details(),
 		}
+
+
+def _user_id_for_request(request: web.Request) -> str | None:
+	from ..utils import access_control
+
+	user = _current_username(request)
+	try:
+		return get_user_id_for_username(access_control.users_db, user)
+	except Exception:
+		return None
+
+
+def _cache_ui_after_grant(request: web.Request, payload: dict) -> None:
+	"""Remember sanitized UI graph for fill-in only after grant check passed."""
+	from ..utils.workflow_metadata import remember_converted_ui_workflow
+
+	data = payload.get("data") if isinstance(payload, dict) else None
+	if not isinstance(data, dict):
+		return
+	api = data.get("workflow")
+	ui = data.get("ui_workflow")
+	if not isinstance(api, dict) or not isinstance(ui, dict):
+		return
+	remember_converted_ui_workflow(_user_id_for_request(request), api, ui)
 
 
 async def handle_cpe_list(request: web.Request) -> web.Response:
@@ -332,7 +370,9 @@ async def handle_cpe_get_and_convert(request: web.Request) -> web.Response:
 		return web.json_response(payload, status=200)
 
 	auth_token = _auth_token_for_convert(request)
-	conv_status, payload = await _convert_ui_or_error(workflow_data, auth_token=auth_token)
+	conv_status, payload = await _convert_ui_or_error(
+		workflow_data, auth_token=auth_token, user_id=_user_id_for_request(request)
+	)
 	if conv_status == 200:
 		payload["filename"] = filename_out
 		wf = None
@@ -342,6 +382,7 @@ async def handle_cpe_get_and_convert(request: web.Request) -> web.Response:
 		if denied is not None:
 			return denied
 		_flatten_convert_payload(request, payload)
+		_cache_ui_after_grant(request, payload)
 	return web.json_response(payload, status=conv_status)
 
 
@@ -364,7 +405,9 @@ async def handle_cpe_convert(request: web.Request) -> web.Response:
 		)
 
 	auth_token = _auth_token_for_convert(request)
-	conv_status, payload = await _convert_ui_or_error(workflow_data, auth_token=auth_token)
+	conv_status, payload = await _convert_ui_or_error(
+		workflow_data, auth_token=auth_token, user_id=_user_id_for_request(request)
+	)
 	if conv_status == 200:
 		wf = None
 		if isinstance(payload.get("data"), dict):
@@ -373,6 +416,7 @@ async def handle_cpe_convert(request: web.Request) -> web.Response:
 		if denied is not None:
 			return denied
 		_flatten_convert_payload(request, payload)
+		_cache_ui_after_grant(request, payload)
 	return web.json_response(payload, status=conv_status)
 
 

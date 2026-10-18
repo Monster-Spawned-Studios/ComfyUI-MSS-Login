@@ -42,6 +42,7 @@ These run without loading ComfyUI or `folder_paths`, so they work in CI and on m
 | `run_object_info_combo_mapping_tests.py` | `/object_info` combo rebuild by `(node class, input)`; unmapped passthrough; Ultralytics prefixes; overlap fallback. |
 | `run_history_status_tests.py` | `user_queue_task_done` forwards ComfyUI `status=` / `process_item=` into history; legacy kwargs; per-user history filtering unchanged. |
 | `run_cpe_shared_guest_workflows_tests.py` | Shared `workflows/guest` merged view (own > guest > legacy); labels; read-only; subfolder paths; archive skip. |
+| `run_workflow_metadata_tests.py` | CPE `ui_workflow`/`extra_data` fields; `/prompt` extra_data pass-through; per-user TTL fill-in; sanitize (size/foreign uid/absolute paths); PNG tEXt round-trip. |
 
 ### Shared guest workflows
 
