@@ -29,8 +29,63 @@ NODE_MODEL_INPUTS: dict[str, list[tuple[str, str]]] = {
 	"VAEEncode": [],
 	# CLIP / text encoders (use text_encoders; clip aliases dual-read in resolver)
 	"CLIPLoader": [("text_encoders", "clip_name")],
+	"CLIPLoaderMultiGPU": [("text_encoders", "clip_name")],
+	"CLIPLoaderDisTorch2MultiGPU": [("text_encoders", "clip_name")],
+	# GGUF CLIP loaders share text_encoders (+ legacy clip) under isolation
+	"CLIPLoaderGGUF": [("text_encoders", "clip_name")],
+	"CLIPLoaderGGUFMultiGPU": [("text_encoders", "clip_name")],
+	"CLIPLoaderGGUFDisTorchMultiGPU": [("text_encoders", "clip_name")],
+	"CLIPLoaderGGUFDisTorch2MultiGPU": [("text_encoders", "clip_name")],
 	"DualCLIPLoader": [("text_encoders", "clip_name1"), ("text_encoders", "clip_name2")],
+	"DualCLIPLoaderMultiGPU": [("text_encoders", "clip_name1"), ("text_encoders", "clip_name2")],
+	"DualCLIPLoaderDisTorch2MultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+	],
+	"DualCLIPLoaderGGUF": [("text_encoders", "clip_name1"), ("text_encoders", "clip_name2")],
+	"DualCLIPLoaderGGUFMultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+	],
+	"DualCLIPLoaderGGUFDisTorchMultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+	],
+	"DualCLIPLoaderGGUFDisTorch2MultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+	],
 	"TripleCLIPLoader": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+	],
+	"TripleCLIPLoaderMultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+	],
+	"TripleCLIPLoaderDisTorch2MultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+	],
+	"TripleCLIPLoaderGGUF": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+	],
+	"TripleCLIPLoaderGGUFMultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+	],
+	"TripleCLIPLoaderGGUFDisTorchMultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+	],
+	"TripleCLIPLoaderGGUFDisTorch2MultiGPU": [
 		("text_encoders", "clip_name1"),
 		("text_encoders", "clip_name2"),
 		("text_encoders", "clip_name3"),
@@ -41,26 +96,71 @@ NODE_MODEL_INPUTS: dict[str, list[tuple[str, str]]] = {
 		("text_encoders", "clip_name3"),
 		("text_encoders", "clip_name4"),
 	],
+	"QuadrupleCLIPLoaderMultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+		("text_encoders", "clip_name4"),
+	],
+	"QuadrupleCLIPLoaderDisTorch2MultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+		("text_encoders", "clip_name4"),
+	],
+	"QuadrupleCLIPLoaderGGUF": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+		("text_encoders", "clip_name4"),
+	],
+	"QuadrupleCLIPLoaderGGUFMultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+		("text_encoders", "clip_name4"),
+	],
+	"QuadrupleCLIPLoaderGGUFDisTorchMultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+		("text_encoders", "clip_name4"),
+	],
+	"QuadrupleCLIPLoaderGGUFDisTorch2MultiGPU": [
+		("text_encoders", "clip_name1"),
+		("text_encoders", "clip_name2"),
+		("text_encoders", "clip_name3"),
+		("text_encoders", "clip_name4"),
+	],
 	"CLIPVisionLoader": [("clip_vision", "clip_name")],
+	"CLIPVisionLoaderMultiGPU": [("clip_vision", "clip_name")],
+	"CLIPVisionLoaderDisTorch2MultiGPU": [("clip_vision", "clip_name")],
 	# ControlNet, upscale, etc.
 	"ControlNetLoader": [("controlnet", "control_net_name")],
 	"DiffControlNetLoader": [("controlnet", "control_net_name")],
 	"LoadControlNet": [("controlnet", "control_net_name")],
 	"UpscaleModelLoader": [("upscale_models", "model_name")],
+	"easy hiresFix": [("upscale_models", "model_name")],
 	"StyleModelLoader": [("style_models", "style_model_name")],
 	"GLIGENLoader": [("gligen", "gligen_name")],
 	"HypernetworkLoader": [("hypernetworks", "hypernetwork_name")],
 	"Embedding": [("embeddings", "embedding_name")],
 	# Diffusion / UNet (some custom nodes)
 	"DiffusionModelLoader": [("diffusion_models", "model_name")],
+	"DiffusionModelLoaderKJ": [("diffusion_models", "model_name")],
+	"DiffusionModelSelector": [("diffusion_models", "model_name")],
+	"easy diffusionModelLoader": [
+		("diffusion_models", "model_name"),
+		("text_encoders", "clip_name"),
+	],
+	"easy svdLoader": [("text_encoders", "clip_name")],
+	"easy cascadeLoader": [("text_encoders", "clip_name")],
+	"easy pixArtLoader": [("text_encoders", "clip_name")],
 	"PhotomakerLoader": [("photomaker", "photomaker_name")],
 	"AudioEncoderLoader": [("audio_encoders", "audio_encoder_name")],
-	# Ultralytics (Impact Suite / detection)
-	"UltralyticsDetectorProvider": [
-		("ultralytics_bbox", "bbox_model"),
-		("ultralytics_segm", "seg_model"),
-		("ultralytics", "model"),
-	],
+	# Ultralytics (Impact Subpack: single model_name with bbox/ + segm/ display prefixes)
+	"UltralyticsDetectorProvider": [("ultralytics", "model_name")],
+	"easy ultralyticsDetectorPipe": [("ultralytics", "model_name")],
 	"YOLOWorldDetectorProvider": [("ultralytics", "model")],
 	# MMDet (Impact Suite / detection)
 	"MMDetDetectorProvider": [
@@ -68,8 +168,9 @@ NODE_MODEL_INPUTS: dict[str, list[tuple[str, str]]] = {
 		("mmdets_segm", "seg_model"),
 		("mmdets", "model"),
 	],
-	# SAM (Segment Anything)
-	"SAMLoader": [("sams", "sam_name")],
+	# SAM (Segment Anything) — Current Impact-Pack uses model_name
+	"SAMLoader": [("sams", "model_name")],
+	"easy samLoaderPipe": [("sams", "model_name")],
 	"LoadSAM": [("sams", "sam_name")],
 	"SAMModelLoader": [("sams", "sam_name")],
 	# Classifiers
@@ -81,7 +182,16 @@ NODE_MODEL_INPUTS: dict[str, list[tuple[str, str]]] = {
 _LEGACY_FOLDER: dict[str, str] = {"unet": "diffusion_models", "clip": "text_encoders"}
 
 # Extensions that indicate a model file (for catch-all detection of unknown node types)
-_MODEL_FILE_EXTENSIONS = (".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".onnx", ".engine")
+_MODEL_FILE_EXTENSIONS = (
+	".safetensors",
+	".ckpt",
+	".pt",
+	".pth",
+	".bin",
+	".onnx",
+	".engine",
+	".gguf",
+)
 
 
 def _normalize_folder(folder: str) -> str:

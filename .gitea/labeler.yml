@@ -1,6 +1,7 @@
 # Labels applied to PRs based on changed files.
-# Used by .github/workflows/pull-request.yml (actions/labeler@v6).
-# https://github.com/actions/labeler
+# GitHub: .github/workflows/pull-request.yml (actions/labeler@v6).
+# Gitea:  .gitea/workflows/auto-label.yml → scripts/ci/gitea_label_pr.py
+#         (Gitea API; do not use actions/labeler on Gitea).
 # v5/v6 config: use any-glob-to-any-file (not "any") under changed-files.
 
 documentation:
@@ -29,7 +30,13 @@ ci:
 agent:
   - changed-files:
       - any-glob-to-any-file:
-          [".agent/**", ".gemini/**", ".cursor/**", ".claude/**"]
+          [
+            ".agent/**",
+            ".agents/**",
+            ".gemini/**",
+            ".cursor/**",
+            ".claude/**",
+          ]
 
 vscode:
   - changed-files:
@@ -87,7 +94,8 @@ docs:
 
 workflows:
   - changed-files:
-      - any-glob-to-any-file: [".github/workflows/**"]
+      - any-glob-to-any-file:
+          [".github/workflows/**", ".gitea/workflows/**"]
 
 issue-template:
   - changed-files:
@@ -96,7 +104,11 @@ issue-template:
 
 pull-request-template:
   - changed-files:
-      - any-glob-to-any-file: [".github/PULL_REQUEST_TEMPLATE/**"]
+      - any-glob-to-any-file:
+          [
+            ".github/PULL_REQUEST_TEMPLATE/**",
+            ".gitea/PULL_REQUEST_TEMPLATE/**",
+          ]
 
 changelog:
   - changed-files:

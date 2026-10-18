@@ -43,8 +43,14 @@ from .model_visibility_policy import (
 	user_can_access_s3,
 	user_can_view_all_models,
 )
+from .object_info_combo_sources import (
+	build_combo_from_sources,
+	overlap_or_fallback,
+	sources_for,
+	strip_uid_prefixes,
+)
 from .path_safety import is_safe_folder_segment
-from .prompt_model_validator import _looks_like_model_file, folder_for_node_input
+from .prompt_model_validator import _looks_like_model_file
 
 # Folder names we treat as "asset" lists (models, loras, vae, embeddings, etc.)
 # Includes ComfyUI Model Library folders: ultralytics, mmdets, sams, classifiers, configs.
@@ -157,6 +163,69 @@ def _filter_object_info_combos(payload: Any, grants: list[dict]) -> Any:
 				new_spec = [filtered, *list(spec[1:])]
 				section_map[key] = new_spec
 	return payload
+
+
+def filter_object_info_payload(
+	data: Any, *, user_id: str | None, grants: list[dict] | None, view_all: bool
+) -> Any:
+	"""
+	Filter/rebuild /object_info loader combos for the current viewer.
+
+	When experimental isolation is on:
+	- Mapped (class, input) pairs rebuild from OBJECT_INFO_COMBO_SOURCES via
+	  list_display_names (grants honored; plain names; multi-folder prefixes).
+	- Unmapped pairs keep the original combo with UUID prefix strip only
+	  (HF repo IDs and pack-specific paths pass through).
+	When isolation is off: grant-filter (if not view_all) then flatten display names.
+	"""
+	grants = grants or []
+	if experimental_model_isolation_enabled() and isinstance(data, dict):
+		for node_name, node_info in data.items():
+			if not isinstance(node_info, dict):
+				continue
+			inp = node_info.get("input")
+			if not isinstance(inp, dict):
+				continue
+			for section in ("required", "optional"):
+				section_map = inp.get(section)
+				if not isinstance(section_map, dict):
+					continue
+				for key, spec in list(section_map.items()):
+					if not isinstance(spec, (list, tuple)) or not spec:
+						continue
+					combo = spec[0]
+					if not isinstance(combo, list) or not combo:
+						continue
+					if not all(isinstance(x, str) for x in combo):
+						continue
+					looks_like_models = any(
+						_looks_like_model_file(x) or "/" in x.replace("\\", "/") for x in combo
+					)
+					if not looks_like_models:
+						continue
+					sources = sources_for(node_name, key)
+					if sources:
+						mapped = build_combo_from_sources(
+							sources, user_id, grants=grants, view_all=view_all, original=combo
+						)
+						mapped = overlap_or_fallback(
+							node_name,
+							key,
+							combo,
+							mapped,
+							user_id,
+							view_all=view_all,
+							sources=sources,
+							grants=grants,
+						)
+					else:
+						mapped = strip_uid_prefixes(combo, user_id)
+					section_map[key] = [mapped, *list(spec[1:])]
+		return data
+	if view_all:
+		return map_object_info_combos_to_display(data, user_id, view_all=True, grants=grants)
+	filtered = _filter_object_info_combos(data, grants)
+	return map_object_info_combos_to_display(filtered, user_id, view_all=False, grants=grants)
 
 
 def create_model_filter_middleware(
@@ -390,72 +459,12 @@ def create_model_filter_middleware(
 			role, perms, username, grants, user_id = _grants_for(request)
 			view_all = user_can_view_all_models(role, perms)
 			resp = await handler(request)
-
-			def _filter_and_flatten(data):
-				# When isolation is on, rebuild loader combos from list_display_names
-				# so view_all never exposes other users' UUID prefixes.
-				if experimental_model_isolation_enabled() and isinstance(data, dict):
-					for node_name, node_info in data.items():
-						if not isinstance(node_info, dict):
-							continue
-						inp = node_info.get("input")
-						if not isinstance(inp, dict):
-							continue
-						for section in ("required", "optional"):
-							section_map = inp.get(section)
-							if not isinstance(section_map, dict):
-								continue
-							for key, spec in list(section_map.items()):
-								if not isinstance(spec, (list, tuple)) or not spec:
-									continue
-								combo = spec[0]
-								if not isinstance(combo, list) or not combo:
-									continue
-								if not all(isinstance(x, str) for x in combo):
-									continue
-								looks_like_models = any(
-									_looks_like_model_file(x) or "/" in x.replace("\\", "/")
-									for x in combo
-								)
-								if not looks_like_models:
-									continue
-								# Per (class_type, input_key) — avoids clip_name / model_name collisions
-								folder = folder_for_node_input(node_name, key) or ""
-								if folder:
-									mapped = list_display_names(
-										folder, user_id, grants=grants, view_all=view_all
-									)
-								else:
-									mapped = map_item_list_to_display(
-										combo, user_id, view_all=view_all, grants=grants
-									)
-									if not view_all and grants:
-										# Grant-filter unknown combos (isolation path skips
-										# _filter_object_info_combos for these keys)
-										allowed = {
-											g["norm_item_name"]
-											for g in grants
-											if g.get("norm_item_name")
-										}
-										mapped = [
-											x
-											for x in mapped
-											if grant_matches_item(normalize_model_name(x), allowed)
-										]
-									elif not view_all:
-										mapped = []
-								section_map[key] = [mapped, *list(spec[1:])]
-					return data
-				if view_all:
-					return map_object_info_combos_to_display(
-						data, user_id, view_all=True, grants=grants
-					)
-				filtered = _filter_object_info_combos(data, grants)
-				return map_object_info_combos_to_display(
-					filtered, user_id, view_all=False, grants=grants
-				)
-
-			return await _maybe_filter_json_response(resp, _filter_and_flatten)
+			return await _maybe_filter_json_response(
+				resp,
+				lambda data: filter_object_info_payload(
+					data, user_id=user_id, grants=grants, view_all=view_all
+				),
+			)
 
 		return await handler(request)
 

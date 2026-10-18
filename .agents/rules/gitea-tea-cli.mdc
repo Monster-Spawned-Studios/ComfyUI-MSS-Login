@@ -1,0 +1,39 @@
+---
+description: Use the tea CLI for Gitea remotes; use gh only for GitHub
+alwaysApply: true
+always_on: true
+trigger: always_on
+applyTo: "**"
+---
+
+# Gitea uses `tea`; GitHub uses `gh`
+
+This repository has both a **Gitea** remote (`gitea` → `git.monsterspawned.studio`) and a **GitHub** remote (`origin` → `github.com`). Use the matching CLI for each host.
+
+## Gitea (`gitea` remote)
+
+- Use the **`tea`** CLI (`tea pulls`, `tea issues`, `tea repos`, …) for pull requests, issues, and other Gitea API operations.
+- Prefer discovering login/repo from the local remote: `tea … --remote gitea` (or `-R gitea`).
+- **Do not** use `gh` against Gitea. `gh` is GitHub-oriented (GraphQL / github.com assumptions) and is unreliable or unsupported for this Gitea host.
+- Example draft PR into `development`:
+
+```bash
+tea pulls create --remote gitea --draft \
+  --base development \
+  --head fix/your-branch \
+  --title "fix: …" \
+  --description "$(cat <<'EOF'
+…
+EOF
+)"
+```
+
+## GitHub (`origin` remote)
+
+- Use the **`gh`** CLI for GitHub-only operations (PRs, issues, checks on `github.com`).
+- Do not assume `gh` can manage the Gitea remote.
+
+## Pushing
+
+- `git push` still uses normal git remotes (`git push gitea HEAD`, `git push origin HEAD`).
+- When the user asks to push and both remotes exist, push both unless they name a single remote (often Gitea-only for PRs).

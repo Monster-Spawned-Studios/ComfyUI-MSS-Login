@@ -1,0 +1,28 @@
+---
+description: Store project status, planning notes, and agent prompts under _planning/ (gitignored); do not litter the repo root
+alwaysApply: true
+always_on: true
+trigger: always_on
+applyTo: "**"
+---
+
+# Planning artifacts live under `_planning/`
+
+Agent-generated or session status, planning notes, scratch prompts, and similar working documents belong under **`_planning/`** at the repository root — not in the repo root and not mixed into shipped docs under `docs/` or `readme/`.
+
+## Put here
+
+- Project status / progress logs (e.g. `_planning/PROJECT-STATUS.md`)
+- Implementation plans, investigation notes, and checklists that are not release docs
+- Cursor / agent prompts and copies of task briefs used while working
+- Temporary design dumps that should not be committed
+
+## Do not put here
+
+- User-facing or release documentation (`docs/`, `readme/`, MkDocs)
+- Always-on agent rules (those stay in `.agents/rules/` with AGENTS.md kept in sync)
+- Secrets, credentials, or live laptop dumps that may contain private paths or tokens
+
+## Git
+
+`_planning/` is **gitignored**. Do not `git add -f` its contents unless the user explicitly asks to commit a specific planning file. Prefer leaving planning artifacts local-only.
