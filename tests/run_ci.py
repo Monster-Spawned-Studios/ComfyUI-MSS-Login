@@ -127,6 +127,21 @@ def main() -> int:
 				os.path.join(TESTS_DIR, "run_access_control_jwt_tests.py"),
 			)
 		)
+		steps.append(
+			("JWT debug log redaction", os.path.join(TESTS_DIR, "run_jwt_debug_log_tests.py"))
+		)
+		steps.append(
+			(
+				"CivitAI JSON redirect SSRF",
+				os.path.join(TESTS_DIR, "run_civitai_json_redirect_tests.py"),
+			)
+		)
+		steps.append(
+			(
+				"Login timeout persistence",
+				os.path.join(TESTS_DIR, "run_login_timeout_persist_tests.py"),
+			)
+		)
 
 		steps.append(("View path safety", os.path.join(TESTS_DIR, "run_view_path_safety_tests.py")))
 		steps.append(("Trash bin", os.path.join(TESTS_DIR, "run_trash_bin_tests.py")))
