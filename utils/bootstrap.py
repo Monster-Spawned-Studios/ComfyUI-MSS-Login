@@ -63,7 +63,7 @@ def load_default_groups():
 				"can_run": False,
 				"can_upload": False,
 				"can_access_manager": False,
-				"can_access_api": True,
+				"can_access_api": False,
 				"can_see_restricted_settings": False,
 				"can_have_api_tokens": False,
 				"can_have_non_expiring_jwt": False,
