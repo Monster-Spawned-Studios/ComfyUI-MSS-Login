@@ -123,3 +123,5 @@ tests/_tmp_s3_mount/
 
 # Planning files
 _planning/
+# Security audit reports (local only; keep under _planning/security/)
+docs/security/
