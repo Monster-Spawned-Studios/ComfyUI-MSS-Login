@@ -121,6 +121,12 @@ def main() -> int:
 				os.path.join(TESTS_DIR, "run_access_control_perm_tests.py"),
 			)
 		)
+		steps.append(
+			(
+				"Access-control JWT verify",
+				os.path.join(TESTS_DIR, "run_access_control_jwt_tests.py"),
+			)
+		)
 
 		steps.append(("View path safety", os.path.join(TESTS_DIR, "run_view_path_safety_tests.py")))
 		steps.append(("Trash bin", os.path.join(TESTS_DIR, "run_trash_bin_tests.py")))

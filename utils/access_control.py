@@ -132,12 +132,12 @@ class AccessControl:
 			pass
 
 		try:
-			import jwt
-
-			# Decode without verification here just to get username for role lookup
-			# The actual security check happens in JWTAuth middleware
-			payload = jwt.decode(token, options={"verify_signature": False})
+			payload = self._decode_verified_jwt_claims(token)
+			if not payload:
+				return "guest", {}, None
 			username = payload.get("username")
+			if not username:
+				return "guest", {}, None
 
 			_, user_rec = self.users_db.get_user(username)
 			if not user_rec:
@@ -150,6 +150,32 @@ class AccessControl:
 			return role, perms, username
 		except Exception:
 			return "guest", {}, None
+
+	@staticmethod
+	def _decode_verified_jwt_claims(token: str) -> dict | None:
+		"""
+		Decode JWT with signature + algorithm verification (AUDIT-004).
+
+		Never trust unverified claims for role/permission resolution. Returns None
+		on missing secret, bad signature, expiry, or decode errors.
+		"""
+		token = (token or "").strip()
+		if not token or token.count(".") < 2:
+			return None
+		try:
+			import jwt
+
+			from ..constants import SECRET_KEY, TOKEN_ALGORITHM
+		except Exception:
+			return None
+		secret = SECRET_KEY or ""
+		if not secret:
+			return None
+		alg = TOKEN_ALGORITHM or "HS256"
+		try:
+			return jwt.decode(token, secret, algorithms=[alg])
+		except Exception:
+			return None
 
 	def create_mss_login_middleware(self):
 		@web.middleware
