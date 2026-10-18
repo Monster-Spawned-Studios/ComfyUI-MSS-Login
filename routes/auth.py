@@ -457,6 +457,16 @@ async def get_mfa(request: web.Request) -> web.Response:
 	return web.FileResponse(path)
 
 
+@routes.get("/passkeys")
+@routes.get("/mss-login/passkeys")
+async def get_passkeys(request: web.Request) -> web.Response:
+	"""Credential management UI (passkeys + recovery codes). Auth enforced by page APIs."""
+	path = os.path.join(HTML_DIR, "passkeys.html")
+	if not os.path.exists(path):
+		return web.Response(text="passkeys.html not found", status=404)
+	return web.FileResponse(path)
+
+
 @routes.post("/login")
 async def post_login(request: web.Request) -> web.Response:
 	# Prefer middleware-sanitized data (form or JSON). Fallback for JSON if middleware missed it.
