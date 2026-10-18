@@ -230,6 +230,16 @@ else:
 	FORCE_HTTPS = config_data.get("force_https", False)
 CLOUDFLARE_PROXY = config_data.get("cloudflare_proxy", False)
 CLOUDFLARED_LOCAL_BYPASS = config_data.get("cloudflared_local_bypass", False)
+# Proxy-hop trust only (empty default). Client IP forwarding headers are
+# ignored unless request.remote matches an entry here. Separate from
+# local_network_cidrs (client trust for passwordless local login).
+TRUSTED_PROXIES = list(config_data.get("trusted_proxies") or [])
+# Exact header name for identity-header login (null = disabled). Requires
+# trusted_proxies peer AND this opt-in; never satisfies MFA.
+_trusted_identity_hdr = config_data.get("trusted_identity_header")
+TRUSTED_IDENTITY_HEADER = (
+	str(_trusted_identity_hdr).strip() if _trusted_identity_hdr else None
+) or None
 SEPERATE_USERS = config_data.get("seperate_users", True)
 MANAGER_ADMIN_ONLY = config_data.get("manager_admin_only", True)
 # Embedded Playwright UI→API convert for Comfy Portal (JWT/Bearer-injected; no public bypass).
@@ -535,6 +545,16 @@ def reload_local_network_cidrs() -> list:
 	cfg = _load_config(CONFIG_FILE_PATH)
 	LOCAL_NETWORK_CIDRS = cfg.get("local_network_cidrs") or []
 	return list(LOCAL_NETWORK_CIDRS)
+
+
+def reload_trusted_proxies() -> list:
+	"""Re-read config and refresh TRUSTED_PROXIES / TRUSTED_IDENTITY_HEADER."""
+	global TRUSTED_PROXIES, TRUSTED_IDENTITY_HEADER
+	cfg = _load_config(CONFIG_FILE_PATH)
+	TRUSTED_PROXIES = list(cfg.get("trusted_proxies") or [])
+	hdr = cfg.get("trusted_identity_header")
+	TRUSTED_IDENTITY_HEADER = (str(hdr).strip() if hdr else None) or None
+	return list(TRUSTED_PROXIES)
 
 
 # DEBUG_MODE: load from environment (LOGIN_DEBUG_MODE, DEBUG_MODE, MSS_LOGIN_DEBUG_MODE) then config.json for diagnosis

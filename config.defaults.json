@@ -33,6 +33,8 @@
 	"force_https": false,
 	"cloudflare_proxy": false,
 	"cloudflared_local_bypass": false,
+	"trusted_proxies": [],
+	"trusted_identity_header": null,
 	"seperate_users": true,
 	"manager_admin_only": true,
 	"api_token_store": {
