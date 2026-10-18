@@ -119,7 +119,11 @@ async def api_mfa_setup(request: web.Request) -> web.Response:
 	if mfa_disabled_applies_to_user(user_rec):
 		log_mfa_disabled_emergency(username, ip)
 		return web.json_response({"error": "MFA is disabled."}, status=403)
-	if MFA_DISABLED and user_is_admin_or_owner(user_rec) and not mfa_disabled_applies_to_user(user_rec):
+	if (
+		MFA_DISABLED
+		and user_is_admin_or_owner(user_rec)
+		and not mfa_disabled_applies_to_user(user_rec)
+	):
 		# Emergency switch on but does not apply to this admin — continue
 		pass
 
@@ -172,9 +176,7 @@ async def api_mfa_verify_setup(request: web.Request) -> web.Response:
 		consume_mfa_temp_token(mfa_temp, purpose="mfa_setup", ip=ip, user_agent=ua)
 	try:
 		send_notification(
-			"mfa_enabled",
-			"mss-login: MFA enabled",
-			f"User {username} enabled MFA from IP: {ip}",
+			"mfa_enabled", "mss-login: MFA enabled", f"User {username} enabled MFA from IP: {ip}"
 		)
 	except Exception:
 		pass
@@ -205,11 +207,7 @@ async def api_mfa_verify_setup(request: web.Request) -> web.Response:
 		)
 		return resp
 	resp = web.json_response(
-		{
-			"message": "MFA enabled successfully",
-			"jwt_token": token,
-			"redirect_url": redirect_url,
-		}
+		{"message": "MFA enabled successfully", "jwt_token": token, "redirect_url": redirect_url}
 	)
 	set_auth_cookie(resp, token, secure=_secure, remember_me=remember_me, max_age_seconds=max_age)
 	return resp
@@ -270,11 +268,7 @@ async def api_mfa_verify(request: web.Request) -> web.Response:
 
 	no_exp = _user_can_have_non_expiring_jwt(username)
 	token, _jti = issue_session_token(
-		username=username,
-		users_db=users_db,
-		jwt_auth=jwt_auth,
-		amr=amr,
-		no_expiration=no_exp,
+		username=username, users_db=users_db, jwt_auth=jwt_auth, amr=amr, no_expiration=no_exp
 	)
 	timeout.remove_failed_attempts(ip, username)
 	if DEBUG_MODE:

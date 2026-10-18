@@ -105,22 +105,13 @@ def test_config_origin():
 	# Without loading real config, defaults apply via empty _load_cfg override
 	orig = cfg_mod._load_cfg
 	cfg_mod._load_cfg = lambda: {
-		"webauthn": {
-			"rp_id": "tmd-nas.win",
-			"origins": ["https://comfyui.tmd-nas.win"],
-		}
+		"webauthn": {"rp_id": "tmd-nas.win", "origins": ["https://comfyui.tmd-nas.win"]}
 	}
 	try:
 		_ok(cfg_mod.origin_allowed("https://comfyui.tmd-nas.win"), "tunnel origin allowed")
 		_ok(not cfg_mod.origin_allowed("https://evil.example"), "evil origin rejected")
-		_ok(
-			not cfg_mod.is_secure_webauthn_origin("http://comfyui.tmd-nas.win"),
-			"http rejected",
-		)
-		_ok(
-			not cfg_mod.is_secure_webauthn_origin("https://203.0.113.10"),
-			"bare IP rejected",
-		)
+		_ok(not cfg_mod.is_secure_webauthn_origin("http://comfyui.tmd-nas.win"), "http rejected")
+		_ok(not cfg_mod.is_secure_webauthn_origin("https://203.0.113.10"), "bare IP rejected")
 	finally:
 		cfg_mod._load_cfg = orig
 
@@ -159,16 +150,14 @@ def test_passwordless_policy_default_off():
 	if _PROJECT_ROOT not in sys.path:
 		sys.path.insert(0, _PROJECT_ROOT)
 	lf = _load("login_finalize", "login_finalize.py")
+
 	# Fake users_db
 	class FakeDB:
 		def get_user(self, username):
 			return ("id1", {"username": username, "groups": ["user"], "admin": False})
 
 	cfg = {"user": {}}  # no passwordless_passkey
-	_ok(
-		not lf.any_group_allows_passwordless("bob", FakeDB(), cfg),
-		"passwordless off by default",
-	)
+	_ok(not lf.any_group_allows_passwordless("bob", FakeDB(), cfg), "passwordless off by default")
 	cfg2 = {"user": {"passwordless_passkey": True}}
 	_ok(lf.any_group_allows_passwordless("bob", FakeDB(), cfg2), "passwordless when enabled")
 

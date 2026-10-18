@@ -44,8 +44,7 @@ CEREMONY_COOKIE = "mss_webauthn_ceremony"
 def _require_passkeys() -> web.Response | None:
 	if not passkeys_enabled():
 		return web.json_response(
-			{"error": "Passkeys unavailable", "reason": passkeys_unavailable_reason()},
-			status=503,
+			{"error": "Passkeys unavailable", "reason": passkeys_unavailable_reason()}, status=503
 		)
 	return None
 
@@ -182,7 +181,9 @@ async def register_verify(request: web.Request) -> web.Response:
 		sign_count=int(verification.sign_count or 0),
 		transports=list(getattr(verification, "transports", None) or []),
 		aaguid=str(getattr(verification, "aaguid", "") or ""),
-		backup_eligible=bool(getattr(verification, "credential_device_type", None) == "multi_device")
+		backup_eligible=bool(
+			getattr(verification, "credential_device_type", None) == "multi_device"
+		)
 		or bool(getattr(verification, "credential_backed_up", False)),
 		backup_state=bool(getattr(verification, "credential_backed_up", False)),
 		rp_id=ceremony.rp_id,
@@ -322,10 +323,7 @@ async def passwordless_verify(request: web.Request) -> web.Response:
 		if stored.synced or stored.backup_eligible:
 			return web.json_response({"error": "Authentication failed"}, status=401)
 	token, _ = issue_session_token(
-		username=username,
-		users_db=users_db,
-		jwt_auth=jwt_auth,
-		amr=["hwk", "user"],
+		username=username, users_db=users_db, jwt_auth=jwt_auth, amr=["hwk", "user"]
 	)
 	timeout.remove_failed_attempts(ip, username)
 	from ..constants import TOKEN_EXPIRE_MINUTES, experimental_loading_screen_enabled
@@ -337,7 +335,11 @@ async def passwordless_verify(request: web.Request) -> web.Response:
 	)
 	max_age = int(TOKEN_EXPIRE_MINUTES) * 60 if remember_me else None
 	set_auth_cookie(
-		resp, token, secure=is_https_request(request), remember_me=remember_me, max_age_seconds=max_age
+		resp,
+		token,
+		secure=is_https_request(request),
+		remember_me=remember_me,
+		max_age_seconds=max_age,
 	)
 	_clear_ceremony_cookie(resp, is_https_request(request))
 	return resp
@@ -370,7 +372,9 @@ async def auth_options(request: web.Request) -> web.Response:
 		allow_credentials=allow or None,
 		user_verification=UserVerificationRequirement.REQUIRED,
 	)
-	expected_origin = origin if origin_allowed(origin) else (cfg["origins"][0] if cfg["origins"] else "")
+	expected_origin = (
+		origin if origin_allowed(origin) else (cfg["origins"][0] if cfg["origins"] else "")
+	)
 	cid = create_ceremony(
 		challenge=opts.challenge,
 		ceremony_type="authenticate",
@@ -487,9 +491,7 @@ async def auth_verify(request: web.Request) -> web.Response:
 	amr = ["hwk", "user", "mfa"]
 	if mfa_temp:
 		amr = ["pwd", "hwk", "user", "mfa"]
-	token, _ = issue_session_token(
-		username=username, users_db=users_db, jwt_auth=jwt_auth, amr=amr
-	)
+	token, _ = issue_session_token(username=username, users_db=users_db, jwt_auth=jwt_auth, amr=amr)
 	timeout.remove_failed_attempts(ip, username)
 	remember_me = truthy_remember_me(body.get("remember_me"))
 	from ..constants import TOKEN_EXPIRE_MINUTES, experimental_loading_screen_enabled
@@ -500,7 +502,11 @@ async def auth_verify(request: web.Request) -> web.Response:
 	)
 	max_age = int(TOKEN_EXPIRE_MINUTES) * 60 if remember_me else None
 	set_auth_cookie(
-		resp, token, secure=is_https_request(request), remember_me=remember_me, max_age_seconds=max_age
+		resp,
+		token,
+		secure=is_https_request(request),
+		remember_me=remember_me,
+		max_age_seconds=max_age,
 	)
 	_clear_ceremony_cookie(resp, is_https_request(request))
 	return resp

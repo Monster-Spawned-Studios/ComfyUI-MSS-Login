@@ -41,11 +41,7 @@ def _purge_expired() -> None:
 
 
 def create_mfa_temp_token(
-	username: str,
-	*,
-	purpose: Purpose,
-	ip: str = "",
-	user_agent: str = "",
+	username: str, *, purpose: Purpose, ip: str = "", user_agent: str = ""
 ) -> str:
 	"""Create a purpose-bound temp token. Purges expired entries first."""
 	_purge_expired()
@@ -85,7 +81,11 @@ def peek_mfa_temp_token(
 		return None
 	if ip is not None and entry.ip and entry.ip != (ip or "").strip():
 		return None
-	if user_agent is not None and entry.user_agent and entry.user_agent != (user_agent or "").strip():
+	if (
+		user_agent is not None
+		and entry.user_agent
+		and entry.user_agent != (user_agent or "").strip()
+	):
 		return None
 	return entry
 

@@ -56,7 +56,9 @@ def user_is_admin_or_owner(user_rec: dict | None) -> bool:
 	return "admin" in groups or "owner" in groups
 
 
-def any_group_allows_passwordless(username: str, users_db: Any, group_cfg: dict | None = None) -> bool:
+def any_group_allows_passwordless(
+	username: str, users_db: Any, group_cfg: dict | None = None
+) -> bool:
 	"""True if any group has passwordless_passkey=True (default False)."""
 	_uid, user_rec = users_db.get_user(username)
 	if not user_rec:
@@ -101,7 +103,9 @@ def mfa_disabled_applies_to_user(user_rec: dict | None) -> bool:
 	return True
 
 
-def evaluate_mfa_gate(username: str, users_db: Any, *, experimental_on: bool | None = None) -> MfaGateResult:
+def evaluate_mfa_gate(
+	username: str, users_db: Any, *, experimental_on: bool | None = None
+) -> MfaGateResult:
 	"""
 	Decide whether interactive issuance must stop for MFA verify or setup.
 
@@ -141,9 +145,7 @@ def evaluate_mfa_gate(username: str, users_db: Any, *, experimental_on: bool | N
 	role_req = any_group_requires_mfa(username, users_db)
 	if is_priv or role_req:
 		return MfaGateResult(
-			needs_setup=True,
-			username=username,
-			reason="admin" if is_priv else "role_mfa_required",
+			needs_setup=True, username=username, reason="admin" if is_priv else "role_mfa_required"
 		)
 	return MfaGateResult(username=username, reason="ok")
 
@@ -214,7 +216,9 @@ def require_step_up(request: web.Request, *, max_age_seconds: int = 300) -> web.
 
 	token = jwt_auth.get_token_from_request(request)
 	if not token:
-		return web.json_response({"error": "step_up_required", "message": "Re-authenticate"}, status=401)
+		return web.json_response(
+			{"error": "step_up_required", "message": "Re-authenticate"}, status=401
+		)
 	try:
 		# Prefer identity resolution (revocation + token_version)
 		user_id, username = jwt_auth.resolve_token_identity(token, touch_idle=False)
@@ -226,8 +230,7 @@ def require_step_up(request: web.Request, *, max_age_seconds: int = 300) -> web.
 	auth_time = payload.get("auth_time")
 	if auth_time is None:
 		return web.json_response(
-			{"error": "step_up_required", "message": "Fresh authentication required"},
-			status=403,
+			{"error": "step_up_required", "message": "Fresh authentication required"}, status=403
 		)
 	try:
 		age = int(time.time()) - int(auth_time)
@@ -235,8 +238,7 @@ def require_step_up(request: web.Request, *, max_age_seconds: int = 300) -> web.
 		return web.json_response({"error": "step_up_required"}, status=403)
 	if age < 0 or age > max_age_seconds:
 		return web.json_response(
-			{"error": "step_up_required", "message": "Fresh authentication required"},
-			status=403,
+			{"error": "step_up_required", "message": "Fresh authentication required"}, status=403
 		)
 	return None
 
@@ -250,9 +252,7 @@ def log_mfa_disabled_emergency(username: str, ip: str) -> None:
 			from globals import logger  # type: ignore
 		from .ntfy_notifier import send_notification
 
-		logger.warning(
-			f"[MFA_DISABLED] Skipping MFA enforcement for user={username!r} ip={ip!r}"
-		)
+		logger.warning(f"[MFA_DISABLED] Skipping MFA enforcement for user={username!r} ip={ip!r}")
 		send_notification(
 			"mfa_disabled",
 			"mss-login: MFA_DISABLED active",

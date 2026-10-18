@@ -156,8 +156,7 @@ class _SqliteSessionStore:
 	def revoke_all_for_username(self, username: str) -> int:
 		"""Revoke every non-revoked session for username. Returns count."""
 		cur = self._conn.execute(
-			"UPDATE session_tokens SET revoked = 1 WHERE username = ? AND revoked = 0",
-			(username,),
+			"UPDATE session_tokens SET revoked = 1 WHERE username = ? AND revoked = 0", (username,)
 		)
 		self._conn.commit()
 		return int(cur.rowcount or 0)

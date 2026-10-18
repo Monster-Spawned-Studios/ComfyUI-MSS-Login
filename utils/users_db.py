@@ -423,9 +423,7 @@ class _PostgresUsersBackend:
 	def get_all(self, secret_key: str) -> dict:
 		"""Return { user_id: user_dict }."""
 		cur = self._conn.cursor(cursor_factory=self._cursor_factory)
-		cur.execute(
-			f"SELECT * FROM {USERS_TABLE}"
-		)
+		cur.execute(f"SELECT * FROM {USERS_TABLE}")
 		rows = cur.fetchall()
 		cur.close()
 		out = {}
@@ -592,9 +590,7 @@ class _MySQLUsersBackend:
 
 	def get_all(self, secret_key: str) -> dict:
 		cur = self._conn.cursor(self._dict_cursor)
-		cur.execute(
-			f"SELECT * FROM {USERS_TABLE}"
-		)
+		cur.execute(f"SELECT * FROM {USERS_TABLE}")
 		rows = cur.fetchall()
 		cur.close()
 		out = {}
@@ -1173,12 +1169,7 @@ class UsersDB:
 		return True
 
 	def _verify_totp_internal(
-		self,
-		username: str,
-		code: str,
-		*,
-		consume_step: bool,
-		require_enabled: bool,
+		self, username: str, code: str, *, consume_step: bool, require_enabled: bool
 	) -> tuple[bool, int | None]:
 		"""Verify TOTP with ±1 window and optional replay rejection via last_totp_timestep."""
 		try:
@@ -1233,9 +1224,7 @@ class UsersDB:
 
 	def verify_totp(self, username: str, code: str) -> bool:
 		"""Verify TOTP code for enrolled user; reject replay within ±1 window."""
-		ok, _ = self._verify_totp_internal(
-			username, code, consume_step=True, require_enabled=True
-		)
+		ok, _ = self._verify_totp_internal(username, code, consume_step=True, require_enabled=True)
 		return ok
 
 	def verify_backup_code_and_consume(self, username: str, backup_code: str) -> bool:

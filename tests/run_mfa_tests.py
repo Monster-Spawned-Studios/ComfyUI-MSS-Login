@@ -79,7 +79,8 @@ def test_temp_store() -> None:
 		"wrong purpose rejected",
 	)
 	_ok(
-		mod.peek_mfa_temp_token(tok, purpose="mfa_verify", ip="1.2.3.4", user_agent="UA") is not None,
+		mod.peek_mfa_temp_token(tok, purpose="mfa_verify", ip="1.2.3.4", user_agent="UA")
+		is not None,
 		"correct purpose ok",
 	)
 	_ok(
@@ -87,7 +88,9 @@ def test_temp_store() -> None:
 		== "alice",
 		"consume on success",
 	)
-	tok2 = mod.create_mfa_temp_token("bob", purpose="mfa_verify", ip="10.0.0.1", user_agent="Chrome")
+	tok2 = mod.create_mfa_temp_token(
+		"bob", purpose="mfa_verify", ip="10.0.0.1", user_agent="Chrome"
+	)
 	_ok(mod.record_mfa_temp_failure(tok2), "fail 1")
 	_ok(mod.record_mfa_temp_failure(tok2), "fail 2")
 	_ok(not mod.record_mfa_temp_failure(tok2), "fail 3 invalidates")

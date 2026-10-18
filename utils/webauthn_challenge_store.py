@@ -57,7 +57,9 @@ def create_ceremony(
 	return cid
 
 
-def consume_ceremony(ceremony_id: str, *, ceremony_type: CeremonyType | None = None) -> CeremonyChallenge | None:
+def consume_ceremony(
+	ceremony_id: str, *, ceremony_type: CeremonyType | None = None
+) -> CeremonyChallenge | None:
 	"""Atomic single consume."""
 	_purge()
 	entry = _store.pop(ceremony_id or "", None)

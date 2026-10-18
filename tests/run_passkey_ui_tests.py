@@ -28,7 +28,10 @@ def main() -> int:
 	text = open(html, encoding="utf-8").read()
 	_ok("cdnjs" not in text, "no CDN in passkeys.html")
 	_ok("/mss-login/vendor/purify.min.js" in text, "self-hosted DOMPurify")
-	_ok("<script>" not in text.split("passkeys.js")[0] or True, "no inline script blocks before external")
+	_ok(
+		"<script>" not in text.split("passkeys.js")[0] or True,
+		"no inline script blocks before external",
+	)
 	# policy
 	if "aiohttp" not in sys.modules:
 		aio = types.ModuleType("aiohttp")
@@ -46,8 +49,7 @@ def main() -> int:
 	spec.loader.exec_module(rp)
 	_ok(rp.lookup_policy("GET", "/passkeys") == rp.Policy.AUTH, "/passkeys AUTH")
 	_ok(
-		rp.lookup_policy("GET", "/mss-login/passkeys") == rp.Policy.AUTH,
-		"/mss-login/passkeys AUTH",
+		rp.lookup_policy("GET", "/mss-login/passkeys") == rp.Policy.AUTH, "/mss-login/passkeys AUTH"
 	)
 	print("---")
 	if failed:
