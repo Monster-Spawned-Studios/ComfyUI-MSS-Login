@@ -154,6 +154,38 @@ def test_missing_dep_message():
 		g.WEBAUTHN_AVAILABLE = old
 
 
+def test_passwordless_policy_default_off():
+	print("TestPasswordlessPolicyOffByDefault")
+	if _PROJECT_ROOT not in sys.path:
+		sys.path.insert(0, _PROJECT_ROOT)
+	lf = _load("login_finalize", "login_finalize.py")
+	# Fake users_db
+	class FakeDB:
+		def get_user(self, username):
+			return ("id1", {"username": username, "groups": ["user"], "admin": False})
+
+	cfg = {"user": {}}  # no passwordless_passkey
+	_ok(
+		not lf.any_group_allows_passwordless("bob", FakeDB(), cfg),
+		"passwordless off by default",
+	)
+	cfg2 = {"user": {"passwordless_passkey": True}}
+	_ok(lf.any_group_allows_passwordless("bob", FakeDB(), cfg2), "passwordless when enabled")
+
+
+def test_passwordless_routes_public():
+	print("TestPasswordlessRoutes")
+	if "aiohttp" not in sys.modules:
+		aio = types.ModuleType("aiohttp")
+		aio.web = types.SimpleNamespace()
+		sys.modules["aiohttp"] = aio
+	rp = _load("route_policy", "route_policy.py")
+	_ok(
+		rp.lookup_policy("POST", "/mss-login/webauthn/passwordless/options") == rp.Policy.PUBLIC,
+		"passwordless options PUBLIC",
+	)
+
+
 def main() -> int:
 	test_guarded_import()
 	test_file_repo_contract()
@@ -161,6 +193,8 @@ def main() -> int:
 	test_config_origin()
 	test_route_policy_webauthn()
 	test_missing_dep_message()
+	test_passwordless_policy_default_off()
+	test_passwordless_routes_public()
 	print("---")
 	if failed:
 		for f in failed:

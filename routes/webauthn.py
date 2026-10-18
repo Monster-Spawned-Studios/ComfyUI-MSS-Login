@@ -13,6 +13,7 @@ from ..globals import jwt_auth, logger, routes, timeout, users_db
 from ..utils.auth_cookies import set_auth_cookie, truthy_remember_me
 from ..utils.ip_filter import get_ip, is_https_request
 from ..utils.login_finalize import (
+	any_group_allows_passwordless,
 	issue_session_token,
 	require_step_up,
 	user_is_admin_or_owner,
@@ -203,6 +204,141 @@ async def register_verify(request: web.Request) -> web.Response:
 	except Exception:
 		pass
 	resp = web.json_response({"message": "Passkey registered", "id": cred.id, "name": cred.name})
+	_clear_ceremony_cookie(resp, is_https_request(request))
+	return resp
+
+
+@routes.post("/mss-login/webauthn/passwordless/options")
+async def passwordless_options(request: web.Request) -> web.Response:
+	"""Discoverable-credential options (empty allowCredentials). Policy off by default."""
+	guard = _require_passkeys()
+	if guard:
+		return guard
+	origin = (request.headers.get("Origin") or "").strip()
+	cfg = get_webauthn_config()
+	if not origin_allowed(origin):
+		return web.json_response({"error": "Origin not allowed"}, status=403)
+	opts = generate_authentication_options(
+		rp_id=cfg["rp_id"],
+		allow_credentials=[],  # discoverable / empty allow list
+		user_verification=UserVerificationRequirement.REQUIRED,
+	)
+	cid = create_ceremony(
+		challenge=opts.challenge,
+		ceremony_type="passwordless",
+		user_id=None,
+		username=None,
+		rp_id=cfg["rp_id"],
+		expected_origin=origin,
+	)
+	resp = web.json_response(json.loads(options_to_json(opts)))
+	_set_ceremony_cookie(resp, cid, secure=is_https_request(request))
+	return resp
+
+
+@routes.post("/mss-login/webauthn/passwordless/verify")
+async def passwordless_verify(request: web.Request) -> web.Response:
+	"""Primary passwordless login: UV passkey counts as both factors when group policy allows."""
+	guard = _require_passkeys()
+	if guard:
+		return guard
+	ip = get_ip(request)
+	body = await _json_body(request)
+	ceremony_id = request.cookies.get(CEREMONY_COOKIE) or ""
+	ceremony = consume_ceremony(ceremony_id, ceremony_type="passwordless")
+	if not ceremony:
+		timeout.add_failed_attempt(ip, None)
+		return web.json_response({"error": "Authentication failed"}, status=401)
+	credential = body.get("credential") or body
+	repo = get_webauthn_repo()
+	try:
+		from webauthn.helpers import base64url_to_bytes
+
+		stored = repo.get_by_credential_id(base64url_to_bytes(credential["id"]))
+	except Exception:
+		stored = None
+	if not stored or stored.revoked_at:
+		timeout.add_failed_attempt(ip, None)
+		return web.json_response({"error": "Authentication failed"}, status=401)
+	# Identify user via user_handle if present
+	user_handle = None
+	try:
+		uh = (credential.get("response") or {}).get("userHandle")
+		if uh:
+			from ..utils.webauthn_credentials import b64url_decode
+
+			user_handle = b64url_decode(uh) if isinstance(uh, str) else uh
+	except Exception:
+		user_handle = None
+	if user_handle:
+		owner = repo.get_user_id_for_handle(user_handle)
+		if owner and owner != stored.user_id:
+			timeout.add_failed_attempt(ip, None)
+			return web.json_response({"error": "Authentication failed"}, status=401)
+	try:
+		verification = verify_authentication_response(
+			credential=credential,
+			expected_challenge=ceremony.challenge,
+			expected_rp_id=ceremony.rp_id,
+			expected_origin=ceremony.expected_origin,
+			credential_public_key=stored.public_key,
+			credential_current_sign_count=stored.sign_count,
+			require_user_verification=True,
+		)
+	except Exception:
+		timeout.add_failed_attempt(ip, None)
+		return web.json_response({"error": "Authentication failed"}, status=401)
+	new_count = int(verification.new_sign_count or 0)
+	if stored.sign_count > 0 and new_count > 0 and new_count <= stored.sign_count:
+		try:
+			send_notification(
+				"login_failure",
+				"mss-login: passkey clone suspected",
+				f"passwordless clone user_id={stored.user_id} ip={ip}",
+			)
+		except Exception:
+			pass
+		return web.json_response({"error": "Authentication failed"}, status=401)
+	repo.update_sign_count(
+		stored.credential_id,
+		new_count,
+		backup_state=bool(getattr(verification, "credential_backed_up", stored.backup_state)),
+	)
+	users_db.load_users()
+	username = None
+	user_rec = None
+	for uid, u in users_db.users.items():
+		if uid == stored.user_id:
+			username = u.get("username")
+			user_rec = u
+			break
+	if not username:
+		return web.json_response({"error": "Authentication failed"}, status=401)
+	if not any_group_allows_passwordless(username, users_db):
+		timeout.add_failed_attempt(ip, username)
+		return web.json_response({"error": "Authentication failed"}, status=401)
+	cfg = get_webauthn_config()
+	if cfg.get("require_device_bound_for_admins") and user_is_admin_or_owner(user_rec):
+		if stored.synced or stored.backup_eligible:
+			return web.json_response({"error": "Authentication failed"}, status=401)
+	token, _ = issue_session_token(
+		username=username,
+		users_db=users_db,
+		jwt_auth=jwt_auth,
+		amr=["hwk", "user"],
+	)
+	timeout.remove_failed_attempts(ip, username)
+	from ..constants import TOKEN_EXPIRE_MINUTES, experimental_loading_screen_enabled
+
+	remember_me = truthy_remember_me(body.get("remember_me"))
+	redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+	resp = web.json_response(
+		{"message": "Login successful", "jwt_token": token, "redirect_url": redirect_url}
+	)
+	max_age = int(TOKEN_EXPIRE_MINUTES) * 60 if remember_me else None
+	set_auth_cookie(
+		resp, token, secure=is_https_request(request), remember_me=remember_me, max_age_seconds=max_age
+	)
 	_clear_ceremony_cookie(resp, is_https_request(request))
 	return resp
 
