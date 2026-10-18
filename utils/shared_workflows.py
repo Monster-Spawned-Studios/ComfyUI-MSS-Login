@@ -11,6 +11,7 @@ import os
 import time
 from typing import Any, Callable
 
+from .input_sanitizer import sanitize_username_for_path
 from .path_safety import is_safe_relative_path, path_under, resolve_path_under
 
 ORIGIN_OWN = "own"
@@ -119,12 +120,7 @@ def _shared_library_enabled() -> bool:
 
 
 def _sanitize_username(username: str) -> str:
-	text = (username or "").strip()
-	if not text:
-		return "guest"
-	# Match user_env path segment rules loosely
-	safe = "".join(ch if ch.isalnum() or ch in ("_", "-", ".") else "_" for ch in text)
-	return safe or "guest"
+	return sanitize_username_for_path(username)
 
 
 def workflow_dir_path(username: str, *, must_exist: bool = True) -> str | None:

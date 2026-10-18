@@ -15,8 +15,9 @@ from typing import Optional
 from PIL import Image, ImageFile, UnidentifiedImageError
 
 from .data_dir import get_data_dir, get_data_subdir
+from .input_sanitizer import sanitize_username_for_path
 from .path_safety import is_safe_folder_segment
-from .user_env import _sanitize_username_for_path, migrate_users_dir_if_needed
+from .user_env import migrate_users_dir_if_needed
 
 # Decompression-bomb ceiling (Pillow default is ~178 million pixels).
 Image.MAX_IMAGE_PIXELS = 8_000_000
@@ -30,7 +31,7 @@ ALLOWED_FORMATS = frozenset({"JPEG", "PNG", "WEBP", "GIF"})
 
 
 def avatar_dir(username: str) -> str:
-	safe = _sanitize_username_for_path(username)
+	safe = sanitize_username_for_path(username)
 	if not is_safe_folder_segment(safe) or safe.lower() == "guest":
 		raise ValueError("Invalid username for avatar storage")
 	# Merge leftover capital Users/ into lowercase users/ (no new capital dirs).

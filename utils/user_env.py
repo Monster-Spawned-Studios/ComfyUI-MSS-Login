@@ -16,6 +16,7 @@ import shutil
 from typing import Any, Dict, List
 
 from .data_dir import get_data_dir, get_data_subdir
+from .input_sanitizer import sanitize_username_for_path
 
 _USERS_MIGRATED_MARKER = ".migrated_users_to_data_dir"
 
@@ -178,10 +179,7 @@ def get_user_root(username: str) -> str:
 	Per-user root folder:
 	  <DATA_DIR>/users/<username>/
 	"""
-	username = (username or "guest").strip() or "guest"
-	# Prevent path traversal: username must be a single path segment
-	if ".." in username or "/" in username or "\\" in username:
-		username = "guest"
+	username = sanitize_username_for_path(username)
 	path = os.path.join(get_users_root(), username)
 	os.makedirs(path, exist_ok=True)
 	return path
@@ -345,10 +343,7 @@ def purge_user_root(username: str) -> None:
 
 def _sanitize_username_for_path(username: str) -> str:
 	"""Normalize username for use as a path segment; prevent path traversal."""
-	name = (username or "guest").strip() or "guest"
-	if ".." in name or "/" in name or "\\" in name:
-		return "guest"
-	return name
+	return sanitize_username_for_path(username)
 
 
 def _get_plugin_workflow_dir(username: str) -> str:
