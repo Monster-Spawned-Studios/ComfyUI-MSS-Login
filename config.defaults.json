@@ -35,6 +35,12 @@
 	"cloudflared_local_bypass": false,
 	"trusted_proxies": [],
 	"trusted_identity_header": null,
+	"webauthn": {
+		"rp_id": "tmd-nas.win",
+		"rp_name": "MSS-Login",
+		"origins": ["https://comfyui.tmd-nas.win"],
+		"require_device_bound_for_admins": false
+	},
 	"seperate_users": true,
 	"manager_admin_only": true,
 	"api_token_store": {
