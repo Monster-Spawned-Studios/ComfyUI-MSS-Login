@@ -59,7 +59,17 @@ def _install_stubs():
 			return getattr(request, "_token", None)
 
 		def decode_access_token(self, _token):
-			return {"username": "alice"}
+			return {"username": "alice", "id": "uid-alice"}
+
+		def resolve_request_identity(self, request, *, touch_idle=True):
+			if not getattr(request, "_token", None):
+				return None, None
+			return "uid-alice", "alice"
+
+		def resolve_token_identity(self, token, *, touch_idle=False):
+			if not token:
+				return None, None
+			return "uid-alice", "alice"
 
 	class _UsersDb:
 		def get_user(self, username=None):
