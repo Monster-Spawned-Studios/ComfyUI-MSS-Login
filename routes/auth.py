@@ -21,6 +21,7 @@ from ..constants import (
 	MAX_TOKEN_EXPIRE_MINUTES,
 	SESSION_TOKEN_STORE_CONFIG,
 	TOKEN_EXPIRE_MINUTES,
+	TRUSTED_IDENTITY_HEADER,
 	USERS_DB_CONFIG,
 	WEB_DIR,
 	experimental_loading_screen_enabled,
@@ -40,7 +41,7 @@ from ..utils.input_sanitizer import (
 	sanitize_totp_code,
 	sanitize_username,
 )
-from ..utils.ip_filter import get_device_id, get_ip, is_https_request
+from ..utils.ip_filter import get_device_id, get_ip, is_https_request, is_trusted_proxy_peer
 from ..utils.lockout_store import get_lockout_store
 from ..utils.mfa_temp_store import create_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
@@ -323,44 +324,86 @@ async def get_login(request: web.Request) -> web.Response:
 		# (that path previously caused a /login ↔ /logout redirect loop).
 		clear_stale_session = True
 
-	# Check for Tailscale / reverse proxy identity headers on trusted local/Tailscale connections
-	if experimental_tailscale_local_auth_enabled() and is_trusted_tailscale_or_local(request):
-		for header in (
-			"Tailscale-User-Login",
-			"Remote-User",
-			"X-Remote-User",
-			"X-Forwarded-User",
-			"X-Webauth-User",
-		):
-			hdr_val = request.headers.get(header)
-			if hdr_val:
-				candidate = sanitize_username(hdr_val.strip().split("@")[0])
-				groups_cfg = access_control._load_group_config()
-				if user_can_login_locally_without_auth(candidate, users_db, groups_cfg):
-					user_id, _ = users_db.get_user(candidate)
-					if user_id:
-						user_env.get_user_workflow_dir(candidate)
-						no_exp = _user_can_have_non_expiring_jwt(candidate)
-						token = jwt_auth.create_access_token(
-							{"id": user_id, "username": candidate}, no_expiration=no_exp
-						)
-						try:
-							payload = jwt_auth.decode_access_token(token)
-							jti = payload.get("jti")
-							exp = payload.get("exp")
-							exp_at_iso = (
-								datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
+	# Identity-header login (AUDIT-013 / 4c): OFF by default.
+	# Requires: direct peer in trusted_proxies AND trusted_identity_header naming
+	# that exact header. Never counts as MFA — enrolled users still hit the MFA gate.
+	# Does NOT revoke or invalidate existing Portal Bearer / API JWTs; MFA only gates
+	# this interactive issuance path.
+	_IDENTITY_HEADERS = (
+		"Tailscale-User-Login",
+		"Remote-User",
+		"X-Remote-User",
+		"X-Forwarded-User",
+		"X-Webauth-User",
+	)
+	peer = getattr(request, "remote", "") or ""
+	opt_in_hdr = TRUSTED_IDENTITY_HEADER
+	if (
+		experimental_tailscale_local_auth_enabled()
+		and opt_in_hdr
+		and opt_in_hdr in _IDENTITY_HEADERS
+		and is_trusted_proxy_peer(peer)
+	):
+		hdr_val = request.headers.get(opt_in_hdr)
+		if hdr_val:
+			candidate = sanitize_username(hdr_val.strip().split("@")[0])
+			groups_cfg = access_control._load_group_config()
+			if user_can_login_locally_without_auth(candidate, users_db, groups_cfg):
+				user_id, user_rec = users_db.get_user(candidate)
+				if user_id:
+					user_env.get_user_workflow_dir(candidate)
+					# MFA gate: identity header never satisfies MFA
+					mfa_enabled = False
+					try:
+						mfa_enabled = bool(users_db.get_mfa_enabled(candidate))
+					except Exception:
+						mfa_enabled = False
+					needs_mfa = False
+					if experimental_mfa_enabled() and not constants_module.MFA_DISABLED:
+						if mfa_enabled:
+							needs_mfa = True
+						else:
+							is_admin_user = bool(user_rec and user_rec.get("admin")) or (
+								user_rec
+								and "admin" in [g.lower() for g in (user_rec.get("groups") or [])]
 							)
-							if jti:
-								get_session_token_store(
-									SESSION_TOKEN_STORE_CONFIG
-								).register_session(jti, user_id, candidate, exp_at_iso)
-						except Exception:
-							pass
-						redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
-						resp = web.HTTPFound(redirect_url)
-						_apply_login_cookie(resp, token, request, remember_me=False)
-						return resp
+							if is_admin_user or _role_requires_mfa(candidate):
+								needs_mfa = True
+					if needs_mfa:
+						mfa_temp = create_mfa_temp_token(candidate)
+						# Bridge page: set sessionStorage then go to /mfa (no session JWT yet)
+						bridge = (
+							"<!DOCTYPE html><html><head><meta charset='utf-8'>"
+							"<title>MFA required</title></head><body>"
+							"<script>"
+							f"sessionStorage.setItem('mss_mfa_temp_token',{json.dumps(mfa_temp)});"
+							"sessionStorage.setItem('mss_mfa_mode','verify');"
+							"location.replace('/mfa');"
+							"</script>"
+							"<p>MFA verification required…</p></body></html>"
+						)
+						return web.Response(text=bridge, content_type="text/html")
+					no_exp = _user_can_have_non_expiring_jwt(candidate)
+					token = jwt_auth.create_access_token(
+						{"id": user_id, "username": candidate}, no_expiration=no_exp
+					)
+					try:
+						payload = jwt_auth.decode_access_token(token)
+						jti = payload.get("jti")
+						exp = payload.get("exp")
+						exp_at_iso = (
+							datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
+						)
+						if jti:
+							get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
+								jti, user_id, candidate, exp_at_iso
+							)
+					except Exception:
+						pass
+					redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+					resp = web.HTTPFound(redirect_url)
+					_apply_login_cookie(resp, token, request, remember_me=False)
+					return resp
 
 	path = os.path.join(HTML_DIR, "login.html")
 	if not os.path.exists(path):
@@ -562,8 +605,8 @@ async def post_login(request: web.Request) -> web.Response:
 		_apply_login_cookie(resp, token, request, remember_me=remember_me)
 		return resp
 
-	timeout.add_failed_attempt(ip)
-	if timeout.get_failed_attempts(ip) >= BLACKLIST_AFTER_ATTEMPTS:
+	timeout.add_failed_attempt(ip, username or None)
+	if timeout.get_failed_attempts(ip, username or None) >= BLACKLIST_AFTER_ATTEMPTS:
 		get_lockout_store(USERS_DB_CONFIG).add_lockout(
 			ip, get_device_id(request), expiry_hours=BLACKLIST_EXPIRY_HOURS
 		)
@@ -576,6 +619,7 @@ async def post_login(request: web.Request) -> web.Response:
 		)
 	except Exception as e:
 		logger.error(f"[auth.py] post_login: send_notification: {e!s}")
+	# Generic message: do not reveal whether the user exists
 	return web.json_response({"error": "Invalid credentials"}, status=401)
 
 
@@ -648,9 +692,39 @@ async def api_local_login(request: web.Request) -> web.Response:
 
 	user_id, user_rec = users_db.get_user(username)
 	if not user_id:
-		return web.json_response({"error": "User not found."}, status=404)
+		# Generic error — do not confirm account existence to untrusted callers
+		timeout.add_failed_attempt(ip, username)
+		return web.json_response({"error": "Local login denied."}, status=403)
 
 	user_env.get_user_workflow_dir(username)
+
+	# MFA gate: passwordless local login never satisfies MFA. Does not invalidate
+	# existing Portal Bearer / API JWTs — only blocks issuing a new session here.
+	mfa_enabled = False
+	try:
+		mfa_enabled = bool(users_db.get_mfa_enabled(username))
+	except Exception:
+		mfa_enabled = False
+	if experimental_mfa_enabled() and not constants_module.MFA_DISABLED:
+		needs_mfa = mfa_enabled
+		if not needs_mfa:
+			is_admin_user = bool(user_rec and user_rec.get("admin")) or (
+				user_rec and "admin" in [g.lower() for g in (user_rec.get("groups") or [])]
+			)
+			if is_admin_user or _role_requires_mfa(username):
+				needs_mfa = True
+		if needs_mfa:
+			mfa_temp = create_mfa_temp_token(username)
+			timeout.remove_failed_attempts(ip, username)
+			return web.json_response(
+				{
+					"message": "MFA verification required",
+					"mfa_required": True,
+					"mfa_temp_token": mfa_temp,
+				},
+				status=200,
+			)
+
 	no_exp = _user_can_have_non_expiring_jwt(username)
 	token = jwt_auth.create_access_token(
 		{"id": user_id, "username": username}, no_expiration=no_exp
@@ -964,8 +1038,8 @@ async def post_generate_token(request: web.Request) -> web.Response:
 
 	if not users_db.check_username_password(username, password):
 		logger.generate_attempt(ip, username, int(expire_hours))
-		timeout.add_failed_attempt(ip)
-		return web.json_response({"error": "Invalid credentials."}, status=401)
+		timeout.add_failed_attempt(ip, username)
+		return web.json_response({"error": "Invalid credentials"}, status=401)
 
 	if not _user_can_have_api_tokens(username):
 		return web.json_response(

@@ -2,37 +2,36 @@
 """
 Network detection and security verification for Tailscale and local private networks.
 
-Enforces strict multi-layer IP matching:
-1. TCP socket peer (request.remote) MUST be in trusted Tailscale or local CIDRs.
-2. If connecting through a local reverse proxy or Cloudflare tunnel, the originating
-   client IP (X-Forwarded-For / CF-Connecting-IP) must ALSO be in trusted CIDRs.
-3. External / public internet IPs are ALWAYS classified as remote and CANNOT bypass auth.
+NEW-A / AUDIT-013 trust model:
+- Client trust (passwordless local login): TAILSCALE_CIDRS + explicit non-public
+  local_network_cidrs only. DEFAULT_LOCAL_PRIVATE_CIDRS never grants client trust.
+- Proxy-hop trust: trusted_proxies only (see ip_filter.get_ip / is_trusted_proxy_peer).
+- Resolved client IP comes from get_ip(); undeterminable client → fail closed.
 """
 
 import ipaddress
+import logging
 from typing import Any, Optional
 
 from aiohttp import web
 
 try:
-	from ..constants import DEFAULT_LOCAL_PRIVATE_CIDRS, LOCAL_NETWORK_CIDRS, TAILSCALE_CIDRS
+	from ..constants import LOCAL_NETWORK_CIDRS, TAILSCALE_CIDRS
 except (ImportError, ValueError):
 	try:
-		from constants import DEFAULT_LOCAL_PRIVATE_CIDRS, LOCAL_NETWORK_CIDRS, TAILSCALE_CIDRS
+		from constants import LOCAL_NETWORK_CIDRS, TAILSCALE_CIDRS
 	except (ImportError, ValueError):
-		from mss_login.constants import (
-			DEFAULT_LOCAL_PRIVATE_CIDRS,
-			LOCAL_NETWORK_CIDRS,
-			TAILSCALE_CIDRS,
-		)
+		from mss_login.constants import LOCAL_NETWORK_CIDRS, TAILSCALE_CIDRS
 
 try:
-	from .ip_filter import get_ip
+	from .ip_filter import get_ip, is_trusted_proxy_peer
 except (ImportError, ValueError):
 	try:
-		from utils.ip_filter import get_ip
+		from utils.ip_filter import get_ip, is_trusted_proxy_peer
 	except (ImportError, ValueError):
-		from mss_login.utils.ip_filter import get_ip
+		from mss_login.utils.ip_filter import get_ip, is_trusted_proxy_peer
+
+_log = logging.getLogger("mss_login.tailscale_network")
 
 
 def _parse_ip(ip_str: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
@@ -44,6 +43,47 @@ def _parse_ip(ip_str: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | No
 		return ipaddress.ip_address(ip_str)
 	except ValueError:
 		return None
+
+
+def _is_public_network(cidr: str) -> bool:
+	"""Return True if the CIDR/IP is globally routable (should not be client-trusted)."""
+	try:
+		net = ipaddress.ip_network(cidr.strip(), strict=False)
+	except ValueError:
+		return True  # unparseable → treat as public / ignore
+	# ip_network.is_global is False for private, loopback, link-local, ULA, CGNAT, etc.
+	return bool(net.is_global)
+
+
+def filter_client_trust_cidrs(
+	custom_cidrs: list[str] | None = None, *, warn: bool = True
+) -> list[str]:
+	"""
+	Return explicit local_network_cidrs entries that are safe for client trust.
+	Public / global CIDRs are logged and ignored. Does NOT include DEFAULT_LOCAL_PRIVATE_CIDRS.
+	"""
+	raw: list[str] = []
+	if custom_cidrs is not None:
+		raw = list(custom_cidrs)
+	elif LOCAL_NETWORK_CIDRS:
+		raw = list(LOCAL_NETWORK_CIDRS)
+
+	out: list[str] = []
+	for entry in raw:
+		if not entry or not isinstance(entry, str):
+			continue
+		entry = entry.strip()
+		if not entry:
+			continue
+		if _is_public_network(entry):
+			if warn:
+				_log.warning(
+					"[MSS-Login] Ignoring public CIDR in local_network_cidrs (not trusted for local login): %s",
+					entry,
+				)
+			continue
+		out.append(entry)
+	return out
 
 
 def is_ip_in_cidrs(ip_str: str, cidr_list: list[str]) -> bool:
@@ -65,83 +105,60 @@ def is_ip_in_cidrs(ip_str: str, cidr_list: list[str]) -> bool:
 
 
 def get_all_trusted_cidrs(custom_cidrs: list[str] | None = None) -> list[str]:
-	"""Return the combined list of default Tailscale, local private, and custom CIDRs."""
-	combined = list(TAILSCALE_CIDRS) + list(DEFAULT_LOCAL_PRIVATE_CIDRS)
-	if custom_cidrs:
-		combined.extend(custom_cidrs)
-	elif LOCAL_NETWORK_CIDRS:
-		combined.extend(LOCAL_NETWORK_CIDRS)
-	return combined
+	"""
+	Client-trust CIDRs: Tailscale + explicit non-public local_network_cidrs only.
+	DEFAULT_LOCAL_PRIVATE_CIDRS is intentionally excluded (NEW-A).
+	Empty local_network_cidrs → Tailscale-only.
+	"""
+	return list(TAILSCALE_CIDRS) + filter_client_trust_cidrs(custom_cidrs)
 
 
 def classify_ip(ip_str: str, custom_cidrs: list[str] | None = None) -> str:
 	"""
-	Classify an IP address as 'tailscale', 'local', or 'remote'.
+	Classify an IP for auth purposes.
+
+	Returns:
+	  - 'tailscale' for TAILSCALE_CIDRS
+	  - 'local' only for an explicit local_network_cidrs match
+	  - 'private-untrusted' for RFC1918/loopback/etc. that are NOT explicitly listed
+	  - 'remote' for public / unknown
 	"""
 	addr = _parse_ip(ip_str)
 	if addr is None:
 		return "remote"
 
-	# Check Tailscale first (100.64.0.0/10 or fd7a:115c:a1e0::/48)
 	if is_ip_in_cidrs(ip_str, TAILSCALE_CIDRS):
 		return "tailscale"
 
-	# Check local private ranges & custom CIDRs
-	local_cidrs = list(DEFAULT_LOCAL_PRIVATE_CIDRS)
-	if custom_cidrs:
-		local_cidrs.extend(custom_cidrs)
-	elif LOCAL_NETWORK_CIDRS:
-		local_cidrs.extend(LOCAL_NETWORK_CIDRS)
-
-	if is_ip_in_cidrs(ip_str, local_cidrs):
+	explicit = filter_client_trust_cidrs(custom_cidrs, warn=False)
+	if is_ip_in_cidrs(ip_str, explicit):
 		return "local"
 
-	return "remote"
+	# Globally routable → remote. Everything else unlisted (RFC1918, loopback,
+	# link-local, ULA, CGNAT outside Tailscale, docs ranges) → private-untrusted.
+	if getattr(addr, "is_global", False):
+		return "remote"
+	return "private-untrusted"
 
 
 def is_trusted_tailscale_or_local(
 	request: web.Request, custom_cidrs: list[str] | None = None
 ) -> bool:
 	"""
-	Strictly verify that an incoming request originates from Tailscale or a local network.
+	Strictly verify that an incoming request's *client* IP is Tailscale or explicitly listed LAN.
 
-	Security validation rules:
-	1. Direct socket peer (request.remote) MUST be in trusted CIDRs.
-	   If an external attacker connects directly from a public IP, request.remote
-	   is public; all proxy headers are ignored and the request is REJECTED as remote.
-	2. If request.remote is local (e.g. localhost reverse proxy or Cloudflare tunnel):
-	   - If CF-Connecting-IP is present: it MUST be in trusted CIDRs.
-	   - If X-Forwarded-For is present: the first client IP in the chain MUST be in trusted CIDRs.
+	- Resolve client via get_ip() (trusted_proxies gate on forwarding headers).
+	- If client IP is empty/undeterminable → fail closed (False).
+	- Client must be in TAILSCALE_CIDRS or explicit non-public local_network_cidrs.
+	- Unlisted private / loopback / Docker bridge clients are NOT trusted.
+	- Cloudflare tunnel with public CF-Connecting-IP never passes (public client).
 	"""
-	peer_ip = getattr(request, "remote", None)
-	if not peer_ip:
+	client_ip = get_ip(request)
+	if not client_ip:
 		return False
 
-	all_trusted = get_all_trusted_cidrs(custom_cidrs)
-
-	# Rule 1: Peer socket must be in trusted CIDRs
-	if not is_ip_in_cidrs(peer_ip, all_trusted):
-		return False
-
-	# Rule 2: Inspect proxy headers if peer is local/proxy
-	# Check Cloudflare real client IP if present
-	cf_ip = request.headers.get("CF-Connecting-IP")
-	if cf_ip and not is_ip_in_cidrs(cf_ip, all_trusted):
-		return False
-
-	# Check X-Forwarded-For first hop if present
-	forwarded = request.headers.get("X-Forwarded-For")
-	if forwarded:
-		first_ip = forwarded.split(",")[0].strip()
-		if first_ip and not is_ip_in_cidrs(first_ip, all_trusted):
-			return False
-
-	# Check X-Real-IP if present
-	real_ip = request.headers.get("X-Real-IP")
-	if real_ip and not is_ip_in_cidrs(real_ip, all_trusted):
-		return False
-
-	return True
+	trusted = get_all_trusted_cidrs(custom_cidrs)
+	return is_ip_in_cidrs(client_ip, trusted)
 
 
 def detect_network_info(
@@ -149,14 +166,20 @@ def detect_network_info(
 ) -> dict[str, Any]:
 	"""Return diagnostic network info for the current request."""
 	trusted = is_trusted_tailscale_or_local(request, custom_cidrs)
-	effective_ip = get_ip(request) or getattr(request, "remote", "")
-	net_type = classify_ip(effective_ip, custom_cidrs) if trusted else "remote"
+	effective_ip = get_ip(request) or ""
+	net_type = classify_ip(effective_ip, custom_cidrs) if effective_ip else "remote"
+	# Auth view: private-untrusted counts as remote for is_local
+	is_local_for_auth = net_type in ("tailscale", "local") and trusted
 
 	return {
-		"peer_ip": getattr(request, "remote", ""),
+		"peer_ip": getattr(request, "remote", "") or "",
 		"client_ip": effective_ip,
 		"is_trusted": trusted,
-		"network_type": net_type,
+		"is_local": is_local_for_auth,
+		"network_type": net_type
+		if trusted
+		else ("private-untrusted" if net_type == "private-untrusted" else "remote"),
+		"peer_is_trusted_proxy": is_trusted_proxy_peer(getattr(request, "remote", "") or ""),
 	}
 
 
