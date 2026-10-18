@@ -69,6 +69,7 @@ from .routes import (
 	recovery,
 	static,
 	user,
+	webauthn,  # noqa: F401 — register WebAuthn routes
 	workflow_routes,
 )
 from .utils import watcher
