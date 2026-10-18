@@ -56,6 +56,19 @@ def user_is_admin_or_owner(user_rec: dict | None) -> bool:
 	return "admin" in groups or "owner" in groups
 
 
+def any_group_allows_passwordless(username: str, users_db: Any, group_cfg: dict | None = None) -> bool:
+	"""True if any group has passwordless_passkey=True (default False)."""
+	_uid, user_rec = users_db.get_user(username)
+	if not user_rec:
+		return False
+	cfg = group_cfg if group_cfg is not None else _load_group_config()
+	for role in user_groups_lower(user_rec):
+		perms = cfg.get(role) or {}
+		if perms.get("passwordless_passkey", False) is True:
+			return True
+	return False
+
+
 def any_group_requires_mfa(username: str, users_db: Any, group_cfg: dict | None = None) -> bool:
 	"""True if any of the user's groups has mfa_required=True."""
 	_uid, user_rec = users_db.get_user(username)

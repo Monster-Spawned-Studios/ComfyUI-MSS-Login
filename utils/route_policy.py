@@ -72,6 +72,8 @@ _ROUTE_POLICIES: list[tuple[str, str, str]] = [
 	_p("POST", "/mss-login/webauthn/register/verify", Policy.AUTH),
 	_p("POST", "/mss-login/webauthn/auth/options", Policy.PUBLIC),
 	_p("POST", "/mss-login/webauthn/auth/verify", Policy.PUBLIC),
+	_p("POST", "/mss-login/webauthn/passwordless/options", Policy.PUBLIC),
+	_p("POST", "/mss-login/webauthn/passwordless/verify", Policy.PUBLIC),
 	_p("GET", "/mss-login/webauthn/credentials", Policy.AUTH),
 	_p("DELETE", "/mss-login/webauthn/credentials", Policy.AUTH),
 	_p("GET", "/mss-login/api/auth/local-login-status", Policy.PUBLIC),
