@@ -175,6 +175,9 @@ def main() -> int:
 			)
 		)
 		steps.append(
+			("Shared guest gaps", os.path.join(TESTS_DIR, "run_shared_guest_gaps_tests.py"))
+		)
+		steps.append(
 			(
 				"Workflow metadata pass-through",
 				os.path.join(TESTS_DIR, "run_workflow_metadata_tests.py"),
