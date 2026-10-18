@@ -40,6 +40,8 @@ def run_tests():
 		sys.modules["utils"] = pkg
 	path_safety = _load("utils.path_safety", os.path.join(_UTILS, "path_safety.py"))
 	sys.modules["utils.path_safety"] = path_safety
+	input_sanitizer = _load("utils.input_sanitizer", os.path.join(_UTILS, "input_sanitizer.py"))
+	sys.modules["utils.input_sanitizer"] = input_sanitizer
 
 	data_dir = types.ModuleType("utils.data_dir")
 	tmpdir = tempfile.mkdtemp(prefix="mss-avatar-")
@@ -48,14 +50,6 @@ def run_tests():
 	sys.modules["utils.data_dir"] = data_dir
 
 	user_env = types.ModuleType("utils.user_env")
-
-	def _sanitize(name):
-		raw = (name or "guest").strip() or "guest"
-		if ".." in raw or "/" in raw or "\\" in raw:
-			return "guest"
-		return raw
-
-	user_env._sanitize_username_for_path = _sanitize
 	user_env.migrate_users_dir_if_needed = lambda: False
 	sys.modules["utils.user_env"] = user_env
 

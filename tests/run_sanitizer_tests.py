@@ -53,6 +53,64 @@ def run_tests():
 	ok(len(out) <= 128, "truncates to max_len")
 	ok("\x00" not in input_sanitizer.sanitize_username("a\x00b"), "strips null byte")
 
+	# --- sanitize_username_for_path (unified path segment helper) ---
+	print("TestSanitizeUsernameForPath")
+	path_fn = input_sanitizer.sanitize_username_for_path
+	table = [
+		("Alice", "Alice"),
+		("  bob  ", "bob"),
+		("user name", "username"),
+		("José", "Jos"),
+		("../x", "guest"),
+		("a/b", "guest"),
+		("a\\b", "guest"),
+		("", "guest"),
+		(None, "guest"),
+		("x" * 200, "x" * 128),
+		("user-name", "user-name"),
+		("user_name", "user_name"),
+		("user.name", "username"),
+	]
+	for raw, expected in table:
+		got = path_fn(raw)
+		ok(got == expected, f"path sanitize {raw!r} -> {expected!r} (got {got!r})")
+
+	# Call-site identity: user_env + shared_workflows wrappers match the shared helper
+	import types
+
+	if "mss_login" not in sys.modules:
+		root = types.ModuleType("mss_login")
+		root.__path__ = [_PROJECT_ROOT]
+		sys.modules["mss_login"] = root
+	if "mss_login.utils" not in sys.modules:
+		utils_pkg = types.ModuleType("mss_login.utils")
+		utils_pkg.__path__ = [_utils]
+		sys.modules["mss_login.utils"] = utils_pkg
+	sys.modules["mss_login.utils.input_sanitizer"] = input_sanitizer
+
+	# Minimal stubs so user_env / shared_workflows can load
+	if "mss_login.utils.data_dir" not in sys.modules:
+		dd = types.ModuleType("mss_login.utils.data_dir")
+		dd.get_data_dir = lambda: "/tmp"
+		dd.get_data_subdir = lambda *p: os.path.join("/tmp", *p)
+		sys.modules["mss_login.utils.data_dir"] = dd
+	if "mss_login.utils.path_safety" not in sys.modules:
+		_load_module("mss_login.utils.path_safety", os.path.join(_utils, "path_safety.py"))
+	if "mss_login.utils.cpe_workflows" not in sys.modules:
+		_load_module("mss_login.utils.cpe_workflows", os.path.join(_utils, "cpe_workflows.py"))
+
+	sys.modules.pop("mss_login.utils.user_env", None)
+	user_env = _load_module("mss_login.utils.user_env", os.path.join(_utils, "user_env.py"))
+	sys.modules.pop("mss_login.utils.shared_workflows", None)
+	shared_workflows = _load_module(
+		"mss_login.utils.shared_workflows", os.path.join(_utils, "shared_workflows.py")
+	)
+	for sample in ("alice", "Bob_1", "../evil", "a/b", "", "user.name", "x" * 150):
+		a = path_fn(sample)
+		b = user_env._sanitize_username_for_path(sample)
+		c = shared_workflows._sanitize_username(sample)
+		ok(a == b == c, f"call sites agree on {sample!r} ({a!r})")
+
 	# --- sanitize_password_input ---
 	print("TestSanitizePasswordInput")
 	ok(input_sanitizer.sanitize_password_input("secret") == "secret", "keeps password")

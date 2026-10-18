@@ -209,5 +209,6 @@ echo "[verify] CPE gate"
 "$PY" tests/run_cpe_auth_tests.py
 "$PY" tests/run_cpe_workflow_tests.py
 "$PY" tests/run_cpe_shared_guest_workflows_tests.py
+"$PY" tests/run_shared_guest_gaps_tests.py
 
 echo "[verify] ALL PASSED"

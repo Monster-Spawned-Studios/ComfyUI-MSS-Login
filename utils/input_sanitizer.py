@@ -41,6 +41,7 @@ def sanitize_username(value: str | None, max_len: int = USERNAME_MAX_LEN) -> str
 	- Truncates to max_len.
 
 	Use with validate_username() for registration (which enforces length and pattern).
+	For on-disk path segments prefer sanitize_username_for_path().
 	"""
 	if value is None:
 		return ""
@@ -48,6 +49,27 @@ def sanitize_username(value: str | None, max_len: int = USERNAME_MAX_LEN) -> str
 	# Allow only safe identifier characters (alphanumeric, underscore, hyphen)
 	s = re.sub(r"[^a-zA-Z0-9_\-]", "", s)
 	return s[:max_len]
+
+
+def sanitize_username_for_path(value: str | None, max_len: int = USERNAME_MAX_LEN) -> str:
+	"""
+	Single path-segment sanitizer for user directories (workflows, avatars, users/).
+
+	Stricter than the old user_env helper: applies sanitize_username charset rules,
+	truncates to max_len, and maps empty results to "guest". Traversal-shaped
+	inputs (containing .., /, or \\) fail closed to "guest" so remnant names
+	like "../alice" cannot resolve to "alice".
+
+	Registration-valid usernames ([A-Za-z0-9_]{3,}) and "guest" are unchanged.
+	"""
+	raw = "" if value is None else str(value)
+	stripped = raw.strip()
+	if not stripped:
+		return "guest"
+	if ".." in stripped or "/" in stripped or "\\" in stripped:
+		return "guest"
+	s = sanitize_username(stripped, max_len=max_len)
+	return s or "guest"
 
 
 def sanitize_password_input(value: str | None, max_len: int = PASSWORD_MAX_LEN) -> str:
