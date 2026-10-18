@@ -560,8 +560,14 @@ class AccessControl:
 				completed = status_dict.get("completed")
 				if isinstance(completed, bool):
 					status_dict["status_str"] = "success" if completed else "error"
-			if not isinstance(status_dict.get("messages"), list):
-				status_dict["messages"] = list(status_dict["messages"] or [])
+			# Coerce missing / None / non-list messages without KeyError or char-splitting strings.
+			raw_messages = status_dict.get("messages")
+			if isinstance(raw_messages, list):
+				status_dict["messages"] = raw_messages
+			elif isinstance(raw_messages, tuple):
+				status_dict["messages"] = list(raw_messages)
+			else:
+				status_dict["messages"] = []
 			self.__prompt_queue.history[prompt_tuple[1]] = {
 				"prompt": prompt_tuple,
 				"outputs": {},

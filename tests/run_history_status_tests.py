@@ -332,6 +332,64 @@ def test_per_user_history_filtering():
 	ok(set(hist_admin.keys()) == {"pa", "pb"}, "admin sees both entries")
 
 
+def test_status_dict_messages_coercion():
+	"""Dict status must not KeyError when messages is missing, None, or non-list."""
+	print("TestStatusDictMessagesCoercion")
+	ac = _load_access_control()
+	ctrl = _make_ctrl(ac)
+	pq = ctrl._AccessControl__prompt_queue
+
+	# Missing messages key
+	pq.currently_running[20] = _core_prompt("p-missing")
+	ctrl.user_queue_task_done(
+		20, {"outputs": {}}, status={"status_str": "success", "completed": True}
+	)
+	st = pq.history["p-missing"]["status"]
+	ok(isinstance(st.get("messages"), list), "missing messages -> list")
+	ok(st["messages"] == [], "missing messages -> empty list")
+	ok(st["status_str"] == "success", "missing messages keeps status_str")
+
+	# messages: None
+	pq.currently_running[21] = _core_prompt("p-none")
+	ctrl.user_queue_task_done(
+		21, {"outputs": {}}, status={"status_str": "error", "completed": False, "messages": None}
+	)
+	st = pq.history["p-none"]["status"]
+	ok(st["messages"] == [], "None messages -> empty list")
+
+	# Normal list preserved
+	msgs = [("execution_success", {"prompt_id": "p-ok", "timestamp": 1})]
+	pq.currently_running[22] = _core_prompt("p-ok")
+	ctrl.user_queue_task_done(
+		22, {"outputs": {}}, status={"status_str": "success", "completed": True, "messages": msgs}
+	)
+	st = pq.history["p-ok"]["status"]
+	ok(st["messages"] == msgs, "normal messages list preserved")
+
+	# Non-list (string) coerced to [] — do not character-split
+	pq.currently_running[23] = _core_prompt("p-str")
+	ctrl.user_queue_task_done(
+		23,
+		{"outputs": {}},
+		status={"status_str": "success", "completed": True, "messages": "not-a-list"},
+	)
+	st = pq.history["p-str"]["status"]
+	ok(st["messages"] == [], "non-list messages -> empty list (no char split)")
+
+	# Non-dict status still builds via kwargs path
+	pq.currently_running[24] = _core_prompt("p-nondict")
+	ctrl.user_queue_task_done(
+		24,
+		{"outputs": {}},
+		status="legacy-blob",
+		completed=True,
+		messages=[("execution_success", {"prompt_id": "p-nondict", "timestamp": 1})],
+	)
+	st = pq.history["p-nondict"]["status"]
+	ok(isinstance(st["messages"], list), "non-dict status uses kwargs messages")
+	ok(len(st["messages"]) == 1, "non-dict kwargs messages kept")
+
+
 def run_tests() -> int:
 	try:
 		test_success_status_and_process_item()
@@ -342,6 +400,7 @@ def run_tests() -> int:
 		test_legacy_fallback()
 		test_regression_core_style_status()
 		test_per_user_history_filtering()
+		test_status_dict_messages_coercion()
 	except Exception as e:
 		print(f"FAIL: {e}")
 		return 1
