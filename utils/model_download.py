@@ -387,6 +387,9 @@ async def _civitai_get_json(
 	"""
 	GET JSON from CivitAI /api/v1/... on the allowlisted host.
 	Returns (payload, error_message).
+
+	Redirects are followed only via ``fetch_allowlisted`` so each hop is
+	re-validated against the host allowlist (AUDIT-008).
 	"""
 	base = civitai_api_base(host)
 	# path must be relative under /api/v1
@@ -395,24 +398,25 @@ async def _civitai_get_json(
 	headers = _civitai_auth_headers(token)
 	try:
 		timeout = aiohttp.ClientTimeout(total=60, sock_read=60)
-		async with (
-			aiohttp.ClientSession(timeout=timeout) as session,
-			session.get(
-				url, params=params or None, headers=headers or None, allow_redirects=True
-			) as resp,
-		):
-			if resp.status != 200:
-				text = ""
-				try:
-					text = (await resp.text())[:200]
-				except Exception:
-					pass
-				return None, f"CivitAI returned {resp.status}" + (f": {text}" if text else "")
+		async with aiohttp.ClientSession(timeout=timeout) as session:
+			resp = await fetch_allowlisted(
+				session, url, headers=headers or None, params=params or None
+			)
 			try:
-				data = await resp.json(content_type=None)
-			except Exception as e:
-				return None, f"Invalid JSON from CivitAI: {e}"
-			return data, ""
+				if resp.status != 200:
+					text = ""
+					try:
+						text = (await resp.text())[:200]
+					except Exception:
+						pass
+					return None, f"CivitAI returned {resp.status}" + (f": {text}" if text else "")
+				try:
+					data = await resp.json(content_type=None)
+				except Exception as e:
+					return None, f"Invalid JSON from CivitAI: {e}"
+				return data, ""
+			finally:
+				await resp.release()
 	except Exception as e:
 		return None, str(e)
 

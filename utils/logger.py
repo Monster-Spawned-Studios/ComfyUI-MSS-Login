@@ -220,13 +220,32 @@ class Logger:
 		self._log_console("INFO", f"User: '{username}' logged out from IP: {ip}")
 
 	def log_jwt_if_debug(self, token: str, username: str) -> None:
-		"""When DEBUG_MODE is on: write JWT token to log file and ComfyUI console. Do not call when DEBUG_MODE is off or debug messages filtered."""
+		"""
+		When DEBUG_MODE is on: log that a JWT was issued (username + jti only).
+
+		Never write the raw token (AUDIT-007): log compromise must not yield session
+		takeover. Safe to call when DEBUG_MODE is off (no-op) or debug messages filtered.
+		"""
 		try:
 			from ..constants import DEBUG_MODE, filter_debug_messages_enabled
 
 			if not DEBUG_MODE or filter_debug_messages_enabled():
 				return
-			msg = f"JWT token (DEBUG_MODE): {token}"
+			jti = ""
+			try:
+				import jwt
+
+				# Unverified decode solely to extract jti for the log line — never log
+				# signature or full token material.
+				claims = jwt.decode(
+					(token or "").strip(), options={"verify_signature": False, "verify_exp": False}
+				)
+				if isinstance(claims, dict):
+					jti = str(claims.get("jti") or "").strip()
+			except Exception:
+				jti = ""
+			jti_part = f" jti={jti}" if jti else " jti=(none)"
+			msg = f"JWT token created (DEBUG_MODE): username={username}{jti_part}"
 			with self._lock:
 				try:
 					with open(self.log_file, "a") as f:

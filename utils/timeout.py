@@ -1,4 +1,6 @@
-from datetime import UTC, datetime, timedelta, timezone
+import json
+import os
+from datetime import UTC, datetime, timedelta
 from typing import Optional
 
 from aiohttp import web
@@ -6,13 +8,90 @@ from aiohttp import web
 from .ip_filter import IPFilter, get_ip
 
 
+def _default_timeout_state_path() -> str | None:
+	"""Persist login lockout counters under the MSS data dir when available."""
+	try:
+		from .data_dir import get_data_subdir
+
+		base = get_data_subdir("data")
+		os.makedirs(base, exist_ok=True)
+		return os.path.join(base, "login_timeout_state.json")
+	except Exception:
+		return None
+
+
 class Timeout:
-	def __init__(self, ip_filter: IPFilter, blacklist_after_attempts: int = 0):
+	def __init__(
+		self, ip_filter: IPFilter, blacklist_after_attempts: int = 0, state_path: str | None = None
+	):
 		self.ip_filter = ip_filter
 		self.blacklist_after_attempts = blacklist_after_attempts
 
-		self._failed_attempts_ip = {}
-		self._timeout_end_time_ip = {}
+		self._failed_attempts_ip: dict[str, int] = {}
+		self._timeout_end_time_ip: dict[str, datetime] = {}
+		# AUDIT-013: durable lockout state across process restarts (optional path for tests).
+		if state_path is None:
+			self._state_path = _default_timeout_state_path()
+		else:
+			self._state_path = state_path or None
+		self._load_state()
+
+	def _load_state(self) -> None:
+		path = self._state_path
+		if not path or not os.path.isfile(path):
+			return
+		try:
+			with open(path, encoding="utf-8") as f:
+				raw = json.load(f)
+		except Exception:
+			return
+		if not isinstance(raw, dict):
+			return
+		attempts = raw.get("failed_attempts") or {}
+		timeouts = raw.get("timeout_end_times") or {}
+		now = datetime.now(UTC)
+		if isinstance(attempts, dict):
+			for ip, count in attempts.items():
+				try:
+					n = int(count)
+				except (TypeError, ValueError):
+					continue
+				if n > 0 and isinstance(ip, str) and ip.strip():
+					self._failed_attempts_ip[ip.strip()] = n
+		if isinstance(timeouts, dict):
+			for ip, iso in timeouts.items():
+				if not isinstance(ip, str) or not ip.strip() or not isinstance(iso, str):
+					continue
+				try:
+					end = datetime.fromisoformat(iso)
+					if end.tzinfo is None:
+						end = end.replace(tzinfo=UTC)
+				except Exception:
+					continue
+				if end > now:
+					self._timeout_end_time_ip[ip.strip()] = end
+
+	def _save_state(self) -> None:
+		path = self._state_path
+		if not path:
+			return
+		try:
+			parent = os.path.dirname(path)
+			if parent:
+				os.makedirs(parent, exist_ok=True)
+			payload = {
+				"failed_attempts": dict(self._failed_attempts_ip),
+				"timeout_end_times": {
+					ip: end.astimezone(UTC).isoformat()
+					for ip, end in self._timeout_end_time_ip.items()
+				},
+			}
+			tmp = f"{path}.tmp"
+			with open(tmp, "w", encoding="utf-8") as f:
+				json.dump(payload, f, indent=0, sort_keys=True)
+			os.replace(tmp, path)
+		except Exception:
+			pass
 
 	def get_failed_attempts(self, ip: str) -> int:
 		"""Get the number of failed attempts for a given IP."""
@@ -42,10 +121,13 @@ class Timeout:
 		if timeout_duration > 0:
 			self._timeout_end_time_ip[ip] = datetime.now(UTC) + timedelta(seconds=timeout_duration)
 
+		self._save_state()
+
 	def remove_failed_attempts(self, ip: str) -> None:
 		"""Remove failed attempts and timeout for a given IP."""
 		self._failed_attempts_ip.pop(ip, None)
 		self._timeout_end_time_ip.pop(ip, None)
+		self._save_state()
 
 	def get_timeout_end_time(self, ip: str) -> datetime | None:
 		"""Get the timeout end time for a given IP."""

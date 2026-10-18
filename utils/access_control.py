@@ -38,6 +38,32 @@ EXTENSION_BLOCK_MAP = {
 	],
 }
 
+# Sensitive flags that must default-deny when absent/malformed (AUDIT-003).
+_SENSITIVE_PERM_FLAGS = frozenset({"can_run", "can_upload", "can_access_api"})
+
+
+def _sensitive_perm_allowed(perms: dict | None, key: str) -> bool:
+	"""
+	Return True only when a sensitive permission flag is explicitly truthy.
+
+	Missing keys, None, False, 0, and non-affirmative strings (e.g. "false") deny.
+	Admin/owner shortcuts elsewhere (can_modify_workflows, extension blocks) are unchanged.
+	"""
+	if key not in _SENSITIVE_PERM_FLAGS:
+		raise ValueError(f"not a sensitive permission flag: {key}")
+	if not isinstance(perms, dict):
+		return False
+	val = perms.get(key)
+	if val is None:
+		return False
+	if isinstance(val, bool):
+		return val
+	if isinstance(val, (int, float)):
+		return val != 0
+	if isinstance(val, str):
+		return val.strip().lower() in ("1", "true", "yes", "on")
+	return bool(val)
+
 
 class AccessControl:
 	def __init__(
@@ -106,12 +132,12 @@ class AccessControl:
 			pass
 
 		try:
-			import jwt
-
-			# Decode without verification here just to get username for role lookup
-			# The actual security check happens in JWTAuth middleware
-			payload = jwt.decode(token, options={"verify_signature": False})
+			payload = self._decode_verified_jwt_claims(token)
+			if not payload:
+				return "guest", {}, None
 			username = payload.get("username")
+			if not username:
+				return "guest", {}, None
 
 			_, user_rec = self.users_db.get_user(username)
 			if not user_rec:
@@ -124,6 +150,32 @@ class AccessControl:
 			return role, perms, username
 		except Exception:
 			return "guest", {}, None
+
+	@staticmethod
+	def _decode_verified_jwt_claims(token: str) -> dict | None:
+		"""
+		Decode JWT with signature + algorithm verification (AUDIT-004).
+
+		Never trust unverified claims for role/permission resolution. Returns None
+		on missing secret, bad signature, expiry, or decode errors.
+		"""
+		token = (token or "").strip()
+		if not token or token.count(".") < 2:
+			return None
+		try:
+			import jwt
+
+			from ..constants import SECRET_KEY, TOKEN_ALGORITHM
+		except Exception:
+			return None
+		secret = SECRET_KEY or ""
+		if not secret:
+			return None
+		alg = TOKEN_ALGORITHM or "HS256"
+		try:
+			return jwt.decode(token, secret, algorithms=[alg])
+		except Exception:
+			return None
 
 	def create_mss_login_middleware(self):
 		@web.middleware
@@ -179,7 +231,7 @@ class AccessControl:
 						return False
 					return (p or "").startswith(("/api/cpe/workflow", "/cpe/workflow"))
 
-			if is_queue and perms.get("can_run") is False:
+			if is_queue and not _sensitive_perm_allowed(perms, "can_run"):
 				debug_write(
 					{
 						"location": "access_control",
@@ -190,7 +242,7 @@ class AccessControl:
 				)
 				return web.json_response({"error": "MSS-Login: Execution Denied"}, status=403)
 
-			if is_upload and perms.get("can_upload") is False:
+			if is_upload and not _sensitive_perm_allowed(perms, "can_upload"):
 				debug_write(
 					{
 						"location": "access_control",
@@ -243,7 +295,7 @@ class AccessControl:
 					)
 
 			if not is_queue and not is_upload and (path.startswith("/api/") or is_cpe_api):
-				if perms.get("can_access_api") is False:
+				if not _sensitive_perm_allowed(perms, "can_access_api"):
 					debug_write(
 						{
 							"location": "access_control",
@@ -403,7 +455,7 @@ class AccessControl:
 					groups = user_rec.get("groups", ["user"])
 					role = groups[0] if groups else "user"
 					perms = cfg.get(role, {})
-					if perms.get("can_run") is False:
+					if not _sensitive_perm_allowed(perms, "can_run"):
 						print(f"[AccessControl] Blocked execution for {current_user_id}")
 						# Fail closed: never silently drop a prompt (Portal/clients
 						# would see a successful path with no queue progress).
