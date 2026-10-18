@@ -22,27 +22,13 @@ async def get_is_https(request: web.Request) -> web.Response:
 
 
 def _get_username_from_request(request: web.Request):
-	"""Return current username from JWT/API token ( /mss-login is a public prefix)."""
-	username = request.get("user")
-	if username:
-		return username
-	token = jwt_auth.get_token_from_request(request)
-	if not token:
-		return None
-	try:
-		from ..constants import API_TOKEN_STORE_CONFIG
-		from ..utils.api_token_store import get_api_token_store
+	"""Return current username via shared identity (API token / JWT revoke / id-match).
 
-		api_user = get_api_token_store(API_TOKEN_STORE_CONFIG).get_user_for_token(token)
-		if api_user is not None:
-			return api_user[1]
-	except Exception:
-		pass
-	try:
-		payload = jwt_auth.decode_access_token(token)
-		return payload.get("username")
-	except Exception:
-		return None
+	Does not re-check MFA: Portal Bearer and long-lived API tokens remain valid
+	after MFA enrollment.
+	"""
+	_uid, username = jwt_auth.resolve_request_identity(request, touch_idle=False)
+	return username
 
 
 def _is_guest_username(username: str | None) -> bool:

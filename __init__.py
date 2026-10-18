@@ -511,7 +511,9 @@ if FORCE_HTTPS:
 app.middlewares.append(ip_filter.create_ip_filter_middleware())
 app.middlewares.append(sanitizer.create_sanitizer_middleware())
 app.middlewares.append(create_api_browser_redirect_middleware())
-app.middlewares.append(timeout.create_time_out_middleware(limited=("/login", "/register", "/mfa")))
+from .utils.timeout import CREDENTIAL_LIMITED_PATHS
+
+app.middlewares.append(timeout.create_time_out_middleware(limited=CREDENTIAL_LIMITED_PATHS))
 
 
 # Require auth for remote API access (local network allowed without auth).
@@ -534,16 +536,68 @@ app.middlewares.append(
 # IMPORTANT: run JWT auth BEFORE we try to read request.user in workflow_interceptor
 # Headless JWT sessions use only WebSocket (/ws?token=...) and REST (Bearer/cookie/query);
 # /ws, /history, /prompt, /queue, /view, /api/userdata are NOT in public, so they require a valid token.
+# Narrow JWT publics: exact auth pages + static asset prefixes only (AUDIT-002).
+# /mss-login/api and /mss-login/me are NOT public; route_policy enforces default-deny.
+# MFA is never re-checked here — valid Portal Bearer / API JWTs keep working after MFA enroll.
 app.middlewares.append(
 	jwt_auth.create_jwt_middleware(
-		public=("/login", "/logout", "/register", "/generate_token", "/mfa"),
+		public=(
+			"/login",
+			"/logout",
+			"/register",
+			"/generate_token",
+			"/mfa",
+			"/loading",
+			"/mss-login/generate_token",
+			"/mss-login/loading-tips.json",
+			"/mss-login/api/mfa/verify",
+			"/mss-login/api/mfa/setup",
+			"/mss-login/api/mfa/verify-setup",
+			"/mss-login/api/auth/local-login",
+			"/mss-login/api/auth/local-login-status",
+			"/mss-login/api/login-background",
+			"/mss-login/api/login-background/media",
+			"/mss-login/api/news/feed.xml",
+			"/mss-login/api/bg-music",
+			"/mss-login/api/update-notice",
+			"/mss-login/api/is-https",
+			"/api/mss-login/api/auth/local-login",
+			"/api/mss-login/api/auth/local-login-status",
+			"/api/mss-login/api/login-background",
+			"/api/mss-login/api/login-background/media",
+			"/api/mss-login/api/news/feed.xml",
+			"/api/mss-login/api/update-notice",
+		),
 		public_prefixes=(
-			"/mss-login",
-			"/mss-login-gallery",
-			"/mss-login/api/mfa",
+			"/mss-login/css",
+			"/mss-login/js",
+			"/mss-login/assets",
+			"/mss-login/dist",
 			"/assets",
 			"/static",
 		),
+	)
+)
+
+# Default-deny policy for /mss-login* (after JWT parsing). Portal tokens: no MFA re-check.
+from .utils.route_policy import create_route_policy_middleware
+
+
+def _policy_is_admin(request):
+	from .routes.admin import is_admin
+
+	return is_admin(request)
+
+
+def _policy_is_owner(request):
+	from .routes.admin import is_owner
+
+	return is_owner(request)
+
+
+app.middlewares.append(
+	create_route_policy_middleware(
+		jwt_auth, access_control, is_admin_fn=_policy_is_admin, is_owner_fn=_policy_is_owner
 	)
 )
 
@@ -568,6 +622,24 @@ if SEPERATE_USERS:
 
 app.middlewares.append(access_control.create_mss_login_middleware())
 app.middlewares.append(create_csp_middleware())
+
+# Startup self-check: every /mss-login* route must have a route policy (AUDIT-002).
+try:
+	from .utils.route_policy import assert_router_policies_covered
+
+	_unmapped = assert_router_policies_covered(app.router)
+	if _unmapped:
+		for _desc in _unmapped:
+			logger.error(f"[MSS-Login] Unmapped route policy (fail closed): {_desc}")
+		raise RuntimeError(
+			f"[MSS-Login] {len(_unmapped)} /mss-login* route(s) lack a route policy: "
+			+ ", ".join(_unmapped[:10])
+		)
+except RuntimeError:
+	raise
+except Exception as e:
+	logger.warning(f"[MSS-Login] Route policy self-check skipped: {e}")
+
 watcher.register(app)
 
 install_node_interceptor()

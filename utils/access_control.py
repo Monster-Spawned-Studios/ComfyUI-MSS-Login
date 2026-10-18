@@ -182,7 +182,8 @@ class AccessControl:
 		async def middleware(request: web.Request, handler):
 			path = request.path
 
-			# 1. Public Whitelist
+			# 1. Public Whitelist (exact auth pages / static only — NOT all of /mss-login;
+			#    MSS API/me/gallery RBAC is enforced by route_policy middleware + handlers.)
 			if (
 				path.startswith(
 					(
@@ -190,8 +191,6 @@ class AccessControl:
 						"/register",
 						"/logout",
 						"/loading",
-						"/mss-login",
-						"/mss-login-gallery",
 						"/static",
 						"/favicon",
 						"/ws",
@@ -199,6 +198,9 @@ class AccessControl:
 					)
 				)
 				or path == "/"
+				or path.startswith(
+					("/mss-login/css", "/mss-login/js", "/mss-login/assets", "/mss-login/dist")
+				)
 			):
 				return await handler(request)
 

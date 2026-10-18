@@ -74,30 +74,36 @@ class JWTAuth:
 		"""Decode a JWT access token."""
 		return jwt.decode(token, self.__secret_key, algorithms=[self.algorithm])
 
-	def is_token_valid(self, token: str) -> bool:
+	def resolve_token_identity(
+		self, token: str, *, touch_idle: bool = False
+	) -> tuple[str | None, str | None]:
 		"""
-		Return True if the token is valid (API token in store or valid non-revoked JWT).
-		Used by the remote API guard to treat only valid tokens as auth.
+		Resolve a Bearer/cookie/query token to (user_id, username).
+
+		Checks API-token store first; otherwise decodes JWT and verifies user-id match,
+		jti revocation, and optionally updates idle last-used. Returns (None, None) on failure.
 		"""
 		token = (token or "").strip()
 		if not token:
-			return False
+			return None, None
 		try:
 			api_store = get_api_token_store(self.api_token_store_config)
-			if api_store.get_user_for_token(token) is not None:
-				return True
+			api_user = api_store.get_user_for_token(token)
+			if api_user is not None:
+				user_id, username = api_user
+				return user_id, username
 		except Exception:
 			pass
 		if token.count(".") < 2:
-			return False
+			return None, None
 		try:
 			user = self.decode_access_token(token)
 			user_id = user.get("id")
 			username = user.get("username")
 			if not username or user_id is None:
-				return False
+				return None, None
 			if user_id != self.users_db.get_user(username)[0]:
-				return False
+				return None, None
 			jti = user.get("jti")
 			if jti:
 				try:
@@ -107,12 +113,44 @@ class JWTAuth:
 						SESSION_TOKEN_STORE_CONFIG, idle_revoke_minutes=SESSION_IDLE_REVOKE_MINUTES
 					)
 					if store.is_revoked(jti):
-						return False
+						return None, None
+					if touch_idle:
+						store.update_last_used(jti)
+						if store.revoke_idle_sessions() > 0:
+							store.prune_old_sessions()
 				except Exception:
 					pass
-			return True
+			return user_id, username
 		except (jwt.ExpiredSignatureError, jwt.DecodeError, ValueError, KeyError, TypeError):
-			return False
+			return None, None
+
+	def resolve_request_identity(
+		self, request: web.Request, *, touch_idle: bool = True
+	) -> tuple[str | None, str | None]:
+		"""
+		Resolve request auth to (user_id, username). Sets request['user'], request['user_id'],
+		and request['auth_verified'] on success. Shared by middleware and handler helpers.
+		"""
+		if request.get("auth_verified") and request.get("user") and request.get("user_id"):
+			return request.get("user_id"), request.get("user")
+
+		token = self.get_token_from_request(request)
+		user_id, username = self.resolve_token_identity(token, touch_idle=touch_idle)
+		if user_id is not None and username:
+			request["user_id"] = user_id
+			request["user"] = username
+			request["auth_verified"] = True
+			return user_id, username
+		request["auth_verified"] = False
+		return None, None
+
+	def is_token_valid(self, token: str) -> bool:
+		"""
+		Return True if the token is valid (API token in store or valid non-revoked JWT).
+		Used by the remote API guard to treat only valid tokens as auth.
+		"""
+		user_id, username = self.resolve_token_identity(token, touch_idle=False)
+		return user_id is not None and bool(username)
 
 	def create_jwt_middleware(
 		self, public: tuple = (), public_prefixes: tuple = (), public_suffixes: tuple = ()

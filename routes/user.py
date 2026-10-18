@@ -43,32 +43,13 @@ def _get_caller_admin_info(request):
 	"""
 	Returns (is_admin: bool, username: str|None, groups: list[str])
 
-	Used to guard admin-only actions.
+	Used to guard admin-only actions. Uses shared identity (API token / JWT revoke / id-match).
+	Does not re-check MFA — Portal Bearer tokens remain valid after MFA enrollment.
 	"""
-	token = jwt_auth.get_token_from_request(request)
-	if not token:
+	_uid, username = jwt_auth.resolve_request_identity(request, touch_idle=False)
+	if not username:
 		return False, None, ["guest"]
-
 	try:
-		try:
-			from ..constants import API_TOKEN_STORE_CONFIG
-			from ..utils.api_token_store import get_api_token_store
-
-			api_store = get_api_token_store(API_TOKEN_STORE_CONFIG)
-			api_user = api_store.get_user_for_token(token)
-			if api_user is not None:
-				_user_id, username = api_user
-				_, rec = users_db.get_user(username)
-				groups = [g.lower() for g in rec.get("groups", [])] if rec else ["guest"]
-				is_admin = bool(
-					rec and (rec.get("admin") or ("admin" in groups) or ("owner" in groups))
-				)
-				return is_admin, username, groups
-		except Exception:
-			pass
-
-		payload = jwt_auth.decode_access_token(token)
-		username = payload.get("username")
 		_, rec = users_db.get_user(username)
 		groups = [g.lower() for g in rec.get("groups", [])] if rec else ["guest"]
 		is_admin = bool(rec and (rec.get("admin") or ("admin" in groups) or ("owner" in groups)))
@@ -441,16 +422,11 @@ routes.post("/api/mss-login/api/trash/empty")(api_trash_empty)
 async def mark_nsfw(request: web.Request) -> web.Response:
 	"""
 	Manually mark an image as NSFW or SFW.
-	This endpoint allows gallery apps to review and flag images.
-
-	Body (JSON):
-	    {
-	        "filename": "image.png",
-	        "is_nsfw": true,
-	        "score": 1.0,  # optional, default 1.0
-	        "label": "manual"  # optional, default "manual"
-	    }
+	Requires authenticated session/API token (ownership or permission via policy).
 	"""
+	_uid, username = jwt_auth.resolve_request_identity(request, touch_idle=False)
+	if not username:
+		return web.json_response({"error": "Authentication required"}, status=401)
 	try:
 		data = await request.json()
 	except Exception:
