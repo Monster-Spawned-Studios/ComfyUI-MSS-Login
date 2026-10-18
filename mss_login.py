@@ -28,6 +28,7 @@ CSS_DIR = "..."
 JS_DIR = "..."
 ASSETS_DIR = "..."
 DIST_DIR = "..."
+VENDOR_DIR = "..."
 
 app.add_routes(
 	[
@@ -35,6 +36,7 @@ app.add_routes(
 		web.static("/mss-login/js", JS_DIR),
 		web.static("/mss-login/assets", ASSETS_DIR),
 		web.static("/mss-login/dist", DIST_DIR),
+		web.static("/mss-login/vendor", VENDOR_DIR),
 	]
 )
 

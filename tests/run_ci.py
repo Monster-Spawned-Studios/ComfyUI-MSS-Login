@@ -145,6 +145,7 @@ def main() -> int:
 		steps.append(
 			("Lockout hardening", os.path.join(TESTS_DIR, "run_lockout_hardening_tests.py"))
 		)
+		steps.append(("MFA hardening", os.path.join(TESTS_DIR, "run_mfa_tests.py")))
 		steps.append(
 			("Guest defaults (AUDIT-001)", os.path.join(TESTS_DIR, "run_guest_defaults_tests.py"))
 		)

@@ -13,7 +13,13 @@ from typing import Any, Optional, Tuple
 
 import bcrypt
 
-from .encryption import decrypt_value, encrypt_value, hash_backup_code, verify_backup_code
+from .encryption import (
+	decrypt_value,
+	encrypt_value,
+	generate_recovery_codes,
+	verify_backup_code,
+	verify_recovery_code,
+)
 from .input_sanitizer import sanitize_username as _sanitize_username
 from .sanitizer import apply_legacy_xss_sanitize
 
@@ -31,8 +37,49 @@ def _get_logger():
 
 
 # Schema: user_id, username, password_hash, admin, groups (JSON), sfw_check,
-#         mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used
+#         mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used,
+#         token_version, last_totp_timestep, recovery_codes_json
 USERS_TABLE = "users"
+
+_EXTRA_USER_COLUMNS = (
+	("token_version", "INTEGER NOT NULL DEFAULT 0"),
+	("last_totp_timestep", "INTEGER"),
+	("recovery_codes_json", "TEXT"),
+)
+
+
+def _ensure_extra_user_columns(conn: Any, *, placeholder_style: str = "qmark") -> None:
+	"""Add MFA hardening columns if missing (SQLite / Postgres / MySQL)."""
+	try:
+		if placeholder_style == "qmark":
+			# SQLite
+			cols = {
+				r["name"] if isinstance(r, dict) else r[1]
+				for r in conn.execute(f"PRAGMA table_info({USERS_TABLE})").fetchall()
+			}
+			for name, decl in _EXTRA_USER_COLUMNS:
+				if name not in cols:
+					conn.execute(f"ALTER TABLE {USERS_TABLE} ADD COLUMN {name} {decl}")
+			conn.commit()
+			return
+		# Postgres / MySQL: try ADD COLUMN and ignore duplicate errors
+		for name, decl in _EXTRA_USER_COLUMNS:
+			try:
+				cur = conn.cursor() if hasattr(conn, "cursor") else None
+				sql = f"ALTER TABLE {USERS_TABLE} ADD COLUMN {name} {decl}"
+				if cur is not None:
+					cur.execute(sql)
+					cur.close()
+				else:
+					conn.execute(sql)
+				conn.commit()
+			except Exception:
+				try:
+					conn.rollback()
+				except Exception:
+					pass
+	except Exception:
+		pass
 
 
 def _groups_to_json(groups: list) -> str:
@@ -59,7 +106,7 @@ def _dict_row_factory(cursor: Any, row: tuple) -> dict:
 
 
 def _row_to_user(row: dict, secret_key: str) -> dict:
-	"""Build user dict from DB row; decrypt TOTP secret if present."""
+	"""Build user dict from DB row. Does not cache plaintext TOTP secrets."""
 	groups = _json_to_groups(row.get("groups"))
 	pw = row.get("password_hash", "")
 	user = {
@@ -73,19 +120,23 @@ def _row_to_user(row: dict, secret_key: str) -> dict:
 		user["sfw_check"] = bool(int(row.get("sfw_check", 1)))
 	if "mfa_enabled" in row:
 		user["mfa_enabled"] = bool(int(row.get("mfa_enabled") or 0))
+	# Keep ciphertext only — decrypt per verification call.
 	if row.get("totp_secret_encrypted"):
-		dec = decrypt_value(secret_key, row["totp_secret_encrypted"])
-		if dec:
-			user["_totp_secret_plain"] = dec  # internal use only
+		user["totp_secret_encrypted"] = row["totp_secret_encrypted"]
 	if row.get("backup_code_hash"):
 		user["backup_code_hash"] = row["backup_code_hash"]
 	if "backup_code_used" in row:
 		user["backup_code_used"] = bool(int(row.get("backup_code_used") or 0))
+	user["token_version"] = int(row.get("token_version") or 0)
+	lt = row.get("last_totp_timestep")
+	user["last_totp_timestep"] = int(lt) if lt is not None and str(lt).strip() != "" else None
+	rc = row.get("recovery_codes_json") or ""
+	user["recovery_codes_json"] = rc if isinstance(rc, str) else ""
 	return user
 
 
 def _user_to_row(user: dict, secret_key: str) -> dict:
-	"""Build DB row from user dict; encrypt TOTP secret if present."""
+	"""Build DB row from user dict; encrypt TOTP secret if present as plaintext transient."""
 	row = {
 		"username": user.get("username", ""),
 		"password_hash": user.get("password", user.get("password_hash", "")),
@@ -96,6 +147,9 @@ def _user_to_row(user: dict, secret_key: str) -> dict:
 		"totp_secret_encrypted": "",
 		"backup_code_hash": user.get("backup_code_hash") or "",
 		"backup_code_used": 1 if user.get("backup_code_used") else 0,
+		"token_version": int(user.get("token_version") or 0),
+		"last_totp_timestep": user.get("last_totp_timestep"),
+		"recovery_codes_json": user.get("recovery_codes_json") or "",
 	}
 	if user.get("_totp_secret_plain"):
 		enc = encrypt_value(secret_key, user["_totp_secret_plain"])
@@ -140,11 +194,15 @@ class _SqliteUsersBackend:
                 mfa_enabled INTEGER NOT NULL DEFAULT 0,
                 totp_secret_encrypted TEXT,
                 backup_code_hash TEXT,
-                backup_code_used INTEGER NOT NULL DEFAULT 0
+                backup_code_used INTEGER NOT NULL DEFAULT 0,
+                token_version INTEGER NOT NULL DEFAULT 0,
+                last_totp_timestep INTEGER,
+                recovery_codes_json TEXT
             )
         """
 		)
 		self._conn.commit()
+		_ensure_extra_user_columns(self._conn, placeholder_style="qmark")
 
 	def migrate_from_json(self, legacy_path: str) -> bool:
 		"""If legacy_path exists, load JSON and insert users; then rename file. Return True if migration ran."""
@@ -193,9 +251,7 @@ class _SqliteUsersBackend:
 
 	def get_all(self, secret_key: str) -> dict:
 		"""Return { user_id: user_dict }."""
-		rows = self._conn.execute(
-			f"SELECT user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used FROM {USERS_TABLE}"
-		).fetchall()
+		rows = self._conn.execute(f"SELECT * FROM {USERS_TABLE}").fetchall()
 		out = {}
 		for r in rows:
 			row = dict(r)
@@ -209,8 +265,10 @@ class _SqliteUsersBackend:
 		self._conn.execute(
 			f"""
             INSERT INTO {USERS_TABLE}
-            (user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled,
+             totp_secret_encrypted, backup_code_hash, backup_code_used,
+             token_version, last_totp_timestep, recovery_codes_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
 			(
 				user_id,
@@ -223,6 +281,9 @@ class _SqliteUsersBackend:
 				row["totp_secret_encrypted"] or None,
 				row["backup_code_hash"] or None,
 				row["backup_code_used"],
+				row["token_version"],
+				row["last_totp_timestep"],
+				row["recovery_codes_json"] or None,
 			),
 		)
 		self._conn.commit()
@@ -234,7 +295,8 @@ class _SqliteUsersBackend:
 			f"""
             UPDATE {USERS_TABLE} SET
                 username = ?, password_hash = ?, admin = ?, groups = ?, sfw_check = ?,
-                mfa_enabled = ?, totp_secret_encrypted = ?, backup_code_hash = ?, backup_code_used = ?
+                mfa_enabled = ?, totp_secret_encrypted = ?, backup_code_hash = ?, backup_code_used = ?,
+                token_version = ?, last_totp_timestep = ?, recovery_codes_json = ?
             WHERE user_id = ?
             """,
 			(
@@ -247,6 +309,9 @@ class _SqliteUsersBackend:
 				row["totp_secret_encrypted"] or None,
 				row["backup_code_hash"] or None,
 				row["backup_code_used"],
+				row["token_version"],
+				row["last_totp_timestep"],
+				row["recovery_codes_json"] or None,
 				user_id,
 			),
 		)
@@ -299,12 +364,16 @@ class _PostgresUsersBackend:
                 mfa_enabled INTEGER NOT NULL DEFAULT 0,
                 totp_secret_encrypted TEXT,
                 backup_code_hash TEXT,
-                backup_code_used INTEGER NOT NULL DEFAULT 0
+                backup_code_used INTEGER NOT NULL DEFAULT 0,
+                token_version INTEGER NOT NULL DEFAULT 0,
+                last_totp_timestep INTEGER,
+                recovery_codes_json TEXT
             )
         """
 		)
 		self._conn.commit()
 		cur.close()
+		_ensure_extra_user_columns(self._conn, placeholder_style="pyformat")
 
 	def migrate_from_json(self, legacy_path: str) -> bool:
 		"""
@@ -355,7 +424,7 @@ class _PostgresUsersBackend:
 		"""Return { user_id: user_dict }."""
 		cur = self._conn.cursor(cursor_factory=self._cursor_factory)
 		cur.execute(
-			f"SELECT user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used FROM {USERS_TABLE}"
+			f"SELECT * FROM {USERS_TABLE}"
 		)
 		rows = cur.fetchall()
 		cur.close()
@@ -372,8 +441,8 @@ class _PostgresUsersBackend:
 		cur.execute(
 			f"""
             INSERT INTO {USERS_TABLE}
-            (user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used, token_version, last_totp_timestep, recovery_codes_json)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
 			(
 				user_id,
@@ -386,6 +455,9 @@ class _PostgresUsersBackend:
 				row["totp_secret_encrypted"] or None,
 				row["backup_code_hash"] or None,
 				row["backup_code_used"],
+				row["token_version"],
+				row["last_totp_timestep"],
+				row["recovery_codes_json"] or None,
 			),
 		)
 		self._conn.commit()
@@ -399,7 +471,8 @@ class _PostgresUsersBackend:
 			f"""
             UPDATE {USERS_TABLE} SET
                 username = %s, password_hash = %s, admin = %s, groups = %s, sfw_check = %s,
-                mfa_enabled = %s, totp_secret_encrypted = %s, backup_code_hash = %s, backup_code_used = %s
+                mfa_enabled = %s, totp_secret_encrypted = %s, backup_code_hash = %s, backup_code_used = %s,
+                token_version = %s, last_totp_timestep = %s, recovery_codes_json = %s
             WHERE user_id = %s
             """,
 			(
@@ -412,6 +485,9 @@ class _PostgresUsersBackend:
 				row["totp_secret_encrypted"] or None,
 				row["backup_code_hash"] or None,
 				row["backup_code_used"],
+				row["token_version"],
+				row["last_totp_timestep"],
+				row["recovery_codes_json"] or None,
 				user_id,
 			),
 		)
@@ -461,12 +537,16 @@ class _MySQLUsersBackend:
                 mfa_enabled INT NOT NULL DEFAULT 0,
                 totp_secret_encrypted TEXT,
                 backup_code_hash TEXT,
-                backup_code_used INT NOT NULL DEFAULT 0
+                backup_code_used INT NOT NULL DEFAULT 0,
+                token_version INT NOT NULL DEFAULT 0,
+                last_totp_timestep INT NULL,
+                recovery_codes_json TEXT
             )
             """
 		)
 		self._conn.commit()
 		cur.close()
+		_ensure_extra_user_columns(self._conn, placeholder_style="pyformat")
 
 	def migrate_from_json(self, legacy_path: str) -> bool:
 		if not os.path.exists(legacy_path):
@@ -513,7 +593,7 @@ class _MySQLUsersBackend:
 	def get_all(self, secret_key: str) -> dict:
 		cur = self._conn.cursor(self._dict_cursor)
 		cur.execute(
-			f"SELECT user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used FROM {USERS_TABLE}"
+			f"SELECT * FROM {USERS_TABLE}"
 		)
 		rows = cur.fetchall()
 		cur.close()
@@ -529,8 +609,8 @@ class _MySQLUsersBackend:
 		cur.execute(
 			f"""
             INSERT INTO {USERS_TABLE}
-            (user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            (user_id, username, password_hash, admin, groups, sfw_check, mfa_enabled, totp_secret_encrypted, backup_code_hash, backup_code_used, token_version, last_totp_timestep, recovery_codes_json)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
 			(
 				user_id,
@@ -543,6 +623,9 @@ class _MySQLUsersBackend:
 				row["totp_secret_encrypted"] or None,
 				row["backup_code_hash"] or None,
 				row["backup_code_used"],
+				row["token_version"],
+				row["last_totp_timestep"],
+				row["recovery_codes_json"] or None,
 			),
 		)
 		self._conn.commit()
@@ -555,7 +638,8 @@ class _MySQLUsersBackend:
 			f"""
             UPDATE {USERS_TABLE} SET
                 username = %s, password_hash = %s, admin = %s, groups = %s, sfw_check = %s,
-                mfa_enabled = %s, totp_secret_encrypted = %s, backup_code_hash = %s, backup_code_used = %s
+                mfa_enabled = %s, totp_secret_encrypted = %s, backup_code_hash = %s, backup_code_used = %s,
+                token_version = %s, last_totp_timestep = %s, recovery_codes_json = %s
             WHERE user_id = %s
             """,
 			(
@@ -568,6 +652,9 @@ class _MySQLUsersBackend:
 				row["totp_secret_encrypted"] or None,
 				row["backup_code_hash"] or None,
 				row["backup_code_used"],
+				row["token_version"],
+				row["last_totp_timestep"],
+				row["recovery_codes_json"] or None,
 				user_id,
 			),
 		)
@@ -1011,10 +1098,34 @@ class UsersDB:
 			return False
 		return bool(user.get("mfa_enabled", False))
 
-	def mfa_setup_start(self, username: str) -> tuple[str, str] | None:
+	def bump_token_version(self, username: str) -> int:
+		"""Bump session epoch for username; returns new version. Revokes old JWTs via claim mismatch."""
+		user_id, user = self.get_user(username=username)
+		if not user_id or not user:
+			return 0
+		new_v = int(user.get("token_version") or 0) + 1
+		user["token_version"] = new_v
+		self._backend.update(user_id, user, self._secret_key)
+		self.users[user_id] = user
+		try:
+			from ..constants import SESSION_TOKEN_STORE_CONFIG
+			from .session_token_store import get_session_token_store
+
+			store = get_session_token_store(SESSION_TOKEN_STORE_CONFIG)
+			if hasattr(store, "revoke_all_for_username"):
+				store.revoke_all_for_username(username)
+		except Exception:
+			pass
+		return new_v
+
+	def mfa_setup_start(
+		self, username: str, *, allow_reenrollment: bool = False
+	) -> tuple[str, list[str]] | None:
 		"""
-		Start MFA setup: generate TOTP secret and backup code, store encrypted/hashed, return (provisioning_uri, backup_code).
-		Returns None if user not found. Call mfa_verify_setup after user scans QR and enters first code.
+		Start MFA setup. Blocked when MFA is already enabled unless allow_reenrollment
+		(factor_change path that keeps MFA enabled until new secret is verified).
+
+		Returns (provisioning_uri, recovery_codes_plaintext) or None.
 		"""
 		try:
 			import pyotp
@@ -1023,80 +1134,199 @@ class UsersDB:
 		user_id, user = self.get_user(username=username)
 		if not user_id:
 			return None
+		if user.get("mfa_enabled") and not allow_reenrollment:
+			return None
 		secret = pyotp.random_base32()
-		# 64-bit backup code: 16 hex chars in 4 groups of 4, e.g. ABCD-1234-EFGH-5678
-		_raw = secrets.token_hex(8).upper()
-		backup_code = "-".join(_raw[i : i + 4] for i in range(0, 16, 4))
-		backup_hash = hash_backup_code(backup_code.replace("-", "").upper())
+		plain_codes, code_hashes = generate_recovery_codes(10)
 		enc = encrypt_value(self._secret_key, secret)
 		if not enc:
 			return None
 		user["totp_secret_encrypted"] = enc
-		user["backup_code_hash"] = backup_hash
+		user["recovery_codes_json"] = json.dumps(code_hashes)
+		# Dual-write first code into legacy fields for older clients during transition
+		user["backup_code_hash"] = code_hashes[0] if code_hashes else ""
 		user["backup_code_used"] = False
-		user["mfa_enabled"] = False
+		# Keep MFA enabled during factor change; first enroll stays disabled until verify-setup
+		if not allow_reenrollment:
+			user["mfa_enabled"] = False
+		user["last_totp_timestep"] = None
+		user.pop("_totp_secret_plain", None)
 		self._backend.update(user_id, user, self._secret_key)
 		self.users[user_id] = user
 		totp = pyotp.TOTP(secret)
 		provisioning_uri = totp.provisioning_uri(name=username, issuer_name="mss-login")
-		return (provisioning_uri, backup_code)
+		return (provisioning_uri, plain_codes)
 
 	def mfa_verify_setup(self, username: str, code: str) -> bool:
-		"""Verify TOTP code and enable MFA for user. Returns True if code valid and MFA enabled."""
-		try:
-			import pyotp
-		except ImportError:
+		"""Verify TOTP code and enable MFA. Records timestep to prevent replay."""
+		ok, _step = self._verify_totp_internal(
+			username, code, consume_step=True, require_enabled=False
+		)
+		if not ok:
 			return False
 		user_id, user = self.get_user(username=username)
 		if not user_id:
-			return False
-		enc = user.get("totp_secret_encrypted")
-		if not enc:
-			return False
-		secret = decrypt_value(self._secret_key, enc)
-		if not secret:
-			return False
-		totp = pyotp.TOTP(secret)
-		if not totp.verify(code, valid_window=1):
 			return False
 		user["mfa_enabled"] = True
 		self._backend.update(user_id, user, self._secret_key)
 		self.users[user_id] = user
 		return True
 
-	def verify_totp(self, username: str, code: str) -> bool:
-		"""Verify TOTP code for user. Returns True if valid."""
+	def _verify_totp_internal(
+		self,
+		username: str,
+		code: str,
+		*,
+		consume_step: bool,
+		require_enabled: bool,
+	) -> tuple[bool, int | None]:
+		"""Verify TOTP with ±1 window and optional replay rejection via last_totp_timestep."""
 		try:
 			import pyotp
 		except ImportError:
-			return False
+			return False, None
 		user_id, user = self.get_user(username=username)
 		if not user_id:
-			return False
+			return False, None
+		if require_enabled and not user.get("mfa_enabled"):
+			return False, None
 		enc = user.get("totp_secret_encrypted")
 		if not enc:
-			return False
+			return False, None
 		secret = decrypt_value(self._secret_key, enc)
 		if not secret:
-			return False
+			return False, None
 		totp = pyotp.TOTP(secret)
-		return bool(totp.verify(code, valid_window=1))
+		# Accept current and ±1 step; reject reused timesteps
+		import time as _time
+
+		now_step = int(_time.time()) // 30
+		last = user.get("last_totp_timestep")
+		matched: int | None = None
+		for delta in (0, -1, 1):
+			step = now_step + delta
+			if last is not None and int(last) == step:
+				continue  # replay
+			candidate = totp.at(step * 30)
+			if hmac_compare_totp(candidate, code):
+				matched = step
+				break
+		# Fallback: pyotp.verify for clock edge cases, still reject replay of last
+		if matched is None:
+			if not totp.verify(code, valid_window=1):
+				return False, None
+			# Determine which step matched without accepting a replay of `last`
+			for delta in (0, -1, 1):
+				step = now_step + delta
+				if last is not None and int(last) == step:
+					continue
+				if hmac_compare_totp(totp.at(step * 30), code):
+					matched = step
+					break
+			if matched is None:
+				return False, None
+		if consume_step:
+			user["last_totp_timestep"] = matched
+			self._backend.update(user_id, user, self._secret_key)
+			self.users[user_id] = user
+		return True, matched
+
+	def verify_totp(self, username: str, code: str) -> bool:
+		"""Verify TOTP code for enrolled user; reject replay within ±1 window."""
+		ok, _ = self._verify_totp_internal(
+			username, code, consume_step=True, require_enabled=True
+		)
+		return ok
 
 	def verify_backup_code_and_consume(self, username: str, backup_code: str) -> bool:
-		"""Verify backup code (constant-time) and mark as used. Returns True if valid and not already used."""
+		"""
+		Verify a recovery code (bcrypt set or legacy single SHA-256) and consume it.
+		"""
 		user_id, user = self.get_user(username=username)
 		if not user_id:
 			return False
+		normalized = (backup_code or "").strip().replace(" ", "").replace("-", "").upper()
+		if not normalized:
+			return False
+
+		# Prefer recovery_codes_json (list of bcrypt hashes)
+		raw_json = user.get("recovery_codes_json") or ""
+		hashes: list[str] = []
+		if raw_json:
+			try:
+				parsed = json.loads(raw_json)
+				if isinstance(parsed, list):
+					hashes = [str(h) for h in parsed if h]
+			except Exception:
+				hashes = []
+		if hashes:
+			matched_idx = None
+			for i, h in enumerate(hashes):
+				if verify_recovery_code(normalized, h):
+					matched_idx = i
+					break
+			if matched_idx is None:
+				return False
+			hashes.pop(matched_idx)
+			user["recovery_codes_json"] = json.dumps(hashes)
+			self._backend.update(user_id, user, self._secret_key)
+			self.users[user_id] = user
+			return True
+
+		# Legacy single SHA-256 backup code
 		if user.get("backup_code_used"):
 			return False
 		stored_hash = user.get("backup_code_hash")
 		if not stored_hash:
 			return False
-		if not verify_backup_code(backup_code, stored_hash):
+		# bcrypt hashes start with $2; legacy is hex sha256
+		if stored_hash.startswith("$2"):
+			if not verify_recovery_code(normalized, stored_hash):
+				return False
+		elif not verify_backup_code(normalized, stored_hash):
 			return False
 		user["backup_code_used"] = True
 		self._backend.update(user_id, user, self._secret_key)
 		self.users[user_id] = user
+		return True
+
+	def regenerate_recovery_codes(self, username: str) -> list[str] | None:
+		"""Replace recovery codes; returns plaintext once. Requires MFA enabled."""
+		user_id, user = self.get_user(username=username)
+		if not user_id or not user.get("mfa_enabled"):
+			return None
+		plain, hashes = generate_recovery_codes(10)
+		user["recovery_codes_json"] = json.dumps(hashes)
+		user["backup_code_hash"] = hashes[0] if hashes else ""
+		user["backup_code_used"] = False
+		self._backend.update(user_id, user, self._secret_key)
+		self.users[user_id] = user
+		return plain
+
+	def reset_mfa_for_user(self, username: str) -> bool:
+		"""Owner-only path: clear MFA for one user and bump token_version."""
+		user_id, user = self.get_user(username=username)
+		if not user_id:
+			return False
+		user["mfa_enabled"] = False
+		user["totp_secret_encrypted"] = ""
+		user["backup_code_hash"] = ""
+		user["backup_code_used"] = False
+		user["recovery_codes_json"] = ""
+		user["last_totp_timestep"] = None
+		user.pop("_totp_secret_plain", None)
+		user["token_version"] = int(user.get("token_version") or 0) + 1
+		self._backend.update(user_id, user, self._secret_key)
+		self.users[user_id] = user
+		try:
+			from ..constants import SESSION_TOKEN_STORE_CONFIG
+			from .session_token_store import get_session_token_store
+
+			store = get_session_token_store(SESSION_TOKEN_STORE_CONFIG)
+			if hasattr(store, "revoke_all_for_username"):
+				store.revoke_all_for_username(username)
+		except Exception:
+			pass
 		return True
 
 	def reset_mfa_for_all_users(self) -> int:
@@ -1112,13 +1342,27 @@ class UsersDB:
 				user.get("mfa_enabled")
 				or user.get("totp_secret_encrypted")
 				or user.get("backup_code_hash")
+				or user.get("recovery_codes_json")
 			):
 				user["mfa_enabled"] = False
 				user["totp_secret_encrypted"] = ""
 				user["backup_code_hash"] = ""
 				user["backup_code_used"] = False
-				if "_totp_secret_plain" in user:
-					del user["_totp_secret_plain"]
+				user["recovery_codes_json"] = ""
+				user["last_totp_timestep"] = None
+				user.pop("_totp_secret_plain", None)
+				user["token_version"] = int(user.get("token_version") or 0) + 1
 				self._backend.update(uid, user, self._secret_key)
 				count += 1
 		return count
+
+
+def hmac_compare_totp(a: str, b: str) -> bool:
+	"""Constant-time compare for 6-digit TOTP strings."""
+	import hmac as _hmac
+
+	aa = (a or "").strip()
+	bb = (b or "").strip().replace(" ", "")
+	if len(aa) != len(bb):
+		return False
+	return _hmac.compare_digest(aa, bb)

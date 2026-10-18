@@ -205,16 +205,24 @@
 				btn.disabled = true;
 				btn.textContent = "Verifying...";
 			}
+			// verify-setup issues the session on success — never reuse the same TOTP on /verify.
 			fetch("/mss-login/api/mfa/verify-setup", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				credentials: "same-origin",
-				body: JSON.stringify({ mfa_temp_token: this.token, code: code }),
+				body: JSON.stringify({
+					mfa_temp_token: this.token,
+					code: code,
+					remember_me: sessionStorage.getItem("mss_login_remember_me") === "1",
+				}),
 			})
 				.then(function (r) {
-					return r.json();
+					return r.json().then(function (data) {
+						return { ok: r.ok, data: data };
+					});
 				})
-				.then(function (verifySetupData) {
+				.then(function (result) {
+					var verifySetupData = result.data || {};
 					if (verifySetupData.error) {
 						addToast(verifySetupData.error || "Invalid code", "error");
 						if (btn) {
@@ -223,31 +231,9 @@
 						}
 						return;
 					}
-					return fetch("/mss-login/api/mfa/verify", {
-						method: "POST",
-						headers: { "Content-Type": "application/json" },
-						credentials: "same-origin",
-						body: JSON.stringify({ mfa_temp_token: self.token, code: code }),
-					});
-				})
-				.then(function (resp) {
-					if (!resp || !resp.json) return;
-					return resp.json();
-				})
-				.then(function (verifyData) {
-					if (!verifyData) return;
-					if (!verifyData.error && (verifyData.jwt_token || verifyData.redirect_url)) {
-						// Server sets HttpOnly session cookie; do not mirror jwt_token in JS.
-						clearMfaStorage();
-						addToast(verifyData.message || "MFA enabled. Login successful.", "success");
-						window.location.href = verifyData.redirect_url || "/";
-					} else {
-						addToast(verifyData.error || "Verification failed", "error");
-						if (btn) {
-							btn.disabled = false;
-							btn.textContent = "Complete Setup";
-						}
-					}
+					clearMfaStorage();
+					addToast(verifySetupData.message || "MFA enabled. Login successful.", "success");
+					window.location.href = verifySetupData.redirect_url || "/";
 				})
 				.catch(function (err) {
 					addToast("Error: " + (err && err.message ? err.message : "Unknown error"), "error");

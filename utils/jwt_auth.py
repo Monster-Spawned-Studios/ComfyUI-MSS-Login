@@ -102,7 +102,13 @@ class JWTAuth:
 			username = user.get("username")
 			if not username or user_id is None:
 				return None, None
-			if user_id != self.users_db.get_user(username)[0]:
+			db_uid, db_user = self.users_db.get_user(username)
+			if user_id != db_uid:
+				return None, None
+			# Session epoch: missing claim treated as 0 (legacy dual-read)
+			claim_tv = int(user.get("token_version") or 0)
+			db_tv = int((db_user or {}).get("token_version") or 0)
+			if claim_tv != db_tv:
 				return None, None
 			jti = user.get("jti")
 			if jti:

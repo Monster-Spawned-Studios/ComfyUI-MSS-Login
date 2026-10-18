@@ -90,13 +90,55 @@ def encrypt_and_verify(secret_key: str, plaintext: str) -> str | None:
 
 
 def hash_backup_code(backup_code: str) -> str:
-	"""Hash a backup code with SHA-256 for constant-time comparison. Never store plain backup codes."""
+	"""
+	Legacy SHA-256 hash (unsalted). Kept for dual-read of pre-hardening single backup codes.
+	New codes use hash_recovery_code (bcrypt).
+	"""
 	return hashlib.sha256(backup_code.encode("utf-8")).hexdigest()
 
 
 def verify_backup_code(backup_code: str, stored_hash: str) -> bool:
-	"""Constant-time comparison of backup code against stored hash."""
+	"""Constant-time comparison against legacy SHA-256 hash."""
 	if not stored_hash or not backup_code:
 		return False
 	computed = hash_backup_code(backup_code)
 	return hmac.compare_digest(computed, stored_hash)
+
+
+def hash_recovery_code(code: str) -> str:
+	"""Hash a recovery code with bcrypt. Never store plaintext recovery codes."""
+	import bcrypt
+
+	normalized = (code or "").strip().replace(" ", "").replace("-", "").upper()
+	return bcrypt.hashpw(normalized.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_recovery_code(code: str, stored_hash: str) -> bool:
+	"""Constant-time bcrypt verify for a recovery code."""
+	import bcrypt
+
+	if not stored_hash or not code:
+		return False
+	normalized = (code or "").strip().replace(" ", "").replace("-", "").upper()
+	try:
+		return bool(bcrypt.checkpw(normalized.encode("utf-8"), stored_hash.encode("utf-8")))
+	except (ValueError, TypeError):
+		return False
+
+
+def generate_recovery_codes(count: int = 10) -> tuple[list[str], list[str]]:
+	"""
+	Generate `count` recovery codes.
+
+	Returns (plaintext_codes_for_display_once, bcrypt_hashes_to_store).
+	"""
+	import secrets
+
+	plain: list[str] = []
+	hashes: list[str] = []
+	for _ in range(max(1, int(count))):
+		raw = secrets.token_hex(8).upper()
+		display = "-".join(raw[i : i + 4] for i in range(0, 16, 4))
+		plain.append(display)
+		hashes.append(hash_recovery_code(display))
+	return plain, hashes

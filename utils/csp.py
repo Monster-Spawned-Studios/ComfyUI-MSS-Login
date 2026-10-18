@@ -101,12 +101,13 @@ def _build_csp_for_path(path: str, request: web.Request | None = None) -> str:
 				media_src = f"{media_src} {media_origin}"
 		except Exception:
 			pass
-	# script-src: self + cdnjs (DOMPurify, qrcode). style-src: self + unsafe-inline for existing <style> blocks.
+	# script-src: self only (DOMPurify + qrcodejs are self-hosted under /mss-login/vendor/).
+	# style-src: self + unsafe-inline for existing <style> blocks.
 	# connect-src: self + tunnel hosts + HOST_BASE_URL / request origin so reverse-proxy installs work.
 	# frame-ancestors: self to mitigate clickjacking.
 	return (
 		"default-src 'self'; "
-		"script-src 'self' https://cdnjs.cloudflare.com; "
+		"script-src 'self'; "
 		"style-src 'self' 'unsafe-inline'; "
 		f"{_connect_src_directive(request)}; "
 		"frame-ancestors 'self'; "

@@ -3,7 +3,7 @@ import os
 
 from aiohttp import web
 
-from ..constants import ASSETS_DIR, CSS_DIR, DIST_DIR, HTML_DIR, JS_DIR
+from ..constants import ASSETS_DIR, CSS_DIR, DIST_DIR, HTML_DIR, JS_DIR, VENDOR_DIR
 from ..globals import routes
 
 # Subfolder under assets for background music; only these extensions are listed.
@@ -12,7 +12,7 @@ ALLOWED_AUDIO_EXTENSIONS = frozenset({".mp3", ".ogg", ".wav", ".m4a", ".aac", ".
 
 # --- FIX: Create directories if they don't exist to prevent crash ---
 _bg_music_dir = os.path.join(ASSETS_DIR, BG_MUSIC_SUBDIR)
-for directory in [CSS_DIR, JS_DIR, ASSETS_DIR, HTML_DIR, DIST_DIR, _bg_music_dir]:
+for directory in [CSS_DIR, JS_DIR, ASSETS_DIR, HTML_DIR, DIST_DIR, VENDOR_DIR, _bg_music_dir]:
 	if not os.path.exists(directory):
 		try:
 			os.makedirs(directory, exist_ok=True)
@@ -50,3 +50,4 @@ routes.static("/mss-login/css", CSS_DIR)
 routes.static("/mss-login/js", JS_DIR)
 routes.static("/mss-login/assets", ASSETS_DIR)
 routes.static("/mss-login/dist", DIST_DIR)
+routes.static("/mss-login/vendor", VENDOR_DIR)
