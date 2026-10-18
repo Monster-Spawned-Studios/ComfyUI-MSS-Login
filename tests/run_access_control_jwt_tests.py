@@ -114,10 +114,7 @@ def _make_ctrl(ac_mod):
 	tmpdir = tempfile.mkdtemp()
 	groups_path = os.path.join(tmpdir, "groups.json")
 	with open(groups_path, "w", encoding="utf-8") as f:
-		json.dump(
-			{"user": {"can_run": True, "can_upload": True, "can_access_api": True}},
-			f,
-		)
+		json.dump({"user": {"can_run": True, "can_upload": True, "can_access_api": True}}, f)
 	ctrl = ac_mod.AccessControl.__new__(ac_mod.AccessControl)
 	ctrl.users_db = types.SimpleNamespace(
 		get_user=lambda username=None, **_k: (

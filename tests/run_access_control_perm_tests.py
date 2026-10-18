@@ -59,10 +59,7 @@ def _install_stubs() -> None:
 
 	aiohttp = types.ModuleType("aiohttp")
 	aiohttp.web = types.SimpleNamespace(
-		middleware=lambda fn: fn,
-		json_response=json_response,
-		Response=Response,
-		Request=object,
+		middleware=lambda fn: fn, json_response=json_response, Response=Response, Request=object
 	)
 	sys.modules["aiohttp"] = aiohttp
 
