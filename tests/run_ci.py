@@ -147,6 +147,7 @@ def main() -> int:
 		)
 		steps.append(("MFA hardening", os.path.join(TESTS_DIR, "run_mfa_tests.py")))
 		steps.append(("WebAuthn second factor", os.path.join(TESTS_DIR, "run_webauthn_tests.py")))
+		steps.append(("Passkey UI routes", os.path.join(TESTS_DIR, "run_passkey_ui_tests.py")))
 		steps.append(
 			("Guest defaults (AUDIT-001)", os.path.join(TESTS_DIR, "run_guest_defaults_tests.py"))
 		)

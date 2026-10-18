@@ -67,6 +67,8 @@ _ROUTE_POLICIES: list[tuple[str, str, str]] = [
 	_p("POST", "/mss-login/api/mfa/recovery-codes/regenerate", Policy.AUTH),
 	_p("POST", "/mss-login/api/mfa/reset-user", Policy.OWNER),
 	# WebAuthn
+	_p("GET", "/mss-login/passkeys", Policy.AUTH),
+	_p("GET", "/passkeys", Policy.AUTH),
 	_p("GET", "/mss-login/api/webauthn/status", Policy.PUBLIC),
 	_p("POST", "/mss-login/webauthn/register/options", Policy.AUTH),
 	_p("POST", "/mss-login/webauthn/register/verify", Policy.AUTH),

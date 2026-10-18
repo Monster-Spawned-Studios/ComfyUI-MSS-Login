@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 from aiohttp import web
 
 # Paths that serve HTML pages loading scripts; add CSP so script-src can be strict (no 'unsafe-inline').
-_CSP_HTML_PATHS = frozenset({"/login", "/register", "/loading", "/mfa"})
+_CSP_HTML_PATHS = frozenset({"/login", "/register", "/loading", "/mfa", "/passkeys", "/mss-login/passkeys"})
 
 # Static connect-src extras for known tunnel hosts. HOST_BASE_URL (and request origin)
 # are appended dynamically in _connect_src_directive().

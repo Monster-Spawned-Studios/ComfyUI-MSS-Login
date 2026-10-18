@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>MSS-Login — Passkeys &amp; MFA</title>
+	<link rel="stylesheet" href="/mss-login/css/styles.css" />
+	<link rel="stylesheet" href="/mss-login/dist/auth.css" />
+</head>
+<body class="mss-auth-shell">
+	<main class="mss-auth-card" id="passkeys-app">
+		<h1>Security credentials</h1>
+		<p class="mss-muted">Manage passkeys and recovery codes. Passkeys require HTTPS on an allowed origin.</p>
+		<section id="passkey-insecure" hidden>
+			<p>Passkeys are hidden on insecure or bare-IP origins. Use password + TOTP.</p>
+		</section>
+		<section id="passkey-section">
+			<h2>Passkeys</h2>
+			<ul id="passkey-list"></ul>
+			<label>Name <input id="passkey-name" type="text" maxlength="64" placeholder="Laptop" /></label>
+			<button type="button" id="passkey-register">Register passkey</button>
+		</section>
+		<section id="recovery-section">
+			<h2>Recovery codes</h2>
+			<p>Codes are shown once. Regenerating invalidates the old set.</p>
+			<button type="button" id="recovery-regen">Regenerate recovery codes</button>
+			<pre id="recovery-codes" hidden></pre>
+		</section>
+		<p><a href="/">Back to ComfyUI</a></p>
+	</main>
+	<script src="/mss-login/vendor/purify.min.js"></script>
+	<script src="/mss-login/js/passkeys.js"></script>
+</body>
+</html>
