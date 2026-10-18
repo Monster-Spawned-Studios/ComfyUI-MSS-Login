@@ -41,6 +41,7 @@ _ROUTE_POLICIES: list[tuple[str, str, str]] = [
 	_p("GET", "/mss-login/js/{tail:.*}", Policy.PUBLIC),
 	_p("GET", "/mss-login/assets/{tail:.*}", Policy.PUBLIC),
 	_p("GET", "/mss-login/dist/{tail:.*}", Policy.PUBLIC),
+	_p("GET", "/mss-login/vendor/{tail:.*}", Policy.PUBLIC),
 	_p("GET", "/mss-login/api/bg-music", Policy.PUBLIC),
 	_p("GET", "/mss-login/loading-tips.json", Policy.PUBLIC),
 	_p("GET", "/mss-login/api/login-background", Policy.PUBLIC),
@@ -63,6 +64,8 @@ _ROUTE_POLICIES: list[tuple[str, str, str]] = [
 	# Does not affect already-issued Portal Bearer tokens.
 	_p("POST", "/mss-login/api/mfa/setup", Policy.PUBLIC),
 	_p("POST", "/mss-login/api/mfa/verify-setup", Policy.PUBLIC),
+	_p("POST", "/mss-login/api/mfa/recovery-codes/regenerate", Policy.AUTH),
+	_p("POST", "/mss-login/api/mfa/reset-user", Policy.OWNER),
 	_p("GET", "/mss-login/api/auth/local-login-status", Policy.PUBLIC),
 	_p("GET", "/api/mss-login/api/auth/local-login-status", Policy.PUBLIC),
 	_p("POST", "/mss-login/api/auth/local-login", Policy.PUBLIC),
@@ -453,6 +456,7 @@ def assert_router_policies_covered(router) -> list[str]:
 						"/mss-login/js",
 						"/mss-login/assets",
 						"/mss-login/dist",
+						"/mss-login/vendor",
 					)
 				):
 					continue

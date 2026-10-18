@@ -573,6 +573,7 @@ app.middlewares.append(
 			"/mss-login/js",
 			"/mss-login/assets",
 			"/mss-login/dist",
+			"/mss-login/vendor",
 			"/assets",
 			"/static",
 		),

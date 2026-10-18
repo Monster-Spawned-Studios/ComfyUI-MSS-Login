@@ -43,6 +43,14 @@ from ..utils.input_sanitizer import (
 )
 from ..utils.ip_filter import get_device_id, get_ip, is_https_request, is_trusted_proxy_peer
 from ..utils.lockout_store import get_lockout_store
+from ..utils.login_finalize import (
+	any_group_requires_mfa,
+	evaluate_mfa_gate,
+	issue_session_token,
+	log_mfa_disabled_emergency,
+	mfa_disabled_applies_to_user,
+	user_is_admin_or_owner,
+)
 from ..utils.mfa_temp_store import create_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
 from ..utils.request_navigation import is_browser_navigation
@@ -54,6 +62,14 @@ from ..utils.tailscale_network import (
 )
 from ..utils.updater import get_local_version
 from ..utils.user_console_log import append as user_console_append
+
+
+def _issue_mfa_temp(request: web.Request, username: str, purpose: str) -> str:
+	ip = get_ip(request)
+	ua = (request.headers.get("User-Agent") or "").strip()
+	return create_mfa_temp_token(username, purpose=purpose, ip=ip, user_agent=ua)  # type: ignore[arg-type]
+
+
 from ..utils.validate import validate_password, validate_username
 
 _LOGIN_VERSION_RE = re.compile(
@@ -370,14 +386,14 @@ async def get_login(request: web.Request) -> web.Response:
 							if is_admin_user or _role_requires_mfa(candidate):
 								needs_mfa = True
 					if needs_mfa:
-						mfa_temp = create_mfa_temp_token(candidate)
+						mfa_temp = _issue_mfa_temp(request, candidate, "mfa_verify")
 						# Bridge page: set sessionStorage then go to /mfa (no session JWT yet)
 						bridge = (
 							"<!DOCTYPE html><html><head><meta charset='utf-8'>"
 							"<title>MFA required</title></head><body>"
 							"<script>"
-							f"sessionStorage.setItem('mss_mfa_temp_token',{json.dumps(mfa_temp)});"
-							"sessionStorage.setItem('mss_mfa_mode','verify');"
+							f"sessionStorage.setItem('mfa_temp_token',{json.dumps(mfa_temp)});"
+							"sessionStorage.setItem('mfa_mode','verify');"
 							"location.replace('/mfa');"
 							"</script>"
 							"<p>MFA verification required…</p></body></html>"
@@ -511,12 +527,9 @@ async def post_login(request: web.Request) -> web.Response:
 		user_id, user_rec = users_db.get_user(username)
 		user_env.get_user_workflow_dir(username)
 
-		mfa_enabled = users_db.get_mfa_enabled(username)
-
-		# CRITICAL: Fail closed. If user has MFA enrolled, ALWAYS require second factor.
-		if mfa_enabled and not constants_module.MFA_DISABLED:
-			mfa_temp = create_mfa_temp_token(username)
-			timeout.remove_failed_attempts(ip)
+		gate = evaluate_mfa_gate(username, users_db)
+		if gate.needs_verify:
+			mfa_temp = _issue_mfa_temp(request, username, "mfa_verify")
 			return web.json_response(
 				{
 					"message": "MFA verification required",
@@ -526,56 +539,33 @@ async def post_login(request: web.Request) -> web.Response:
 				},
 				status=200,
 			)
-
-		# When MFA feature or global MFA is disabled, skip MFA setup/role branches
-		if experimental_mfa_enabled() and not constants_module.MFA_DISABLED:
-			is_admin = user_rec.get("admin") or "admin" in [
-				g.lower() for g in user_rec.get("groups", [])
-			]
-			role_requires_mfa = _role_requires_mfa(username)
-
-			if is_admin and not mfa_enabled:
-				# Force admin to set up MFA before issuing JWT
-				mfa_temp = create_mfa_temp_token(username)
-				timeout.remove_failed_attempts(ip)
-				return web.json_response(
-					{
-						"message": "MFA setup required for admin accounts",
-						"mfa_setup_required": True,
-						"mfa_temp_token": mfa_temp,
-						"remember_me": remember_me,
-					},
-					status=200,
-				)
-			if role_requires_mfa and not mfa_enabled:
-				# Role requires MFA but user has not set it up
-				mfa_temp = create_mfa_temp_token(username)
-				timeout.remove_failed_attempts(ip)
-				return web.json_response(
-					{
-						"message": "MFA setup required for your role",
-						"mfa_setup_required": True,
-						"mfa_temp_token": mfa_temp,
-						"remember_me": remember_me,
-					},
-					status=200,
-				)
+		if gate.needs_setup:
+			mfa_temp = _issue_mfa_temp(request, username, "mfa_setup")
+			msg = (
+				"MFA setup required for admin accounts"
+				if gate.reason == "admin"
+				else "MFA setup required for your role"
+			)
+			return web.json_response(
+				{
+					"message": msg,
+					"mfa_setup_required": True,
+					"mfa_temp_token": mfa_temp,
+					"remember_me": remember_me,
+				},
+				status=200,
+			)
+		if gate.reason == "mfa_disabled":
+			log_mfa_disabled_emergency(username, ip)
 
 		no_exp = _user_can_have_non_expiring_jwt(username)
-		token = jwt_auth.create_access_token(
-			{"id": user_id, "username": username}, no_expiration=no_exp
+		token, _jti = issue_session_token(
+			username=username,
+			users_db=users_db,
+			jwt_auth=jwt_auth,
+			amr=["pwd"],
+			no_expiration=no_exp,
 		)
-		try:
-			payload = jwt_auth.decode_access_token(token)
-			jti = payload.get("jti")
-			exp = payload.get("exp")
-			exp_at_iso = datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
-			if jti:
-				get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
-					jti, user_id, username, exp_at_iso
-				)
-		except Exception as e:
-			logger.error(f"[auth.py] post_login: register_session: {e}")
 		if DEBUG_MODE:
 			logger.log_jwt_if_debug(token, username)
 		else:
@@ -588,7 +578,7 @@ async def post_login(request: web.Request) -> web.Response:
 		except Exception as e:
 			logger.error(f"[auth.py] post_login: send_notification: {e}")
 		logger.login_success(ip, username)
-		timeout.remove_failed_attempts(ip)
+		timeout.remove_failed_attempts(ip, username)
 		redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
 		if is_browser_navigation(request):
 			resp = web.HTTPFound(redirect_url)
@@ -714,8 +704,7 @@ async def api_local_login(request: web.Request) -> web.Response:
 			if is_admin_user or _role_requires_mfa(username):
 				needs_mfa = True
 		if needs_mfa:
-			mfa_temp = create_mfa_temp_token(username)
-			timeout.remove_failed_attempts(ip, username)
+			mfa_temp = _issue_mfa_temp(request, username, "mfa_verify")
 			return web.json_response(
 				{
 					"message": "MFA verification required",
@@ -834,41 +823,34 @@ async def post_logout(request: web.Request) -> web.Response:
 
 
 def _role_requires_mfa(username: str) -> bool:
-	"""Return True if the user's role has mfa_required (admins always treated as requiring MFA in login flow)."""
-	user_id, user_rec = users_db.get_user(username)
-	if not user_rec:
-		return False
-	groups = [g.lower() for g in user_rec.get("groups", [])]
-	role = groups[0] if groups else "user"
-	cfg = access_control._load_group_config()
-	perms = cfg.get(role, {})
-	return perms.get("mfa_required", False) is True
+	"""Return True if any of the user's groups has mfa_required."""
+	return any_group_requires_mfa(username, users_db)
 
 
 def _user_can_have_api_tokens(username: str) -> bool:
-	"""Return True if the user's role has can_have_api_tokens (admin always allowed)."""
+	"""Return True if any group grants can_have_api_tokens (admin/owner always)."""
 	user_id, user_rec = users_db.get_user(username)
 	if not user_rec:
 		return False
-	groups = [g.lower() for g in user_rec.get("groups", [])]
-	role = groups[0] if groups else "user"
-	cfg = access_control._load_group_config()
-	perms = cfg.get(role, {})
-	if role in ("admin", "owner"):
+	if user_is_admin_or_owner(user_rec):
 		return True
-	return perms.get("can_have_api_tokens", False) is True
+	cfg = access_control._load_group_config()
+	for role in [g.lower() for g in user_rec.get("groups", [])]:
+		if (cfg.get(role) or {}).get("can_have_api_tokens", False) is True:
+			return True
+	return False
 
 
 def _user_can_have_non_expiring_jwt(username: str) -> bool:
-	"""Return True if the user's role has can_have_non_expiring_jwt."""
+	"""Return True if any group grants can_have_non_expiring_jwt."""
 	user_id, user_rec = users_db.get_user(username)
 	if not user_rec:
 		return False
-	groups = [g.lower() for g in user_rec.get("groups", [])]
-	role = groups[0] if groups else "user"
 	cfg = access_control._load_group_config()
-	perms = cfg.get(role, {})
-	return perms.get("can_have_non_expiring_jwt", False) is True
+	for role in [g.lower() for g in user_rec.get("groups", [])]:
+		if (cfg.get(role) or {}).get("can_have_non_expiring_jwt", False) is True:
+			return True
+	return False
 
 
 @routes.get("/mss-login/generate_token")
@@ -1053,9 +1035,10 @@ async def post_generate_token(request: web.Request) -> web.Response:
 			status=403,
 		)
 
-	# CRITICAL: Fail closed. If user has MFA enrolled, ALWAYS require second factor.
-	if users_db.get_mfa_enabled(username) and not constants_module.MFA_DISABLED:
-		mfa_temp = create_mfa_temp_token(username)
+	# MFA gate for token creation (unenrolled admins/required roles cannot mint tokens)
+	gate = evaluate_mfa_gate(username, users_db)
+	if gate.needs_verify:
+		mfa_temp = _issue_mfa_temp(request, username, "mfa_verify")
 		return web.json_response(
 			{
 				"message": "MFA verification required",
@@ -1064,6 +1047,14 @@ async def post_generate_token(request: web.Request) -> web.Response:
 				"expire_hours": expire_hours,
 			},
 			status=200,
+		)
+	if gate.needs_setup:
+		return web.json_response(
+			{
+				"error": "MFA enrollment required before creating API tokens.",
+				"mfa_setup_required": True,
+			},
+			status=403,
 		)
 
 	user_id, _ = users_db.get_user(username)

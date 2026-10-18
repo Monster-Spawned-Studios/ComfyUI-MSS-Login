@@ -73,6 +73,7 @@ CSS_DIR = os.path.join(WEB_DIR, "css")
 JS_DIR = os.path.join(WEB_DIR, "js")
 ASSETS_DIR = os.path.join(WEB_DIR, "assets")
 DIST_DIR = os.path.join(WEB_DIR, "dist")
+VENDOR_DIR = os.path.join(WEB_DIR, "vendor")
 
 # --- Load config (runtime config in data dir; defaults from repo config.defaults.json) ---
 CONFIG_FILE_PATH = os.path.join(DATA_DIR, "config.json")
@@ -851,7 +852,7 @@ def _get_allow_guest_jwt():
 ALLOW_GUEST_JWT = _get_allow_guest_jwt()
 
 
-# MFA disabled: when True, skip all MFA (setup, verify, role requirements)
+# MFA disabled: emergency switch. Never bypasses admin/owner unless FORCE_ALL.
 def _get_mfa_disabled():
 	env_val = str(os.environ.get("MFA_DISABLED", "")).strip().lower()
 	if env_val in ("1", "true", "yes"):
@@ -862,13 +863,26 @@ def _get_mfa_disabled():
 	return bool(cfg.get("mfa_disabled", False))
 
 
+def _get_mfa_disabled_force_all() -> bool:
+	"""Explicit second flag: allow MFA_DISABLED to also skip admin/owner MFA."""
+	env_val = str(os.environ.get("MFA_DISABLED_FORCE_ALL", "")).strip().lower()
+	if env_val in ("1", "true", "yes"):
+		return True
+	if env_val in ("0", "false", "no"):
+		return False
+	cfg = _load_config(CONFIG_FILE_PATH)
+	return bool(cfg.get("mfa_disabled_force_all", False))
+
+
 MFA_DISABLED = _get_mfa_disabled()
+MFA_DISABLED_FORCE_ALL = _get_mfa_disabled_force_all()
 
 
 def reload_mfa_disabled() -> bool:
-	"""Re-read config and refresh MFA_DISABLED."""
-	global MFA_DISABLED
+	"""Re-read config and refresh MFA_DISABLED / MFA_DISABLED_FORCE_ALL."""
+	global MFA_DISABLED, MFA_DISABLED_FORCE_ALL
 	MFA_DISABLED = _get_mfa_disabled()
+	MFA_DISABLED_FORCE_ALL = _get_mfa_disabled_force_all()
 	return MFA_DISABLED
 
 

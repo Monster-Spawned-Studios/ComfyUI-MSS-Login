@@ -66,6 +66,9 @@ EXPECTED_TABLES: dict[str, TableSpec] = {
 			ColumnSpec("totp_secret_encrypted", "text", nullable=True),
 			ColumnSpec("backup_code_hash", "text", nullable=True),
 			ColumnSpec("backup_code_used", "integer", nullable=False),
+			ColumnSpec("token_version", "integer", nullable=False),
+			ColumnSpec("last_totp_timestep", "integer", nullable=True),
+			ColumnSpec("recovery_codes_json", "text", nullable=True),
 		),
 	),
 	"app_settings": TableSpec(

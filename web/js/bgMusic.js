@@ -11,7 +11,7 @@
  */
 
 /** DOMPurify for sanitizing the background music URLs (loaded dynamically when run inside ComfyUI). */
-const DOMPURIFY_CDN = "https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.7/purify.min.js";
+const DOMPURIFY_CDN = "/mss-login/vendor/purify.min.js";
 
 function loadDOMPurify() {
   if (typeof window.DOMPurify !== "undefined") return Promise.resolve();
