@@ -41,6 +41,19 @@ These run without loading ComfyUI or `folder_paths`, so they work in CI and on m
 | `run_avatar_tests.py` | Avatar upload sanitization (PNG re-encode, SVG/HTML reject, guest block). |
 | `run_object_info_combo_mapping_tests.py` | `/object_info` combo rebuild by `(node class, input)`; unmapped passthrough; Ultralytics prefixes; overlap fallback. |
 | `run_history_status_tests.py` | `user_queue_task_done` forwards ComfyUI `status=` / `process_item=` into history; legacy kwargs; per-user history filtering unchanged. |
+| `run_cpe_shared_guest_workflows_tests.py` | Shared `workflows/guest` merged view (own > guest > legacy); labels; read-only; subfolder paths; archive skip. |
+
+### Shared guest workflows
+
+Every user sees their own workflow folder **plus** `<MSS_LOGIN_DATA_DIR>/workflows/<shared_user>/` (default `guest`), in both CPE/Portal and the web userdata UI. Settings in `config.defaults.json` → `workflows`:
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `shared_user` | `guest` | Username whose workflow dir is the shared library |
+| `guest_can_write_shared` | `false` | Allow the shared user to write/delete the shared dir |
+| `include_legacy_globals` | `false` | Include ComfyUI / `workflows/default` legacy globals (lowest precedence) |
+| `web_hide_api_format` | `true` | Hide API-format JSON from the web sidebar list (CPE still lists them) |
+| `list_shared_metadata` | `true` | Include `shared` / `source` / `readonly` / `format` on list entries |
 
 Examples:
 

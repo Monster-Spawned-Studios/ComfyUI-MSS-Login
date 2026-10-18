@@ -45,6 +45,19 @@
 	"debug_mode": false,
 	"filter_debug_messages": false,
 	"allow_guest_jwt": false,
+	"workflows": {
+		"shared_user": "guest",
+		"shared_enabled": true,
+		"guest_can_write_shared": false,
+		"include_legacy_globals": false,
+		"web_hide_api_format": true,
+		"list_shared_metadata": true
+	},
+
+	"cpe": {
+		"list_shared_metadata": true
+	},
+
 	"mfa_disabled": true,
 	"auto_install_deps": true,
 	"session_token_store": {

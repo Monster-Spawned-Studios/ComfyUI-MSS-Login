@@ -52,10 +52,35 @@ def _install_stubs():
 	def _is_safe_filename(name):
 		return bool(name) and ".." not in name and "/" not in name and "\\" not in name
 
+	def _is_safe_relative_path(rel_path):
+		if not rel_path or not isinstance(rel_path, str):
+			return False
+		clean = rel_path.replace("\\", "/").strip()
+		if not clean or clean.startswith("/") or ".." in clean:
+			return False
+		return True
+
 	ps_mod.is_safe_filename = _is_safe_filename
+	ps_mod.is_safe_relative_path = _is_safe_relative_path
 	ps_mod.resolve_path_under = lambda *_args, **_kwargs: None
 	sys.modules["mss_login.utils.path_safety"] = ps_mod
 
+	# Minimal shared_workflows stub so workflow_routes imports succeed
+	sw_mod = types.ModuleType("mss_login.utils.shared_workflows")
+	sw_mod.ORIGIN_OWN = "own"
+	sw_mod.SHARED_READONLY_BODY = {"status": "error", "code": "SHARED_READONLY"}
+	sw_mod.can_delete_workflow = lambda *_a, **_k: (False, "SHARED_READONLY")
+	sw_mod.collect_entries = lambda *_a, **_k: []
+	sw_mod.log_workflow_action = lambda *_a, **_k: None
+	sw_mod.resolve_workflow = lambda *_a, **_k: None
+	sw_mod.sanitize_workflow_rel = lambda name, **_k: name
+	sw_mod.save_target_dir = lambda *_a, **_k: (None, "SHARED_READONLY")
+	sw_mod.workflows_settings = lambda: {}
+	sys.modules["mss_login.utils.shared_workflows"] = sw_mod
+
+	sfw_pkg = types.ModuleType("mss_login.utils.sfw_intercept")
+	sfw_pkg.__path__ = [os.path.join(_PROJECT_ROOT, "utils", "sfw_intercept")]
+	sys.modules["mss_login.utils.sfw_intercept"] = sfw_pkg
 	sfw_mod = types.ModuleType("mss_login.utils.sfw_intercept.nsfw_guard")
 	sfw_mod.should_block_image_for_current_user = lambda _p: False
 	sys.modules["mss_login.utils.sfw_intercept.nsfw_guard"] = sfw_mod

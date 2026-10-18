@@ -141,6 +141,12 @@ def main() -> int:
 			)
 		)
 		steps.append(("History status", os.path.join(TESTS_DIR, "run_history_status_tests.py")))
+		steps.append(
+			(
+				"Shared guest workflows",
+				os.path.join(TESTS_DIR, "run_cpe_shared_guest_workflows_tests.py"),
+			)
+		)
 	if not args.no_lint:
 		steps.append(("Ruff check", None))  # special
 		steps.append(("Ruff format", None))

@@ -83,17 +83,24 @@ def sanitize_cpe_filename(name: str | None, *, default: str | None = None) -> st
 
 
 def collect_workflow_entries(
-	user_workflow_dir: str, extra_dirs: Iterable[str] | None = None
+	user_workflow_dir: str, extra_dirs: Iterable[str] | None = None, *, username: str | None = None
 ) -> list[dict[str, Any]]:
-	"""Return CPE list entries from extra (shared) dirs then the user's dir.
+	"""Return CPE list entries.
 
-	User files override shared files with the same relative filename.
+	When *username* is set, use :mod:`shared_workflows` (own > guest > legacy).
+	Otherwise keep the legacy extra_dirs + user_dir merge for unit tests.
 	"""
+	if username is not None:
+		from .shared_workflows import collect_entries
+
+		return collect_entries(username, hide_api_format=False)
+
 	files_map: dict[str, dict[str, Any]] = {}
 	for root_dir in list(extra_dirs or []) + [user_workflow_dir]:
 		if not root_dir or not os.path.isdir(root_dir):
 			continue
-		for dirpath, _, filenames in os.walk(root_dir):
+		for dirpath, dirnames, filenames in os.walk(root_dir):
+			dirnames[:] = [d for d in dirnames if not d.startswith("_archive")]
 			for filename in filenames:
 				if not filename.lower().endswith(".json"):
 					continue
@@ -113,9 +120,13 @@ def collect_workflow_entries(
 
 
 def list_workflows_payload(
-	user_workflow_dir: str, extra_dirs: Iterable[str] | None = None
+	user_workflow_dir: str, extra_dirs: Iterable[str] | None = None, *, username: str | None = None
 ) -> dict[str, Any]:
 	"""CPE ``GET /cpe/workflow/list`` body."""
+	if username is not None:
+		from .shared_workflows import list_payload_for_user
+
+		return list_payload_for_user(username)
 	return {
 		"status": "success",
 		"workflows": collect_workflow_entries(user_workflow_dir, extra_dirs),
@@ -123,29 +134,47 @@ def list_workflows_payload(
 
 
 def _resolve_readable_workflow(
-	user_workflow_dir: str, filename: str, extra_dirs: Iterable[str] | None = None
-) -> str | None:
+	user_workflow_dir: str,
+	filename: str,
+	extra_dirs: Iterable[str] | None = None,
+	*,
+	username: str | None = None,
+) -> tuple[str | None, str | None]:
+	"""Return ``(abs_path, origin)`` or ``(None, None)``."""
 	clean = sanitize_cpe_filename(filename)
 	if not clean:
-		return None
+		return None, None
+	if username is not None:
+		from .shared_workflows import resolve_workflow
+
+		resolved = resolve_workflow(username, clean)
+		if resolved is None:
+			return None, None
+		return resolved[0], resolved[1]
 	search_dirs = [user_workflow_dir] + list(extra_dirs or [])
 	for root_dir in search_dirs:
 		if not root_dir or not os.path.isdir(root_dir):
 			continue
 		resolved = resolve_path_under(root_dir, clean)
 		if resolved and os.path.isfile(resolved):
-			return resolved
-	return None
+			return resolved, "own"
+	return None, None
 
 
 def read_workflow_text(
-	user_workflow_dir: str, filename: str, extra_dirs: Iterable[str] | None = None
+	user_workflow_dir: str,
+	filename: str,
+	extra_dirs: Iterable[str] | None = None,
+	*,
+	username: str | None = None,
 ) -> tuple[int, dict[str, Any]]:
 	"""CPE ``GET /cpe/workflow/get`` status and body."""
 	clean = sanitize_cpe_filename(filename)
 	if not clean:
 		return 400, {"status": "error", "message": "filename query parameter is required"}
-	path = _resolve_readable_workflow(user_workflow_dir, clean, extra_dirs)
+	path, origin = _resolve_readable_workflow(
+		user_workflow_dir, clean, extra_dirs, username=username
+	)
 	if path is None:
 		return 404, {"status": "error", "message": f"Workflow file not found: {clean}"}
 	try:
@@ -153,7 +182,10 @@ def read_workflow_text(
 			content = handle.read()
 	except OSError as exc:
 		return 500, {"status": "error", "message": "Internal server error", "details": str(exc)}
-	return 200, {"status": "success", "filename": clean, "workflow": content}
+	body: dict[str, Any] = {"status": "success", "filename": clean, "workflow": content}
+	if origin:
+		body["source"] = origin
+	return 200, body
 
 
 def save_workflow_text(
@@ -224,7 +256,11 @@ def parse_workflow_to_api_prompt(workflow: Any) -> dict[str, Any] | None:
 
 
 def load_workflow_for_convert(
-	user_workflow_dir: str, filename: str, extra_dirs: Iterable[str] | None = None
+	user_workflow_dir: str,
+	filename: str,
+	extra_dirs: Iterable[str] | None = None,
+	*,
+	username: str | None = None,
 ) -> tuple[int, dict[str, Any], dict[str, Any] | None]:
 	"""Read a workflow file for get-and-convert.
 
@@ -232,7 +268,7 @@ def load_workflow_for_convert(
 	On success (200), ``workflow_dict`` is the parsed JSON object and the body
 	holds at least ``filename``. Callers convert UI graphs via ``cpe_convert``.
 	"""
-	status, body = read_workflow_text(user_workflow_dir, filename, extra_dirs)
+	status, body = read_workflow_text(user_workflow_dir, filename, extra_dirs, username=username)
 	if status != 200:
 		return status, body, None
 	filename_out = body.get("filename") or filename
@@ -249,7 +285,10 @@ def load_workflow_for_convert(
 			},
 			None,
 		)
-	return 200, {"status": "success", "filename": filename_out}, workflow_data
+	meta = {"status": "success", "filename": filename_out}
+	if body.get("source"):
+		meta["source"] = body["source"]
+	return 200, meta, workflow_data
 
 
 def get_and_convert_payload(

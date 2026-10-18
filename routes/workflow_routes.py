@@ -9,8 +9,19 @@ from aiohttp import web
 
 from ..globals import current_username_var, jwt_auth, users_db
 from ..utils import user_env
-from ..utils.path_safety import is_safe_filename, resolve_path_under
+from ..utils.path_safety import is_safe_filename, is_safe_relative_path, resolve_path_under
 from ..utils.sfw_intercept.nsfw_guard import should_block_image_for_current_user
+from ..utils.shared_workflows import (
+	ORIGIN_OWN,
+	SHARED_READONLY_BODY,
+	can_delete_workflow,
+	collect_entries,
+	log_workflow_action,
+	resolve_workflow,
+	sanitize_workflow_rel,
+	save_target_dir,
+	workflows_settings,
+)
 
 
 def _sanitize_view_subfolder(subfolder: str | None) -> str | None:
@@ -149,6 +160,7 @@ def user_is_admin(username: str) -> bool:
 
 # --- Helper: Sanitize Name ---
 def sanitize_name(name: str | None) -> str | None:
+	"""Legacy flat-name sanitizer (single path segment). Prefer sanitize_workflow_rel."""
 	if not name:
 		return None
 	clean = name.replace("\\", "/").strip()
@@ -159,6 +171,11 @@ def sanitize_name(name: str | None) -> str | None:
 	if not is_safe_filename(clean):
 		return None
 	return clean
+
+
+def sanitize_workflow_name(name: str | None) -> str | None:
+	"""Allow safe relative subfolder paths for userdata workflow GET/save/delete."""
+	return sanitize_workflow_rel(name)
 
 
 # --- Helper: Get File Info ---
@@ -213,46 +230,58 @@ def get_file_info(root_dir: str, rel_path: str) -> dict:
 	return base_info
 
 
+def _info_root_for_rel(abs_path: str, rel: str) -> str:
+	norm = abs_path.replace("\\", "/")
+	rel_norm = rel.replace("\\", "/")
+	if norm.endswith("/" + rel_norm):
+		return norm[: -(len(rel_norm) + 1)]
+	if norm.endswith(rel_norm):
+		return norm[: -len(rel_norm)].rstrip("/")
+	return os.path.dirname(abs_path)
+
+
 # --- 1. LIST (GET) ---
 async def list_workflows(request, full_info: bool = False):
 	user = get_current_user(request)
+	settings = workflows_settings()
+	hide_api = bool(settings.get("web_hide_api_format", True))
+	entries = collect_entries(user, hide_api_format=hide_api)
 	files_map: dict[str, dict] = {}
 
-	# Global
-	for global_dir in POTENTIAL_GLOBALS:
-		if os.path.exists(global_dir):
-			for root, _, files in os.walk(global_dir):
-				for f in files:
-					if f.endswith(".json"):
-						rel = os.path.relpath(os.path.join(root, f), global_dir)
-						key = rel.replace("\\", "/")
-						files_map[key] = get_file_info(global_dir, rel)
+	for entry in entries:
+		rel = entry.get("filename") or ""
+		if not rel or not is_safe_relative_path(rel):
+			continue
+		resolved = resolve_workflow(user, rel)
+		if not resolved:
+			continue
+		abs_path, _origin = resolved
+		info = get_file_info(_info_root_for_rel(abs_path, rel), rel)
+		info["file"] = rel
+		info["path"] = rel
+		info["id"] = rel
+		info["filename"] = os.path.basename(rel)
+		info["writable"] = not bool(entry.get("readonly", False))
+		for key in ("shared", "source", "readonly", "format"):
+			if key in entry:
+				info[key] = entry[key]
+		info["data"] = info.copy()
+		files_map[rel] = info
 
-	# Private
-	if user != "guest":
-		user_dir = user_env.get_user_workflow_dir(user)
-		if os.path.exists(user_dir):
-			for root, _, files in os.walk(user_dir):
-				for f in files:
-					if f.endswith(".json"):
-						rel = os.path.relpath(os.path.join(root, f), user_dir)
-						key = rel.replace("\\", "/")
-						files_map[key] = get_file_info(user_dir, rel)
-		else:
-			os.makedirs(user_dir, exist_ok=True)
-
-		# Pull S3-only workflows into the local dir and merge into listing
+	# S3-only extras for private own dir (skip when guest shared is read-only)
+	if not (user == "guest" and not settings.get("guest_can_write_shared")):
 		wf_sync = _get_workflow_sync()
 		if wf_sync is not None:
 			try:
 				s3_extras = wf_sync.get_s3_only_workflows(user)
 				for info in s3_extras:
 					key = (info.get("file") or info.get("path") or "").replace("\\", "/")
-					if key and key not in files_map:
+					if key and key not in files_map and is_safe_relative_path(key):
 						files_map[key] = info
 			except Exception:
 				pass
 
+	log_workflow_action(user, "list", "merged", "*")
 	return web.json_response(list(files_map.values()))
 
 
@@ -276,20 +305,29 @@ async def save_workflow(request, name_override: str | None = None):
 		if not name:
 			name = "untitled.json"
 
-		clean_name = sanitize_name(name)
+		clean_name = sanitize_workflow_name(name)
 		if not clean_name:
 			return web.Response(status=400, text="Invalid filename")
 
-		user_dir = user_env.get_user_workflow_dir(user)
-		file_path = os.path.join(user_dir, clean_name)
+		scope_shared = (
+			str(request.query.get("scope") or data.get("scope") or "").strip().lower() == "shared"
+		)
+		target_dir, err = save_target_dir(user, scope_shared=scope_shared)
+		if err or not target_dir:
+			return web.json_response(SHARED_READONLY_BODY, status=403)
 
-		real_user_dir = os.path.realpath(user_dir)
-		if not os.path.realpath(file_path).startswith(real_user_dir + os.sep):
+		file_path = os.path.normpath(os.path.join(target_dir, clean_name.replace("/", os.sep)))
+		if not resolve_path_under(target_dir, clean_name) and not os.path.realpath(
+			file_path
+		).startswith(os.path.realpath(target_dir) + os.sep):
+			return web.Response(status=400, text="Invalid filename")
+		# Containment via realpath
+		real_target = os.path.realpath(target_dir)
+		os.makedirs(os.path.dirname(file_path), exist_ok=True)
+		if not os.path.realpath(file_path).startswith(real_target + os.sep):
 			return web.Response(status=400, text="Invalid filename")
 
-		print(f"[mss-login] User '{user}' saving workflow: {clean_name}")
-
-		os.makedirs(os.path.dirname(file_path), exist_ok=True)
+		log_workflow_action(user, "save", "shared" if scope_shared else "own", clean_name)
 
 		# Strip metadata fields that come from UI listing
 		meta_keys = [
@@ -304,6 +342,9 @@ async def save_workflow(request, name_override: str | None = None):
 			"path",
 			"subfolder",
 			"data",
+			"shared",
+			"source",
+			"readonly",
 		]
 		for k in meta_keys:
 			if k in data:
@@ -312,13 +353,13 @@ async def save_workflow(request, name_override: str | None = None):
 		with open(file_path, "w", encoding="utf-8") as f:
 			json.dump(data, f, indent=2)
 
-		# Sync to S3 in background (fire-and-forget)
-		wf_sync = _get_workflow_sync()
-		if wf_sync is not None:
-			_fire_and_forget(wf_sync.upload_user_workflow, user, clean_name, file_path)
+		# Sync to S3 only for private own-dir saves
+		if not scope_shared:
+			wf_sync = _get_workflow_sync()
+			if wf_sync is not None:
+				_fire_and_forget(wf_sync.upload_user_workflow, user, clean_name, file_path)
 
-		# Return fresh file info so UI can update list
-		saved_info = get_file_info(user_dir, clean_name)
+		saved_info = get_file_info(target_dir, clean_name)
 		return web.json_response(saved_info)
 
 	except Exception as e:
@@ -330,23 +371,16 @@ async def save_workflow(request, name_override: str | None = None):
 async def get_workflow_content(request, name: str):
 	user = get_current_user(request)
 
-	clean_name = sanitize_name(name)
+	clean_name = sanitize_workflow_name(name)
 	if not clean_name:
 		return web.Response(status=404)
 
-	# First: user-specific workflow (path traversal: serve only if under dir)
-	user_dir = user_env.get_user_workflow_dir(user)
-	user_path = resolve_path_under(user_dir, clean_name)
-	if user_path and os.path.isfile(user_path):
-		return web.FileResponse(user_path)
-
-	# Then: global workflows
-	for global_dir in POTENTIAL_GLOBALS:
-		global_path = resolve_path_under(global_dir, clean_name)
-		if global_path and os.path.isfile(global_path):
-			return web.FileResponse(global_path)
-
-	return web.Response(status=404, text="Workflow not found")
+	resolved = resolve_workflow(user, clean_name)
+	if not resolved:
+		return web.Response(status=404, text="Workflow not found")
+	abs_path, origin = resolved
+	log_workflow_action(user, "get", origin, clean_name)
+	return web.FileResponse(abs_path)
 
 
 # --- 4. DELETE (DELETE) ---
@@ -359,51 +393,30 @@ async def delete_workflow(request, name: str | None):
 	if not name:
 		name = request.query.get("name", "")
 
-	clean_name = sanitize_name(name)
+	clean_name = sanitize_workflow_name(name)
 	if not clean_name:
 		return web.Response(status=400, text="Invalid filename")
 
-	# --- 1. Try deleting from the user's own folder ---
-	user_dir = user_env.get_user_workflow_dir(user)
-	user_path = os.path.join(user_dir, clean_name)
+	resolved = resolve_workflow(user, clean_name)
+	if not resolved:
+		return web.Response(status=404, text="Workflow not found")
+	abs_path, origin = resolved
+	allowed, err = can_delete_workflow(user, origin)
+	if not allowed:
+		return web.json_response(SHARED_READONLY_BODY, status=403)
 
-	real_user_dir = os.path.realpath(user_dir)
-	if not os.path.realpath(user_path).startswith(real_user_dir + os.sep):
-		return web.Response(status=400, text="Invalid filename")
+	try:
+		os.remove(abs_path)
+	except OSError as exc:
+		return web.Response(status=500, text=str(exc))
 
-	if os.path.exists(user_path):
-		os.remove(user_path)
-		print(f"[mss-login] User '{user}' deleted workflow: {clean_name}")
-		# Sync deletion to S3 in background
+	log_workflow_action(user, "delete", origin, clean_name)
+	# S3 sync only for private own deletes (never shared/legacy)
+	if origin == ORIGIN_OWN:
 		wf_sync = _get_workflow_sync()
 		if wf_sync is not None:
 			_fire_and_forget(wf_sync.delete_user_workflow, user, clean_name)
-		# Match core ComfyUI: DELETE /userdata/{file} -> 204 No Content
-		return web.Response(status=204)
-
-	# --- 2. Try deleting from global/default folders ---
-	is_admin = user_is_admin(user)
-	print(f"[mss-login] delete_workflow user={user!r}, is_admin={is_admin}, name={clean_name!r}")
-
-	for global_dir in POTENTIAL_GLOBALS:
-		global_path = os.path.join(global_dir, clean_name)
-		real_global = os.path.realpath(global_dir)
-		if not os.path.realpath(global_path).startswith(real_global + os.sep):
-			continue
-		if os.path.exists(global_path):
-			if is_admin:
-				os.remove(global_path)
-				print(
-					f"[mss-login] ADMIN '{user}' deleted GLOBAL workflow: "
-					f"{clean_name} ({global_path})"
-				)
-				return web.Response(status=204)
-			else:
-				# Found in global, but user is not allowed to delete it
-				return web.Response(status=403, text="Cannot delete global workflows")
-
-	# --- 3. Not found anywhere ---
-	return web.Response(status=404, text="Workflow not found")
+	return web.Response(status=204)
 
 
 # --- 5. DISPATCHER / MIDDLEWARE ---

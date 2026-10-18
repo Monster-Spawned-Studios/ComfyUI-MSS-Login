@@ -66,15 +66,6 @@ from ..utils.shared_items_store import get_shared_items_store
 ensure_embedded_convert_registered()
 
 
-def _extra_global_dirs() -> list[str]:
-	try:
-		from .workflow_routes import POTENTIAL_GLOBALS
-
-		return [path for path in POTENTIAL_GLOBALS if path and os.path.isdir(path)]
-	except Exception:
-		return []
-
-
 def _current_username(request: web.Request) -> str:
 	try:
 		from .workflow_routes import get_current_user
@@ -153,8 +144,26 @@ def _flatten_convert_payload(request: web.Request, payload: dict) -> dict:
 	return payload
 
 
-def _model_grant_check(request: web.Request, workflow_payload: object) -> web.Response | None:
-	"""Return a 403 response if API-format workflow references forbidden models."""
+def _model_grant_check(
+	request: web.Request, workflow_payload: object, *, origin: str | None = None
+) -> web.Response | None:
+	"""Return a 403 response if API-format workflow references forbidden models.
+
+	For shared/legacy origins, exceptions fail closed. Own files keep fail-open
+	on unexpected errors (legacy behaviour).
+	"""
+	from ..utils.shared_workflows import ORIGIN_LEGACY, ORIGIN_SHARED
+
+	fail_closed = origin in (ORIGIN_SHARED, ORIGIN_LEGACY)
+	deny = web.json_response(
+		{
+			"status": "error",
+			"error": "Model not allowed",
+			"code": "MODEL_NOT_ALLOWED",
+			"message": "Model not allowed",
+		},
+		status=403,
+	)
 	prompt = parse_workflow_to_api_prompt(workflow_payload)
 	if prompt is None:
 		return None
@@ -163,20 +172,12 @@ def _model_grant_check(request: web.Request, workflow_payload: object) -> web.Re
 
 		role, perms, username = access_control._get_user_role_and_permissions(request)
 	except Exception:
-		return None
+		return deny if fail_closed else None
 	try:
 		users_db = access_control.users_db
 		user_id = get_user_id_for_username(users_db, username)
 		if prompt_has_foreign_uuid_model(prompt, user_id):
-			return web.json_response(
-				{
-					"status": "error",
-					"error": "Model not allowed",
-					"code": "MODEL_NOT_ALLOWED",
-					"message": "Model not allowed",
-				},
-				status=403,
-			)
+			return deny
 		if user_can_view_all_models(role, perms):
 			return None
 		grants = get_effective_model_grants_for_user(
@@ -205,7 +206,7 @@ def _model_grant_check(request: web.Request, workflow_payload: object) -> web.Re
 				status=403,
 			)
 	except Exception:
-		return None
+		return deny if fail_closed else None
 	return None
 
 
@@ -235,23 +236,36 @@ async def _convert_ui_or_error(workflow_data: dict, *, auth_token: str | None) -
 
 
 async def handle_cpe_list(request: web.Request) -> web.Response:
-	payload = list_workflows_payload(_user_workflow_dir(request), _extra_global_dirs())
+	from ..utils.shared_workflows import log_workflow_action
+
+	user = _current_username(request)
+	payload = list_workflows_payload("", username=user)
+	log_workflow_action(user, "list", "merged", "*")
 	return web.json_response(payload)
 
 
 async def handle_cpe_get(request: web.Request) -> web.Response:
+	from ..utils.shared_workflows import log_workflow_action
+
+	user = _current_username(request)
 	filename = request.query.get("filename")
-	status, payload = read_workflow_text(
-		_user_workflow_dir(request), filename, _extra_global_dirs()
-	)
+	status, payload = read_workflow_text("", filename, username=user)
 	if status == 200:
-		denied = _model_grant_check(request, payload.get("workflow"))
+		denied = _model_grant_check(request, payload.get("workflow"), origin=payload.get("source"))
 		if denied is not None:
 			return denied
+		log_workflow_action(user, "get", str(payload.get("source") or "own"), str(filename or ""))
 	return web.json_response(payload, status=status)
 
 
 async def handle_cpe_save(request: web.Request) -> web.Response:
+	from ..utils.shared_workflows import (
+		SHARED_READONLY_BODY,
+		log_workflow_action,
+		save_target_dir,
+		sanitize_workflow_rel,
+	)
+
 	try:
 		data = await request.json()
 	except Exception:
@@ -262,8 +276,13 @@ async def handle_cpe_save(request: web.Request) -> web.Response:
 		return web.json_response(
 			{"status": "error", "message": "workflow field is required"}, status=400
 		)
+	user = _current_username(request)
+	scope_shared = str(data.get("scope") or "").strip().lower() == "shared"
+	target_dir, err = save_target_dir(user, scope_shared=scope_shared)
+	if err or not target_dir:
+		return web.json_response(SHARED_READONLY_BODY, status=403)
 	workflow = data.get("workflow")
-	denied = _model_grant_check(request, workflow)
+	denied = _model_grant_check(request, workflow, origin="own")
 	if denied is not None:
 		return denied
 	if isinstance(workflow, (dict, list)):
@@ -271,34 +290,40 @@ async def handle_cpe_save(request: web.Request) -> web.Response:
 	else:
 		workflow_str = workflow
 	name = data.get("name")
-	status, payload = save_workflow_text(_user_workflow_dir(request), workflow_str, name)
+	status, payload = save_workflow_text(target_dir, workflow_str, name)
 	if status == 200:
-		try:
-			from .workflow_routes import _fire_and_forget, _get_workflow_sync, sanitize_name
+		source = "shared" if scope_shared else "own"
+		log_workflow_action(user, "save", source, str(payload.get("filename") or name or ""))
+		# S3 sync only for private own-dir saves (never shared for non-owner path)
+		if not scope_shared:
+			try:
+				from .workflow_routes import _fire_and_forget, _get_workflow_sync
 
-			wf_sync = _get_workflow_sync()
-			if wf_sync is not None:
-				clean = sanitize_name(payload.get("filename") or "")
-				if clean:
-					user = _current_username(request)
-					file_path = os.path.join(_user_workflow_dir(request), clean)
-					_fire_and_forget(wf_sync.upload_user_workflow, user, clean, file_path)
-		except Exception:
-			pass
+				wf_sync = _get_workflow_sync()
+				if wf_sync is not None:
+					clean = sanitize_workflow_rel(payload.get("filename") or "")
+					if clean:
+						file_path = os.path.join(target_dir, clean.replace("/", os.sep))
+						_fire_and_forget(wf_sync.upload_user_workflow, user, clean, file_path)
+			except Exception:
+				pass
 	return web.json_response(payload, status=status)
 
 
 async def handle_cpe_get_and_convert(request: web.Request) -> web.Response:
+	from ..utils.shared_workflows import log_workflow_action
+
+	user = _current_username(request)
 	filename = request.query.get("filename")
-	status, meta, workflow_data = load_workflow_for_convert(
-		_user_workflow_dir(request), filename, _extra_global_dirs()
-	)
+	status, meta, workflow_data = load_workflow_for_convert("", filename, username=user)
 	if status != 200 or workflow_data is None:
 		return web.json_response(meta, status=status)
 
 	filename_out = meta.get("filename") or filename
+	origin = meta.get("source")
+	log_workflow_action(user, "get-and-convert", str(origin or "own"), str(filename_out or ""))
 	if looks_like_api_prompt(workflow_data):
-		denied = _model_grant_check(request, workflow_data)
+		denied = _model_grant_check(request, workflow_data, origin=origin)
 		if denied is not None:
 			return denied
 		payload = success_convert_payload(
@@ -313,7 +338,7 @@ async def handle_cpe_get_and_convert(request: web.Request) -> web.Response:
 		wf = None
 		if isinstance(payload.get("data"), dict):
 			wf = payload["data"].get("workflow")
-		denied = _model_grant_check(request, wf)
+		denied = _model_grant_check(request, wf, origin=origin)
 		if denied is not None:
 			return denied
 		_flatten_convert_payload(request, payload)
