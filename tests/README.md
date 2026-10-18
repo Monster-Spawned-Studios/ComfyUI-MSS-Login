@@ -40,6 +40,7 @@ These run without loading ComfyUI or `folder_paths`, so they work in CI and on m
 | `run_user_isolation_tests.py` | Per-user output-dir segments, `/prompt` vs `/api/prompt`, queue user stamps. |
 | `run_avatar_tests.py` | Avatar upload sanitization (PNG re-encode, SVG/HTML reject, guest block). |
 | `run_object_info_combo_mapping_tests.py` | `/object_info` combo rebuild by `(node class, input)`; unmapped passthrough; Ultralytics prefixes; overlap fallback. |
+| `run_history_status_tests.py` | `user_queue_task_done` forwards ComfyUI `status=` / `process_item=` into history; legacy kwargs; per-user history filtering unchanged. |
 
 Examples:
 

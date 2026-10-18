@@ -140,6 +140,7 @@ def main() -> int:
 				os.path.join(TESTS_DIR, "run_new_features_tests.py"),
 			)
 		)
+		steps.append(("History status", os.path.join(TESTS_DIR, "run_history_status_tests.py")))
 	if not args.no_lint:
 		steps.append(("Ruff check", None))  # special
 		steps.append(("Ruff format", None))

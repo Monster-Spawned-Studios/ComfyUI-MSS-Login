@@ -460,22 +460,60 @@ class AccessControl:
 			self.server.queue_updated()
 			return (entry, task_id)
 
-	def user_queue_task_done(self, item_id, history_result, **kwargs):
+	def user_queue_task_done(
+		self, item_id, history_result, status=None, process_item=None, **kwargs
+	):
+		# Forward-compat: ignore unknown kwargs from future ComfyUI cores (log once).
+		if kwargs:
+			unknown = sorted(k for k in kwargs if k not in ("completed", "messages"))
+			if unknown and not getattr(AccessControl, "_task_done_unknown_kwargs_logged", False):
+				AccessControl._task_done_unknown_kwargs_logged = True
+				debug_write(
+					{
+						"location": "access_control.py:user_queue_task_done",
+						"message": "Ignoring unknown task_done kwargs",
+						"data": {"keys": unknown},
+					}
+				)
 		with self.__prompt_queue.mutex:
 			item = self.__prompt_queue.currently_running.pop(item_id)
 			while len(self.__prompt_queue.history) > MAXIMUM_HISTORY_SIZE:
 				self.__prompt_queue.history.pop(next(iter(self.__prompt_queue.history)))
+			meta = item[-1] if isinstance(item[-1], dict) else {}
 			raw = item[:-1] if isinstance(item[-1], dict) else item
+			# Apply core process_item (e.g. strip sensitive extra_data) before MSS normalize.
+			if process_item is not None:
+				try:
+					raw = process_item(raw)
+				except Exception:
+					pass
 			# ComfyUI comfy_execution/jobs.py normalize_history_item expects exactly 5 elements
 			prompt_tuple = tuple(raw[:5]) if len(raw) > 5 else raw
-			meta = item[-1] if isinstance(item[-1], dict) else {}
+			if status is not None:
+				if hasattr(status, "_asdict"):
+					status_dict = copy.deepcopy(status._asdict())
+				elif isinstance(status, dict):
+					status_dict = dict(status)
+				else:
+					status_dict = {
+						"completed": kwargs.get("completed"),
+						"messages": kwargs.get("messages") or [],
+					}
+			else:
+				# Legacy callers / older tests: completed= and messages= kwargs
+				status_dict = {
+					"completed": kwargs.get("completed"),
+					"messages": kwargs.get("messages") or [],
+				}
+				completed = status_dict.get("completed")
+				if isinstance(completed, bool):
+					status_dict["status_str"] = "success" if completed else "error"
+			if not isinstance(status_dict.get("messages"), list):
+				status_dict["messages"] = list(status_dict["messages"] or [])
 			self.__prompt_queue.history[prompt_tuple[1]] = {
 				"prompt": prompt_tuple,
 				"outputs": {},
-				"status": {
-					"completed": kwargs.get("completed"),
-					"messages": kwargs.get("messages") or [],
-				},
+				"status": status_dict,
 				"user_id": self._normalize_user_id(meta.get("user_id")),
 			}
 			if history_result:
