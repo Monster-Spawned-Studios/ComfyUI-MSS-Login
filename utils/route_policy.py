@@ -336,6 +336,7 @@ def is_mss_scoped_path(path: str) -> bool:
 		or p.startswith("/api/mss/models/")
 		or p == "/generate_token"
 		or p == "/s3_mounter/unmount"
+		or p == "/passkeys"
 	)
 
 
