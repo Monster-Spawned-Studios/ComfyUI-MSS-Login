@@ -47,6 +47,9 @@ Comfy Portal calls [comfy-portal-endpoint](https://github.com/ShunL12324/comfy-p
 
 Saving through CPE requires `can_modify_workflows` (defaults to allowed for every role except guest). Convert does not require `can_modify_workflows` (read-only transform) but still needs `can_access_api`.
 
+> [!NOTE]
+> `/api/cpe/workflow/list` returns **all** stored `.json` workflows (both UI-format graphs and API-format prompts) so mobile and API clients can execute API prompts directly or request convert for UI graphs. In contrast, the ComfyUI web sidebar (`/api/userdata?dir=workflows`) hides API-format files by default (`workflows.web_hide_api_format: true`) because the web editor canvas cannot directly load backend API prompts.
+
 Unauthenticated calls to **`/cpe/*` and `/api/cpe/*` always receive JSON 401** (same as `/api/*`), not an HTML login redirect — even when `Accept` is `*/*`. Portal should send `Authorization: Bearer <token>` (and may also use `?token=` on prompt/view/ws).
 
 ### Auth and isolation (Portal run path)
