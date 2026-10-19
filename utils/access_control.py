@@ -398,6 +398,8 @@ class AccessControl:
 		user_id = safe_user_dir_segment(self.get_current_user_id())
 		if isinstance(json_data, dict):
 			for k, v in json_data.items():
+				if k in ("extra_data", "extra_pnginfo", "workflow"):
+					continue
 				if k == "filename_prefix":
 					json_data[k] = f"{user_id}/{v}"
 				else:
