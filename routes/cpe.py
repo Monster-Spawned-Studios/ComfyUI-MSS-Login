@@ -154,7 +154,7 @@ def _model_grant_check(
 	"""Return a 403 response if API-format workflow references forbidden models.
 
 	For shared/legacy origins, exceptions fail closed. Own files keep fail-open
-	on unexpected errors (legacy behaviour).
+	on unexpected errors (legacy behavior).
 	"""
 	from ..utils.shared_workflows import ORIGIN_LEGACY, ORIGIN_SHARED
 
