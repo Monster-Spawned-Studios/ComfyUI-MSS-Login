@@ -411,7 +411,10 @@ def run_tests():
 		)
 	)
 	ok(job_id is None, "regular user cannot set isolate=False")
-	ok(err is not None and err.get("code") == "DOWNLOAD_NOT_ALLOWED", "denial uses DOWNLOAD_NOT_ALLOWED")
+	ok(
+		err is not None and err.get("code") == "DOWNLOAD_NOT_ALLOWED",
+		"denial uses DOWNLOAD_NOT_ALLOWED",
+	)
 
 	job_id, err = asyncio.run(
 		mod.enqueue_download_job(
@@ -430,18 +433,17 @@ def run_tests():
 	# 1. No token anywhere -> AUTH_REQUIRED_UPSTREAM
 	saved_source_token = mod._source_token
 	mod._source_token = lambda uid, src: None
-	body_no_token = {
-		"source": "civitai",
-		"folder_type": "checkpoints",
-		"model_version_id": "999",
-	}
+	body_no_token = {"source": "civitai", "folder_type": "checkpoints", "model_version_id": "999"}
 	job_id, err = asyncio.run(
 		mod.enqueue_download_job(
 			"uid-charlie", "charlie", "user", {"can_download_models": True}, body_no_token
 		)
 	)
 	ok(job_id is None, "download fails when no token is available")
-	ok(err is not None and err.get("code") == "AUTH_REQUIRED_UPSTREAM", "error is AUTH_REQUIRED_UPSTREAM")
+	ok(
+		err is not None and err.get("code") == "AUTH_REQUIRED_UPSTREAM",
+		"error is AUTH_REQUIRED_UPSTREAM",
+	)
 
 	# 2. Token passed in body/node -> succeeds and auto-persists to profile store if not present
 	fake_profile_store = {}

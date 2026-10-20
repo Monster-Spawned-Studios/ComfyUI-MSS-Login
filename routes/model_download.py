@@ -831,7 +831,9 @@ async def enqueue_download_job(
 	raw_isolate = body.get("isolate")
 	isolate = True if raw_isolate is None else bool(raw_isolate)
 	if not isolate:
-		if not (user_can_manage_model_sharing(role, perms) or user_can_view_all_models(role, perms)):
+		if not (
+			user_can_manage_model_sharing(role, perms) or user_can_view_all_models(role, perms)
+		):
 			return None, error_payload(
 				DOWNLOAD_NOT_ALLOWED,
 				"Only owner/admin or users with model sharing permissions can disable model isolation for downloads",

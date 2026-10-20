@@ -203,7 +203,11 @@ class MSSModelDownload:
 				"api_key": ("STRING", {"default": "", "multiline": False}),
 				"isolate": (
 					"BOOLEAN",
-					{"default": True, "label_on": "Isolated (Private)", "label_off": "Shared (Global)"},
+					{
+						"default": True,
+						"label_on": "Isolated (Private)",
+						"label_off": "Shared (Global)",
+					},
 				),
 			},
 		}

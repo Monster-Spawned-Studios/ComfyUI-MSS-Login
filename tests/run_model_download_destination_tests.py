@@ -123,11 +123,18 @@ def run_tests():
 	original_maybe = compat.maybe_isolated_destination
 	try:
 		compat.maybe_isolated_destination = lambda folder, uid: fake_iso_dir
-		dest_iso_on, _ = compat.resolve_local_model_destination("checkpoints", "user-1", isolate=True)
+		dest_iso_on, _ = compat.resolve_local_model_destination(
+			"checkpoints", "user-1", isolate=True
+		)
 		ok(dest_iso_on == fake_iso_dir, "isolate=True uses isolated_destination when present")
 
-		dest_iso_false, _ = compat.resolve_local_model_destination("checkpoints", "user-1", isolate=False)
-		ok(dest_iso_false == checkpoints_dir, "isolate=False bypasses isolated_destination and uses shared path")
+		dest_iso_false, _ = compat.resolve_local_model_destination(
+			"checkpoints", "user-1", isolate=False
+		)
+		ok(
+			dest_iso_false == checkpoints_dir,
+			"isolate=False bypasses isolated_destination and uses shared path",
+		)
 	finally:
 		compat.maybe_isolated_destination = original_maybe
 
