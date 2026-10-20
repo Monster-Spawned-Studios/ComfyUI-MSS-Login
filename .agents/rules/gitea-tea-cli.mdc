@@ -35,5 +35,5 @@ EOF
 
 ## Pushing
 
-- `git push` still uses normal git remotes (`git push gitea HEAD`, `git push origin HEAD`).
-- When the user asks to push and both remotes exist, push both unless they name a single remote (often Gitea-only for PRs).
+- `git push` uses normal git remotes (`git push gitea HEAD`).
+- Push to the `gitea` remote ONLY unless the user explicitly specifies otherwise on this project.
