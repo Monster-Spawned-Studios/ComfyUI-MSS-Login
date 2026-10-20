@@ -86,6 +86,7 @@ async def webauthn_status(request: web.Request) -> web.Response:
 			"available": passkeys_enabled(),
 			"secure_origin": is_secure_webauthn_origin(origin) if origin else False,
 			"rp_id": cfg["rp_id"],
+			"origins": cfg.get("origins") or [],
 			"reason": None if passkeys_enabled() else passkeys_unavailable_reason(),
 		}
 	)
