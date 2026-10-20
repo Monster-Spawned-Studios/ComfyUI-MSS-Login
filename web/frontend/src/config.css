@@ -133,4 +133,12 @@
 	.mss-cfg-section td {
 		@apply border-b border-zinc-800 px-2 py-2;
 	}
+
+	.mss-cfg-shell-glass {
+		background: rgba(9, 10, 15, 0.75) !important;
+		backdrop-filter: blur(24px) saturate(160%);
+		-webkit-backdrop-filter: blur(24px) saturate(160%);
+		border-color: rgba(150, 96, 250, 0.28) !important;
+		box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75), 0 0 40px rgba(150, 96, 250, 0.15) !important;
+	}
 }
