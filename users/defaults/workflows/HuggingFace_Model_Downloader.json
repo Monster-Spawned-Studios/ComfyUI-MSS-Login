@@ -1,0 +1,82 @@
+{
+  "last_node_id": 2,
+  "last_link_id": 0,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "MSSModelDownload",
+      "pos": [500, 140],
+      "size": [480, 460],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {"name": "source", "type": "STRING", "widget": {"name": "source"}},
+        {"name": "folder_type", "type": "STRING", "widget": {"name": "folder_type"}},
+        {"name": "progress_mode", "type": "STRING", "widget": {"name": "progress_mode"}},
+        {"name": "url", "type": "STRING", "widget": {"name": "url"}},
+        {"name": "model_version_id", "type": "STRING", "widget": {"name": "model_version_id"}},
+        {"name": "repo_id", "type": "STRING", "widget": {"name": "repo_id"}},
+        {"name": "filename", "type": "STRING", "widget": {"name": "filename"}},
+        {"name": "subfolder", "type": "STRING", "widget": {"name": "subfolder"}},
+        {"name": "save_as", "type": "STRING", "widget": {"name": "save_as"}},
+        {"name": "api_key", "type": "STRING", "widget": {"name": "api_key"}},
+        {"name": "isolate", "type": "BOOLEAN", "widget": {"name": "isolate"}}
+      ],
+      "outputs": [
+        {
+          "name": "model_name",
+          "type": "STRING",
+          "links": null,
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MSSModelDownload"
+      },
+      "widgets_values": [
+        "huggingface",
+        "checkpoints",
+        "per_model",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        true
+      ]
+    },
+    {
+      "id": 2,
+      "type": "Note",
+      "pos": [30, 140],
+      "size": [440, 460],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "text": ""
+      },
+      "widgets_values": [
+        "### MSS-Login Hugging Face Downloader Workflow\n\nDownload models directly into your ComfyUI server from Hugging Face remotely (compatible with desktop ComfyUI and Comfy Portal mobile app).\n\n**Prerequisites & Privileges:**\n- **Download Permission:** Requires the `can_download_models` role permission.\n- **Hugging Face API Token:**\n  - *Profile Token (Recommended):* Save your Hugging Face User Access Token (read token) in your MSS-Login user profile under **Settings ⚙️ → MSS-Login → Model Download → API Keys** (stored encrypted at rest in the database).\n  - *Node Token:* Alternatively, enter your token directly into the `api_key` field on this node. It will be used for the download and automatically saved to your profile if you don't already have one configured.\n  - *Server Fallback:* If a system-wide `HF_TOKEN` is configured by the server administrator, it will be used automatically when no user key is set.\n\n**How to use:**\n1. **Option A (URL):** Paste any direct Hugging Face resolve URL (e.g. `https://huggingface.co/author/repo/resolve/main/model.safetensors`) into `url`.\n2. **Option B (Repo ID + Filename):**\n   - **Repo ID:** e.g. `stabilityai/stable-diffusion-xl-base-1.0`\n   - **Filename:** e.g. `sd_xl_base_1.0.safetensors`\n   - **Subfolder (Optional):** e.g. `unet` or `vae`.\n3. **Folder Type:** Select target folder (`checkpoints`, `loras`, `vae`, `unet`, `controlnet`, etc.).\n4. **Model Isolation Toggle:**\n   - `true` (Private): Saved into your private isolated model folder (`DATA_DIR/model_isolation/...`) with automatic private ACL grant.\n   - `false` (Shared): Saved into the shared global models library (`models/...`). Requires `can_manage_model_sharing` or view-all permissions; regular users are restricted to private isolation.\n\nClick **Queue / Generate** to start the download. Progress will stream in real time over WebSocket!"
+      ],
+      "color": "#332",
+      "bgcolor": "#553"
+    }
+  ],
+  "links": [],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1.0,
+      "offset": [0, 0]
+    }
+  },
+  "version": 0.4
+}

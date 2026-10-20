@@ -419,6 +419,8 @@ def get_user_workflow_dir(username: str) -> str:
 			get_data_subdir("users", safe, "workflows"),
 			*_legacy_data_users_workflow_dirs(safe),
 			_get_plugin_workflow_dir(safe),
+			os.path.join(get_extension_root(), "users", "defaults", "workflows"),
+			os.path.join(get_extension_root(), "workflows"),
 		]
 		_copy_workflows_if_empty(sources, target_dir)
 		return target_dir
@@ -429,6 +431,8 @@ def get_user_workflow_dir(username: str) -> str:
 			get_data_subdir("users", safe, "workflows"),
 			*_legacy_data_users_workflow_dirs(safe),
 			_get_plugin_workflow_dir(safe),
+			os.path.join(get_extension_root(), "users", "defaults", "workflows"),
+			os.path.join(get_extension_root(), "workflows"),
 		]
 		_copy_workflows_if_empty(sources, target_dir)
 		return target_dir

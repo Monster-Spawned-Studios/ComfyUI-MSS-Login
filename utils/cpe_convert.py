@@ -286,10 +286,10 @@ def convert_graph_to_prompt_python(workflow_data: dict[str, Any]) -> dict[str, A
 			continue
 
 		ntype = node.get("type")
-		if not ntype or ntype == "Reroute":
+		if not ntype or ntype in ("Reroute", "Note", "MarkdownNote"):
 			continue
 		# Complex UI-only helper nodes should use browser LiteGraph
-		if ntype in ("PrimitiveNode", "Note"):
+		if ntype in ("PrimitiveNode",):
 			return None
 
 		inputs: dict[str, Any] = {}
