@@ -144,7 +144,21 @@ def _download_capabilities() -> dict:
 def _source_token(user_id: str, source: str) -> str | None:
 	"""Return the caller's encrypted-at-rest API key for source (never log/echo)."""
 	store = get_model_source_api_keys_store(USERS_DB_CONFIG)
-	return store.get_key(user_id, source)
+	key = store.get_key(user_id, source)
+	if key and key.strip():
+		return key.strip()
+	# Fallback to server-level environment variables
+	if source == "civitai":
+		for env_var in ("CIVITAI_TOKEN", "CIVITAI_API_KEY"):
+			val = os.environ.get(env_var, "").strip()
+			if val:
+				return val
+	elif source == "huggingface":
+		for env_var in ("HF_TOKEN", "HUGGINGFACE_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+			val = os.environ.get(env_var, "").strip()
+			if val:
+				return val
+	return None
 
 
 def _resolve_civitai_host_for_request(
@@ -452,8 +466,11 @@ def _validate_folder(folder_type: str) -> str | None:
 def _resolve_destination_path(job: dict, target_user_id: str) -> tuple[str, str]:
 	destination_type = job.get("destination_type", "local")
 	folder_type = job.get("folder_type", "checkpoints")
+	isolate = job.get("isolate", True)
 	if destination_type == "local":
-		dest_dir, base_dir = resolve_local_model_destination(folder_type, target_user_id)
+		dest_dir, base_dir = resolve_local_model_destination(
+			folder_type, target_user_id, isolate=isolate
+		)
 	else:
 		mgr = get_mount_manager()
 		if mgr is None:
@@ -461,7 +478,7 @@ def _resolve_destination_path(job: dict, target_user_id: str) -> tuple[str, str]
 		# FUSE mount or boto3 staging under the local mount models path
 		if not mgr.is_mounted() and not mgr._in_boto3_mode():
 			raise RuntimeError("S3 mount is not active")
-		if experimental_model_isolation_enabled():
+		if experimental_model_isolation_enabled() and isolate:
 			dest_dir = mgr.get_models_folder_path(
 				f"{folder_type}/{sanitize_user_segment(target_user_id)}"
 			)
@@ -645,23 +662,24 @@ async def _run_job(job_id: str) -> None:
 
 		if success:
 			# Always refresh cache so shared-library destinations pick up the new file.
-			# Do not auto-grant other users when isolation is off.
 			try:
 				cache = get_model_cache(USERS_DB_CONFIG)
 				cache.refresh_from_folder_paths()
 			except Exception:
 				pass
-			try:
-				_auto_grant_downloaded_item(
-					target_user_id=target_user_id,
-					folder_type=folder_type,
-					saved_rel=saved_rel or "",
-					destination_type=destination_type,
-					granted_by_user_id=user_id or "",
-					granted_by_role=role or "",
-				)
-			except Exception as e:
-				logger.warning(f"[MSS-Login] model isolation auto-grant failed: {e}")
+			isolate = job.get("isolate", True)
+			if isolate:
+				try:
+					_auto_grant_downloaded_item(
+						target_user_id=target_user_id,
+						folder_type=folder_type,
+						saved_rel=saved_rel or "",
+						destination_type=destination_type,
+						granted_by_user_id=user_id or "",
+						granted_by_role=role or "",
+					)
+				except Exception as e:
+					logger.warning(f"[MSS-Login] model isolation auto-grant failed: {e}")
 			if target_username:
 				logger.info(f"[MSS-Login] Download completed for target user '{target_username}'")
 	except Exception as e:
@@ -792,9 +810,32 @@ async def enqueue_download_job(
 	if folder_error:
 		return None, error_payload(INVALID_REQUEST, folder_error)
 
-	token = _source_token(user_id, source)
+	provided_key = (body.get("api_key") or body.get("token") or "").strip()
+	token = provided_key or _source_token(user_id, source)
 	if not token:
-		return None, error_payload(AUTH_REQUIRED_UPSTREAM, "No API key set for this source")
+		return None, error_payload(
+			AUTH_REQUIRED_UPSTREAM,
+			f"No API key configured for {source}. Please save your API key in your MSS-Login profile (Settings -> Model Download) or enter it in the node's api_key field.",
+		)
+
+	# If the user provided an API key in the node/request and does not yet have a profile key,
+	# persist it encrypted to their profile for future downloads.
+	if provided_key and user_id:
+		try:
+			store = get_model_source_api_keys_store(USERS_DB_CONFIG)
+			if not store.get_key(user_id, source):
+				store.set_key(user_id, source, provided_key)
+		except Exception:
+			pass
+
+	raw_isolate = body.get("isolate")
+	isolate = True if raw_isolate is None else bool(raw_isolate)
+	if not isolate:
+		if not (user_can_manage_model_sharing(role, perms) or user_can_view_all_models(role, perms)):
+			return None, error_payload(
+				DOWNLOAD_NOT_ALLOWED,
+				"Only owner/admin or users with model sharing permissions can disable model isolation for downloads",
+			)
 
 	target_user_id = user_id
 	target_username = (body.get("target_username") or "").strip()
@@ -815,6 +856,7 @@ async def enqueue_download_job(
 		"source": source,
 		"destination_type": destination_type,
 		"folder_type": folder_type,
+		"isolate": isolate,
 		"target_user_id": target_user_id,
 		"target_username": target_username,
 		"role": role,

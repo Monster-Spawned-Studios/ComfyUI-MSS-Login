@@ -200,6 +200,11 @@ class MSSModelDownload:
 				"filename": ("STRING", {"default": ""}),
 				"subfolder": ("STRING", {"default": ""}),
 				"save_as": ("STRING", {"default": ""}),
+				"api_key": ("STRING", {"default": "", "multiline": False}),
+				"isolate": (
+					"BOOLEAN",
+					{"default": True, "label_on": "Isolated (Private)", "label_off": "Shared (Global)"},
+				),
 			},
 		}
 
@@ -207,7 +212,7 @@ class MSSModelDownload:
 	RETURN_NAMES = ("model_name",)
 	FUNCTION = "download"
 	CATEGORY = "MSS-Login/Models"
-	OUTPUT_NODE = False
+	OUTPUT_NODE = True
 
 	def download(
 		self,
@@ -220,6 +225,8 @@ class MSSModelDownload:
 		filename="",
 		subfolder="",
 		save_as="",
+		api_key="",
+		isolate=True,
 	):
 		user_id, username, role, perms = _resolve_prompt_user()
 		if not user_id:
@@ -227,7 +234,12 @@ class MSSModelDownload:
 		if not user_can_download_models(role, perms):
 			raise RuntimeError(f"{DOWNLOAD_NOT_ALLOWED}: {DOWNLOAD_NOT_ALLOWED_MESSAGE}")
 
-		body = {"source": source, "folder_type": folder_type, "destination_type": "local"}
+		body = {
+			"source": source,
+			"folder_type": folder_type,
+			"destination_type": "local",
+			"isolate": bool(isolate),
+		}
 		if (url or "").strip():
 			body["url"] = url.strip()
 		if (model_version_id or "").strip():
@@ -240,6 +252,8 @@ class MSSModelDownload:
 			body["subfolder"] = subfolder.strip()
 		if (save_as or "").strip():
 			body["save_as"] = save_as.strip()
+		if (api_key or "").strip():
+			body["api_key"] = api_key.strip()
 
 		from ..routes.model_download import enqueue_download_job
 

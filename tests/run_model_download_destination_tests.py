@@ -109,6 +109,28 @@ def run_tests():
 	except ImportError as e:
 		ok(False, f"unexpected ImportError: {e}")
 
+	print("TestResolveIsolateToggle")
+	_install_stubs(models_root, {"checkpoints": [checkpoints_dir]})
+	compat = _load_module(
+		"mss_login.utils.folder_paths_compat",
+		os.path.join(_UTILS_DIR, "folder_paths_compat.py"),
+		"mss_login.utils",
+	)
+	dest_iso_off, _ = compat.resolve_local_model_destination("checkpoints", "user-1", isolate=True)
+	ok(dest_iso_off == checkpoints_dir, "resolve with isolation off returns shared path")
+
+	fake_iso_dir = os.path.join(models_root, "checkpoints", "isolated_user_1")
+	original_maybe = compat.maybe_isolated_destination
+	try:
+		compat.maybe_isolated_destination = lambda folder, uid: fake_iso_dir
+		dest_iso_on, _ = compat.resolve_local_model_destination("checkpoints", "user-1", isolate=True)
+		ok(dest_iso_on == fake_iso_dir, "isolate=True uses isolated_destination when present")
+
+		dest_iso_false, _ = compat.resolve_local_model_destination("checkpoints", "user-1", isolate=False)
+		ok(dest_iso_false == checkpoints_dir, "isolate=False bypasses isolated_destination and uses shared path")
+	finally:
+		compat.maybe_isolated_destination = original_maybe
+
 	print("TestB2PathStyleDefault")
 	# Minimal stubs so s3_mounter can load _load_runtime_config helpers
 	const_mod = types.ModuleType("mss_login.constants")
