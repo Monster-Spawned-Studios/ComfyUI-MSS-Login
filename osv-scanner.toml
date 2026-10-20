@@ -4,3 +4,23 @@
 [[IgnoredVulns]]
 id = "CVE-2026-22777"
 reason = "Advisory targets ComfyUI-Manager CRLF config injection (fixed in Manager 3.39.2/4.0.5), misattributed to PyPI comfy-cli. comfy-cli latest on PyPI is 1.x; MSS-Login does not vendor ComfyUI-Manager. Aliases: PYSEC-2026-1260, GHSA-562r-8445-54r2."
+
+[[IgnoredVulns]]
+id = "GHSA-7mj9-2mp8-4m2p"
+reason = "Misattributed by loose dependency resolver to PyPI httpx2/httpcore2; MSS-Login uses official httpx 0.28.1 and httpcore 1.0.9 in uv.lock. Aliases: CVE-2026-84381, PYSEC-2026-3844, PYSEC-2026-3845."
+
+[[IgnoredVulns]]
+id = "GHSA-8xx6-hgc6-gc2m"
+reason = "Misattributed by loose dependency resolver to PyPI httpx2; MSS-Login uses official httpx 0.28.1. Aliases: CVE-2026-84382, PYSEC-2026-3846."
+
+[[IgnoredVulns]]
+id = "GHSA-f2fp-rgf2-35cp"
+reason = "Misattributed by loose dependency resolver to PyPI httpx2; MSS-Login uses official httpx 0.28.1. Aliases: CVE-2026-84378, PYSEC-2026-3847."
+
+[[IgnoredVulns]]
+id = "GHSA-h4x7-gw46-3wm6"
+reason = "Misattributed by loose dependency resolver to PyPI httpx2; MSS-Login uses official httpx 0.28.1. Aliases: CVE-2026-84379, PYSEC-2026-3848."
+
+[[IgnoredVulns]]
+id = "GHSA-pf96-p4fj-6566"
+reason = "Misattributed by loose dependency resolver to PyPI httpx2; MSS-Login uses official httpx 0.28.1. Aliases: CVE-2026-84380, PYSEC-2026-3849."
