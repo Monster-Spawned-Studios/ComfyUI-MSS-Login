@@ -559,6 +559,93 @@ def run_tests() -> int:
 	ok(ps_mod.is_safe_filename("output_0001.png"), "output_0001.png is safe filename")
 	ok(not ps_mod.is_safe_filename("../etc/passwd"), "../etc/passwd is unsafe filename")
 
+	# TestFastPathPythonGraphConversion
+	print("TestFastPathPythonGraphConversion")
+	cpe_conv = _load_utils_submodule("cpe_convert")
+	standard_ui = {
+		"nodes": [
+			{
+				"id": 1,
+				"type": "EmptySD3LatentImage",
+				"inputs": [
+					{"name": "width", "widget": {"name": "width"}, "link": None},
+					{"name": "height", "widget": {"name": "height"}, "link": None},
+					{"name": "batch_size", "widget": {"name": "batch_size"}, "link": None},
+				],
+				"widgets_values": [512, 512, 1],
+			},
+			{
+				"id": 2,
+				"type": "KSampler",
+				"inputs": [
+					{"name": "latent_image", "type": "LATENT", "link": 10},
+					{"name": "seed", "widget": {"name": "seed"}, "link": None},
+					{"name": "steps", "widget": {"name": "steps"}, "link": None},
+					{"name": "cfg", "widget": {"name": "cfg"}, "link": None},
+				],
+				"widgets_values": [1234, "randomize", 20, 7.5],
+			},
+		],
+		"links": [[10, 1, 0, 2, 0, "LATENT"]],
+	}
+	converted = cpe_conv.convert_graph_to_prompt_python(standard_ui)
+	ok(converted is not None, "standard UI graph converted successfully")
+	ok("1" in converted and "2" in converted, "converted prompt has both nodes")
+	ok(converted["1"]["inputs"]["width"] == 512, "node 1 width widget preserved")
+	ok(
+		converted["2"]["inputs"]["seed"] == 1234,
+		"node 2 seed widget preserved without randomize string",
+	)
+	ok(converted["2"]["inputs"]["steps"] == 20, "node 2 steps preserved")
+	ok(converted["2"]["inputs"]["latent_image"] == ["1", 0], "linked input correctly mapped")
+
+	# Reroute resolution test
+	reroute_ui = {
+		"nodes": [
+			{"id": 1, "type": "SourceNode", "inputs": [], "widgets_values": []},
+			{"id": 5, "type": "Reroute", "inputs": [{"name": "*", "link": 1}]},
+			{
+				"id": 2,
+				"type": "TargetNode",
+				"inputs": [{"name": "model", "link": 2}],
+				"widgets_values": [],
+			},
+		],
+		"links": [[1, 1, 0, 5, 0, "*"], [2, 5, 0, 2, 0, "*"]],
+	}
+	res_reroute = cpe_conv.convert_graph_to_prompt_python(reroute_ui)
+	ok(res_reroute is not None, "graph with Reroute converted successfully")
+	ok("5" not in res_reroute, "Reroute node excluded from execution prompt")
+	ok(
+		res_reroute["2"]["inputs"]["model"] == ["1", 0],
+		"Reroute link chain forwarded directly to source",
+	)
+
+	# Fallback on unresolvable widget inputs
+	unresolvable_ui = {
+		"nodes": [
+			{
+				"id": 10,
+				"type": "CustomMysteryNode",
+				"inputs": [],
+				"widgets_values": [1, 2, 3],  # has widget values but no descriptors in inputs
+			}
+		],
+		"links": [],
+	}
+	ok(
+		cpe_conv.convert_graph_to_prompt_python(unresolvable_ui) is None,
+		"unresolvable custom node falls back to None for browser conversion",
+	)
+	ok(cpe_conv.convert_graph_to_prompt_python(None) is None, "None graph returns None")
+	ok(cpe_conv.convert_graph_to_prompt_python({}) is None, "Empty graph returns None")
+
+	# Browser warm pool test
+	cpe_browser = _load_utils_submodule("cpe_browser")
+	bm = cpe_browser.EmbeddedBrowserManager(pool_size=3)
+	ok(bm.pool_size == 3, "EmbeddedBrowserManager pool_size is 3")
+	ok(not bm.is_pool_ready, "EmbeddedBrowserManager not pool_ready before init")
+
 	# Cleanup overrides
 	wm.set_ui_workflow_cache_for_tests(None)
 	wm.set_cpe_embed_settings_override(None)

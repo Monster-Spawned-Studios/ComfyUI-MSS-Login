@@ -170,9 +170,9 @@ class EmbeddedBrowserManager:
 			):
 				return
 
-			# Re-init when token changes so pages carry the correct session
+			# Clear old pages/contexts without terminating Chromium process
 			if self._browser is not None:
-				await self._cleanup()
+				await self._clear_contexts()
 
 			self._status = BrowserStatus.INITIALIZING
 			self._error_message = None
@@ -190,28 +190,36 @@ class EmbeddedBrowserManager:
 
 			try:
 				comfyui_url = self._get_comfyui_url()
-				logger.info("[MSS-Login CPE] Initializing headless browser at %s", comfyui_url)
-				self._playwright = await async_playwright().start()
-				self._browser = await self._playwright.chromium.launch(
-					headless=True,
-					args=[
-						"--no-sandbox",
-						"--disable-gpu",
-						"--disable-dev-shm-usage",
-						"--disable-extensions",
-						"--disable-background-networking",
-						"--disable-default-apps",
-						"--disable-sync",
-						"--disable-translate",
-						"--no-first-run",
-						"--mute-audio",
-					],
+				# Re-use already running Chromium instance if connected
+				browser_alive = (
+					self._browser is not None
+					and getattr(self._browser, "is_connected", lambda: True)()
 				)
-				try:
-					transport = self._playwright._connection._transport
-					self._driver_pid = transport._proc.pid
-				except Exception:
-					self._driver_pid = None
+				if not browser_alive:
+					if self._browser is not None:
+						await self._cleanup()
+					logger.info("[MSS-Login CPE] Launching headless browser at %s", comfyui_url)
+					self._playwright = await async_playwright().start()
+					self._browser = await self._playwright.chromium.launch(
+						headless=True,
+						args=[
+							"--no-sandbox",
+							"--disable-gpu",
+							"--disable-dev-shm-usage",
+							"--disable-extensions",
+							"--disable-background-networking",
+							"--disable-default-apps",
+							"--disable-sync",
+							"--disable-translate",
+							"--no-first-run",
+							"--mute-audio",
+						],
+					)
+					try:
+						transport = self._playwright._connection._transport
+						self._driver_pid = transport._proc.pid
+					except Exception:
+						self._driver_pid = None
 
 				self._page_pool = asyncio.Queue()
 				self._contexts = []
@@ -220,13 +228,58 @@ class EmbeddedBrowserManager:
 					await self._page_pool.put(page)
 
 				self._status = BrowserStatus.READY
-				logger.info("[MSS-Login CPE] Headless browser ready (%d pages)", self._pool_size)
+				logger.info(
+					"[MSS-Login CPE] Headless browser warm pool ready (%d pages)", self._pool_size
+				)
 			except Exception as exc:
 				self._status = BrowserStatus.ERROR
 				self._error_message = f"Failed to initialize headless browser: {exc}"
 				logger.error("[MSS-Login CPE] %s", self._error_message)
 				await self._cleanup()
 				raise RuntimeError(self._error_message) from exc
+
+	async def _clear_contexts(self) -> None:
+		"""Close active contexts and pages while keeping browser alive."""
+		try:
+			if self._page_pool is not None:
+				while not self._page_pool.empty():
+					try:
+						page = self._page_pool.get_nowait()
+						await page.close()
+					except Exception:
+						pass
+				self._page_pool = None
+			for ctx in self._contexts:
+				try:
+					await ctx.close()
+				except Exception:
+					pass
+			self._contexts = []
+		except Exception as exc:
+			logger.debug("[MSS-Login CPE] Context clear error: %s", exc)
+
+	async def prewarm(self, auth_token: str | None = None) -> None:
+		"""Pre-warm browser instance and page pool in the background."""
+		if not self.playwright_available():
+			return
+		if self._status in (BrowserStatus.READY, BrowserStatus.INITIALIZING):
+			return
+		try:
+			await self.initialize(auth_token=auth_token)
+		except Exception as exc:
+			logger.warning("[MSS-Login CPE] Background browser pre-warm failed: %s", exc)
+
+	@property
+	def is_pool_ready(self) -> bool:
+		return (
+			self._status == BrowserStatus.READY
+			and self._page_pool is not None
+			and not self._page_pool.empty()
+		)
+
+	@property
+	def pool_size(self) -> int:
+		return self._pool_size
 
 	async def _cleanup(self) -> None:
 		try:
@@ -377,6 +430,17 @@ def get_embedded_browser_manager() -> EmbeddedBrowserManager:
 				"Run: uv sync --group cpe-convert && playwright install chromium"
 			)
 	return _embedded_manager
+
+
+def prewarm_embedded_browser(auth_token: str | None = None) -> asyncio.Task | None:
+	"""Spawn a background task to pre-warm the headless browser pool."""
+	try:
+		mgr = get_embedded_browser_manager()
+		if mgr.playwright_available():
+			return asyncio.create_task(mgr.prewarm(auth_token=auth_token))
+	except Exception:
+		pass
+	return None
 
 
 # --- END OF FILE utils/cpe_browser.py ---

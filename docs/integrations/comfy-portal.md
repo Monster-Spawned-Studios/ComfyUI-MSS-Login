@@ -75,6 +75,14 @@ MSS-Login can convert UI-format workflows **without** installing a separate comf
 
 The headless browser opens ComfyUI on **loopback** with the caller's `jwt_token` cookie and `Authorization: Bearer` so the real frontend boots under auth.
 
+### Converter performance and caveats
+
+1. **Fast-path Python parser (<1 ms)**: Standard workflows are parsed directly via topological sort in pure Python, bypassing browser launch overhead entirely.
+2. **Pre-warmed browser page pool**: For complex workflows with custom client-side widgets, a pre-warmed headless page pool keeps Chromium running in the background, eliminating cold-boot latency on convert calls.
+3. **Saved widget values vs executed prompt caveat**:
+   > [!IMPORTANT]
+   > **Metadata Caveat:** The embedded UI workflow chunk (`extra_pnginfo.workflow`) reflects the **saved** widget values captured at convert time (for example, `seed: 42`), whereas the execution prompt chunk (`prompt`) records the **actual runtime executed** seed (for example, `seed: 1234`) and runtime parameters. The `prompt` chunk remains the ground truth for reproducibility.
+
 If you also installed sibling `comfy-portal-endpoint`, **uninstall it** when using embedded convert to avoid two Playwright pools. Stock CPE still cannot load `/` under the login wall without cookie injection.
 
 Attribution for adapted convert logic: [comfy-portal-endpoint NOTICE](../licenses/comfy-portal-endpoint-NOTICE.md).
