@@ -104,7 +104,119 @@ def structure_fingerprint(api_prompt: dict[str, Any] | None) -> str:
 			continue
 		pairs.append((str(node_id), class_type))
 	pairs.sort()
+	if not pairs:
+		return ""
 	return json.dumps(pairs, separators=(",", ":"), ensure_ascii=False)
+
+
+def resolve_canonical_user_id(
+	request: Any = None, *, user_id: str | None = None, username: str | None = None
+) -> str | None:
+	"""
+	Resolve canonical user UUID from request, user_id, or username.
+	Returns normalized user_id string or None.
+	"""
+	if user_id:
+		uid = str(user_id).strip()
+		if uid:
+			return uid
+
+	# Direct request attribute / dict checks
+	if request is not None:
+		try:
+			req_uid = (
+				request.get("user_id")
+				if hasattr(request, "get")
+				else getattr(request, "user_id", None)
+			)
+			if req_uid:
+				uid = str(req_uid).strip()
+				if uid:
+					return uid
+		except Exception:
+			pass
+
+		# Try jwt_auth request identity resolution
+		try:
+			from ..globals import jwt_auth
+
+			r_uid, r_uname = jwt_auth.resolve_request_identity(request, touch_idle=False)
+			if r_uid:
+				return str(r_uid).strip()
+			if r_uname and not username:
+				username = r_uname
+		except Exception:
+			pass
+
+		# Try access_control get user role and permissions
+		try:
+			from ..globals import access_control
+
+			_, _, perm_user = access_control._get_user_role_and_permissions(request)
+			if perm_user:
+				from .model_visibility_policy import get_user_id_for_username
+
+				db_uid = get_user_id_for_username(access_control.users_db, perm_user)
+				if db_uid:
+					return str(db_uid).strip()
+		except Exception:
+			pass
+
+		# Try request.get("user")
+		try:
+			user_val = request.get("user") if hasattr(request, "get") else None
+			if isinstance(user_val, dict):
+				if user_val.get("id"):
+					return str(user_val["id"]).strip()
+				if user_val.get("username") and not username:
+					username = user_val.get("username")
+			elif isinstance(user_val, str) and not username:
+				username = user_val
+		except Exception:
+			pass
+
+		# Try access_control contextvar
+		try:
+			from ..globals import access_control
+
+			cur_uid = access_control.get_current_user_id()
+			if cur_uid:
+				return str(cur_uid).strip()
+		except Exception:
+			pass
+
+	if username:
+		try:
+			from ..globals import access_control
+			from .model_visibility_policy import get_user_id_for_username
+
+			db_uid = get_user_id_for_username(access_control.users_db, username)
+			if db_uid:
+				return str(db_uid).strip()
+		except Exception:
+			pass
+
+	return None
+
+
+def build_workflow_cache_key(
+	user_id_or_request: Any, api_prompt: dict[str, Any] | None
+) -> str | None:
+	"""
+	One shared function to build the workflow cache key from canonical user ID
+	and prompt structure fingerprint. Both convert route and /prompt hook call this.
+	Format: '{canonical_user_id}:{fingerprint}'
+	"""
+	if isinstance(user_id_or_request, str):
+		uid = user_id_or_request.strip()
+	else:
+		uid = resolve_canonical_user_id(user_id_or_request)
+	if not uid:
+		return None
+	fp = structure_fingerprint(api_prompt)
+	if not fp:
+		return None
+	return f"{uid}:{fp}"
 
 
 class UiWorkflowCache:
@@ -126,9 +238,24 @@ class UiWorkflowCache:
 	def clear(self) -> None:
 		self._store.clear()
 
-	def put(self, user_id: str | None, fingerprint: str, workflow: dict[str, Any]) -> None:
-		uid = (user_id or "").strip()
-		fp = (fingerprint or "").strip()
+	def put(
+		self,
+		user_id: str | None = None,
+		fingerprint: str | None = None,
+		workflow: dict[str, Any] | None = None,
+		*,
+		key: str | None = None,
+	) -> None:
+		if key is not None:
+			if ":" in key:
+				uid, fp = key.split(":", 1)
+			else:
+				uid, fp = key, fingerprint or ""
+		elif user_id and ":" in user_id and not fingerprint:
+			uid, fp = user_id.split(":", 1)
+		else:
+			uid = (user_id or "").strip()
+			fp = (fingerprint or "").strip()
 		if not uid or not fp or not isinstance(workflow, dict):
 			return
 		bucket = self._store.setdefault(uid, OrderedDict())
@@ -138,9 +265,19 @@ class UiWorkflowCache:
 		while len(bucket) > self.max_per_user:
 			bucket.popitem(last=False)
 
-	def get(self, user_id: str | None, fingerprint: str) -> dict[str, Any] | None:
-		uid = (user_id or "").strip()
-		fp = (fingerprint or "").strip()
+	def get(
+		self, user_id: str | None = None, fingerprint: str | None = None, *, key: str | None = None
+	) -> dict[str, Any] | None:
+		if key is not None:
+			if ":" in key:
+				uid, fp = key.split(":", 1)
+			else:
+				uid, fp = key, fingerprint or ""
+		elif user_id and ":" in user_id and not fingerprint:
+			uid, fp = user_id.split(":", 1)
+		else:
+			uid = (user_id or "").strip()
+			fp = (fingerprint or "").strip()
 		if not uid or not fp:
 			return None
 		bucket = self._store.get(uid)
@@ -245,22 +382,33 @@ def _is_uuid_segment(segment: str) -> bool:
 
 
 def _strip_display_name(value: str, viewer_user_id: str | None) -> str:
-	"""Prefer model_path_display.to_display_name; fall back to local UUID strip."""
+	"""
+	Strip owner UUID prefix from save filename prefixes and model paths for embedded copy.
+	Preserves actual save location while keeping embedded copy clean.
+	"""
+	name = (value or "").replace("\\", "/").strip()
+	if not name:
+		return value
+
+	# Strip viewer's own UUID prefix first
+	viewer = _sanitize_user_segment(viewer_user_id)
+	if viewer and viewer != "public":
+		prefix = f"{viewer}/"
+		if name.startswith(prefix) or name.lower().startswith(prefix.lower()):
+			name = name[len(prefix) :]
+
+	# If leading segment is any UUID segment, strip it
+	parts = name.split("/")
+	if len(parts) >= 2 and _is_uuid_segment(parts[0]):
+		name = "/".join(parts[1:])
+
 	try:
 		from .model_path_display import to_display_name
 
-		return to_display_name(value, viewer_user_id)
+		return to_display_name(name, viewer_user_id)
 	except Exception:
 		pass
-	name = (value or "").replace("\\", "/").strip()
-	viewer = _sanitize_user_segment(viewer_user_id)
-	prefix = f"{viewer}/"
-	if name.startswith(prefix) or name.lower().startswith(prefix.lower()):
-		return name[len(viewer) + 1 :]
-	parts = name.split("/")
-	if len(parts) >= 2 and _is_uuid_segment(parts[0]):
-		return "/".join(parts[1:])
-	return value
+	return name
 
 
 def _string_has_foreign_uuid(value: str, viewer_user_id: str | None) -> bool:
@@ -380,7 +528,11 @@ def remember_converted_ui_workflow(
 	fp = structure_fingerprint(api_prompt)
 	if not fp:
 		return cleaned
-	(cache or get_ui_workflow_cache()).put(user_id, fp, cleaned)
+	key = build_workflow_cache_key(user_id, api_prompt)
+	if not key:
+		return cleaned
+	uid, fp = key.split(":", 1)
+	(cache or get_ui_workflow_cache()).put(uid, fp, cleaned)
 	return cleaned
 
 
@@ -439,9 +591,12 @@ def apply_prompt_extra_data(
 			extra_dict["extra_pnginfo"] = png_dict
 		else:
 			extra_dict.pop("extra_pnginfo", None)
-	elif enabled and user_id:
-		fp = structure_fingerprint(prompt)
-		cached = store.get(user_id, fp) if fp else None
+	elif enabled:
+		key = build_workflow_cache_key(user_id, prompt)
+		cached = None
+		if key:
+			uid, fp = key.split(":", 1)
+			cached = store.get(uid, fp)
 		if cached is not None:
 			cleaned = sanitize_ui_workflow(cached, user_id, max_bytes=cap)
 			if cleaned is not None:

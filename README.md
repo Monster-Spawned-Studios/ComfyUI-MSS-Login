@@ -349,6 +349,17 @@ Same for delete operations.
 
 ---
 
+## Workflows: Web Sidebar vs Comfy Portal (CPE)
+
+ComfyUI and Comfy Portal use stored workflows differently:
+
+- **Web Userdata (`/api/userdata?dir=workflows`):** The ComfyUI web sidebar graph editor requires UI-format graphs with node graph topology (`nodes` and `links`). By default, API-format JSON files (which contain backend execution prompts rather than UI graphs) cannot be loaded into the web canvas and are hidden from the sidebar list (`workflows.web_hide_api_format: true` in `config.json`).
+- **Comfy Portal / CPE (`/api/cpe/workflow/list`):** Comfy Portal and API clients can execute API-format prompts directly or request convert for UI graphs via `GET /api/cpe/workflow/get-and-convert`. Therefore, the CPE list returns all stored workflow files (both UI-format and API-format).
+- **Fast-path Python Parser (<1 ms) & Warm Page Pool:** Standard UI workflows convert to execution prompts in pure Python (<1 ms), falling back to a pre-warmed headless Chromium page pool for custom dynamic widgets.
+- **Metadata Caveat:** Embedded UI workflow chunks (`extra_pnginfo.workflow`) retain the saved widget values from convert time (e.g. `seed: 42`), whereas the execution prompt (`prompt` chunk) reflects the actual runtime executed parameters (e.g. `seed: 1234`).
+
+---
+
 ## IP Rules System
 
 Located in:

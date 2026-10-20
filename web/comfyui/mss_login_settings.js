@@ -944,6 +944,7 @@ class mss_loginDialog extends ComfyDialog {
                 const legacyRenderers = {
                     users: async (container) => dialog.renderUsers(usersList, container),
                     perms: async (container) => dialog.renderPerms(container),
+                    tokens: async (container) => dialog.renderTokens(container),
                     ip: async (container) => dialog.renderIpRules(container),
                     env: async (container) => dialog.renderUserEnv(container, usersList),
                     nsfw: async (container) => dialog.renderNsfwManagement(container),
@@ -992,15 +993,16 @@ class mss_loginDialog extends ComfyDialog {
         const builtInTabs = [
             { id: "users", label: "Users & Roles", order: 0 },
             { id: "perms", label: "Permissions & UI", order: 1 },
-            { id: "shared-models", label: "Shared Models", order: 2 },
-            { id: "model-download", label: "Model download", order: 3 },
-            ...(isOwner ? [{ id: "s3", label: "S3 Settings", order: 4 }] : []),
-            { id: "ip", label: "IP Rules", order: 5 },
-            { id: "env", label: "User Env", order: 6 },
-            { id: "nsfw", label: "NSFW Management", order: 7 },
-            { id: "token-storage", label: "Token Storage", order: 8 },
-            { id: "users-db", label: "Users DB", order: 9 },
-            ...(isOwner ? [{ id: "login-appearance", label: "Login Appearance", order: 10 }] : []),
+            { id: "tokens", label: "Tokens & API Keys", order: 2 },
+            { id: "shared-models", label: "Shared Models", order: 3 },
+            { id: "model-download", label: "Model download", order: 4 },
+            ...(isOwner ? [{ id: "s3", label: "S3 Settings", order: 5 }] : []),
+            { id: "ip", label: "IP Rules", order: 6 },
+            { id: "env", label: "User Env", order: 7 },
+            { id: "nsfw", label: "NSFW Management", order: 8 },
+            { id: "token-storage", label: "Token Storage", order: 9 },
+            { id: "users-db", label: "Users DB", order: 10 },
+            ...(isOwner ? [{ id: "login-appearance", label: "Login Appearance", order: 11 }] : []),
         ];
         
         // Combine and sort all tabs
@@ -1172,6 +1174,9 @@ class mss_loginDialog extends ComfyDialog {
         await this.renderModelDownload(this.element.querySelector("#mss-login-tab-model-download"));
         if (this.element.querySelector("#mss-login-tab-s3")) {
             await this.renderS3Settings(this.element.querySelector("#mss-login-tab-s3"));
+        }
+        if (this.element.querySelector("#mss-login-tab-tokens")) {
+            await this.renderTokens(this.element.querySelector("#mss-login-tab-tokens"));
         }
         if (this.element.querySelector("#mss-login-tab-login-appearance")) {
             await this.renderLoginAppearance(this.element.querySelector("#mss-login-tab-login-appearance"));
@@ -3356,6 +3361,318 @@ async renderLoginAppearance(container) {
     };
 }
 
+async renderTokens(container) {
+    if (!container) return;
+    const isGuest = !currentUser || !currentUser.username || String(currentUser.username).toLowerCase() === "guest";
+    if (isGuest) {
+        container.innerHTML = `
+            <div class="mss-login-section" style="max-width:560px; text-align:center; padding:24px;">
+                <h3 style="margin-top:0;">Tokens & API Keys</h3>
+                <p class="mss-login-note">Guest accounts cannot create or manage API tokens. Please log in with a registered user account.</p>
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="mss-login-section" style="max-width:760px; text-align:left; margin:0 auto;">
+            <h3 style="margin-top:0;">API & Session Token Management</h3>
+            <p class="mss-login-note" style="margin-bottom:14px;">Create long-lived API tokens for mobile applications, Comfy Portal, external scripts, or inspect your active browser sessions.</p>
+            
+            <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px; margin-bottom:20px;">
+                <h4 style="margin:0 0 10px 0; color:#c4a4ff;">Create API Token</h4>
+                <div class="mss-login-row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                    <div style="flex:1; min-width:180px;">
+                        <label class="mss-login-field-label">Token Name (optional)</label>
+                        <input type="text" id="mss-dialog-token-label" class="mss-login-input" placeholder="e.g. Mobile Tablet App">
+                    </div>
+                    <div style="width:140px;">
+                        <label class="mss-login-field-label">Expires in hours</label>
+                        <input type="number" id="mss-dialog-token-expire" class="mss-login-input" value="720" min="0" step="1">
+                    </div>
+                    <div style="flex:1; min-width:180px;">
+                        <label class="mss-login-field-label">Re-enter Password</label>
+                        <input type="password" id="mss-dialog-token-pass" class="mss-login-input" placeholder="Required for verification" autocomplete="current-password">
+                    </div>
+                    <div>
+                        <button type="button" class="mss-login-btn" id="mss-dialog-token-create-btn">Create Token</button>
+                    </div>
+                </div>
+                
+                <div id="mss-dialog-token-mfa-row" style="display:none; gap:10px; margin-top:10px; flex-wrap:wrap;">
+                    <div>
+                        <label class="mss-login-field-label">MFA Code</label>
+                        <input type="text" id="mss-dialog-token-mfa-code" class="mss-login-input" placeholder="123456" style="width:120px;">
+                    </div>
+                    <div>
+                        <label class="mss-login-field-label">Backup Code</label>
+                        <input type="text" id="mss-dialog-token-mfa-backup" class="mss-login-input" placeholder="XXXX-XXXX" style="width:140px;">
+                    </div>
+                </div>
+
+                <div id="mss-dialog-token-output-wrap" style="display:none; margin-top:14px; background:#0c0d12; border:1px solid #9660fa; border-radius:8px; padding:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-weight:600; font-size:0.85rem; color:#4ade80;">✓ New Token Generated</span>
+                        <button type="button" class="mss-login-btn" id="mss-dialog-token-copy-btn" style="padding:4px 10px; font-size:0.8rem;">Copy Token</button>
+                    </div>
+                    <code id="mss-dialog-token-output" style="display:block; font-size:0.8rem; word-break:break-all; user-select:all; padding:8px; background:rgba(0,0,0,0.4); border-radius:4px; max-height:80px; overflow-y:auto;"></code>
+                    <p class="mss-login-note" style="margin:6px 0 0 0; font-size:0.75rem; color:#fbbf24;">Save this token now. It cannot be displayed again.</p>
+                </div>
+                <p id="mss-dialog-token-status" class="mss-login-note" style="margin:8px 0 0 0;"></p>
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <h4 style="margin:0;">Active API Tokens</h4>
+                    <button type="button" class="mss-login-btn secondary" id="mss-dialog-token-refresh-btn" style="padding:3px 10px; font-size:0.8rem;">↻ Refresh</button>
+                </div>
+                <div id="mss-dialog-token-list" style="overflow-x:auto;">Loading tokens...</div>
+            </div>
+
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <h4 style="margin:0;">Active Browser Sessions</h4>
+                    <button type="button" class="mss-login-btn secondary" id="mss-dialog-sessions-refresh-btn" style="padding:3px 10px; font-size:0.8rem;">↻ Refresh</button>
+                </div>
+                <div id="mss-dialog-sessions-list" style="overflow-x:auto;">Loading sessions...</div>
+            </div>
+        </div>
+    `;
+
+    const labelInput = container.querySelector("#mss-dialog-token-label");
+    const expireInput = container.querySelector("#mss-dialog-token-expire");
+    const passInput = container.querySelector("#mss-dialog-token-pass");
+    const createBtn = container.querySelector("#mss-dialog-token-create-btn");
+    const mfaRow = container.querySelector("#mss-dialog-token-mfa-row");
+    const mfaCodeInput = container.querySelector("#mss-dialog-token-mfa-code");
+    const mfaBackupInput = container.querySelector("#mss-dialog-token-mfa-backup");
+    const outputWrap = container.querySelector("#mss-dialog-token-output-wrap");
+    const outputCode = container.querySelector("#mss-dialog-token-output");
+    const copyBtn = container.querySelector("#mss-dialog-token-copy-btn");
+    const statusText = container.querySelector("#mss-dialog-token-status");
+    const tokensListContainer = container.querySelector("#mss-dialog-token-list");
+    const sessionsListContainer = container.querySelector("#mss-dialog-sessions-list");
+    const refreshTokensBtn = container.querySelector("#mss-dialog-token-refresh-btn");
+    const refreshSessionsBtn = container.querySelector("#mss-dialog-sessions-refresh-btn");
+
+    let mfaTempToken = null;
+
+    const setStatus = (msg, isErr = false) => {
+        statusText.textContent = msg || "";
+        statusText.style.color = isErr ? "#f87171" : "#4ade80";
+    };
+
+    const loadTokens = async () => {
+        tokensListContainer.innerHTML = "<p class='mss-login-note'>Loading tokens...</p>";
+        try {
+            const res = await api.fetchApi("/mss-login/api/tokens", { method: "GET" });
+            if (!res.ok) {
+                tokensListContainer.innerHTML = "<p class='mss-login-note'>Unable to load tokens.</p>";
+                return;
+            }
+            const data = await res.json().catch(() => ({}));
+            const list = Array.isArray(data.tokens) ? data.tokens : [];
+            if (!list.length) {
+                tokensListContainer.innerHTML = "<p class='mss-login-note'>No active API tokens found.</p>";
+                return;
+            }
+            let html = "<table class='mss-login-table' style='width:100%; border-collapse:collapse; font-size:0.85rem;'><thead><tr style='border-bottom:1px solid #333;'><th style='padding:6px;'>Name</th><th style='padding:6px;'>Prefix</th><th style='padding:6px;'>Created</th><th style='padding:6px;'>Last Used</th><th style='padding:6px;'>Expires</th><th style='padding:6px;'>Action</th></tr></thead><tbody>";
+            list.forEach((t) => {
+                const label = escapeHtml(t.label || "Unlabeled");
+                const prefix = escapeHtml(t.token_hash_prefix || "");
+                const created = t.created_at_iso ? new Date(t.created_at_iso).toLocaleString() : "N/A";
+                const lastUsed = t.last_used_at_iso ? new Date(t.last_used_at_iso).toLocaleString() : "Never";
+                const expires = (t.expires_iso === "9999-12-31T23:59:59+00:00" || t.expires_iso?.startsWith("9999")) ? "Never" : (t.expires_iso ? new Date(t.expires_iso).toLocaleString() : "N/A");
+                html += `<tr><td style='padding:6px;'>${label}</td><td style='padding:6px; font-family:monospace;'>${prefix}</td><td style='padding:6px;'>${created}</td><td style='padding:6px;'>${lastUsed}</td><td style='padding:6px;'>${expires}</td><td style='padding:6px;'><button type='button' class='mss-login-btn mss-login-btn-danger' data-revoke-prefix='${prefix}' style='padding:2px 8px; font-size:0.75rem;'>Revoke</button></td></tr>`;
+            });
+            html += "</tbody></table>";
+            tokensListContainer.innerHTML = html;
+            tokensListContainer.querySelectorAll("button[data-revoke-prefix]").forEach(btn => {
+                btn.onclick = async () => {
+                    const p = btn.getAttribute("data-revoke-prefix").replace(/\.+$/, "");
+                    if (!confirm(`Revoke API token ${p}...? Connected apps will immediately lose access.`)) return;
+                    try {
+                        const r = await api.fetchApi("/mss-login/api/tokens", {
+                            method: "DELETE",
+                            body: JSON.stringify({ token_hash_prefix: p })
+                        });
+                        if (r.ok) {
+                            loadTokens();
+                        } else {
+                            const errData = await r.json().catch(() => ({}));
+                            alert(errData.error || "Failed to revoke token.");
+                        }
+                    } catch (e) {
+                        alert("Error: " + (e.message || String(e)));
+                    }
+                };
+            });
+        } catch (_) {
+            tokensListContainer.innerHTML = "<p class='mss-login-note'>Error loading tokens.</p>";
+        }
+    };
+
+    const loadSessions = async () => {
+        sessionsListContainer.innerHTML = "<p class='mss-login-note'>Loading sessions...</p>";
+        try {
+            const res = await api.fetchApi("/mss-login/me/sessions", { method: "GET" });
+            if (!res.ok) {
+                sessionsListContainer.innerHTML = "<p class='mss-login-note'>Unable to load sessions.</p>";
+                return;
+            }
+            const data = await res.json().catch(() => ({}));
+            const list = Array.isArray(data.sessions) ? data.sessions : [];
+            if (!list.length) {
+                sessionsListContainer.innerHTML = "<p class='mss-login-note'>No active sessions found.</p>";
+                return;
+            }
+            let html = "<table class='mss-login-table' style='width:100%; border-collapse:collapse; font-size:0.85rem;'><thead><tr style='border-bottom:1px solid #333;'><th style='padding:6px;'>Token</th><th style='padding:6px;'>Created</th><th style='padding:6px;'>Last Used</th><th style='padding:6px;'>Type</th><th style='padding:6px;'>Action</th></tr></thead><tbody>";
+            list.forEach(s => {
+                const jti = s.jti || "";
+                const last4 = jti.slice(-4);
+                const created = s.created_at_iso ? new Date(s.created_at_iso).toLocaleString() : "N/A";
+                const lastUsed = s.last_used_at_iso ? new Date(s.last_used_at_iso).toLocaleString() : "—";
+                const isCurrent = !!s.is_current;
+                html += `<tr data-jti='${escapeHtml(jti)}'><td style='padding:6px; font-family:monospace;'><span class='token-display' data-masked='true'>••••••••••••-${last4}</span> ${isCurrent ? "<button type='button' class='mss-eye-btn' title='Reveal token' style='background:none; border:none; cursor:pointer;'>👁️</button>" : ""}</td><td style='padding:6px;'>${created}</td><td style='padding:6px;'>${lastUsed}</td><td style='padding:6px;'>${isCurrent ? "<span style='color:#a855f7; font-weight:600;'>Current Session</span>" : "Other"}</td><td style='padding:6px;'><button type='button' class='mss-login-btn mss-login-btn-danger mss-revoke-session-btn' style='padding:2px 8px; font-size:0.75rem;'>Revoke</button></td></tr>`;
+            });
+            html += "</tbody></table>";
+            sessionsListContainer.innerHTML = html;
+
+            sessionsListContainer.querySelectorAll(".mss-eye-btn").forEach(btn => {
+                btn.onclick = async () => {
+                    const tr = btn.closest("tr");
+                    const span = tr.querySelector(".token-display");
+                    const isMasked = span.getAttribute("data-masked") === "true";
+                    if (!isMasked) {
+                        const jti = tr.getAttribute("data-jti");
+                        span.textContent = "••••••••••••-" + jti.slice(-4);
+                        span.setAttribute("data-masked", "true");
+                        btn.textContent = "👁️";
+                        return;
+                    }
+                    try {
+                        const r = await api.fetchApi("/mss-login/me/current-token");
+                        if (!r.ok) return;
+                        const d = await r.json().catch(() => ({}));
+                        if (!d.is_https) {
+                            if (!confirm("Connection is not secure (HTTP). Revealing the token over unencrypted HTTP may expose it. Proceed anyway?")) return;
+                        }
+                        if (d.token) {
+                            span.textContent = d.token;
+                            span.setAttribute("data-masked", "false");
+                            btn.textContent = "🔒";
+                        }
+                    } catch (_) {}
+                };
+            });
+
+            sessionsListContainer.querySelectorAll(".mss-revoke-session-btn").forEach(btn => {
+                btn.onclick = async () => {
+                    const tr = btn.closest("tr");
+                    const jti = tr.getAttribute("data-jti");
+                    if (!confirm("Revoke this session? If this is your current device, you will be logged out.")) return;
+                    try {
+                        const r = await api.fetchApi("/mss-login/me/sessions/revoke", {
+                            method: "POST",
+                            body: JSON.stringify({ jti })
+                        });
+                        if (r.ok) {
+                            tr.remove();
+                            const isCur = tr.innerText.includes("Current Session");
+                            if (isCur) window.location.href = "/logout";
+                        }
+                    } catch (_) {}
+                };
+            });
+        } catch (_) {
+            sessionsListContainer.innerHTML = "<p class='mss-login-note'>Error loading sessions.</p>";
+        }
+    };
+
+    createBtn.onclick = async () => {
+        setStatus("");
+        const expireHours = expireInput.value.trim() || "720";
+        const label = labelInput.value.trim();
+        const pass = passInput.value;
+
+        if (!mfaTempToken && !pass) {
+            setStatus("Please re-enter your password to confirm.", true);
+            return;
+        }
+
+        createBtn.disabled = true;
+        try {
+            const body = {
+                label,
+                expire_hours: expireHours,
+                require_password_reauth: true,
+                username: currentUser?.username || "",
+            };
+            if (mfaTempToken) {
+                body.mfa_temp_token = mfaTempToken;
+                const mfaCode = mfaCodeInput.value.trim().replace(/\s/g, "");
+                const backup = mfaBackupInput.value.trim();
+                if (backup) body.backup_code = backup;
+                else if (mfaCode) body.code = mfaCode;
+            } else {
+                body.password = pass;
+            }
+
+            const res = await api.fetchApi("/mss-login/generate_token", {
+                method: "POST",
+                body: JSON.stringify(body)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                setStatus(data?.error || "Failed to create token.", true);
+                createBtn.disabled = false;
+                return;
+            }
+
+            if (data.mfa_required && data.mfa_temp_token) {
+                mfaTempToken = data.mfa_temp_token;
+                mfaRow.style.display = "flex";
+                setStatus("MFA required. Enter code or backup code and click Create Token again.");
+                createBtn.disabled = false;
+                return;
+            }
+
+            if (data.jwt_token) {
+                outputCode.textContent = data.jwt_token;
+                outputWrap.style.display = "block";
+                setStatus("Token created successfully!");
+                passInput.value = "";
+                mfaRow.style.display = "none";
+                mfaTempToken = null;
+                await loadTokens();
+            } else {
+                setStatus(data?.message || "Token created.");
+            }
+        } catch (e) {
+            setStatus("Error: " + (e.message || String(e)), true);
+        } finally {
+            createBtn.disabled = false;
+        }
+    };
+
+    copyBtn.onclick = async () => {
+        const text = outputCode.textContent;
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+            copyBtn.textContent = "✓ Copied!";
+            setTimeout(() => { copyBtn.textContent = "Copy Token"; }, 2000);
+        } catch (_) {
+            alert("Clipboard copy failed. Please select and copy manually.");
+        }
+    };
+
+    refreshTokensBtn.onclick = () => loadTokens();
+    refreshSessionsBtn.onclick = () => loadSessions();
+
+    await Promise.all([loadTokens(), loadSessions()]);
+}
+
 async renderS3Settings(container) {
     const isOwner = Array.isArray(currentUser?.groups)
         && currentUser.groups.map(g => String(g).toLowerCase()).includes("owner");
@@ -4579,15 +4896,46 @@ app.ui.settings.addSetting({
     name: "",
     type: () => {
         const wrapper = document.createElement("div");
+        wrapper.className = "mss-login-settings-card";
         wrapper.style.display = "flex";
         wrapper.style.flexDirection = "column";
         wrapper.style.alignItems = "center";
         wrapper.style.justifyContent = "center";
         wrapper.style.textAlign = "center";
-        wrapper.style.gap = "10px";
-        wrapper.style.padding = "16px 0";
+        wrapper.style.gap = "12px";
+        wrapper.style.padding = "20px 16px";
         wrapper.style.width = "100%";
+        wrapper.style.maxWidth = "460px";
+        wrapper.style.margin = "0 auto";
+        wrapper.style.background = "linear-gradient(180deg, rgba(150, 96, 250, 0.08) 0%, rgba(15, 17, 23, 0.6) 100%)";
+        wrapper.style.border = "1px solid rgba(150, 96, 250, 0.28)";
+        wrapper.style.borderRadius = "12px";
 
+        // Header
+        const header = document.createElement("div");
+        header.style.display = "flex";
+        header.style.flexDirection = "column";
+        header.style.alignItems = "center";
+        header.style.gap = "4px";
+
+        const title = document.createElement("h3");
+        title.innerText = "MSS-Login Control Center";
+        title.style.margin = "0";
+        title.style.fontSize = "1.1rem";
+        title.style.fontWeight = "600";
+        title.style.color = "#f4f4f5";
+
+        const userBadge = document.createElement("div");
+        userBadge.id = "mss-login-settings-user-badge";
+        userBadge.style.fontSize = "0.8rem";
+        userBadge.style.color = "#a1a1aa";
+        userBadge.innerText = "Checking session...";
+
+        header.appendChild(title);
+        header.appendChild(userBadge);
+        wrapper.appendChild(header);
+
+        // Actions
         const actionsWrap = document.createElement("div");
         actionsWrap.style.display = "flex";
         actionsWrap.style.flexDirection = "column";
@@ -4595,18 +4943,64 @@ app.ui.settings.addSetting({
         actionsWrap.style.gap = "8px";
         actionsWrap.style.width = "100%";
 
-        // Logout button (above) - ALWAYS visible for all users including guests
+        // Primary Control Center launcher
+        const launchBtn = document.createElement("button");
+        launchBtn.innerHTML = "<span>⚙️</span> Open MSS-Login Control Center";
+        launchBtn.className = "mss-login-launch-btn";
+        launchBtn.style.minWidth = "280px";
+        launchBtn.style.background = "linear-gradient(135deg, #9660fa 0%, #7c3aed 100%)";
+        launchBtn.style.borderColor = "#a855f7";
+        launchBtn.style.color = "#ffffff";
+        launchBtn.style.fontWeight = "600";
+        launchBtn.onclick = () => new mss_loginDialog().show();
+        actionsWrap.appendChild(launchBtn);
+
+        // Model download button
+        const modelDownloadBtn = document.createElement("button");
+        modelDownloadBtn.innerText = "Model Download";
+        modelDownloadBtn.className = "mss-login-launch-btn";
+        modelDownloadBtn.style.minWidth = "280px";
+        modelDownloadBtn.style.display = "none";
+        modelDownloadBtn.setAttribute("data-mss-login-download-models", "true");
+        modelDownloadBtn.onclick = () => {
+            window._mss_loginPreferModelDownloadTab = true;
+            new mss_loginDialog().show();
+        };
+        actionsWrap.appendChild(modelDownloadBtn);
+
+        // Register new user (owner only)
+        const registerBtn = document.createElement("button");
+        registerBtn.innerText = "Register a New User";
+        registerBtn.className = "mss-login-launch-btn";
+        registerBtn.style.minWidth = "280px";
+        registerBtn.style.display = "none";
+        registerBtn.setAttribute("data-mss-login-owner-only", "true");
+        registerBtn.onclick = () => {
+            window._mss_loginPreferUsersTab = true;
+            new mss_loginDialog().show();
+        };
+        actionsWrap.appendChild(registerBtn);
+
+        // Export debug log
+        const exportLogBtn = document.createElement("button");
+        exportLogBtn.innerText = "Export Redacted Debug Log";
+        exportLogBtn.className = "mss-login-launch-btn";
+        exportLogBtn.style.minWidth = "280px";
+        exportLogBtn.title = "Download sanitized debug log with secrets and credentials masked for GitHub troubleshooting.";
+        exportLogBtn.onclick = () => {
+            window.open("/mss-login/api/debug-log/export", "_blank");
+        };
+        actionsWrap.appendChild(exportLogBtn);
+
+        // Logout
         const logoutBtn = document.createElement("button");
         logoutBtn.innerText = "Logout Current User";
         logoutBtn.className = "mss-login-launch-btn";
         logoutBtn.style.background = "#7a2525";
         logoutBtn.style.borderColor = "#aa3a3a";
         logoutBtn.id = "mss-login-settings-logout-btn";
-        logoutBtn.style.minWidth = "260px";
-        // Ensure logout button is never hidden by enforcement
+        logoutBtn.style.minWidth = "280px";
         logoutBtn.setAttribute('data-mss-login-always-visible', 'true');
-        logoutBtn.style.display = "block"; // Force display
-        
         logoutBtn.onclick = () => {
             if (typeof window.mssLoginLogout === "function") {
                 window.mssLoginLogout();
@@ -4614,1141 +5008,32 @@ app.ui.settings.addSetting({
             }
             window.location.href = "/logout";
         };
-
-        // Main management button
-        const btn = document.createElement("button");
-        btn.innerText = "Manage MSS-Login Permissions";
-        btn.className = "mss-login-launch-btn";
-        btn.style.minWidth = "260px";
-        btn.onclick = () => new mss_loginDialog().show();
-
-        // Model download browser (can_download_models); opens Model download tab.
-        const modelDownloadBtn = document.createElement("button");
-        modelDownloadBtn.innerText = "Model Download";
-        modelDownloadBtn.className = "mss-login-launch-btn";
-        modelDownloadBtn.style.minWidth = "260px";
-        modelDownloadBtn.style.display = "none";
-        modelDownloadBtn.setAttribute("data-mss-login-download-models", "true");
-        modelDownloadBtn.onclick = () => {
-            window._mss_loginPreferModelDownloadTab = true;
-            new mss_loginDialog().show();
-        };
-
-        // Register a new user (owner only). Opens in-dialog create form on Users & Roles.
-        const registerBtn = document.createElement("button");
-        registerBtn.innerText = "Register a New User";
-        registerBtn.className = "mss-login-launch-btn";
-        registerBtn.style.minWidth = "260px";
-        registerBtn.style.display = "none";
-        registerBtn.setAttribute("data-mss-login-owner-only", "true");
-        registerBtn.onclick = () => {
-            window._mss_loginPreferUsersTab = true;
-            new mss_loginDialog().show();
-        };
-
-        // Export redacted debug log (for GitHub issues and troubleshooting)
-        const exportLogBtn = document.createElement("button");
-        exportLogBtn.innerText = "Export Redacted Debug Log";
-        exportLogBtn.className = "mss-login-launch-btn";
-        exportLogBtn.style.minWidth = "260px";
-        exportLogBtn.title = "Download sanitized debug log with secrets and credentials masked for GitHub troubleshooting.";
-        exportLogBtn.onclick = () => {
-            window.open("/mss-login/api/debug-log/export", "_blank");
-        };
-
-        actionsWrap.appendChild(btn);
-        actionsWrap.appendChild(modelDownloadBtn);
-        actionsWrap.appendChild(registerBtn);
-        actionsWrap.appendChild(exportLogBtn);
         actionsWrap.appendChild(logoutBtn);
         wrapper.appendChild(actionsWrap);
 
-        // Guest JWT toggle (Admin only)
-        const guestJwtRow = document.createElement("div");
-        guestJwtRow.id = "mss-login-guest-jwt-row";
-        guestJwtRow.style.display = "none";
-        guestJwtRow.style.alignItems = "center";
-        guestJwtRow.style.justifyContent = "center";
-        guestJwtRow.style.gap = "8px";
-        guestJwtRow.style.marginTop = "6px";
-        const guestJwtLabel = document.createElement("label");
-        guestJwtLabel.style.display = "flex";
-        guestJwtLabel.style.alignItems = "center";
-        guestJwtLabel.style.gap = "8px";
-        guestJwtLabel.style.cursor = "pointer";
-        const guestJwtCheck = document.createElement("input");
-        guestJwtCheck.type = "checkbox";
-        guestJwtCheck.id = "mss-login-allow-guest-jwt";
-        guestJwtLabel.appendChild(guestJwtCheck);
-        guestJwtLabel.appendChild(document.createTextNode("Allow guest JWT tokens (guest login issues session JWT)"));
-        guestJwtRow.appendChild(guestJwtLabel);
-        guestJwtCheck.onchange = async () => {
-            try {
-                const res = await api.fetchApi("/mss-login/api/settings/guest-jwt", {
-                    method: "PUT",
-                    body: JSON.stringify({ allow_guest_jwt: guestJwtCheck.checked })
-                });
-                if (res && res.ok) {
-                    if (window.showToast) window.showToast(guestJwtCheck.checked ? "Guest JWT enabled." : "Guest JWT disabled.");
-                } else {
-                    guestJwtCheck.checked = !guestJwtCheck.checked;
-                }
-            } catch (e) {
-                guestJwtCheck.checked = !guestJwtCheck.checked;
-            }
-        };
-        wrapper.appendChild(guestJwtRow);
+        // Helper note
+        const note = document.createElement("p");
+        note.className = "mss-login-note";
+        note.style.margin = "4px 0 0 0";
+        note.style.fontSize = "0.78rem";
+        note.style.color = "#71717a";
+        note.innerText = "Manage permissions, API tokens, push notifications, and settings in the unified Control Center.";
+        wrapper.appendChild(note);
 
-        // Debug message filter toggle (Owner, Admin, or users with can_view_console)
-        const debugFilterRow = document.createElement("div");
-        debugFilterRow.id = "mss-login-debug-filter-row";
-        debugFilterRow.style.display = "none";
-        debugFilterRow.style.alignItems = "center";
-        debugFilterRow.style.justifyContent = "center";
-        debugFilterRow.style.gap = "8px";
-        debugFilterRow.style.marginTop = "6px";
-        const debugFilterLabel = document.createElement("label");
-        debugFilterLabel.style.display = "flex";
-        debugFilterLabel.style.alignItems = "center";
-        debugFilterLabel.style.gap = "8px";
-        debugFilterLabel.style.cursor = "pointer";
-        const debugFilterCheck = document.createElement("input");
-        debugFilterCheck.type = "checkbox";
-        debugFilterCheck.id = "mss-login-filter-debug-messages";
-        debugFilterLabel.appendChild(debugFilterCheck);
-        debugFilterLabel.appendChild(document.createTextNode("Filter debug messages (suppress verbose DEBUG output from console)"));
-        debugFilterRow.appendChild(debugFilterLabel);
-        debugFilterCheck.onchange = async () => {
-            try {
-                const res = await api.fetchApi("/mss-login/api/settings/debug-filter", {
-                    method: "PUT",
-                    body: JSON.stringify({ filter_debug_messages: debugFilterCheck.checked })
-                });
-                if (res && res.ok) {
-                    if (window.showToast) window.showToast(debugFilterCheck.checked ? "Debug messages filtered (hidden)." : "Debug message filtering disabled (verbose output enabled).");
-                } else {
-                    debugFilterCheck.checked = !debugFilterCheck.checked;
-                }
-            } catch (e) {
-                debugFilterCheck.checked = !debugFilterCheck.checked;
-            }
-        };
-        wrapper.appendChild(debugFilterRow);
-
+        // Populate session info
         (async () => {
             try {
                 const me = await getData("/mss-login/api/me");
-                if (me && (me.can_download_models || me.is_admin)) {
-                    modelDownloadBtn.style.display = "block";
-                }
-                if (me && me.is_admin) {
-                    const isOwner = Array.isArray(me.groups)
-                        && me.groups.map(g => String(g).toLowerCase()).includes("owner");
-                    if (isOwner) registerBtn.style.display = "block";
-                    const cfg = await getData("/mss-login/api/settings/guest-jwt");
-                    guestJwtRow.style.display = "flex";
-                    guestJwtCheck.checked = !!cfg.allow_guest_jwt;
-                } else {
-                    // Non-admins manage downloads via Model Download, not full Security Policy.
-                    btn.style.display = "none";
-                }
-                const filterCfg = await getData("/mss-login/api/settings/debug-filter");
-                if (filterCfg && filterCfg.filter_debug_messages !== undefined) {
-                    debugFilterRow.style.display = "flex";
-                    debugFilterCheck.checked = !!filterCfg.filter_debug_messages;
-                }
-            } catch (_) {}
-        })();
-
-        // Push notifications (ntfy) - Admin only
-        const ntfySection = document.createElement("div");
-        ntfySection.id = "mss-login-ntfy-section";
-        ntfySection.style.display = "none";
-        ntfySection.style.marginTop = "12px";
-        ntfySection.style.width = "min(100%, 560px)";
-        ntfySection.style.textAlign = "left";
-        const ntfyHeading = document.createElement("h4");
-        ntfyHeading.style.margin = "0 0 8px 0";
-        ntfyHeading.textContent = "Push notifications (ntfy)";
-        ntfySection.appendChild(ntfyHeading);
-        const ntfyTopicLabel = document.createElement("label");
-        ntfyTopicLabel.textContent = "Topic (e.g. my-secret-topic): ";
-        const ntfyTopicInput = document.createElement("input");
-        ntfyTopicInput.type = "text";
-        ntfyTopicInput.placeholder = "ntfy.sh topic";
-        ntfyTopicInput.style.width = "200px";
-        ntfyTopicInput.style.marginLeft = "6px";
-        ntfyTopicLabel.appendChild(ntfyTopicInput);
-        ntfySection.appendChild(ntfyTopicLabel);
-        const ntfyBaseUrlLabel = document.createElement("label");
-        ntfyBaseUrlLabel.style.display = "block";
-        ntfyBaseUrlLabel.style.marginTop = "8px";
-        ntfyBaseUrlLabel.textContent = "Server URL: ";
-        const ntfyBaseUrlInput = document.createElement("input");
-        ntfyBaseUrlInput.type = "url";
-        ntfyBaseUrlInput.placeholder = "https://ntfy.sh";
-        ntfyBaseUrlInput.style.width = "min(100%, 320px)";
-        ntfyBaseUrlInput.style.marginLeft = "6px";
-        ntfyBaseUrlLabel.appendChild(ntfyBaseUrlInput);
-        ntfySection.appendChild(ntfyBaseUrlLabel);
-        const ntfyTokenLabel = document.createElement("label");
-        ntfyTokenLabel.style.display = "block";
-        ntfyTokenLabel.style.marginTop = "8px";
-        ntfyTokenLabel.textContent = "API token (optional): ";
-        const ntfyTokenInput = document.createElement("input");
-        ntfyTokenInput.type = "password";
-        ntfyTokenInput.autocomplete = "off";
-        ntfyTokenInput.placeholder = "leave blank to keep existing";
-        ntfyTokenInput.style.width = "min(100%, 320px)";
-        ntfyTokenInput.style.marginLeft = "6px";
-        ntfyTokenLabel.appendChild(ntfyTokenInput);
-        ntfySection.appendChild(ntfyTokenLabel);
-        const ntfyClearTokenLabel = document.createElement("label");
-        ntfyClearTokenLabel.style.display = "block";
-        ntfyClearTokenLabel.style.marginTop = "4px";
-        const ntfyClearTokenCheck = document.createElement("input");
-        ntfyClearTokenCheck.type = "checkbox";
-        ntfyClearTokenLabel.appendChild(ntfyClearTokenCheck);
-        ntfyClearTokenLabel.appendChild(document.createTextNode(" Clear stored API token on save"));
-        ntfySection.appendChild(ntfyClearTokenLabel);
-        const ntfyCheckWrap = document.createElement("div");
-        ntfyCheckWrap.style.marginTop = "8px";
-        ntfyCheckWrap.id = "mss-login-ntfy-checks";
-        ntfySection.appendChild(ntfyCheckWrap);
-        const ntfySaveBtn = document.createElement("button");
-        ntfySaveBtn.className = "mss-login-launch-btn";
-        ntfySaveBtn.textContent = "Save ntfy settings";
-        ntfySaveBtn.style.marginTop = "8px";
-        ntfySaveBtn.onclick = async () => {
-            try {
-                const enabled = [];
-                ntfyCheckWrap.querySelectorAll("input[type=checkbox]:checked").forEach(cb => enabled.push(cb.value));
-                const payload = {
-                    topic: ntfyTopicInput.value.trim(),
-                    base_url: ntfyBaseUrlInput.value.trim(),
-                    enabled_events: enabled
-                };
-                if (ntfyClearTokenCheck.checked) {
-                    payload.api_token = "";
-                } else if (ntfyTokenInput.value.trim()) {
-                    payload.api_token = ntfyTokenInput.value.trim();
-                }
-                const res = await api.fetchApi("/mss-login/api/settings/ntfy", {
-                    method: "PUT",
-                    body: JSON.stringify(payload)
-                });
-                if (res && res.ok) {
-                    ntfyTokenInput.value = "";
-                    ntfyClearTokenCheck.checked = false;
-                    if (window.showToast) window.showToast("ntfy settings saved.");
-                }
-            } catch (_) {}
-        };
-        ntfySection.appendChild(ntfySaveBtn);
-        wrapper.appendChild(ntfySection);
-        (async () => {
-            try {
-                const me = await getData("/mss-login/api/me");
-                if (me && me.is_admin) {
-                    const cfg = await getData("/mss-login/api/settings/ntfy");
-                    ntfySection.style.display = "block";
-                    ntfyTopicInput.value = cfg.topic || "";
-                    ntfyBaseUrlInput.value = cfg.base_url || "https://ntfy.sh";
-                    if (cfg.has_api_token) {
-                        ntfyTokenInput.placeholder = "token configured (enter new to replace)";
+                if (me) {
+                    const groups = Array.isArray(me.groups) ? me.groups.join(", ") : (me.is_admin ? "admin" : "user");
+                    userBadge.innerText = `Logged in as ${me.username} (${groups})`;
+                    if (me.can_download_models || me.is_admin) {
+                        modelDownloadBtn.style.display = "block";
                     }
-                    const eventLabels = {
-                        nsfw_block: "Notify when user blocked for NSFW",
-                        user_created: "Notify when new user created",
-                        user_login: "Notify when user logs in (include IP)",
-                        user_logout: "Notify when user logs out",
-                        api_token_created: "Notify when API/JWT token created",
-                        login_failure: "Notify on login failure",
-                        shared_items_added: "Notify when shared model/item added",
-                        shared_items_removed: "Notify when shared model/item removed",
-                        experimental_recovery: "Notify when experimental failsafe/recovery runs"
-                    };
-                    const keys = cfg.event_keys || ["nsfw_block", "user_created", "user_login", "user_logout", "api_token_created", "login_failure"];
-                    ntfyCheckWrap.innerHTML = "";
-                    keys.forEach(k => {
-                        const label = document.createElement("label");
-                        label.style.display = "block";
-                        label.style.marginBottom = "4px";
-                        const cb = document.createElement("input");
-                        cb.type = "checkbox";
-                        cb.value = k;
-                        if ((cfg.enabled_events || []).includes(k)) cb.checked = true;
-                        label.appendChild(cb);
-                        label.appendChild(document.createTextNode(" " + (eventLabels[k] || k)));
-                        ntfyCheckWrap.appendChild(label);
-                    });
-                }
-            } catch (_) {}
-        })();
-
-        // Experimental features (per-feature toggles) - Admin only
-        const experimentalSection = document.createElement("div");
-        experimentalSection.id = "mss-login-experimental-section";
-        experimentalSection.style.display = "none";
-        experimentalSection.style.marginTop = "12px";
-        experimentalSection.style.width = "min(100%, 560px)";
-        experimentalSection.style.textAlign = "left";
-        const experimentalHeading = document.createElement("h4");
-        experimentalHeading.style.margin = "0 0 8px 0";
-        experimentalHeading.textContent = "Experimental features";
-        experimentalSection.appendChild(experimentalHeading);
-        const experimentalSubtext = document.createElement("p");
-        experimentalSubtext.style.margin = "0 0 8px 0";
-        experimentalSubtext.style.fontSize = "0.9em";
-        experimentalSubtext.style.color = "#888";
-        experimentalSubtext.textContent = "Enable experimental features one by one or via master switch.";
-        experimentalSection.appendChild(experimentalSubtext);
-
-        const masterSwitchWrap = document.createElement("div");
-        masterSwitchWrap.style.marginBottom = "10px";
-        masterSwitchWrap.style.padding = "8px 10px";
-        masterSwitchWrap.style.background = "rgba(255, 255, 255, 0.05)";
-        masterSwitchWrap.style.border = "1px solid rgba(255, 255, 255, 0.1)";
-        masterSwitchWrap.style.borderRadius = "6px";
-        const masterSwitchLabel = document.createElement("label");
-        masterSwitchLabel.style.display = "flex";
-        masterSwitchLabel.style.alignItems = "center";
-        masterSwitchLabel.style.gap = "8px";
-        masterSwitchLabel.style.cursor = "pointer";
-        const masterSwitchCb = document.createElement("input");
-        masterSwitchCb.type = "checkbox";
-        masterSwitchCb.id = "mss-login-exp-master-switch";
-        masterSwitchLabel.appendChild(masterSwitchCb);
-        const masterSwitchText = document.createElement("span");
-        masterSwitchText.innerHTML = "<strong>Enable experimental features (Master Switch)</strong>";
-        masterSwitchLabel.appendChild(masterSwitchText);
-        masterSwitchWrap.appendChild(masterSwitchLabel);
-        experimentalSection.appendChild(masterSwitchWrap);
-
-        const experimentalChecks = document.createElement("div");
-        experimentalChecks.id = "mss-login-experimental-checks";
-        experimentalChecks.style.marginTop = "8px";
-        experimentalSection.appendChild(experimentalChecks);
-
-        const expFeatureKeys = ["mfa", "s3", "loading_screen", "news", "model_isolation", "tailscale_local_auth", "install_other_nodes_deps", "login_background"];
-        const expLabels = {
-            mfa: "MFA (two-factor authentication)",
-            s3: "S3 storage (mount & sync)",
-            loading_screen: "Loading screen (post-login)",
-            news: "News / RSS feed",
-            model_isolation: "Model isolation (per-user model folders)",
-            tailscale_local_auth: "Tailscale & Local Network Authentication",
-            install_other_nodes_deps: "Auto-install dependencies for other custom nodes",
-            login_background: "Custom login background (image/video)"
-        };
-
-        const experimentalSaveBtn = document.createElement("button");
-        experimentalSaveBtn.className = "mss-login-launch-btn";
-        experimentalSaveBtn.textContent = "Save experimental settings";
-        experimentalSaveBtn.style.marginTop = "8px";
-        const experimentalRestartNote = document.createElement("p");
-        experimentalRestartNote.id = "mss-login-exp-restart-note";
-        experimentalRestartNote.className = "mss-login-note";
-        experimentalRestartNote.style.margin = "8px 0 0 0";
-        experimentalRestartNote.style.display = "none";
-        experimentalRestartNote.style.color = "#fbbf24";
-
-        experimentalSaveBtn.onclick = async () => {
-            try {
-                const payload = {
-                    experimental_features: !!masterSwitchCb.checked,
-                    experimental: {}
-                };
-                expFeatureKeys.forEach(k => {
-                    const cb = document.getElementById("mss-login-exp-" + k);
-                    if (cb) payload.experimental[k] = !!cb.checked;
-                });
-                const res = await api.fetchApi("/mss-login/api/settings/experimental", {
-                    method: "PUT",
-                    body: JSON.stringify(payload)
-                });
-                const data = res ? await res.json().catch(() => ({})) : {};
-                if (res && res.ok) {
-                    const reasons = Array.isArray(data.restart_reasons) ? data.restart_reasons : [];
-                    if (data.restart_required && reasons.length) {
-                        const msg =
-                            "Restart the ComfyUI server to fully apply: " + reasons.join("; ");
-                        experimentalRestartNote.textContent = msg;
-                        experimentalRestartNote.style.display = "block";
-                        if (window.showToast) window.showToast(msg);
-                    } else {
-                        experimentalRestartNote.style.display = "none";
-                        experimentalRestartNote.textContent = "";
-                        if (window.showToast) window.showToast("Experimental settings saved.");
+                    if (me.is_admin) {
+                        const isOwner = Array.isArray(me.groups) && me.groups.map(g => String(g).toLowerCase()).includes("owner");
+                        if (isOwner) registerBtn.style.display = "block";
                     }
-                    refreshTailscaleCard();
-                } else if (window.showToast) {
-                    window.showToast("Save failed: " + (data.error || res?.statusText || "Unknown error"));
-                }
-            } catch (e) {
-                if (window.showToast) window.showToast("Save failed: " + (e.message || "Unknown error"));
-            }
-        };
-        experimentalSection.appendChild(experimentalSaveBtn);
-        experimentalSection.appendChild(experimentalRestartNote);
-
-        // Dedicated Custom Node Dependencies Installer Card
-        const nodeDepsCard = document.createElement("div");
-        nodeDepsCard.id = "mss-login-node-deps-card";
-        nodeDepsCard.style.marginTop = "14px";
-        nodeDepsCard.style.padding = "14px";
-        nodeDepsCard.style.background = "rgba(16, 185, 129, 0.05)";
-        nodeDepsCard.style.border = "1px solid rgba(16, 185, 129, 0.25)";
-        nodeDepsCard.style.borderRadius = "8px";
-        nodeDepsCard.style.width = "min(100%, 560px)";
-        nodeDepsCard.style.textAlign = "left";
-        nodeDepsCard.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-                <div style="flex:1; min-width:240px;">
-                    <h4 style="margin:0 0 6px 0; color:#10b981; display:flex; align-items:center; gap:8px;">
-                        <span>📦</span> Other Custom Nodes Dependency Installer
-                    </h4>
-                    <p style="margin:0 0 6px 0; font-size:0.9em; color:#a0aec0;">
-                        Scans sibling folders in <code>custom_nodes/</code>, resolves version conflicts, relaxes incompatible strict pins, shields host PyTorch/ComfyUI core packages, and installs missing requirements safely via UV/pip.
-                    </p>
-                </div>
-                <div style="display:flex; flex-direction:column; gap:6px; min-width:200px;">
-                    <button type="button" id="mss-login-install-node-deps-btn" class="mss-login-launch-btn" style="min-width:200px;">
-                        Scan & Install Node Deps Now
-                    </button>
-                    <button type="button" id="mss-login-check-node-deps-btn" class="mss-login-launch-btn" style="min-width:200px; background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.2);">
-                        Dry Run Check Only
-                    </button>
-                </div>
-            </div>
-            <div id="mss-login-node-deps-result" style="display:none; margin-top:10px; font-size:0.85em; color:#e2e8f0; background:rgba(0,0,0,0.3); padding:8px 12px; border-radius:6px; max-height:160px; overflow-y:auto; white-space:pre-wrap;"></div>
-        `;
-        experimentalSection.appendChild(nodeDepsCard);
-
-        const runDepsInstall = async (dryRun) => {
-            const resultEl = nodeDepsCard.querySelector("#mss-login-node-deps-result");
-            const btn = nodeDepsCard.querySelector(dryRun ? "#mss-login-check-node-deps-btn" : "#mss-login-install-node-deps-btn");
-            resultEl.style.display = "block";
-            resultEl.textContent = dryRun ? "Running dry-run scan on custom_nodes..." : "Scanning and installing dependencies (this may take a few moments)...";
-            btn.disabled = true;
-            try {
-                const res = await api.fetchApi("/mss-login/api/admin/install-node-deps", {
-                    method: "POST",
-                    body: JSON.stringify({ dry_run: dryRun })
-                });
-                const data = await res.json().catch(() => ({}));
-                btn.disabled = false;
-                if (res.ok && data.success) {
-                    const msg = `Scan complete.\nNodes scanned: ${data.nodes_scanned}\nConflicts resolved: ${data.conflicts_resolved_count}\n` +
-                        (data.results || []).map(r => `• ${r.node}: ${r.status}${r.conflicts_resolved && r.conflicts_resolved.length ? ` (${r.conflicts_resolved.length} conflict(s) fixed)` : ""}`).join("\n");
-                    resultEl.textContent = msg;
-                    if (window.showToast) window.showToast(dryRun ? "Dependency check completed." : "Node dependencies installed.");
-                } else {
-                    resultEl.textContent = `Error: ${data.error || res.statusText || res.status}`;
-                }
-            } catch (err) {
-                btn.disabled = false;
-                resultEl.textContent = `Failed: ${err.message || err}`;
-            }
-        };
-
-        nodeDepsCard.querySelector("#mss-login-install-node-deps-btn").onclick = () => runDepsInstall(false);
-        nodeDepsCard.querySelector("#mss-login-check-node-deps-btn").onclick = () => runDepsInstall(true);
-
-        // Dedicated Tailscale / Local Network Auth Card
-        const tailscaleCard = document.createElement("div");
-        tailscaleCard.id = "mss-login-tailscale-auth-card";
-        tailscaleCard.style.marginTop = "14px";
-        tailscaleCard.style.padding = "14px";
-        tailscaleCard.style.background = "rgba(59, 130, 246, 0.05)";
-        tailscaleCard.style.border = "1px solid rgba(59, 130, 246, 0.25)";
-        tailscaleCard.style.borderRadius = "8px";
-        tailscaleCard.style.width = "min(100%, 560px)";
-        tailscaleCard.style.textAlign = "left";
-
-        tailscaleCard.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <h4 style="margin:0; font-size:0.95rem; color:#60a5fa;">Tailscale & Local Network Authentication</h4>
-                <span id="mss-login-tailscale-badge" class="mss-login-badge" style="font-size:11px; padding:2px 8px; border-radius:4px; font-weight:600; background:#475569; color:#f8fafc;">Checking...</span>
-            </div>
-            <p style="font-size:0.85rem; color:#a1a1aa; margin:0 0 8px 0; line-height:1.4;">
-                Allows permitted roles (Owner and Admin by default) to log in locally without authentication when connecting from Tailscale (100.64.0.0/10, fd7a:115c:a1e0::/48) or local private networks. Remote public IPs are always rejected and must authenticate.
-            </p>
-            <div style="font-size:0.8rem; color:#94a3b8; margin-bottom:10px; padding:6px 8px; background:rgba(0,0,0,0.25); border-radius:4px;">
-                <span>Detected Network: </span><strong id="mss-login-tailscale-diag-net" style="color:#e2e8f0;">Detecting...</strong>
-                <span style="margin-left:8px; opacity:0.8;" id="mss-login-tailscale-diag-ip"></span>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <button type="button" id="mss-login-tailscale-toggle-btn" class="mss-login-launch-btn" style="min-width:200px;">Toggle Local Auth</button>
-                <span id="mss-login-tailscale-toggle-status" style="font-size:0.8rem; color:#94a3b8;"></span>
-            </div>
-        `;
-        experimentalSection.appendChild(tailscaleCard);
-        wrapper.appendChild(experimentalSection);
-
-        let tailscaleEnabled = false;
-
-        async function refreshTailscaleCard() {
-            try {
-                const tsData = await getData("/mss-login/api/settings/tailscale-auth");
-                if (!tsData) return;
-                tailscaleEnabled = !!tsData.enabled;
-                const badge = document.getElementById("mss-login-tailscale-badge");
-                const toggleBtn = document.getElementById("mss-login-tailscale-toggle-btn");
-                const diagNet = document.getElementById("mss-login-tailscale-diag-net");
-                const diagIp = document.getElementById("mss-login-tailscale-diag-ip");
-                const statusText = document.getElementById("mss-login-tailscale-toggle-status");
-
-                if (diagIp) diagIp.textContent = tsData.client_ip ? "(" + tsData.client_ip + ")" : "";
-                if (diagNet) {
-                    diagNet.textContent = tsData.is_trusted_network
-                        ? (tsData.network_type === "tailscale" ? "Tailscale Network (Trusted)" : "Local Private Network (Trusted)")
-                        : "Remote Internet (Untrusted - Standard Auth Required)";
-                    diagNet.style.color = tsData.is_trusted_network ? "#4ade80" : "#f87171";
-                }
-
-                if (badge) {
-                    if (tsData.is_active) {
-                        badge.textContent = "ACTIVE";
-                        badge.style.background = "#15803d";
-                        badge.style.color = "#f0fdf4";
-                    } else if (tsData.enabled && !tsData.experimental_features) {
-                        badge.textContent = "ENABLED (MASTER OFF)";
-                        badge.style.background = "#b45309";
-                        badge.style.color = "#fffbeb";
-                    } else {
-                        badge.textContent = "DISABLED";
-                        badge.style.background = "#3f3f46";
-                        badge.style.color = "#e4e4e7";
-                    }
-                }
-
-                if (toggleBtn) {
-                    toggleBtn.textContent = tsData.enabled ? "Disable Local Network Auth" : "Enable Local Network Auth";
-                }
-                if (statusText) {
-                    statusText.textContent = tsData.enabled ? "Feature is enabled." : "Feature is disabled.";
-                }
-
-                const tsCb = document.getElementById("mss-login-exp-tailscale_local_auth");
-                if (tsCb) tsCb.checked = !!tsData.enabled;
-                if (masterSwitchCb) masterSwitchCb.checked = !!tsData.experimental_features;
-            } catch (_) {}
-        }
-
-        const tsToggleBtn = tailscaleCard.querySelector("#mss-login-tailscale-toggle-btn");
-        if (tsToggleBtn) {
-            tsToggleBtn.onclick = async () => {
-                try {
-                    tsToggleBtn.disabled = true;
-                    tsToggleBtn.textContent = "Saving...";
-                    const nextVal = !tailscaleEnabled;
-                    const res = await api.fetchApi("/mss-login/api/settings/tailscale-auth", {
-                        method: "PUT",
-                        body: JSON.stringify({ enabled: nextVal, enable_master: true })
-                    });
-                    if (res && res.ok) {
-                        if (window.showToast) window.showToast(nextVal ? "Tailscale & Local Auth Enabled." : "Tailscale & Local Auth Disabled.");
-                        await refreshTailscaleCard();
-                    }
-                } catch (e) {
-                    if (window.showToast) window.showToast("Toggle failed: " + (e.message || "Error"));
-                } finally {
-                    tsToggleBtn.disabled = false;
-                }
-            };
-        }
-
-        (async () => {
-            try {
-                const me = await getData("/mss-login/api/me");
-                if (me && me.is_admin) {
-                    const cfg = await getData("/mss-login/api/settings/experimental");
-                    experimentalSection.style.display = "block";
-                    masterSwitchCb.checked = !!cfg.experimental_features;
-
-                    experimentalChecks.innerHTML = "";
-                    expFeatureKeys.forEach(k => {
-                        const label = document.createElement("label");
-                        label.style.display = "block";
-                        label.style.marginBottom = "6px";
-                        label.style.cursor = "pointer";
-                        const cb = document.createElement("input");
-                        cb.type = "checkbox";
-                        cb.id = "mss-login-exp-" + k;
-                        cb.checked = !!(cfg.experimental && cfg.experimental[k]);
-                        label.appendChild(cb);
-                        label.appendChild(document.createTextNode(" " + (expLabels[k] || k)));
-                        experimentalChecks.appendChild(label);
-                    });
-
-                    await refreshTailscaleCard();
-                }
-            } catch (_) {}
-        })();
-
-        // Experimental failsafe (non-experimental safety control) - Admin only
-        const failsafeSection = document.createElement("div");
-        failsafeSection.id = "mss-login-failsafe-section";
-        failsafeSection.style.display = "none";
-        failsafeSection.style.marginTop = "12px";
-        failsafeSection.style.width = "min(100%, 560px)";
-        failsafeSection.style.textAlign = "left";
-        failsafeSection.innerHTML = `
-            <h4 style="margin:0 0 8px 0;">Experimental failsafe</h4>
-            <p style="margin:0 0 8px 0; font-size:0.9em; color:#888;">
-                If critical experimental startup failures occur, MSS-Login can auto-disable experimental features.
-                Credentials/user DB data are preserved during this safety reset.
-            </p>
-            <label style="display:block; margin-bottom:6px;">
-                <input type="checkbox" id="mss-login-failsafe-enabled"> Enable experimental failsafe
-            </label>
-            <label style="display:block; margin-bottom:8px;">
-                <input type="checkbox" id="mss-login-failsafe-escalate"> Escalate to recovery update after repeated failures
-            </label>
-            <p id="mss-login-failsafe-state" class="mss-login-note" style="margin:0 0 8px 0;"></p>
-            <div id="mss-login-failsafe-details" class="mss-login-note" style="margin:0 0 8px 0; border:1px solid #333; border-radius:8px; padding:8px;"></div>
-            <button class="mss-login-launch-btn" id="mss-login-failsafe-save">Save failsafe settings</button>
-        `;
-        wrapper.appendChild(failsafeSection);
-        (async () => {
-            try {
-                const me = await getData("/mss-login/api/me");
-                if (!(me && me.is_admin)) return;
-                const cfg = await getData("/mss-login/api/settings/experimental-failsafe");
-                if (!cfg) return;
-                failsafeSection.style.display = "block";
-                const enabled = failsafeSection.querySelector("#mss-login-failsafe-enabled");
-                const escalate = failsafeSection.querySelector("#mss-login-failsafe-escalate");
-                const state = failsafeSection.querySelector("#mss-login-failsafe-state");
-                const details = failsafeSection.querySelector("#mss-login-failsafe-details");
-                const renderFailsafeDetails = (data) => {
-                    const action = String(data.last_recovery_action || "none");
-                    const reason = String(data.last_failure_reason || "");
-                    const failureCount = Number(data.failure_count || 0);
-                    let guidance = "No recovery action has been needed yet.";
-                    if (action === "config_reset") {
-                        guidance = "Experimental flags were auto-disabled. Restart ComfyUI to confirm stability.";
-                    } else if (action === "recovery_update") {
-                        guidance = "Escalation update succeeded after repeated failures. Verify service health now.";
-                    } else if (action === "recovery_update_failed") {
-                        guidance = "Escalation update failed. Review logs and perform controlled maintenance.";
-                    }
-                    details.innerHTML = `
-                        <div><strong>Last action:</strong> ${escapeHtml(action)}</div>
-                        <div><strong>Last reason:</strong> ${escapeHtml(reason || "n/a")}</div>
-                        <div><strong>Safety guidance:</strong> ${escapeHtml(guidance)}</div>
-                        <div><strong>Credential safety:</strong> Failsafe avoids wiping user DB credentials or token stores.</div>
-                        <div><strong>Failure count:</strong> ${failureCount}</div>
-                    `;
-                };
-                enabled.checked = !!cfg.enabled;
-                escalate.checked = !!cfg.escalate_after_repeated_failure;
-                state.textContent =
-                    `Failures: ${cfg.failure_count || 0}` +
-                    (cfg.last_failure_at ? ` • Last: ${cfg.last_failure_at}` : "") +
-                    (cfg.last_recovery_action ? ` • Action: ${cfg.last_recovery_action}` : "");
-                renderFailsafeDetails(cfg);
-                failsafeSection.querySelector("#mss-login-failsafe-save").onclick = async () => {
-                    try {
-                        const res = await api.fetchApi("/mss-login/api/settings/experimental-failsafe", {
-                            method: "PUT",
-                            body: JSON.stringify({
-                                enabled: !!enabled.checked,
-                                escalate_after_repeated_failure: !!escalate.checked
-                            })
-                        });
-                        const data = await res.json().catch(() => ({}));
-                        if (!res.ok) {
-                            if (window.showToast) window.showToast("Save failed: " + (data.error || res.status));
-                            return;
-                        }
-                        state.textContent =
-                            `Failures: ${data.failure_count || 0}` +
-                            (data.last_failure_at ? ` • Last: ${data.last_failure_at}` : "") +
-                            (data.last_recovery_action ? ` • Action: ${data.last_recovery_action}` : "");
-                        renderFailsafeDetails(data);
-                        if (window.showToast) window.showToast("Failsafe settings saved.");
-                    } catch (e) {
-                        if (window.showToast) window.showToast("Save failed: " + (e.message || "Unknown error"));
-                    }
-                };
-            } catch (_) {}
-        })();
-
-        // MFA section (Two-Factor Authentication with Google Authenticator)
-        const mfaSection = document.createElement("div");
-        mfaSection.id = "mss-login-mfa-section";
-        mfaSection.style.marginTop = "12px";
-        mfaSection.style.display = "none";
-        mfaSection.style.width = "min(100%, 560px)";
-        mfaSection.style.textAlign = "left";
-        const mfaHeading = document.createElement("h4");
-        mfaHeading.style.margin = "0 0 8px 0";
-        mfaHeading.textContent = "Two-Factor Authentication (MFA)";
-        mfaSection.appendChild(mfaHeading);
-        const mfaSubtext = document.createElement("p");
-        mfaSubtext.style.margin = "0 0 8px 0";
-        mfaSubtext.style.fontSize = "0.9em";
-        mfaSubtext.style.color = "#888";
-        mfaSubtext.textContent = "You can enable MFA here for extra security, whether or not your role requires it.";
-        mfaSection.appendChild(mfaSubtext);
-        const mfaStatus = document.createElement("p");
-        mfaStatus.id = "mss-login-mfa-status";
-        mfaStatus.style.margin = "0 0 8px 0";
-        mfaSection.appendChild(mfaStatus);
-        const mfaSetupBtn = document.createElement("button");
-        mfaSetupBtn.className = "mss-login-launch-btn";
-        mfaSetupBtn.textContent = "Set up MFA (Google Authenticator)";
-        mfaSetupBtn.id = "mss-login-mfa-setup-btn";
-        mfaSetupBtn.style.display = "none";
-        mfaSetupBtn.onclick = async () => {
-            try {
-                const setupResp = await api.fetchApi("/mss-login/api/mfa/setup", {
-                    method: "POST",
-                    body: JSON.stringify({}),
-                });
-                if (!setupResp.provisioning_uri) {
-                    if (window.showToast) window.showToast(setupResp.error || "MFA setup failed.");
-                    return;
-                }
-                const dlg = new ComfyDialog();
-                const content = document.createElement("div");
-                content.style.display = "flex";
-                content.style.flexDirection = "column";
-                content.style.gap = "12px";
-                content.innerHTML = "<p>Scan the QR code with Google Authenticator (or any TOTP app), then enter the 6-digit code.</p>";
-                const qrDiv = document.createElement("div");
-                qrDiv.id = "mss-login-mfa-dialog-qr";
-                content.appendChild(qrDiv);
-                const renderQr = () => {
-                    qrDiv.innerHTML = "";
-                    if (typeof QRCode !== "undefined") {
-                        new QRCode(qrDiv, { text: setupResp.provisioning_uri, width: 200, height: 200 });
-                    } else {
-                        qrDiv.innerHTML = '<p><a href="' + setupResp.provisioning_uri + '" target="_blank">Open in authenticator (or add manually)</a></p>';
-                    }
-                };
-                if (typeof QRCode === "undefined") {
-                    const script = document.createElement("script");
-                    script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
-                    script.crossOrigin = "anonymous";
-                    script.onload = renderQr;
-                    script.onerror = renderQr;
-                    document.head.appendChild(script);
-                } else {
-                    renderQr();
-                }
-                if (setupResp.backup_code) {
-                    const backupP = document.createElement("p");
-                    backupP.innerHTML = "<strong>Backup code (save this):</strong> <code>" + setupResp.backup_code + "</code>";
-                    content.appendChild(backupP);
-                }
-                const codeLabel = document.createElement("label");
-                codeLabel.textContent = "Enter 6-digit code from app:";
-                const codeInput = document.createElement("input");
-                codeInput.type = "text";
-                codeInput.placeholder = "000000";
-                codeInput.maxLength = 8;
-                codeInput.style.width = "120px";
-                codeLabel.appendChild(codeInput);
-                content.appendChild(codeLabel);
-                const btnRow = document.createElement("div");
-                const completeBtn = document.createElement("button");
-                completeBtn.className = "mss-login-launch-btn";
-                completeBtn.textContent = "Complete Setup";
-                completeBtn.onclick = async () => {
-                    const code = (codeInput.value || "").replace(/\s/g, "");
-                    if (!code || code.length !== 6) {
-                        if (window.showToast) window.showToast("Enter a 6-digit code");
-                        return;
-                    }
-                    completeBtn.disabled = true;
-                    try {
-                        const verifyResp = await api.fetchApi("/mss-login/api/mfa/verify-setup", {
-                            method: "POST",
-                            body: JSON.stringify({ code }),
-                        });
-                        if (verifyResp.error) {
-                            if (window.showToast) window.showToast(verifyResp.error);
-                            completeBtn.disabled = false;
-                            return;
-                        }
-                        dlg.close();
-                        if (window.showToast) window.showToast("MFA enabled successfully.");
-                        if (currentUser) currentUser.mfa_enabled = true;
-                        mfaStatus.textContent = "MFA is enabled.";
-                        mfaSetupBtn.style.display = "none";
-                    } catch (e) {
-                        if (window.showToast) window.showToast("Setup failed: " + (e.message || "Unknown error"));
-                        completeBtn.disabled = false;
-                    }
-                };
-                btnRow.appendChild(completeBtn);
-                content.appendChild(btnRow);
-                dlg.show("Set Up Two-Factor Authentication", [content]);
-            } catch (e) {
-                if (window.showToast) window.showToast("MFA setup failed: " + (e.message || "Unknown error"));
-            }
-        };
-        mfaSection.appendChild(mfaSetupBtn);
-        wrapper.appendChild(mfaSection);
-        (async () => {
-            try {
-                const me = await getData("/mss-login/api/me");
-                if (me && me.username && me.username.toLowerCase() !== "guest" && me.experimental?.mfa) {
-                    mfaSection.style.display = "block";
-                    if (me.mfa_enabled) {
-                        mfaStatus.textContent = "MFA is enabled.";
-                        mfaSetupBtn.style.display = "none";
-                    } else {
-                        mfaStatus.textContent = "Add an extra layer of security with MFA (optional). Enable even if your role does not require it.";
-                        mfaSetupBtn.style.display = "block";
-                    }
-                }
-            } catch (_) {}
-        })();
-
-        // API/JWT token section (requires password re-entry and shows token names)
-        const apiJwtSection = document.createElement("div");
-        apiJwtSection.id = "mss-login-api-jwt-tokens";
-        apiJwtSection.style.marginTop = "12px";
-        apiJwtSection.style.width = "min(100%, 760px)";
-        apiJwtSection.style.textAlign = "left";
-        apiJwtSection.innerHTML = `
-            <h4 style="margin:0 0 8px 0;">API/JWT Tokens</h4>
-            <p class="mss-login-note" style="margin:0 0 10px 0;">
-                Create long-lived API/JWT tokens from inside ComfyUI. For security, you must re-enter your password.
-            </p>
-            <div class="mss-login-row" style="gap:10px; align-items:flex-end; flex-wrap:wrap;">
-                <div>
-                    <label class="mss-login-field-label">Token name (optional)</label>
-                    <input type="text" id="mss-login-api-token-label" class="mss-login-input" placeholder="e.g. Tablet App">
-                </div>
-                <div>
-                    <label class="mss-login-field-label">Expires in hours</label>
-                    <input type="number" id="mss-login-api-token-expire-hours" class="mss-login-input" value="720" min="0" step="1" style="width:120px;">
-                </div>
-                <div style="flex:1; min-width:220px;">
-                    <label class="mss-login-field-label">Re-enter password</label>
-                    <input type="password" id="mss-login-api-token-password" class="mss-login-input" placeholder="Required for creation">
-                </div>
-                <div>
-                    <button class="mss-login-btn" id="mss-login-api-token-create">Create token</button>
-                </div>
-            </div>
-            <div id="mss-login-api-token-mfa-row" class="mss-login-row" style="margin-top:8px; gap:10px; align-items:flex-end; display:none; flex-wrap:wrap;">
-                <div>
-                    <label class="mss-login-field-label">MFA code</label>
-                    <input type="text" id="mss-login-api-token-mfa-code" class="mss-login-input" placeholder="123456" style="width:120px;">
-                </div>
-                <div>
-                    <label class="mss-login-field-label">Backup code</label>
-                    <input type="text" id="mss-login-api-token-mfa-backup" class="mss-login-input" placeholder="XXXX-XXXX" style="width:160px;">
-                </div>
-            </div>
-            <p id="mss-login-api-token-create-status" class="mss-login-note" style="margin-top:8px;"></p>
-            <div id="mss-login-api-token-output-wrap" style="display:none; margin-top:8px;">
-                <label class="mss-login-field-label">New token (shown once)</label>
-                <div class="mss-login-row" style="gap:8px; align-items:center; flex-wrap:wrap;">
-                    <code id="mss-login-api-token-output" style="padding:8px; border-radius:8px; background:#0f1117; display:block; max-width:100%; overflow:auto;"></code>
-                    <button class="mss-login-btn secondary" id="mss-login-api-token-copy">Copy</button>
-                </div>
-                <p class="mss-login-note" style="margin-top:6px;">Store this token securely. It cannot be shown again.</p>
-            </div>
-            <h5 style="margin:14px 0 8px 0;">My API/JWT tokens</h5>
-            <div id="mss-login-api-token-list" class="mss-login-note">Loading tokens...</div>
-        `;
-        wrapper.appendChild(apiJwtSection);
-        (async () => {
-            let mfaTempToken = null;
-            const me = await getData("/mss-login/api/me");
-            const createBtn = apiJwtSection.querySelector("#mss-login-api-token-create");
-            const labelInput = apiJwtSection.querySelector("#mss-login-api-token-label");
-            const expireInput = apiJwtSection.querySelector("#mss-login-api-token-expire-hours");
-            const passwordInput = apiJwtSection.querySelector("#mss-login-api-token-password");
-            const createStatus = apiJwtSection.querySelector("#mss-login-api-token-create-status");
-            const mfaRow = apiJwtSection.querySelector("#mss-login-api-token-mfa-row");
-            const mfaCodeInput = apiJwtSection.querySelector("#mss-login-api-token-mfa-code");
-            const mfaBackupInput = apiJwtSection.querySelector("#mss-login-api-token-mfa-backup");
-            const tokenOutputWrap = apiJwtSection.querySelector("#mss-login-api-token-output-wrap");
-            const tokenOutput = apiJwtSection.querySelector("#mss-login-api-token-output");
-            const copyBtn = apiJwtSection.querySelector("#mss-login-api-token-copy");
-            const tokenListContainer = apiJwtSection.querySelector("#mss-login-api-token-list");
-
-            const setCreateStatus = (msg, isError = false) => {
-                createStatus.textContent = msg || "";
-                createStatus.style.color = isError ? "#ff8a8a" : "#9ce3a5";
-            };
-
-            const formatDateTime = (value, fallback) => {
-                if (!value) return fallback;
-                try {
-                    return new Date(value).toLocaleString();
-                } catch (_) {
-                    return fallback;
-                }
-            };
-
-            const refreshApiTokenList = async () => {
-                if (!tokenListContainer) return;
-                tokenListContainer.textContent = "Loading tokens...";
-                try {
-                    const res = await api.fetchApi("/mss-login/api/tokens", { method: "GET" });
-                    if (!res.ok) {
-                        tokenListContainer.textContent = "Log in to view your API/JWT tokens.";
-                        return;
-                    }
-                    const data = await res.json().catch(() => ({}));
-                    const tokens = Array.isArray(data.tokens) ? data.tokens : [];
-                    if (tokens.length === 0) {
-                        tokenListContainer.textContent = "No API/JWT tokens found.";
-                        return;
-                    }
-                    const table = document.createElement("table");
-                    table.className = "mss-login-table";
-                    const thead = document.createElement("thead");
-                    thead.innerHTML = "<tr><th>Name</th><th>Hash Prefix</th><th>Created</th><th>Last Used</th><th>Expires</th><th>Action</th></tr>";
-                    table.appendChild(thead);
-                    const tbody = document.createElement("tbody");
-                    tokens.forEach((token) => {
-                        const tr = document.createElement("tr");
-                        const nameTd = document.createElement("td");
-                        const label = typeof token.label === "string" ? token.label.trim() : "";
-                        nameTd.textContent = label || "Unlabeled";
-                        tr.appendChild(nameTd);
-                        const prefixTd = document.createElement("td");
-                        prefixTd.style.fontFamily = "monospace";
-                        prefixTd.textContent = token.token_hash_prefix || "";
-                        tr.appendChild(prefixTd);
-                        const createdTd = document.createElement("td");
-                        createdTd.textContent = formatDateTime(token.created_at_iso, "N/A");
-                        tr.appendChild(createdTd);
-                        const lastUsedTd = document.createElement("td");
-                        lastUsedTd.textContent = formatDateTime(token.last_used_at_iso, "Never");
-                        tr.appendChild(lastUsedTd);
-                        const expiresTd = document.createElement("td");
-                        const neverExpires = token.expires_iso === "9999-12-31T23:59:59+00:00";
-                        expiresTd.textContent = neverExpires ? "Never" : formatDateTime(token.expires_iso, "N/A");
-                        tr.appendChild(expiresTd);
-                        const actionTd = document.createElement("td");
-                        const revokeBtn = document.createElement("button");
-                        revokeBtn.className = "mss-login-btn mss-login-btn-danger";
-                        revokeBtn.textContent = "Revoke";
-                        revokeBtn.onclick = async () => {
-                            const shouldRevoke = window.confirm("Revoke this API/JWT token? This cannot be undone.");
-                            if (!shouldRevoke) return;
-                            try {
-                                const revokeRes = await api.fetchApi("/mss-login/api/tokens", {
-                                    method: "DELETE",
-                                    body: JSON.stringify({
-                                        token_hash_prefix: String(token.token_hash_prefix || "").replace(/\.+$/, ""),
-                                    }),
-                                });
-                                const revokeData = await revokeRes.json().catch(() => ({}));
-                                if (!revokeRes.ok) {
-                                    setCreateStatus(revokeData.error || "Failed to revoke token.", true);
-                                    return;
-                                }
-                                setCreateStatus(revokeData.message || "Token revoked.");
-                                refreshApiTokenList();
-                            } catch (e) {
-                                setCreateStatus("Failed to revoke token: " + (e.message || "Unknown error"), true);
-                            }
-                        };
-                        actionTd.appendChild(revokeBtn);
-                        tr.appendChild(actionTd);
-                        tbody.appendChild(tr);
-                    });
-                    table.appendChild(tbody);
-                    tokenListContainer.innerHTML = "";
-                    tokenListContainer.appendChild(table);
-                } catch (_) {
-                    tokenListContainer.textContent = "Could not load API/JWT tokens.";
-                }
-            };
-
-            if (!me || !me.username || String(me.username).toLowerCase() === "guest") {
-                createBtn.disabled = true;
-                if (passwordInput) passwordInput.disabled = true;
-                setCreateStatus("Guest accounts cannot create API/JWT tokens.", true);
-                await refreshApiTokenList();
-                return;
-            }
-
-            createBtn.onclick = async () => {
-                const expireHours = String(expireInput.value || "720").trim();
-                const label = String(labelInput.value || "").trim();
-                createBtn.disabled = true;
-                tokenOutputWrap.style.display = "none";
-                tokenOutput.textContent = "";
-                setCreateStatus("");
-
-                try {
-                    const formData = new FormData();
-                    formData.append("expire_hours", expireHours || "720");
-                    formData.append("label", label);
-                    formData.append("require_password_reauth", "true");
-
-                    if (mfaTempToken) {
-                        const mfaCode = String(mfaCodeInput.value || "").replace(/\s/g, "");
-                        const backupCode = String(mfaBackupInput.value || "").replace(/\s/g, "");
-                        formData.append("mfa_temp_token", mfaTempToken);
-                        if (backupCode) {
-                            formData.append("backup_code", backupCode);
-                        } else if (mfaCode) {
-                            formData.append("code", mfaCode);
-                        }
-                    } else {
-                        const password = String(passwordInput.value || "");
-                        if (!password) {
-                            setCreateStatus("Please re-enter your password first.", true);
-                            createBtn.disabled = false;
-                            return;
-                        }
-                        formData.append("username", String(me.username));
-                        formData.append("password", password);
-                    }
-
-                    const response = await fetch("/mss-login/generate_token", {
-                        method: "POST",
-                        body: formData,
-                        credentials: "same-origin",
-                    });
-                    const result = await response.json().catch(() => ({}));
-                    if (!response.ok) {
-                        setCreateStatus(result.error || "Failed to create token.", true);
-                        createBtn.disabled = false;
-                        return;
-                    }
-
-                    if (result.mfa_required && result.mfa_temp_token) {
-                        mfaTempToken = result.mfa_temp_token;
-                        if (mfaRow) mfaRow.style.display = "flex";
-                        setCreateStatus("MFA required. Enter a code or backup code, then click Create token again.");
-                        createBtn.textContent = "Verify and create token";
-                        createBtn.disabled = false;
-                        return;
-                    }
-
-                    if (result.jwt_token) {
-                        if (mfaRow) mfaRow.style.display = "none";
-                        if (mfaCodeInput) mfaCodeInput.value = "";
-                        if (mfaBackupInput) mfaBackupInput.value = "";
-                        mfaTempToken = null;
-                        createBtn.textContent = "Create token";
-                        tokenOutput.textContent = String(result.jwt_token);
-                        tokenOutputWrap.style.display = "block";
-                        setCreateStatus(result.message || "Token created successfully.");
-                        passwordInput.value = "";
-                        await refreshApiTokenList();
-                    } else {
-                        setCreateStatus(result.message || "Token created.");
-                    }
-                } catch (e) {
-                    setCreateStatus("Failed to create token: " + (e.message || "Unknown error"), true);
-                }
-                createBtn.disabled = false;
-            };
-
-            copyBtn.onclick = async () => {
-                const tokenText = String(tokenOutput.textContent || "");
-                if (!tokenText) return;
-                try {
-                    await navigator.clipboard.writeText(tokenText);
-                    setCreateStatus("Copied token to clipboard.");
-                } catch (_) {
-                    setCreateStatus("Copy failed. Please copy manually.", true);
-                }
-            };
-
-            await refreshApiTokenList();
-        })();
-
-        // Session JWT section (list, masked by default, eye to reveal, revoke)
-        const jwtSection = document.createElement("div");
-        jwtSection.id = "mss-login-my-jwt-tokens";
-        jwtSection.style.marginTop = "12px";
-        const jwtHeading = document.createElement("h4");
-        jwtHeading.style.margin = "0 0 8px 0";
-        jwtHeading.textContent = "My Session JWT Tokens";
-        jwtSection.appendChild(jwtHeading);
-        const jwtTableWrap = document.createElement("div");
-        jwtTableWrap.innerHTML = "<table class='mss-login-sessions-table'><thead><tr><th>Token</th><th>Created</th><th>Last used</th><th>Actions</th></tr></thead><tbody id='mss-login-sessions-tbody'></tbody></table>";
-        jwtSection.appendChild(jwtTableWrap);
-        wrapper.appendChild(jwtSection);
-        (async () => {
-            try {
-                const res = await getData("/mss-login/me/sessions");
-                const sessions = (res && res.sessions) ? res.sessions : [];
-                const tbody = document.getElementById("mss-login-sessions-tbody");
-                if (!tbody) return;
-                tbody.innerHTML = "";
-                for (const s of sessions) {
-                    const jti = s.jti || "";
-                    const last4 = jti.slice(-4);
-                    const tr = document.createElement("tr");
-                    const tdToken = document.createElement("td");
-                    tdToken.style.fontFamily = "monospace";
-                    const maskedSpan = document.createElement("span");
-                    maskedSpan.textContent = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022-" + last4;
-                    maskedSpan.setAttribute("data-jti", jti);
-                    tdToken.appendChild(maskedSpan);
-                    tr.appendChild(tdToken);
-                    const tdCreated = document.createElement("td");
-                    tdCreated.textContent = s.created_at_iso ? new Date(s.created_at_iso).toLocaleString() : "";
-                    tr.appendChild(tdCreated);
-                    const tdLastUsed = document.createElement("td");
-                    tdLastUsed.textContent = s.last_used_at_iso ? new Date(s.last_used_at_iso).toLocaleString() : "—";
-                    tr.appendChild(tdLastUsed);
-                    const tdActions = document.createElement("td");
-                    if (s.is_current) {
-                        const eyeBtn = document.createElement("button");
-                        eyeBtn.textContent = "\uD83D\uDC41\uFE0F";
-                        eyeBtn.title = "Reveal token";
-                        eyeBtn.style.marginRight = "6px";
-                        eyeBtn.onclick = async () => {
-                            try {
-                                const res = await api.fetchApi("/mss-login/me/current-token");
-                                if (!res.ok) return;
-                                const r = await res.json().catch(() => ({}));
-                                const isHttps = !!r.is_https;
-                                if (!isHttps) {
-                                    const go = confirm("Connection is not secure. Revealing the token over HTTP may expose it. Please notify your administrator to enable HTTPS.\n\nReveal anyway?");
-                                    if (!go) return;
-                                }
-                                const token = r.token;
-                                if (token) {
-                                    if (maskedSpan.textContent === "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022-" + last4) {
-                                        maskedSpan.textContent = token;
-                                        eyeBtn.textContent = "\uD83D\uDD12";
-                                        eyeBtn.title = "Hide token";
-                                    } else {
-                                        maskedSpan.textContent = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022-" + last4;
-                                        eyeBtn.textContent = "\uD83D\uDC41\uFE0F";
-                                        eyeBtn.title = "Reveal token";
-                                    }
-                                }
-                            } catch (_) {}
-                        };
-                        tdActions.appendChild(eyeBtn);
-                    }
-                    const revokeBtn = document.createElement("button");
-                    revokeBtn.textContent = "Revoke";
-                    revokeBtn.onclick = async () => {
-                        try {
-                            const res = await api.fetchApi("/mss-login/me/sessions/revoke", { method: "POST", body: JSON.stringify({ jti }) });
-                            if (!res.ok) return;
-                            const data = await res.json().catch(() => ({}));
-                            if (data && data.status === "ok") {
-                                tr.remove();
-                                if (s.is_current) window.location.href = "/logout";
-                            }
-                        } catch (_) {}
-                    };
-                    tdActions.appendChild(revokeBtn);
-                    tr.appendChild(tdActions);
-                    tbody.appendChild(tr);
                 }
             } catch (_) {}
         })();
@@ -5763,7 +5048,7 @@ app.ui.settings.addSetting({
                 }
             }
         }, 100);
-        
+
         return wrapper;
     }
 });

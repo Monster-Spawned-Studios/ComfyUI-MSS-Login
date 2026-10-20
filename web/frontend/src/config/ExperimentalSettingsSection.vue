@@ -1,5 +1,6 @@
 <template>
   <div class="mss-cfg-section space-y-4">
+    <!-- Master Switch & Features -->
     <div class="mss-cfg-card space-y-3">
       <p class="mss-cfg-note">
         Experimental features use a master switch plus per-feature toggles. When
@@ -66,6 +67,124 @@
       </div>
     </div>
 
+    <!-- Push Notifications (ntfy) -->
+    <div class="mss-cfg-card space-y-3">
+      <h3 class="text-center text-base font-semibold">
+        Push Notifications (ntfy)
+      </h3>
+      <p class="mss-cfg-note text-center">
+        Receive instant alerts on your phone or desktop for security events, logins, and NSFW blocks via ntfy.sh or a self-hosted ntfy server.
+      </p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label class="mss-cfg-label" for="mss-ntfy-topic">Topic Name</label>
+          <input
+            id="mss-ntfy-topic"
+            v-model="ntfyTopic"
+            type="text"
+            class="mss-cfg-input"
+            placeholder="e.g. my-private-comfy-topic"
+          />
+        </div>
+        <div>
+          <label class="mss-cfg-label" for="mss-ntfy-url">Server URL</label>
+          <input
+            id="mss-ntfy-url"
+            v-model="ntfyBaseUrl"
+            type="url"
+            class="mss-cfg-input"
+            placeholder="https://ntfy.sh"
+          />
+        </div>
+      </div>
+
+      <div>
+        <label class="mss-cfg-label" for="mss-ntfy-token">API Token (Optional)</label>
+        <input
+          id="mss-ntfy-token"
+          v-model="ntfyApiToken"
+          type="password"
+          class="mss-cfg-input"
+          :placeholder="ntfyHasToken ? 'Token configured (enter new to replace)' : 'Leave blank if public topic'"
+          autocomplete="off"
+        />
+        <label v-if="ntfyHasToken" class="mss-cfg-check-row mt-2">
+          <input v-model="ntfyClearToken" type="checkbox" class="mss-cfg-checkbox" />
+          <span class="text-xs text-zinc-400">Clear stored API token on save</span>
+        </label>
+      </div>
+
+      <div class="space-y-2 border-t border-zinc-800 pt-3">
+        <label class="mss-cfg-label">Notification Events</label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          <label v-for="(lbl, key) in ntfyEventLabels" :key="key" class="mss-cfg-check-row">
+            <input
+              v-model="ntfyEvents[key]"
+              type="checkbox"
+              class="mss-cfg-checkbox"
+            />
+            <span>{{ lbl }}</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 pt-2">
+        <button
+          type="button"
+          class="mss-cfg-btn"
+          :disabled="ntfySaving"
+          @click="saveNtfy"
+        >
+          {{ ntfySaving ? "Saving…" : "Save ntfy settings" }}
+        </button>
+        <span v-if="ntfyStatus" class="mss-cfg-note">{{ ntfyStatus }}</span>
+      </div>
+    </div>
+
+    <!-- System & Debug Options -->
+    <div class="mss-cfg-card space-y-3">
+      <h3 class="text-center text-base font-semibold">
+        System &amp; Console Controls
+      </h3>
+      <p class="mss-cfg-note text-center">
+        Configure guest token permissions and console verbosity.
+      </p>
+
+      <div class="space-y-2.5">
+        <label class="mss-cfg-check-row">
+          <input
+            v-model="allowGuestJwt"
+            type="checkbox"
+            class="mss-cfg-checkbox"
+          />
+          <span>Allow guest JWT tokens (guest login issues session JWT)</span>
+        </label>
+
+        <label class="mss-cfg-check-row">
+          <input
+            v-model="filterDebugMessages"
+            type="checkbox"
+            class="mss-cfg-checkbox"
+          />
+          <span>Filter debug messages (suppress verbose DEBUG output from console)</span>
+        </label>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 pt-2">
+        <button
+          type="button"
+          class="mss-cfg-btn"
+          :disabled="systemSaving"
+          @click="saveSystemControls"
+        >
+          {{ systemSaving ? "Saving…" : "Save system options" }}
+        </button>
+        <span v-if="systemStatus" class="mss-cfg-note">{{ systemStatus }}</span>
+      </div>
+    </div>
+
+    <!-- Custom Nodes Dependency Installer -->
     <div class="mss-cfg-card space-y-3">
       <h3 class="text-center text-base font-semibold">
         Other custom nodes dependency installer
@@ -100,6 +219,7 @@
       >
     </div>
 
+    <!-- Experimental Failsafe -->
     <div class="mss-cfg-card space-y-3">
       <h3 class="text-center text-base font-semibold">Experimental failsafe</h3>
       <p class="mss-cfg-note text-center">
@@ -173,6 +293,18 @@ const FEATURE_DEFS = [
   },
 ];
 
+const NTFY_EVENT_LABELS = {
+  nsfw_block: "Notify when user blocked for NSFW",
+  user_created: "Notify when new user created",
+  user_login: "Notify when user logs in (include IP)",
+  user_logout: "Notify when user logs out",
+  api_token_created: "Notify when API/JWT token created",
+  login_failure: "Notify on login failure",
+  shared_items_added: "Notify when shared model/item added",
+  shared_items_removed: "Notify when shared model/item removed",
+  experimental_recovery: "Notify when failsafe/recovery runs",
+};
+
 function emptyFlags() {
   const o = {};
   for (const f of FEATURE_DEFS) o[f.key] = false;
@@ -197,6 +329,21 @@ export default {
       failsafeState: "",
       failsafeSaving: false,
       failsafeStatus: "",
+      // ntfy
+      ntfyTopic: "",
+      ntfyBaseUrl: "https://ntfy.sh",
+      ntfyApiToken: "",
+      ntfyHasToken: false,
+      ntfyClearToken: false,
+      ntfyEvents: {},
+      ntfyEventLabels: NTFY_EVENT_LABELS,
+      ntfySaving: false,
+      ntfyStatus: "",
+      // system
+      allowGuestJwt: false,
+      filterDebugMessages: false,
+      systemSaving: false,
+      systemStatus: "",
     };
   },
   methods: {
@@ -235,6 +382,36 @@ export default {
       this.failsafeState = parts.join(" · ");
       this.failsafeStatus = "";
     },
+    async loadNtfy() {
+      try {
+        const { ok, data } = await apiJson("/mss-login/api/settings/ntfy");
+        if (ok && data) {
+          this.ntfyTopic = data.topic || "";
+          this.ntfyBaseUrl = data.base_url || "https://ntfy.sh";
+          this.ntfyHasToken = !!data.has_api_token;
+          const enabled = data.enabled_events || [];
+          const evMap = {};
+          Object.keys(NTFY_EVENT_LABELS).forEach((k) => {
+            evMap[k] = enabled.includes(k);
+          });
+          this.ntfyEvents = evMap;
+        }
+      } catch (_) {}
+    },
+    async loadSystemControls() {
+      try {
+        const [gRes, dRes] = await Promise.all([
+          apiJson("/mss-login/api/settings/guest-jwt"),
+          apiJson("/mss-login/api/settings/debug-filter"),
+        ]);
+        if (gRes.ok && gRes.data) {
+          this.allowGuestJwt = !!gRes.data.allow_guest_jwt;
+        }
+        if (dRes.ok && dRes.data) {
+          this.filterDebugMessages = !!dRes.data.filter_debug_messages;
+        }
+      } catch (_) {}
+    },
     async saveExperimental() {
       this.saving = true;
       this.status = "Saving…";
@@ -259,7 +436,6 @@ export default {
         this.status = data?.error || "Save failed";
         return;
       }
-      // Reload checkbox state from GET (config values, not env-effective).
       await this.loadExperimental();
       this.restartRequired = !!data.restart_required;
       this.restartReasons = Array.isArray(data.restart_reasons)
@@ -290,6 +466,60 @@ export default {
       this.failsafeEnabled = !!data.enabled;
       this.failsafeEscalate = !!data.escalate_after_repeated_failure;
       this.failsafeStatus = "Failsafe settings saved.";
+    },
+    async saveNtfy() {
+      this.ntfySaving = true;
+      this.ntfyStatus = "Saving…";
+      const enabledList = Object.keys(this.ntfyEvents).filter((k) => this.ntfyEvents[k]);
+      const payload = {
+        topic: this.ntfyTopic.trim(),
+        base_url: this.ntfyBaseUrl.trim(),
+        enabled_events: enabledList,
+      };
+      if (this.ntfyClearToken) {
+        payload.api_token = "";
+      } else if (this.ntfyApiToken.trim()) {
+        payload.api_token = this.ntfyApiToken.trim();
+      }
+
+      const { ok, data } = await apiJson("/mss-login/api/settings/ntfy", {
+        method: "PUT",
+        body: payload,
+      });
+      this.ntfySaving = false;
+      if (ok) {
+        this.ntfyApiToken = "";
+        this.ntfyClearToken = false;
+        this.ntfyStatus = "ntfy settings saved.";
+        await this.loadNtfy();
+      } else {
+        this.ntfyStatus = data?.error || "Save failed.";
+      }
+    },
+    async saveSystemControls() {
+      this.systemSaving = true;
+      this.systemStatus = "Saving…";
+      try {
+        const [gRes, dRes] = await Promise.all([
+          apiJson("/mss-login/api/settings/guest-jwt", {
+            method: "PUT",
+            body: { allow_guest_jwt: this.allowGuestJwt },
+          }),
+          apiJson("/mss-login/api/settings/debug-filter", {
+            method: "PUT",
+            body: { filter_debug_messages: this.filterDebugMessages },
+          }),
+        ]);
+        this.systemSaving = false;
+        if (gRes.ok && dRes.ok) {
+          this.systemStatus = "System controls saved.";
+        } else {
+          this.systemStatus = "Save failed.";
+        }
+      } catch (err) {
+        this.systemSaving = false;
+        this.systemStatus = "Save failed: " + (err.message || String(err));
+      }
     },
     async runNodeDeps(dryRun) {
       this.depsBusy = true;
@@ -324,7 +554,12 @@ export default {
     },
   },
   async mounted() {
-    await Promise.all([this.loadExperimental(), this.loadFailsafe()]);
+    await Promise.all([
+      this.loadExperimental(),
+      this.loadFailsafe(),
+      this.loadNtfy(),
+      this.loadSystemControls(),
+    ]);
   },
 };
 </script>

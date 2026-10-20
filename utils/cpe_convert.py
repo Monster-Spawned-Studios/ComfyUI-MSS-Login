@@ -7,6 +7,7 @@ Phase 1: prefer embedded JWT/Bearer-injected converter when enabled.
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import os
 import sys
@@ -67,6 +68,16 @@ def ensure_embedded_convert_registered() -> None:
 		return await mgr.convert_workflow(workflow_data, auth_token=get_convert_auth_token())
 
 	set_embedded_convert(_embedded)
+
+	# Trigger non-blocking browser pre-warm if an event loop is active
+	try:
+		from .cpe_browser import prewarm_embedded_browser
+
+		loop = asyncio.get_running_loop()
+		if loop and loop.is_running():
+			prewarm_embedded_browser()
+	except Exception:
+		pass
 
 
 def _custom_nodes_root() -> str | None:
@@ -211,7 +222,131 @@ def health_browser_payload() -> dict[str, Any]:
 		err = getattr(mgr, "error_message", None)
 		if err and status in ("error", "not_installed"):
 			payload["error"] = str(err)
+		if hasattr(mgr, "is_pool_ready"):
+			payload["pool_ready"] = bool(mgr.is_pool_ready)
+		if hasattr(mgr, "pool_size"):
+			payload["pool_size"] = int(mgr.pool_size)
 	return payload
+
+
+def convert_graph_to_prompt_python(workflow_data: dict[str, Any]) -> dict[str, Any] | None:
+	"""Fast-path pure-Python graph-to-prompt topological sort converter.
+
+	Converts standard ComfyUI UI graphs to execution prompt dictionary (<1ms),
+	bypassing Playwright/Chromium entirely when possible.
+
+	Returns None if the workflow contains custom nodes with dynamic JS widgets,
+	unresolved connections, or constructs requiring browser LiteGraph execution.
+	"""
+	if not isinstance(workflow_data, dict):
+		return None
+	nodes = workflow_data.get("nodes")
+	if not isinstance(nodes, list) or not nodes:
+		return None
+
+	links = workflow_data.get("links", [])
+	link_lookup: dict[int, tuple[str, int]] = {}
+	if isinstance(links, list):
+		for link in links:
+			if isinstance(link, (list, tuple)) and len(link) >= 5:
+				try:
+					lid = int(link[0])
+					src_node = str(link[1])
+					src_slot = int(link[2])
+					link_lookup[lid] = (src_node, src_slot)
+				except (ValueError, TypeError):
+					continue
+
+	# Build node map to resolve reroutes and references
+	node_map = {str(n.get("id")): n for n in nodes if isinstance(n, dict) and "id" in n}
+
+	# Resolve Reroute node chains (up to 10 hops)
+	for _ in range(10):
+		changed = False
+		for lid, (src_node, src_slot) in list(link_lookup.items()):
+			src_n = node_map.get(src_node)
+			if src_n and src_n.get("type") == "Reroute":
+				rinp = src_n.get("inputs", [])
+				if rinp and isinstance(rinp, list):
+					in_link = rinp[0].get("link")
+					if in_link in link_lookup:
+						link_lookup[lid] = link_lookup[in_link]
+						changed = True
+		if not changed:
+			break
+
+	prompt: dict[str, dict[str, Any]] = {}
+	for node in nodes:
+		if not isinstance(node, dict):
+			continue
+		nid = str(node.get("id"))
+		mode = node.get("mode", 0)
+		# Skip muted (2) or bypassed/ignored (4) nodes
+		if mode in (2, 4):
+			continue
+
+		ntype = node.get("type")
+		if not ntype or ntype == "Reroute":
+			continue
+		# Complex UI-only helper nodes should use browser LiteGraph
+		if ntype in ("PrimitiveNode", "Note"):
+			return None
+
+		inputs: dict[str, Any] = {}
+		node_inputs = node.get("inputs", [])
+		if not isinstance(node_inputs, list):
+			node_inputs = []
+
+		for inp in node_inputs:
+			if not isinstance(inp, dict):
+				continue
+			name = inp.get("name")
+			if not name:
+				continue
+			lid = inp.get("link")
+			if lid is not None and lid in link_lookup:
+				src_n, src_s = link_lookup[lid]
+				inputs[name] = [src_n, src_s]
+
+		widgets_values = node.get("widgets_values")
+		if isinstance(widgets_values, dict):
+			for k, v in widgets_values.items():
+				if k not in inputs:
+					inputs[k] = v
+		elif isinstance(widgets_values, list):
+			widget_inputs = [
+				inp
+				for inp in node_inputs
+				if isinstance(inp, dict) and inp.get("widget") is not None
+			]
+			if widget_inputs:
+				w_idx = 0
+				for winp in widget_inputs:
+					if w_idx >= len(widgets_values):
+						break
+					w_name = winp.get("widget", {}).get("name") or winp.get("name")
+					val = widgets_values[w_idx]
+					w_idx += 1
+					# Account for seed + randomize/fixed control pair in standard samplers
+					if w_name in ("seed", "noise_seed") and w_idx < len(widgets_values):
+						next_val = widgets_values[w_idx]
+						if isinstance(next_val, str) and next_val.lower() in (
+							"randomize",
+							"fixed",
+							"increment",
+							"decrement",
+						):
+							w_idx += 1
+					if winp.get("link") is None and w_name:
+						inputs[w_name] = val
+			elif widgets_values:
+				# Node has widgets_values but serialized inputs lacked widget descriptors;
+				# require browser LiteGraph to guarantee accurate mapping.
+				return None
+
+		prompt[nid] = {"class_type": ntype, "inputs": inputs}
+
+	return prompt if prompt else None
 
 
 async def convert_ui_workflow(
@@ -220,11 +355,20 @@ async def convert_ui_workflow(
 	"""Convert a UI-format workflow dict to an API prompt dict.
 
 	Preference order:
-	1. Embedded JWT-injected converter (when ``cpe_embedded_convert``)
-	2. Sibling comfy-portal-endpoint browser manager
+	1. Direct pure-Python topological fast-path (<1ms) for standard graphs
+	2. Embedded JWT-injected Playwright converter (when ``cpe_embedded_convert``)
+	3. Sibling comfy-portal-endpoint browser manager
 	"""
 	if not isinstance(workflow_data, dict):
 		raise RuntimeError("Workflow data must be a JSON object")
+
+	# Fast-path: try direct Python conversion without spawning browser
+	try:
+		fast_prompt = convert_graph_to_prompt_python(workflow_data)
+		if fast_prompt is not None and len(fast_prompt) > 0:
+			return fast_prompt
+	except Exception:
+		pass
 
 	ensure_embedded_convert_registered()
 	token_token = set_convert_auth_token(auth_token)

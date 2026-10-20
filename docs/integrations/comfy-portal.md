@@ -47,6 +47,9 @@ Comfy Portal calls [comfy-portal-endpoint](https://github.com/ShunL12324/comfy-p
 
 Saving through CPE requires `can_modify_workflows` (defaults to allowed for every role except guest). Convert does not require `can_modify_workflows` (read-only transform) but still needs `can_access_api`.
 
+> [!NOTE]
+> `/api/cpe/workflow/list` returns **all** stored `.json` workflows (both UI-format graphs and API-format prompts) so mobile and API clients can execute API prompts directly or request convert for UI graphs. In contrast, the ComfyUI web sidebar (`/api/userdata?dir=workflows`) hides API-format files by default (`workflows.web_hide_api_format: true`) because the web editor canvas cannot directly load backend API prompts.
+
 Unauthenticated calls to **`/cpe/*` and `/api/cpe/*` always receive JSON 401** (same as `/api/*`), not an HTML login redirect — even when `Accept` is `*/*`. Portal should send `Authorization: Bearer <token>` (and may also use `?token=` on prompt/view/ws).
 
 ### Auth and isolation (Portal run path)
@@ -71,6 +74,14 @@ MSS-Login can convert UI-format workflows **without** installing a separate comf
 4. Optional: `"cpe_convert_token_minutes": 5` for short-lived JWT mint when the request has no Bearer yet
 
 The headless browser opens ComfyUI on **loopback** with the caller's `jwt_token` cookie and `Authorization: Bearer` so the real frontend boots under auth.
+
+### Converter performance and caveats
+
+1. **Fast-path Python parser (<1 ms)**: Standard workflows are parsed directly via topological sort in pure Python, bypassing browser launch overhead entirely.
+2. **Pre-warmed browser page pool**: For complex workflows with custom client-side widgets, a pre-warmed headless page pool keeps Chromium running in the background, eliminating cold-boot latency on convert calls.
+3. **Saved widget values vs executed prompt caveat**:
+   > [!IMPORTANT]
+   > **Metadata Caveat:** The embedded UI workflow chunk (`extra_pnginfo.workflow`) reflects the **saved** widget values captured at convert time (for example, `seed: 42`), whereas the execution prompt chunk (`prompt`) records the **actual runtime executed** seed (for example, `seed: 1234`) and runtime parameters. The `prompt` chunk remains the ground truth for reproducibility.
 
 If you also installed sibling `comfy-portal-endpoint`, **uninstall it** when using embedded convert to avoid two Playwright pools. Stock CPE still cannot load `/` under the login wall without cookie injection.
 

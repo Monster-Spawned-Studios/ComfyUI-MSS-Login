@@ -56,6 +56,8 @@ _ROUTE_POLICIES: list[tuple[str, str, str]] = [
 	_p("GET", "/mss-login/api/news/feed.xml", Policy.PUBLIC),
 	_p("GET", "/api/mss-login/api/news/feed.xml", Policy.PUBLIC),
 	# Credential / token issuance (public; lockout + MFA at handler)
+	_p("POST", "/mss-login/api/login", Policy.PUBLIC),
+	_p("POST", "/api/mss-login/api/login", Policy.PUBLIC),
 	_p("GET", "/mss-login/generate_token", Policy.PUBLIC),
 	_p("POST", "/mss-login/generate_token", Policy.PUBLIC),
 	_p("POST", "/generate_token", Policy.PUBLIC),

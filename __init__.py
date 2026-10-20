@@ -336,12 +336,18 @@ async def workflow_interceptor_middleware(request, handler):
 			# Pass-through client_id / extra_data; sanitize or fill-in UI workflow
 			# for PNG embedding (cpe.embed_ui_workflow). Never inject a template.
 			try:
-				from .utils.workflow_metadata import apply_prompt_extra_data
+				from .utils.workflow_metadata import (
+					apply_prompt_extra_data,
+					build_workflow_cache_key,
+					resolve_canonical_user_id,
+				)
 
+				canon_uid = resolve_canonical_user_id(request, user_id=user_id)
+				_cache_key = build_workflow_cache_key(canon_uid, prompt_to_validate)
 				data = apply_prompt_extra_data(
 					data if isinstance(data, dict) else prompt_to_validate,
 					prompt_to_validate,
-					user_id=user_id,
+					user_id=canon_uid,
 				)
 				body_bytes = json.dumps(data).encode("utf-8")
 			except Exception:

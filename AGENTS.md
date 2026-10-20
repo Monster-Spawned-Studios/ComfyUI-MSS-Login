@@ -85,6 +85,15 @@ Never `git commit` or `git push` unless the user gives **explicit** say-so eithe
 
 For significant change sets (~500+ lines) or multi-topic dumps, invoke **`/commit-multi-changes`** and follow [`.agents/skills/commit-multi-changes/SKILL.md`](.agents/skills/commit-multi-changes/SKILL.md): propose a topic-scoped multi-stage commit plan, wait for approval, then commit sequentially. Do not push unless asked.
 
+### Mandatory vulnerability scanning
+
+Follow [`.agents/rules/vulnerability-scanning.mdc`](.agents/rules/vulnerability-scanning.mdc) (always-on, agent-agnostic).
+
+After every project or task is complete, verify dependencies against the OSV database and run security audits:
+- Run lockfile scan: `osv-scanner scan --config osv-scanner.toml -L uv.lock -L web/frontend/pnpm-lock.yaml` (and `osv-scanner scan --config osv-scanner.toml -r .` if loose requirements are edited).
+- Run dependency audit: `.venv/bin/pip-audit -r requirements-ci.txt --extra-index-url https://download.pytorch.org/whl/cu128`.
+- Ensure zero unignored vulnerabilities or exploitable flaws remain before reporting completion.
+
 ### Known caveats
 
 - Always use the `.venv` Python (`.venv/bin/python`) per [`.agents/rules/python-venv.mdc`](.agents/rules/python-venv.mdc).

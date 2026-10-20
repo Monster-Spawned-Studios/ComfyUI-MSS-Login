@@ -13,9 +13,13 @@ else delegate to a sibling comfy-portal-endpoint browser when importable.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import time
 
 from aiohttp import web
+
+_log = logging.getLogger("mss_login.cpe")
 
 from ..constants import (
 	CPE_CONVERT_TOKEN_MINUTES,
@@ -218,8 +222,11 @@ async def _convert_ui_or_error(
 	On success, include additive sanitized ``ui_workflow`` / ``extra_data``.
 	Cache fill-in is deferred until after ``_model_grant_check`` succeeds.
 	"""
+	t_start = time.perf_counter()
 	try:
+		t_conv0 = time.perf_counter()
 		api_prompt = await convert_ui_workflow(workflow_data, auth_token=auth_token)
+		t_conv = time.perf_counter() - t_conv0
 		if not isinstance(api_prompt, dict) or not looks_like_api_prompt(api_prompt):
 			return 503, {
 				"status": "error",
@@ -230,10 +237,19 @@ async def _convert_ui_or_error(
 
 		cleaned = None
 		embed = cpe_embed_settings()
+		t_san0 = time.perf_counter()
 		if embed["embed_ui_workflow"]:
 			cleaned = sanitize_ui_workflow(
 				workflow_data, user_id, max_bytes=embed["ui_workflow_max_bytes"]
 			)
+		t_san = time.perf_counter() - t_san0
+		t_total = time.perf_counter() - t_start
+		_log.debug(
+			"[cpe _convert_ui_or_error] browser_convert=%.3fs sanitize=%.3fs total=%.3fs",
+			t_conv,
+			t_san,
+			t_total,
+		)
 		return 200, success_convert_payload(api_prompt, ui_workflow=cleaned)
 	except RuntimeError as exc:
 		return 503, {
@@ -250,18 +266,18 @@ async def _convert_ui_or_error(
 
 
 def _user_id_for_request(request: web.Request) -> str | None:
-	from ..utils import access_control
+	from ..utils.workflow_metadata import resolve_canonical_user_id
 
-	user = _current_username(request)
-	try:
-		return get_user_id_for_username(access_control.users_db, user)
-	except Exception:
-		return None
+	return resolve_canonical_user_id(request)
 
 
 def _cache_ui_after_grant(request: web.Request, payload: dict) -> None:
 	"""Remember sanitized UI graph for fill-in only after grant check passed."""
-	from ..utils.workflow_metadata import remember_converted_ui_workflow
+	from ..utils.workflow_metadata import (
+		build_workflow_cache_key,
+		remember_converted_ui_workflow,
+		resolve_canonical_user_id,
+	)
 
 	data = payload.get("data") if isinstance(payload, dict) else None
 	if not isinstance(data, dict):
@@ -270,7 +286,11 @@ def _cache_ui_after_grant(request: web.Request, payload: dict) -> None:
 	ui = data.get("ui_workflow")
 	if not isinstance(api, dict) or not isinstance(ui, dict):
 		return
-	remember_converted_ui_workflow(_user_id_for_request(request), api, ui)
+	user_id = resolve_canonical_user_id(request)
+	cache_key = build_workflow_cache_key(user_id, api)
+	if not cache_key:
+		return
+	remember_converted_ui_workflow(user_id, api, ui)
 
 
 async def handle_cpe_list(request: web.Request) -> web.Response:
@@ -351,9 +371,12 @@ async def handle_cpe_save(request: web.Request) -> web.Response:
 async def handle_cpe_get_and_convert(request: web.Request) -> web.Response:
 	from ..utils.shared_workflows import log_workflow_action
 
+	t_start = time.perf_counter()
 	user = _current_username(request)
 	filename = request.query.get("filename")
+	t_load0 = time.perf_counter()
 	status, meta, workflow_data = load_workflow_for_convert("", filename, username=user)
+	t_load = time.perf_counter() - t_load0
 	if status != 200 or workflow_data is None:
 		return web.json_response(meta, status=status)
 
@@ -370,24 +393,46 @@ async def handle_cpe_get_and_convert(request: web.Request) -> web.Response:
 		return web.json_response(payload, status=200)
 
 	auth_token = _auth_token_for_convert(request)
+	t_conv0 = time.perf_counter()
 	conv_status, payload = await _convert_ui_or_error(
 		workflow_data, auth_token=auth_token, user_id=_user_id_for_request(request)
 	)
+	t_conv = time.perf_counter() - t_conv0
+	t_grant = 0.0
+	t_flatten = 0.0
+	t_cache = 0.0
 	if conv_status == 200:
 		payload["filename"] = filename_out
 		wf = None
 		if isinstance(payload.get("data"), dict):
 			wf = payload["data"].get("workflow")
+		t_grant0 = time.perf_counter()
 		denied = _model_grant_check(request, wf, origin=origin)
+		t_grant = time.perf_counter() - t_grant0
 		if denied is not None:
 			return denied
+		t_flat0 = time.perf_counter()
 		_flatten_convert_payload(request, payload)
+		t_flatten = time.perf_counter() - t_flat0
+		t_cache0 = time.perf_counter()
 		_cache_ui_after_grant(request, payload)
+		t_cache = time.perf_counter() - t_cache0
+	t_total = time.perf_counter() - t_start
+	_log.debug(
+		"[cpe get-and-convert] load=%.3fs convert=%.3fs grant_check=%.3fs flatten=%.3fs cache=%.3fs total=%.3fs",
+		t_load,
+		t_conv,
+		t_grant,
+		t_flatten,
+		t_cache,
+		t_total,
+	)
 	return web.json_response(payload, status=conv_status)
 
 
 async def handle_cpe_convert(request: web.Request) -> web.Response:
 	"""POST body = UI-format workflow JSON object (CPE contract)."""
+	t_start = time.perf_counter()
 	try:
 		workflow_data = await request.json()
 	except Exception:
@@ -405,18 +450,38 @@ async def handle_cpe_convert(request: web.Request) -> web.Response:
 		)
 
 	auth_token = _auth_token_for_convert(request)
+	t_conv0 = time.perf_counter()
 	conv_status, payload = await _convert_ui_or_error(
 		workflow_data, auth_token=auth_token, user_id=_user_id_for_request(request)
 	)
+	t_conv = time.perf_counter() - t_conv0
+	t_grant = 0.0
+	t_flatten = 0.0
+	t_cache = 0.0
 	if conv_status == 200:
 		wf = None
 		if isinstance(payload.get("data"), dict):
 			wf = payload["data"].get("workflow")
+		t_grant0 = time.perf_counter()
 		denied = _model_grant_check(request, wf)
+		t_grant = time.perf_counter() - t_grant0
 		if denied is not None:
 			return denied
+		t_flat0 = time.perf_counter()
 		_flatten_convert_payload(request, payload)
+		t_flatten = time.perf_counter() - t_flat0
+		t_cache0 = time.perf_counter()
 		_cache_ui_after_grant(request, payload)
+		t_cache = time.perf_counter() - t_cache0
+	t_total = time.perf_counter() - t_start
+	_log.debug(
+		"[cpe convert] convert=%.3fs grant_check=%.3fs flatten=%.3fs cache=%.3fs total=%.3fs",
+		t_conv,
+		t_grant,
+		t_flatten,
+		t_cache,
+		t_total,
+	)
 	return web.json_response(payload, status=conv_status)
 
 

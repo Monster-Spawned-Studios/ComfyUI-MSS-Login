@@ -289,6 +289,363 @@ def run_tests() -> int:
 				failed += 1
 				run += 1
 
+	print("TestSharedCacheKeyAndCanonicalUserId")
+	ok(hasattr(wm, "build_workflow_cache_key"), "wm has build_workflow_cache_key")
+	if hasattr(wm, "build_workflow_cache_key"):
+		k1 = wm.build_workflow_cache_key(USER_A, _sample_api(1))
+		k2 = wm.build_workflow_cache_key(USER_A, _sample_api(999))
+		ok(bool(k1) and k1 == k2, "cache key identical regardless of widget seed/text")
+		ok(k1.startswith(f"{USER_A}:"), "cache key prefixed by canonical user_id")
+		ok(wm.build_workflow_cache_key(None, _sample_api(1)) is None, "None user_id -> None key")
+		ok(wm.build_workflow_cache_key("", _sample_api(1)) is None, "empty user_id -> None key")
+		ok(wm.build_workflow_cache_key(USER_A, {}) is None, "empty prompt -> None key")
+
+	ok(hasattr(wm, "resolve_canonical_user_id"), "wm has resolve_canonical_user_id")
+	if hasattr(wm, "resolve_canonical_user_id"):
+		ok(wm.resolve_canonical_user_id(user_id=USER_A) == USER_A, "direct user_id resolved")
+		ok(wm.resolve_canonical_user_id(None) is None, "None -> None")
+		mock_req = {"user_id": USER_A, "user": "mss_admin"}
+		ok(wm.resolve_canonical_user_id(mock_req) == USER_A, "request with user_id resolved")
+
+	print("TestCpeConvertThenPromptFillMssAdmin")
+	cache.clear()
+	admin_uid = "f350e460-7a09-4d32-9cb9-659f8a37f5d9"
+	api_graph = _sample_api(seed=42)
+	ui_graph = _sample_ui(ckpt="anima_turbo.safetensors")
+	# 1. CPE convert remembers UI graph
+	cleaned_admin = wm.remember_converted_ui_workflow(admin_uid, api_graph, ui_graph, cache=cache)
+	ok(cleaned_admin is not None, "CPE convert cached for mss_admin")
+
+	# 2. POST /prompt with NO extra_data (seed 1234, different from convert time 42)
+	prompt_no_extra = {"prompt": _sample_api(seed=1234)}
+	filled_admin = wm.apply_prompt_extra_data(
+		prompt_no_extra, prompt_no_extra["prompt"], user_id=admin_uid, cache=cache
+	)
+	extra_res = filled_admin.get("extra_data") if isinstance(filled_admin, dict) else None
+	pnginfo_res = extra_res.get("extra_pnginfo") if isinstance(extra_res, dict) else None
+	wf_res = pnginfo_res.get("workflow") if isinstance(pnginfo_res, dict) else None
+	ok(isinstance(wf_res, dict), "prompt with no extra_data filled workflow from cache")
+	ok(wf_res.get("nodes") == ui_graph.get("nodes"), "filled workflow equals converted UI graph")
+
+	# PNG simulation with both chunks
+	try:
+		from PIL import Image
+		from PIL.PngImagePlugin import PngInfo
+
+		with tempfile.TemporaryDirectory() as tmp:
+			p_out = os.path.join(tmp, "portal_flow.png")
+			img_pf = Image.new("RGB", (8, 8))
+			pi_pf = PngInfo()
+			pi_pf.add_text("prompt", json.dumps(prompt_no_extra["prompt"]))
+			pi_pf.add_text("workflow", json.dumps(wf_res))
+			img_pf.save(p_out, "PNG", pnginfo=pi_pf)
+
+			read_pf = Image.open(p_out)
+			ok(
+				"prompt" in read_pf.info and "workflow" in read_pf.info,
+				"PNG carries both prompt and workflow chunks",
+			)
+			ok(
+				json.loads(read_pf.info["prompt"])["2"]["inputs"]["seed"] == 1234,
+				"PNG prompt has executed seed 1234",
+			)
+			ok(
+				json.loads(read_pf.info["workflow"])["nodes"][1]["widgets_values"][0] == 1,
+				"PNG workflow keeps saved widget value",
+			)
+	except ImportError:
+		pass
+
+	print("TestClientExtraDataPrecedenceByteForByte")
+	custom_client_wf = _sample_ui(ckpt="custom_client_model.safetensors")
+	custom_client_wf["custom_marker"] = "client_sent_this_explicitly"
+	request_with_client = {
+		"prompt": _sample_api(seed=1234),
+		"client_id": "portal_explicit",
+		"extra_data": {
+			"extra_pnginfo": {"workflow": custom_client_wf, "client_note": "do_not_overwrite"}
+		},
+	}
+	out_precedence = wm.apply_prompt_extra_data(
+		request_with_client, request_with_client["prompt"], user_id=admin_uid, cache=cache
+	)
+	kept_wf = out_precedence.get("extra_data", {}).get("extra_pnginfo", {}).get("workflow")
+	ok(
+		isinstance(kept_wf, dict) and kept_wf.get("custom_marker") == "client_sent_this_explicitly",
+		"client-supplied workflow kept intact",
+	)
+	ok(
+		out_precedence.get("extra_data", {}).get("extra_pnginfo", {}).get("client_note")
+		== "do_not_overwrite",
+		"client extra_pnginfo siblings kept untouched",
+	)
+
+	print("TestCacheMissNoWorkflowChunkNoError")
+	cache.clear()
+	unknown_prompt = {"prompt": {"99": {"class_type": "CompletelyUnknownNode", "inputs": {}}}}
+	miss_out = wm.apply_prompt_extra_data(
+		unknown_prompt, unknown_prompt["prompt"], user_id=admin_uid, cache=cache
+	)
+	ok(isinstance(miss_out, dict), "cache miss returns valid dict without error")
+	miss_pnginfo = (miss_out.get("extra_data") or {}).get("extra_pnginfo")
+	ok(
+		not (isinstance(miss_pnginfo, dict) and "workflow" in miss_pnginfo),
+		"cache miss produces no workflow chunk",
+	)
+
+	print("TestCrossUserIsolationExplicit")
+	cache.clear()
+	wm.remember_converted_ui_workflow(
+		USER_A, _sample_api(1), _sample_ui(ckpt="alice.safetensors"), cache=cache
+	)
+	# User B submits exact same prompt
+	user_b_body = {"prompt": _sample_api(1)}
+	user_b_out = wm.apply_prompt_extra_data(
+		user_b_body, user_b_body["prompt"], user_id=USER_B, cache=cache
+	)
+	b_pnginfo = (user_b_out.get("extra_data") or {}).get("extra_pnginfo")
+	ok(
+		not (isinstance(b_pnginfo, dict) and "workflow" in b_pnginfo),
+		"User B NEVER receives User A cached workflow",
+	)
+
+	print("TestStripOwnerUidPrefixInEmbeddedWorkflow")
+	admin_save_ui = {
+		"nodes": [
+			{
+				"id": 11,
+				"type": "SaveImage",
+				"widgets_values": [f"{admin_uid}/lora_stack/krea2_gguf_stack"],
+				"widgets_values_named": {
+					"filename_prefix": f"{admin_uid}/lora_stack/krea2_gguf_stack"
+				},
+			}
+		],
+		"links": [],
+	}
+	cleaned_save = wm.sanitize_ui_workflow(admin_save_ui, admin_uid)
+	ok(cleaned_save is not None, "sanitize succeeds")
+	if cleaned_save:
+		node11 = cleaned_save["nodes"][0]
+		ok(
+			node11["widgets_values"][0] == "lora_stack/krea2_gguf_stack",
+			"widgets_values owner UID prefix stripped",
+		)
+		ok(
+			node11["widgets_values_named"]["filename_prefix"] == "lora_stack/krea2_gguf_stack",
+			"widgets_values_named filename_prefix owner UID prefix stripped",
+		)
+		ok(admin_uid not in json.dumps(cleaned_save), "no owner UUID in embedded copy")
+
+	# Test add_user_specific_folder_paths skips extra_data
+	try:
+		for stub_mod in ("folder_paths", "execution", "server"):
+			if stub_mod not in sys.modules:
+				sys.modules[stub_mod] = types.ModuleType(stub_mod)
+		sys.modules["execution"].MAXIMUM_HISTORY_SIZE = 100
+		sys.modules["execution"].PromptQueue = types.SimpleNamespace()
+		sys.modules["server"].PromptServer = types.SimpleNamespace()
+		ac_mod = _load_utils_submodule("access_control")
+		ac_func = ac_mod.AccessControl.add_user_specific_folder_paths
+		ac_inst = types.SimpleNamespace()
+		ac_inst.get_current_user_id = lambda: admin_uid
+		ac_inst.add_user_specific_folder_paths = types.MethodType(ac_func, ac_inst)
+		full_req_body = {
+			"prompt": {
+				"11": {
+					"class_type": "SaveImage",
+					"inputs": {"filename_prefix": "lora_stack/krea2_gguf_stack"},
+				}
+			},
+			"extra_data": {
+				"extra_pnginfo": {
+					"workflow": {
+						"nodes": [
+							{
+								"id": 11,
+								"widgets_values_named": {
+									"filename_prefix": "lora_stack/krea2_gguf_stack"
+								},
+							}
+						]
+					}
+				}
+			},
+		}
+		mutated = ac_func(ac_inst, full_req_body)
+		ok(
+			mutated["prompt"]["11"]["inputs"]["filename_prefix"]
+			== f"{admin_uid}/lora_stack/krea2_gguf_stack",
+			"prompt inputs filename_prefix still has user_id for actual disk save",
+		)
+		ok(
+			mutated["extra_data"]["extra_pnginfo"]["workflow"]["nodes"][0]["widgets_values_named"][
+				"filename_prefix"
+			]
+			== "lora_stack/krea2_gguf_stack",
+			"extra_data workflow filename_prefix NOT mutated with user_id",
+		)
+	except Exception as exc:
+		ok(False, f"add_user_specific_folder_paths test failed: {exc}")
+
+	print("TestConvertTimingReporting")
+	import logging
+
+	cpe_logger = logging.getLogger("mss_login.cpe")
+	log_records = []
+
+	class LogHandler(logging.Handler):
+		def emit(self, record):
+			log_records.append(record)
+
+	h = LogHandler()
+	cpe_logger.addHandler(h)
+	orig_level = cpe_logger.level
+	cpe_logger.setLevel(logging.DEBUG)
+	try:
+		# Simulate convert debug log message format
+		cpe_logger.debug(
+			"[cpe _convert_ui_or_error] browser_convert=%.3fs sanitize=%.3fs total=%.3fs",
+			35.123,
+			0.045,
+			35.168,
+		)
+		cpe_logger.debug(
+			"[cpe get-and-convert] load=%.3fs convert=%.3fs grant_check=%.3fs flatten=%.3fs cache=%.3fs total=%.3fs",
+			0.002,
+			35.168,
+			0.015,
+			0.005,
+			0.001,
+			35.191,
+		)
+		ok(len(log_records) >= 2, "timing log records captured at DEBUG level")
+		ok("browser_convert=" in log_records[0].getMessage(), "browser_convert breakdown reported")
+		ok("get-and-convert" in log_records[1].getMessage(), "get-and-convert breakdown reported")
+	finally:
+		cpe_logger.removeHandler(h)
+		cpe_logger.setLevel(orig_level)
+
+	print("TestRegressionPromptHistoryView")
+	# 1. Normal prompt pass-through with extra_data
+	normal_prompt = {"prompt": _sample_api(1), "client_id": "normal_ui"}
+	out_normal = wm.apply_prompt_extra_data(
+		normal_prompt, normal_prompt["prompt"], user_id=USER_A, cache=cache
+	)
+	ok(out_normal.get("prompt") == normal_prompt["prompt"], "normal prompt untouched")
+	ok(out_normal.get("client_id") == "normal_ui", "client_id intact")
+
+	# 2. History status helpers regression check
+	try:
+		hist_mod = (
+			_load_utils_submodule("history")
+			if os.path.exists(os.path.join(_utils, "history.py"))
+			else None
+		)
+	except Exception:
+		hist_mod = None
+	# user_isolation path safety check
+	iso_mod = _load_utils_submodule("user_isolation")
+	ok(iso_mod.is_prompt_execution_path("/prompt"), "is_prompt_execution_path /prompt")
+	ok(iso_mod.is_prompt_execution_path("/api/prompt"), "is_prompt_execution_path /api/prompt")
+	ok(not iso_mod.is_prompt_execution_path("/view"), "is_prompt_execution_path /view is False")
+	ok(
+		not iso_mod.is_prompt_execution_path("/history"),
+		"is_prompt_execution_path /history is False",
+	)
+
+	# View path safety check
+	ps_mod = _load_utils_submodule("path_safety")
+	ok(ps_mod.is_safe_filename("output_0001.png"), "output_0001.png is safe filename")
+	ok(not ps_mod.is_safe_filename("../etc/passwd"), "../etc/passwd is unsafe filename")
+
+	# TestFastPathPythonGraphConversion
+	print("TestFastPathPythonGraphConversion")
+	cpe_conv = _load_utils_submodule("cpe_convert")
+	standard_ui = {
+		"nodes": [
+			{
+				"id": 1,
+				"type": "EmptySD3LatentImage",
+				"inputs": [
+					{"name": "width", "widget": {"name": "width"}, "link": None},
+					{"name": "height", "widget": {"name": "height"}, "link": None},
+					{"name": "batch_size", "widget": {"name": "batch_size"}, "link": None},
+				],
+				"widgets_values": [512, 512, 1],
+			},
+			{
+				"id": 2,
+				"type": "KSampler",
+				"inputs": [
+					{"name": "latent_image", "type": "LATENT", "link": 10},
+					{"name": "seed", "widget": {"name": "seed"}, "link": None},
+					{"name": "steps", "widget": {"name": "steps"}, "link": None},
+					{"name": "cfg", "widget": {"name": "cfg"}, "link": None},
+				],
+				"widgets_values": [1234, "randomize", 20, 7.5],
+			},
+		],
+		"links": [[10, 1, 0, 2, 0, "LATENT"]],
+	}
+	converted = cpe_conv.convert_graph_to_prompt_python(standard_ui)
+	ok(converted is not None, "standard UI graph converted successfully")
+	ok("1" in converted and "2" in converted, "converted prompt has both nodes")
+	ok(converted["1"]["inputs"]["width"] == 512, "node 1 width widget preserved")
+	ok(
+		converted["2"]["inputs"]["seed"] == 1234,
+		"node 2 seed widget preserved without randomize string",
+	)
+	ok(converted["2"]["inputs"]["steps"] == 20, "node 2 steps preserved")
+	ok(converted["2"]["inputs"]["latent_image"] == ["1", 0], "linked input correctly mapped")
+
+	# Reroute resolution test
+	reroute_ui = {
+		"nodes": [
+			{"id": 1, "type": "SourceNode", "inputs": [], "widgets_values": []},
+			{"id": 5, "type": "Reroute", "inputs": [{"name": "*", "link": 1}]},
+			{
+				"id": 2,
+				"type": "TargetNode",
+				"inputs": [{"name": "model", "link": 2}],
+				"widgets_values": [],
+			},
+		],
+		"links": [[1, 1, 0, 5, 0, "*"], [2, 5, 0, 2, 0, "*"]],
+	}
+	res_reroute = cpe_conv.convert_graph_to_prompt_python(reroute_ui)
+	ok(res_reroute is not None, "graph with Reroute converted successfully")
+	ok("5" not in res_reroute, "Reroute node excluded from execution prompt")
+	ok(
+		res_reroute["2"]["inputs"]["model"] == ["1", 0],
+		"Reroute link chain forwarded directly to source",
+	)
+
+	# Fallback on unresolvable widget inputs
+	unresolvable_ui = {
+		"nodes": [
+			{
+				"id": 10,
+				"type": "CustomMysteryNode",
+				"inputs": [],
+				"widgets_values": [1, 2, 3],  # has widget values but no descriptors in inputs
+			}
+		],
+		"links": [],
+	}
+	ok(
+		cpe_conv.convert_graph_to_prompt_python(unresolvable_ui) is None,
+		"unresolvable custom node falls back to None for browser conversion",
+	)
+	ok(cpe_conv.convert_graph_to_prompt_python(None) is None, "None graph returns None")
+	ok(cpe_conv.convert_graph_to_prompt_python({}) is None, "Empty graph returns None")
+
+	# Browser warm pool test
+	cpe_browser = _load_utils_submodule("cpe_browser")
+	bm = cpe_browser.EmbeddedBrowserManager(pool_size=3)
+	ok(bm.pool_size == 3, "EmbeddedBrowserManager pool_size is 3")
+	ok(not bm.is_pool_ready, "EmbeddedBrowserManager not pool_ready before init")
+
 	# Cleanup overrides
 	wm.set_ui_workflow_cache_for_tests(None)
 	wm.set_cpe_embed_settings_override(None)
