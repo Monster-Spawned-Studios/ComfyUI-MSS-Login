@@ -112,6 +112,66 @@ def test_config_origin():
 		_ok(not cfg_mod.origin_allowed("https://evil.example"), "evil origin rejected")
 		_ok(not cfg_mod.is_secure_webauthn_origin("http://comfyui.tmd-nas.win"), "http rejected")
 		_ok(not cfg_mod.is_secure_webauthn_origin("https://203.0.113.10"), "bare IP rejected")
+
+		# Test HOST_BASE_URL automatic origin and RP ID resolution (e.g. Cloudflare tunnel)
+		os.environ["HOST_BASE_URL"] = "https://tunnel.mycloudflare.net"
+		try:
+			_ok(
+				cfg_mod.origin_allowed("https://tunnel.mycloudflare.net"),
+				"HOST_BASE_URL tunnel origin allowed",
+			)
+			_ok(
+				cfg_mod.is_secure_webauthn_origin("https://tunnel.mycloudflare.net"),
+				"HOST_BASE_URL tunnel origin is secure",
+			)
+			_ok(
+				cfg_mod.get_rp_id_for_origin("https://tunnel.mycloudflare.net")
+				== "tunnel.mycloudflare.net",
+				"RP ID dynamically resolves to tunnel domain",
+			)
+		finally:
+			os.environ.pop("HOST_BASE_URL", None)
+
+		# Test WEBAUTHN_ORIGINS and WEBAUTHN_RP_ID environment variables
+		os.environ["WEBAUTHN_ORIGINS"] = "https://mycomfy.example.com,https://tunnel.custom.org"
+		os.environ["WEBAUTHN_RP_ID"] = "example.com"
+		try:
+			env_cfg = cfg_mod.get_webauthn_config()
+			_ok(env_cfg["rp_id"] == "example.com", "WEBAUTHN_RP_ID env var honored")
+			_ok(
+				cfg_mod.origin_allowed("https://mycomfy.example.com"),
+				"WEBAUTHN_ORIGINS first origin allowed",
+			)
+			_ok(
+				cfg_mod.origin_allowed("https://tunnel.custom.org"),
+				"WEBAUTHN_ORIGINS second origin allowed",
+			)
+			_ok(
+				cfg_mod.get_rp_id_for_origin("https://mycomfy.example.com") == "example.com",
+				"subdomain matches configured parent RP ID suffix",
+			)
+			_ok(
+				cfg_mod.get_rp_id_for_origin("https://tunnel.custom.org") == "tunnel.custom.org",
+				"unrelated origin falls back to its own domain as RP ID",
+			)
+		finally:
+			os.environ.pop("WEBAUTHN_ORIGINS", None)
+			os.environ.pop("WEBAUTHN_RP_ID", None)
+
+		# Test wildcard origin for dynamic multi-tunnel setups
+		cfg_mod._load_cfg = lambda: {"webauthn": {"origins": ["*"]}}
+		_ok(
+			cfg_mod.origin_allowed("https://dynamic-tunnel.cfargotunnel.com"),
+			"wildcard origin allows any valid origin",
+		)
+		_ok(
+			cfg_mod.is_secure_webauthn_origin("https://dynamic-tunnel.cfargotunnel.com"),
+			"wildcard origin confirms secure https domain",
+		)
+		_ok(
+			not cfg_mod.is_secure_webauthn_origin("https://192.168.1.100"),
+			"wildcard origin still rejects bare IP",
+		)
 	finally:
 		cfg_mod._load_cfg = orig
 

@@ -11,7 +11,7 @@
 	}
 
 	async function api(path, opts) {
-		var r = await fetch(path, Object({ credentials: "same-origin" }, opts || {}));
+		var r = await fetch(path, Object.assign({ credentials: "same-origin" }, opts || {}));
 		var data = await r.json().catch(function () {
 			return {};
 		});
@@ -114,7 +114,19 @@
 		var status = await api("/mss-login/api/webauthn/status");
 		var insecure = document.getElementById("passkey-insecure");
 		var section = document.getElementById("passkey-section");
-		if (!status.data.available || !status.data.secure_origin) {
+		var data = status.data || {};
+		var secureOrigin =
+			data.origins !== undefined
+				? Boolean(
+						window.isSecureContext &&
+							(data.origins.includes(location.origin) ||
+								data.origins.includes("*") ||
+								data.origins.some(function (o) {
+									return o.replace(/\/+$/, "") === location.origin;
+								}))
+				  )
+				: Boolean(data.secure_origin);
+		if (!data.available || !secureOrigin) {
 			insecure.hidden = false;
 			section.hidden = true;
 		} else {

@@ -21,7 +21,12 @@ from ..utils.login_finalize import (
 from ..utils.mfa_temp_store import consume_mfa_temp_token, peek_mfa_temp_token
 from ..utils.ntfy_notifier import send_notification
 from ..utils.webauthn_challenge_store import consume_ceremony, create_ceremony
-from ..utils.webauthn_config import get_webauthn_config, is_secure_webauthn_origin, origin_allowed
+from ..utils.webauthn_config import (
+	get_rp_id_for_origin,
+	get_webauthn_config,
+	is_secure_webauthn_origin,
+	origin_allowed,
+)
 from ..utils.webauthn_credentials import WebAuthnCredential, get_webauthn_repo
 from ..utils.webauthn_guard import (
 	AttestationConveyancePreference,
@@ -81,11 +86,13 @@ async def _json_body(request: web.Request) -> dict:
 async def webauthn_status(request: web.Request) -> web.Response:
 	origin = (request.headers.get("Origin") or "").strip()
 	cfg = get_webauthn_config()
+	rp_id = get_rp_id_for_origin(origin) if origin else cfg["rp_id"]
 	return web.json_response(
 		{
 			"available": passkeys_enabled(),
 			"secure_origin": is_secure_webauthn_origin(origin) if origin else False,
-			"rp_id": cfg["rp_id"],
+			"rp_id": rp_id,
+			"origins": cfg.get("origins") or [],
 			"reason": None if passkeys_enabled() else passkeys_unavailable_reason(),
 		}
 	)
@@ -109,15 +116,16 @@ async def register_options(request: web.Request) -> web.Response:
 	if not origin_allowed(origin):
 		return web.json_response({"error": "Origin not allowed for passkeys"}, status=403)
 	cfg = get_webauthn_config()
+	rp_id = get_rp_id_for_origin(origin)
 	repo = get_webauthn_repo()
 	handle = repo.ensure_user_handle(user_id)
 	existing = [
 		PublicKeyCredentialDescriptor(id=c.credential_id)
 		for c in repo.list_for_user(user_id)
-		if c.rp_id == cfg["rp_id"]
+		if c.rp_id == rp_id
 	]
 	opts = generate_registration_options(
-		rp_id=cfg["rp_id"],
+		rp_id=rp_id,
 		rp_name=cfg["rp_name"],
 		user_id=handle,
 		user_name=username,
@@ -134,7 +142,7 @@ async def register_options(request: web.Request) -> web.Response:
 		ceremony_type="register",
 		user_id=user_id,
 		username=username,
-		rp_id=cfg["rp_id"],
+		rp_id=rp_id,
 		expected_origin=origin,
 	)
 	resp = web.json_response(json.loads(options_to_json(opts)))
@@ -219,8 +227,9 @@ async def passwordless_options(request: web.Request) -> web.Response:
 	cfg = get_webauthn_config()
 	if not origin_allowed(origin):
 		return web.json_response({"error": "Origin not allowed"}, status=403)
+	rp_id = get_rp_id_for_origin(origin)
 	opts = generate_authentication_options(
-		rp_id=cfg["rp_id"],
+		rp_id=rp_id,
 		allow_credentials=[],  # discoverable / empty allow list
 		user_verification=UserVerificationRequirement.REQUIRED,
 	)
@@ -229,7 +238,7 @@ async def passwordless_options(request: web.Request) -> web.Response:
 		ceremony_type="passwordless",
 		user_id=None,
 		username=None,
-		rp_id=cfg["rp_id"],
+		rp_id=rp_id,
 		expected_origin=origin,
 	)
 	resp = web.json_response(json.loads(options_to_json(opts)))
@@ -355,6 +364,7 @@ async def auth_options(request: web.Request) -> web.Response:
 	username = (body.get("username") or "").strip()
 	origin = (request.headers.get("Origin") or "").strip()
 	cfg = get_webauthn_config()
+	rp_id = get_rp_id_for_origin(origin) if origin else cfg["rp_id"]
 	# Always return options-shaped payload; empty allowCredentials for unknown users
 	allow = []
 	user_id = None
@@ -364,11 +374,11 @@ async def auth_options(request: web.Request) -> web.Response:
 			user_id = uid
 			repo = get_webauthn_repo()
 			for c in repo.list_for_user(uid):
-				if c.rp_id == cfg["rp_id"] and not c.revoked_at:
+				if (c.rp_id == rp_id or c.rp_id == cfg["rp_id"]) and not c.revoked_at:
 					allow.append(PublicKeyCredentialDescriptor(id=c.credential_id))
 	# Enumeration-safe: if no credentials, still generate options with empty allow list
 	opts = generate_authentication_options(
-		rp_id=cfg["rp_id"],
+		rp_id=rp_id,
 		allow_credentials=allow or None,
 		user_verification=UserVerificationRequirement.REQUIRED,
 	)
@@ -380,7 +390,7 @@ async def auth_options(request: web.Request) -> web.Response:
 		ceremony_type="authenticate",
 		user_id=user_id,
 		username=username or None,
-		rp_id=cfg["rp_id"],
+		rp_id=rp_id,
 		expected_origin=expected_origin,
 	)
 	resp = web.json_response(json.loads(options_to_json(opts)))
@@ -518,11 +528,13 @@ async def list_credentials(request: web.Request) -> web.Response:
 	if not username:
 		return web.json_response({"error": "Authentication required"}, status=401)
 	user_id, _ = users_db.get_user(username)
+	origin = (request.headers.get("Origin") or "").strip()
 	cfg = get_webauthn_config()
+	rp_id = get_rp_id_for_origin(origin) if origin else cfg["rp_id"]
 	repo = get_webauthn_repo()
 	items = []
 	for c in repo.list_for_user(user_id):
-		if c.rp_id != cfg["rp_id"]:
+		if c.rp_id != rp_id and c.rp_id != cfg["rp_id"]:
 			continue
 		items.append(
 			{
