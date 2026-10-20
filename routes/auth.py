@@ -468,6 +468,8 @@ async def get_passkeys(request: web.Request) -> web.Response:
 
 
 @routes.post("/login")
+@routes.post("/mss-login/api/login")
+@routes.post("/api/mss-login/api/login")
 async def post_login(request: web.Request) -> web.Response:
 	# Prefer middleware-sanitized data (form or JSON). Fallback for JSON if middleware missed it.
 	sanitized_data = dict(request.get("_sanitized_data") or {})
