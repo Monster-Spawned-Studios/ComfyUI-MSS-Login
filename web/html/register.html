@@ -39,6 +39,11 @@
         <h1 class="title register mss-auth-title">Register</h1>
         <!-- method="post" and action prevent credentials from ever being sent in the URL (e.g. if JS is disabled). -->
         <form id="register-form" method="post" action="/register">
+            <!-- Bot defense honeypot shield (invisible to humans and screen readers) -->
+            <div class="hp-field-wrap" aria-hidden="true" style="position: absolute !important; left: -9999px !important; top: -9999px !important; opacity: 0 !important; pointer-events: none !important; width: 0 !important; height: 0 !important; overflow: hidden !important;">
+                <label for="hp_auth_shield">Security Shield</label>
+                <input type="text" id="hp_auth_shield" name="hp_auth_shield" tabindex="-1" autocomplete="off" value="">
+            </div>
             <div class="form-fields">
                 <div class="fields-group" id="admin-fields">
                     <h3 class="subtitle">Admin Authentication</h3>

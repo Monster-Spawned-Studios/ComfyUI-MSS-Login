@@ -58,6 +58,8 @@ _ROUTE_POLICIES: list[tuple[str, str, str]] = [
 	# Credential / token issuance (public; lockout + MFA at handler)
 	_p("POST", "/mss-login/api/login", Policy.PUBLIC),
 	_p("POST", "/api/mss-login/api/login", Policy.PUBLIC),
+	_p("POST", "/mss-login/api/anti-bot/telemetry", Policy.PUBLIC),
+	_p("POST", "/api/mss-login/api/anti-bot/telemetry", Policy.PUBLIC),
 	_p("GET", "/mss-login/generate_token", Policy.PUBLIC),
 	_p("POST", "/mss-login/generate_token", Policy.PUBLIC),
 	_p("POST", "/generate_token", Policy.PUBLIC),
@@ -240,6 +242,10 @@ _ROUTE_POLICIES: list[tuple[str, str, str]] = [
 	_p("PUT", "/mss-login/api/settings/model-isolation-download-patterns", Policy.OWNER),
 	_p("GET", "/api/mss-login/api/settings/model-isolation-download-patterns", Policy.OWNER),
 	_p("PUT", "/api/mss-login/api/settings/model-isolation-download-patterns", Policy.OWNER),
+	_p("GET", "/mss-login/api/settings/loading-screen", Policy.OWNER),
+	_p("PUT", "/mss-login/api/settings/loading-screen", Policy.OWNER),
+	_p("GET", "/api/mss-login/api/settings/loading-screen", Policy.OWNER),
+	_p("PUT", "/api/mss-login/api/settings/loading-screen", Policy.OWNER),
 	_p("GET", "/mss-login/api/ntfy/quarantine", Policy.OWNER),
 	_p("GET", "/api/mss-login/api/ntfy/quarantine", Policy.OWNER),
 ]

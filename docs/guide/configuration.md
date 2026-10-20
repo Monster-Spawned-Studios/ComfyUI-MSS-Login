@@ -27,14 +27,14 @@ Copy `.env.example` to `.env` and set:
 | `EXPERIMENTAL_FEATURES`  | Enable experimental features (MFA, S3 storage/mount/workflow sync). Set to `true` or `1` to enable. Default: false. |
 | `RECOVERY_MODE`          | Enable recovery endpoint for MFA reset (e.g. `true` or `1`)                                       |
 | `RECOVERY_MODE_HOST`     | Comma-separated IPs allowed to call recovery (default: 127.0.0.1, ::1)                            |
-| `MSS_LOGIN_LOADING_TIMEOUT_SECONDS` | Loading page fail-safe redirect delay in seconds (default: 15; range 1–300). Only applies when experimental loading screen is enabled. |
-| `EXPERIMENTAL_MFA`, `EXPERIMENTAL_S3`, `EXPERIMENTAL_LOADING_SCREEN`, `EXPERIMENTAL_NEWS` | Per-feature experimental toggles when master `EXPERIMENTAL_FEATURES` is on. Set to `true` or `1` to enable. |
+| `MSS_LOGIN_LOADING_TIMEOUT_SECONDS` | Loading screen lobby buffer & redirect duration in seconds (default: 30; range 15–3600). Can also be set in `config.json` via `loading_screen.timeout_seconds` or owner API `/mss-login/api/settings/loading-screen`. |
+| `EXPERIMENTAL_MFA`, `EXPERIMENTAL_S3`, `EXPERIMENTAL_LOADING_SCREEN`, `EXPERIMENTAL_NEWS`, `EXPERIMENTAL_ANTI_BOT` | Per-feature experimental toggles when master `EXPERIMENTAL_FEATURES` is on. Set to `true` or `1` to enable. |
 
 ## Experimental features
 
 Experimental features use a **master switch** plus **per-feature toggles**. Full documentation (purpose, enablement, prerequisites) lives under **[Experimental Settings](../experimental/index.md)**.
 
-Short summary: set `EXPERIMENTAL_FEATURES=true`, then enable each of `mfa`, `s3`, `loading_screen`, `news`, `model_isolation`, `tailscale_local_auth`, `install_other_nodes_deps`, `login_background` via `config.json` `experimental`, matching `EXPERIMENTAL_*` env vars, or **avatar → MSS-Login Settings → Experimental Settings** (ComfyUI Settings → MSS-Login also works). Some flags (S3, node-deps auto-install) require a ComfyUI restart — the UI shows a notice when needed.
+Short summary: set `EXPERIMENTAL_FEATURES=true`, then enable each of `mfa`, `s3`, `loading_screen`, `news`, `model_isolation`, `tailscale_local_auth`, `install_other_nodes_deps`, `login_background`, `anti_bot` via `config.json` `experimental`, matching `EXPERIMENTAL_*` env vars, or **avatar → MSS-Login Settings → Experimental Settings** (ComfyUI Settings → MSS-Login also works). Some flags (S3, node-deps auto-install) require a ComfyUI restart — the UI shows a notice when needed.
 
 Owner-only **Login Appearance** (custom `/login` background) is documented under **[Experimental → Login background](../experimental/login-background.md)**.
 

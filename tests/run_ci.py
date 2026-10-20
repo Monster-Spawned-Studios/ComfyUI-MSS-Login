@@ -166,6 +166,7 @@ def main() -> int:
 		steps.append(
 			("Route policy (AUDIT-002)", os.path.join(TESTS_DIR, "run_route_policy_tests.py"))
 		)
+		steps.append(("Anti-bot defenses", os.path.join(TESTS_DIR, "run_anti_bot_tests.py")))
 
 		steps.append(("View path safety", os.path.join(TESTS_DIR, "run_view_path_safety_tests.py")))
 		steps.append(("Trash bin", os.path.join(TESTS_DIR, "run_trash_bin_tests.py")))
