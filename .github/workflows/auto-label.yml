@@ -9,7 +9,16 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/labeler@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install PyYAML
+        run: python3 -m pip install --user --break-system-packages pyyaml || python3 -m pip install --break-system-packages pyyaml
+
+      - name: Label PR
+        uses: actions/labeler@v5
         with:
           configuration-path: .github/labeler.yml
           sync-labels: false

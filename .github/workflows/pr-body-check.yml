@@ -39,7 +39,7 @@ jobs:
             const body = pr.body || '';
             const stripped = body.replace(/\s/g, '').replace(/<!--[\s\S]*?-->/g, '');
             const minLength = 80;
-            const hasTemplateSection = /##\s*(Description|Type of change|Bug|Scope|Behavior|Checklist)/i.test(body);
+            const hasTemplateSection = /#{1,4}\s*(Description|Summary|Overview|Changes|Type of change|Bug|Scope|Behavior|Checklist|What changed|Root Cause)/i.test(body);
             if (stripped.length < minLength) {
               core.setFailed(
                 'PR description is required and must be at least ' + minLength + ' non-whitespace characters. ' +
@@ -49,7 +49,7 @@ jobs:
             if (!hasTemplateSection) {
               core.setFailed(
                 'PR description must use one of the repository templates (General, Bug fix, Feature, Documentation, Config/tooling). ' +
-                'Use the template links in the default description or add a "## Description" (or similar) section.'
+                'Use the template links in the default description or add a "# Description", "## Summary", or similar section.'
               );
             }
             console.log('PR body length (after stripping):', stripped.length);

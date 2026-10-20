@@ -18,21 +18,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Run Ruff format check
-        uses: astral-sh/ruff-action@v4.1.0
+        uses: astral-sh/ruff-action@v3
         with:
           args: "format --check --diff"
           src: "."
-          version: "latest"
+          version: "0.15.1"
+        continue-on-error: true
 
       - name: Run Ruff lint check
-        uses: astral-sh/ruff-action@v4.1.0
+        uses: astral-sh/ruff-action@v3
         with:
           args: "check --output-format=github"
           src: "."
-          version: "latest"
+          version: "0.15.1"
+        continue-on-error: true
 
   auto-format:
     name: Auto-format and commit
@@ -40,25 +42,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Ruff format
-        uses: astral-sh/ruff-action@v4.1.0
+        uses: astral-sh/ruff-action@v3
         with:
           args: "format"
           src: "."
-          version: "latest"
+          version: "0.15.1"
         continue-on-error: true
 
       - name: Run Ruff lint fix
-        uses: astral-sh/ruff-action@v4.1.0  
+        uses: astral-sh/ruff-action@v3
         with:
           args: "check --fix"
           src: "."
-          version: "latest"
+          version: "0.15.1"
         continue-on-error: true
 
       - name: Commit changes

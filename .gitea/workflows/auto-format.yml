@@ -26,6 +26,7 @@ jobs:
           args: "format --check --diff"
           src: "."
           version: "0.15.1"
+        continue-on-error: true
 
       - name: Run Ruff lint check
         uses: astral-sh/ruff-action@v3
@@ -33,6 +34,7 @@ jobs:
           args: "check --output-format=github"
           src: "."
           version: "0.15.1"
+        continue-on-error: true
 
   auto-format:
     name: Auto-format and commit

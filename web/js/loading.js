@@ -21,6 +21,7 @@
     let tipIndex = 0;
     let tipTimer = null;
     let autoRedirectTimer = null;
+    let randomPool = [];
 
     function setTip(text) {
         if (tipEl) tipEl.textContent = text || "Preparing ComfyUI…";
@@ -28,8 +29,29 @@
 
     function nextTip() {
         if (tips.length === 0) return;
-        tipIndex = (tipIndex + 1) % tips.length;
-        setTip(tips[tipIndex]);
+        // First 2 messages display in strict sequential order:
+        // 0: "Preparing ComfyUI…", 1: "Loading your workspace…"
+        if (tipIndex === 0 && tips.length > 1) {
+            tipIndex = 1;
+            setTip(tips[1]);
+            return;
+        }
+        // If 2 or fewer tips, cycle sequentially between them
+        if (tips.length <= 2) {
+            tipIndex = (tipIndex + 1) % tips.length;
+            setTip(tips[tipIndex]);
+            return;
+        }
+        // Followed by randomized messages picked from index 2 onwards
+        if (randomPool.length === 0) {
+            for (let i = 2; i < tips.length; i++) {
+                randomPool.push(i);
+            }
+        }
+        const randIdx = Math.floor(Math.random() * randomPool.length);
+        const chosen = randomPool.splice(randIdx, 1)[0];
+        tipIndex = chosen;
+        setTip(tips[chosen]);
     }
 
     function startTipRotation() {
@@ -49,6 +71,7 @@
                 }
                 if (tips.length > 0) {
                     tipIndex = 0;
+                    randomPool = [];
                     setTip(tips[0]);
                     startTipRotation();
                 }

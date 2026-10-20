@@ -11,7 +11,7 @@ bcrypt
 bleach>=6.4.0
 cryptography>=50.0.0
 numpy
-pillow>=12.3.0
+pillow>=13.0.0
 psycopg2-binary
 pymysql
 pyotp

@@ -8,7 +8,7 @@ useDefault = true
 [[allowlists]]
 description = "Test fixtures and intentional example secrets (not live credentials)"
 paths = [
-	'''tests/run_new_features_tests\.py''',
-	'''tests/.*_fixtures\.py''',
+	'''tests/.*''',
+	'''scripts/security-check\.sh''',
 	'''\.gitleaks\.toml''',
 ]

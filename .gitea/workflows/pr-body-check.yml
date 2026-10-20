@@ -56,7 +56,11 @@ jobs:
           stripped = re.sub(r"\s", "", stripped)
           min_length = 80
           has_template_section = bool(
-              re.search(r"##\s*(Description|Type of change|Bug|Scope|Behavior|Checklist)", body, re.I)
+              re.search(
+                  r"#{1,4}\s*(Description|Summary|Overview|Changes|Type of change|Bug|Scope|Behavior|Checklist|What changed|Root Cause)",
+                  body,
+                  re.I,
+              )
           )
           failed = False
           if len(stripped) < min_length:
@@ -70,7 +74,7 @@ jobs:
               print(
                   "PR description must use one of the repository templates "
                   "(General, Bug fix, Feature, Documentation, Config/tooling). "
-                  'Use the template links in the default description or add a "## Description" (or similar) section.'
+                  'Use the template links in the default description or add a "# Description", "## Summary", or similar section.'
               )
               failed = True
           print("PR body length (after stripping):", len(stripped))

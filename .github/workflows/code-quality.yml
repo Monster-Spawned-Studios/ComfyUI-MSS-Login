@@ -14,39 +14,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
       - name: Run Ruff
-        uses: astral-sh/ruff-action@v4.1.0
+        uses: astral-sh/ruff-action@v3
         with:
           args: "check --output-format=github"
           src: "."
-          version: "latest"
+          version: "0.15.1"
 
   ruff-format:
     name: Ruff (format check)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
       - name: Run Ruff format check
-        uses: astral-sh/ruff-action@v4.1.0
+        uses: astral-sh/ruff-action@v3
         with:
           args: "format --check --diff"
           src: "."
-          version: "latest"
+          version: "0.15.1"
 
   ruff-fix:
     name: Ruff (fix)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
       - name: Run Ruff fix
-        uses: astral-sh/ruff-action@v4.1.0
+        uses: astral-sh/ruff-action@v3
         with:
           args: "check --fix --output-format=github"
           src: "."
-          version: "latest"
+          version: "0.15.1"
 
   ntfy-notification:
     name: Notify on MSS-Login Code Quality Results

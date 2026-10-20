@@ -31,7 +31,7 @@ dependencies = [
 	"pymysql",
 	"sqlcipher3",
 	"argon2-cffi",
-	"pillow>=12.3.0",
+	"pillow>=13.0.0",
 	"numpy",
 	"torch>=2.13.0",
 	"torchvision",
