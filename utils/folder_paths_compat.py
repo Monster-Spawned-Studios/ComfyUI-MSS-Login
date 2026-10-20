@@ -27,14 +27,16 @@ def get_models_root() -> str:
 	return ""
 
 
-def resolve_local_model_destination(folder_type: str, target_user_id: str) -> tuple[str, str]:
+def resolve_local_model_destination(
+	folder_type: str, target_user_id: str, isolate: bool = True
+) -> tuple[str, str]:
 	"""
 	Resolve a local download destination under ComfyUI models.
 
 	Returns (dest_dir, base_dir) where base_dir is used for path containment checks.
 	Raises RuntimeError when the models root is unavailable or dest escapes base_dir.
 	"""
-	isolated_dest = maybe_isolated_destination(folder_type, target_user_id)
+	isolated_dest = maybe_isolated_destination(folder_type, target_user_id) if isolate else None
 	if isolated_dest is not None:
 		dest_dir = isolated_dest
 		base_dir = os.path.realpath(os.path.join(isolated_dest, "..", "..", ".."))

@@ -398,7 +398,97 @@ def run_tests():
 		shared_store.grants[0]["item_name"] == "uid-alice/only.safetensors",
 		"grant uses user prefix + exact filename",
 	)
+	print("TestIsolateQueueOption")
+	body_isolate_false = {
+		"source": "civitai",
+		"folder_type": "checkpoints",
+		"model_version_id": "12345",
+		"isolate": False,
+	}
+	job_id, err = asyncio.run(
+		mod.enqueue_download_job(
+			"uid-bob", "bob", "user", {"can_download_models": True}, body_isolate_false
+		)
+	)
+	ok(job_id is None, "regular user cannot set isolate=False")
+	ok(err is not None and err.get("code") == "DOWNLOAD_NOT_ALLOWED", "denial uses DOWNLOAD_NOT_ALLOWED")
+
+	job_id, err = asyncio.run(
+		mod.enqueue_download_job(
+			"uid-admin",
+			"admin",
+			"admin",
+			{"can_download_models": True, "can_manage_model_sharing": True},
+			body_isolate_false,
+		)
+	)
+	ok(job_id is not None, "admin can set isolate=False")
+	ok(mod._JOBS_BY_ID.get(job_id, {}).get("isolate") is False, "job stores isolate=False")
 	mod.experimental_model_isolation_enabled = lambda: False
+
+	print("TestModelSourceTokensAndProfilePersistence")
+	# 1. No token anywhere -> AUTH_REQUIRED_UPSTREAM
+	saved_source_token = mod._source_token
+	mod._source_token = lambda uid, src: None
+	body_no_token = {
+		"source": "civitai",
+		"folder_type": "checkpoints",
+		"model_version_id": "999",
+	}
+	job_id, err = asyncio.run(
+		mod.enqueue_download_job(
+			"uid-charlie", "charlie", "user", {"can_download_models": True}, body_no_token
+		)
+	)
+	ok(job_id is None, "download fails when no token is available")
+	ok(err is not None and err.get("code") == "AUTH_REQUIRED_UPSTREAM", "error is AUTH_REQUIRED_UPSTREAM")
+
+	# 2. Token passed in body/node -> succeeds and auto-persists to profile store if not present
+	fake_profile_store = {}
+
+	class _TestKeyStore:
+		def get_key(self, uid, src):
+			return fake_profile_store.get((uid, src))
+
+		def set_key(self, uid, src, val):
+			fake_profile_store[(uid, src)] = val
+			return True
+
+	keys_mod = sys.modules["mss_login.utils.model_source_api_keys_store"]
+	original_key_store = keys_mod.get_model_source_api_keys_store
+	keys_mod.get_model_source_api_keys_store = lambda _cfg: _TestKeyStore()
+	mod.get_model_source_api_keys_store = lambda _cfg: _TestKeyStore()
+
+	body_with_token = {
+		"source": "civitai",
+		"folder_type": "checkpoints",
+		"model_version_id": "999",
+		"api_key": "civitai-test-key-123",
+	}
+	job_id, err = asyncio.run(
+		mod.enqueue_download_job(
+			"uid-charlie", "charlie", "user", {"can_download_models": True}, body_with_token
+		)
+	)
+	ok(job_id is not None, "download succeeds when api_key is passed in body")
+	ok(
+		fake_profile_store.get(("uid-charlie", "civitai")) == "civitai-test-key-123",
+		"api_key auto-persists to user profile",
+	)
+
+	# 3. Environment variable fallback
+	os.environ["HF_TOKEN"] = "hf-env-token-456"
+	try:
+		# Use the real _source_token implementation
+		mod._source_token = saved_source_token
+		hf_token = mod._source_token("uid-charlie", "huggingface")
+		ok(hf_token == "hf-env-token-456", "environment token fallback works for HuggingFace")
+	finally:
+		os.environ.pop("HF_TOKEN", None)
+
+	keys_mod.get_model_source_api_keys_store = original_key_store
+	mod.get_model_source_api_keys_store = original_key_store
+	mod._source_token = lambda uid, src: "test-token"
 
 	print("TestS3Boto3DestinationResolve")
 	mount_root = os.path.join(_PROJECT_ROOT, "tests", "_tmp_s3_mount")

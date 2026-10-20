@@ -117,7 +117,14 @@
 		var data = status.data || {};
 		var secureOrigin =
 			data.origins !== undefined
-				? Boolean(window.isSecureContext && data.origins.includes(location.origin))
+				? Boolean(
+						window.isSecureContext &&
+							(data.origins.includes(location.origin) ||
+								data.origins.includes("*") ||
+								data.origins.some(function (o) {
+									return o.replace(/\/+$/, "") === location.origin;
+								}))
+				  )
 				: Boolean(data.secure_origin);
 		if (!data.available || !secureOrigin) {
 			insecure.hidden = false;
