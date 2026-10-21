@@ -24,8 +24,13 @@
     ".ruff_cache/**",
     "_planning/**",
     "tests",
-    "web/dist/*",
-    "web/frontend/*"
+    "tests/**",
+    "web/dist/**",
+    "web/frontend/**",
+    "web/vendor/**",
+    "*.lock",
+    "pnpm-lock.yaml",
+    "uv.lock"
   ],
   "dictionaries": [
     "en-GB",

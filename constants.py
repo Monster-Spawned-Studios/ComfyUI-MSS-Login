@@ -694,6 +694,11 @@ def experimental_login_background_enabled() -> bool:
 	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("login_background"))
 
 
+def experimental_anti_bot_enabled() -> bool:
+	"""True if master experimental is on and anti_bot feature is enabled."""
+	return bool(EXPERIMENTAL_FEATURES and _get_experimental_sub("anti_bot"))
+
+
 def get_experimental_flags() -> dict:
 	"""Return dict of per-feature flags for /me and settings."""
 	return {
@@ -705,21 +710,32 @@ def get_experimental_flags() -> dict:
 		"tailscale_local_auth": experimental_tailscale_local_auth_enabled(),
 		"install_other_nodes_deps": experimental_install_other_nodes_deps_enabled(),
 		"login_background": experimental_login_background_enabled(),
+		"anti_bot": experimental_anti_bot_enabled(),
 	}
 
 
-# Loading screen fail-safe timeout (seconds). Env: MSS_LOGIN_LOADING_TIMEOUT_SECONDS (default 15).
+# Loading screen fail-safe / lobby queue timeout (seconds).
+# Env: MSS_LOGIN_LOADING_TIMEOUT_SECONDS (minimum 15, default 30, up to 3600).
+MIN_LOADING_TIMEOUT_SECONDS = 15
+MAX_LOADING_TIMEOUT_SECONDS = 3600
+DEFAULT_LOADING_TIMEOUT_SECONDS = 30
+
+
 def _get_loading_timeout_seconds() -> int:
 	env_val = os.environ.get("MSS_LOGIN_LOADING_TIMEOUT_SECONDS", "").strip()
 	if env_val.isdigit():
-		return max(1, min(300, int(env_val)))
+		num = int(env_val)
+		return max(MIN_LOADING_TIMEOUT_SECONDS, min(MAX_LOADING_TIMEOUT_SECONDS, num))
 	cfg = _load_config(CONFIG_FILE_PATH)
 	screen = cfg.get("loading_screen")
 	if isinstance(screen, dict) and "timeout_seconds" in screen:
 		val = screen["timeout_seconds"]
-		if isinstance(val, int) and 1 <= val <= 300:
-			return val
-	return 15
+		try:
+			num = int(val)
+			return max(MIN_LOADING_TIMEOUT_SECONDS, min(MAX_LOADING_TIMEOUT_SECONDS, num))
+		except (TypeError, ValueError):
+			pass
+	return DEFAULT_LOADING_TIMEOUT_SECONDS
 
 
 LOADING_TIMEOUT_SECONDS = _get_loading_timeout_seconds()

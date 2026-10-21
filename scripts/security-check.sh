@@ -192,6 +192,7 @@ except jwt.ExpiredSignatureError:
 	pass
 
 # alg=none -> must raise
+# cspell:disable-next-line
 none_tok = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJpZCI6MSwidXNlcm5hbWUiOiJ1In0."
 try:
 	jwt.decode(none_tok, secret, algorithms=[alg])

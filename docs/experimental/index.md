@@ -23,7 +23,7 @@ After changing env vars or editing `config.json` on disk, restart ComfyUI if the
 |--------|-----------------|
 | `s3` toggled, or master toggled while `s3` is enabled | **Yes** — S3 mount/sync starts at process boot |
 | `install_other_nodes_deps` turned **on** | **Yes** — startup background scan; manual Scan & Install still works live |
-| `mfa`, `loading_screen`, `news`, `model_isolation`, `tailscale_local_auth`, `login_background`, failsafe | **No** — apply after save |
+| `mfa`, `loading_screen`, `news`, `model_isolation`, `tailscale_local_auth`, `login_background`, `anti_bot`, failsafe | **No** — apply after save |
 
 The PUT `/mss-login/api/settings/experimental` response includes `restart_required` and `restart_reasons` so the UI can warn you.
 
@@ -39,6 +39,7 @@ The PUT `/mss-login/api/settings/experimental` response includes `restart_requir
 | `tailscale_local_auth` | Trusted Tailscale/local auth helpers | [Tailscale local auth](tailscale-local-auth.md) |
 | `install_other_nodes_deps` | Auto-install other custom-node deps | [Install other node deps](install-other-nodes-deps.md) |
 | `login_background` | Custom `/login` image or video background | [Login background](login-background.md) |
+| `anti_bot` | Anti-bot defenses (honeypots & behavioral verification) | [Anti-bot](anti-bot.md) |
 
 Related (not a feature flag): [Experimental failsafe](failsafe.md) (`experimental_failsafe` / `MSS_LOGIN_EXPERIMENTAL_FAILSAFE`).
 

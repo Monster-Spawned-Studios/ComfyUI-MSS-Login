@@ -28,6 +28,7 @@ _ARGON2_PATTERN = re.compile(
 
 _BCRYPT_PATTERN = re.compile(r"\$2[aby]?\$\d{2}\$[A-Za-z0-9./]{53}")
 
+# cspell:disable-next-line
 _AWS_ACCESS_KEY_PATTERN = re.compile(r"\b(?:AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b")
 
 _SQLCIPHER_PRAGMA_PATTERN = re.compile(

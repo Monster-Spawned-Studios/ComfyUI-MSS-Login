@@ -70,8 +70,9 @@ def run_tests():
 		"tailscale_local_auth",
 		"install_other_nodes_deps",
 		"login_background",
+		"anti_bot",
 	}
-	ok(set(keys) == expected, f"all 8 keys present (got {set(keys)})")
+	ok(set(keys) == expected, f"all 9 keys present (got {set(keys)})")
 
 	print("TestExperimentalBlockFromCfg")
 	cfg = {"experimental": {"mfa": True, "s3": 1, "install_other_nodes_deps": True}}

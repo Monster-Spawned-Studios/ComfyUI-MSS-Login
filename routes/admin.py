@@ -352,6 +352,7 @@ _EXPERIMENTAL_FEATURE_KEYS = (
 	"tailscale_local_auth",
 	"install_other_nodes_deps",
 	"login_background",
+	"anti_bot",
 )
 
 
@@ -513,6 +514,77 @@ routes.get("/api/mss-login/api/settings/login-background")(api_get_login_backgro
 routes.put("/api/mss-login/api/settings/login-background")(api_put_login_background_settings)
 routes.get("/api/mss-login/api/login-background")(api_get_public_login_background)
 routes.get("/api/mss-login/api/login-background/media")(api_get_login_background_media)
+
+
+@routes.get("/mss-login/api/settings/loading-screen")
+async def api_get_loading_screen_settings(request):
+	"""Return loading screen queue buffer duration settings (owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	from ..constants import (
+		DEFAULT_LOADING_TIMEOUT_SECONDS,
+		MAX_LOADING_TIMEOUT_SECONDS,
+		MIN_LOADING_TIMEOUT_SECONDS,
+		_get_loading_timeout_seconds,
+	)
+
+	timeout_sec = _get_loading_timeout_seconds()
+	return web.json_response(
+		{
+			"timeout_seconds": timeout_sec,
+			"min_timeout_seconds": MIN_LOADING_TIMEOUT_SECONDS,
+			"max_timeout_seconds": MAX_LOADING_TIMEOUT_SECONDS,
+			"default_timeout_seconds": DEFAULT_LOADING_TIMEOUT_SECONDS,
+		}
+	)
+
+
+@routes.put("/mss-login/api/settings/loading-screen")
+async def api_put_loading_screen_settings(request):
+	"""Update loading screen queue buffer duration (owner only; min 15s, max 3600s)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	from ..constants import MAX_LOADING_TIMEOUT_SECONDS, MIN_LOADING_TIMEOUT_SECONDS
+
+	try:
+		data = await request.json()
+	except Exception:
+		return web.json_response({"error": "Invalid JSON"}, status=400)
+	if not isinstance(data, dict) or "timeout_seconds" not in data:
+		return web.json_response({"error": "Missing timeout_seconds in request body"}, status=400)
+	try:
+		raw_val = int(data["timeout_seconds"])
+	except (TypeError, ValueError):
+		return web.json_response({"error": "timeout_seconds must be an integer"}, status=400)
+	if raw_val < MIN_LOADING_TIMEOUT_SECONDS:
+		return web.json_response(
+			{
+				"error": (
+					f"timeout_seconds cannot be less than {MIN_LOADING_TIMEOUT_SECONDS} seconds"
+				)
+			},
+			status=400,
+		)
+	if raw_val > MAX_LOADING_TIMEOUT_SECONDS:
+		return web.json_response(
+			{"error": (f"timeout_seconds cannot exceed {MAX_LOADING_TIMEOUT_SECONDS} seconds")},
+			status=400,
+		)
+
+	cfg = load_json_file(CONFIG_FILE_PATH, {})
+	if not isinstance(cfg, dict):
+		cfg = {}
+	screen = cfg.get("loading_screen")
+	if not isinstance(screen, dict):
+		screen = {}
+	screen["timeout_seconds"] = raw_val
+	cfg["loading_screen"] = screen
+	save_json_file(CONFIG_FILE_PATH, cfg)
+	return web.json_response({"status": "ok", "timeout_seconds": raw_val})
+
+
+routes.get("/api/mss-login/api/settings/loading-screen")(api_get_loading_screen_settings)
+routes.put("/api/mss-login/api/settings/loading-screen")(api_put_loading_screen_settings)
 
 
 @routes.get("/mss-login/api/settings/tailscale-auth")

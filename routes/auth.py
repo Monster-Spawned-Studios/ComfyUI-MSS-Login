@@ -24,12 +24,13 @@ from ..constants import (
 	TRUSTED_IDENTITY_HEADER,
 	USERS_DB_CONFIG,
 	WEB_DIR,
+	_get_loading_timeout_seconds,
 	experimental_loading_screen_enabled,
 	experimental_mfa_enabled,
 	experimental_tailscale_local_auth_enabled,
 )
 from ..globals import access_control, jwt_auth, logger, routes, timeout, users_db
-from ..utils import user_env
+from ..utils import anti_bot, user_env
 from ..utils.api_token_store import get_api_token_store
 from ..utils.auth_cookies import clear_auth_cookies, set_auth_cookie, truthy_remember_me
 from ..utils.bootstrap import ensure_groups_config, ensure_guest_user
@@ -195,6 +196,25 @@ async def post_register(request: web.Request) -> web.Response:
 	"""Register a new user."""
 	sanitized_data = request.get("_sanitized_data", {})
 	ip = get_ip(request)
+
+	if anti_bot.is_anti_bot_active() and not anti_bot.is_loopback_ip(ip):
+		if anti_bot.is_honeypot_triggered(sanitized_data):
+			anti_bot.record_bot_detection(
+				ip,
+				"honeypot_triggered",
+				{"field": anti_bot.HONEYPOT_FIELD_NAME, "endpoint": "register"},
+			)
+			timeout.add_failed_attempt(ip)
+			return web.json_response({"error": "Automated submission detected"}, status=403)
+		ua = request.headers.get("User-Agent", "")
+		is_scanner, tool_name = anti_bot.is_automated_user_agent(ua)
+		if is_scanner:
+			anti_bot.record_bot_detection(
+				ip, "scanner_user_agent", {"tool": tool_name, "endpoint": "register"}
+			)
+			timeout.add_failed_attempt(ip)
+			return web.json_response({"error": "Automated tool rejected"}, status=403)
+
 	new_username = sanitize_username(sanitized_data.get("new_user_username"))
 	new_password = sanitize_password_input(sanitized_data.get("new_user_password"))
 	username = sanitize_username(sanitized_data.get("username"))
@@ -313,7 +333,8 @@ async def get_loading(request: web.Request) -> web.Response:
 	path = os.path.join(HTML_DIR, "loading.html")
 	if not os.path.exists(path):
 		return web.Response(text="loading.html not found", status=404)
-	timeout_ms = LOADING_TIMEOUT_SECONDS * 1000
+	timeout_sec = _get_loading_timeout_seconds()
+	timeout_ms = timeout_sec * 1000
 	try:
 		with open(path, "r", encoding="utf-8") as f:
 			html = f.read()
@@ -485,6 +506,24 @@ async def post_login(request: web.Request) -> web.Response:
 		except Exception:
 			pass
 	ip = get_ip(request)
+
+	if anti_bot.is_anti_bot_active() and not anti_bot.is_loopback_ip(ip):
+		if anti_bot.is_honeypot_triggered(sanitized_data):
+			anti_bot.record_bot_detection(
+				ip,
+				"honeypot_triggered",
+				{"field": anti_bot.HONEYPOT_FIELD_NAME, "endpoint": "login"},
+			)
+			timeout.add_failed_attempt(ip)
+			return web.json_response({"error": "Automated submission detected"}, status=403)
+		ua = request.headers.get("User-Agent", "")
+		is_scanner, tool_name = anti_bot.is_automated_user_agent(ua)
+		if is_scanner:
+			anti_bot.record_bot_detection(
+				ip, "scanner_user_agent", {"tool": tool_name, "endpoint": "login"}
+			)
+			timeout.add_failed_attempt(ip)
+			return web.json_response({"error": "Automated tool rejected"}, status=403)
 
 	if str(sanitized_data.get("guest_login", "false")).lower() == "true":
 		if not constants_module.ALLOW_GUEST_JWT:
@@ -1149,3 +1188,36 @@ async def delete_user_token(request: web.Request) -> web.Response:
 		user_console_append(username, f"API token revoked (prefix: {prefix}...)")
 		return web.json_response({"message": "Token revoked."})
 	return web.json_response({"error": "Token not found."}, status=404)
+
+
+@routes.post("/mss-login/api/anti-bot/telemetry")
+@routes.post("/api/mss-login/api/anti-bot/telemetry")
+async def api_anti_bot_telemetry(request: web.Request) -> web.Response:
+	"""Client-side anti-bot telemetry ingestion endpoint.
+
+	Receives behavioral detection signals (synthetic clicks, subhuman reaction times,
+	WebDriver / headless browser profiling flags).
+	"""
+	ip = get_ip(request)
+	try:
+		body = await request.json()
+	except Exception:
+		return web.json_response({"error": "Invalid JSON"}, status=400)
+
+	if not isinstance(body, dict):
+		return web.json_response({"error": "Invalid format"}, status=400)
+
+	reason = str(body.get("reason", "unknown"))[:100]
+	details = {
+		"elapsed_ms": body.get("elapsed_ms"),
+		"entropy": body.get("entropy"),
+		"webdriver": bool(body.get("webdriver", False)),
+		"user_agent": request.headers.get("User-Agent", "")[:255],
+	}
+
+	if anti_bot.is_anti_bot_active() and not anti_bot.is_loopback_ip(ip):
+		anti_bot.record_bot_detection(ip, reason, details)
+		if reason in ("synthetic_click", "webdriver_detected", "subhuman_speed"):
+			timeout.add_failed_attempt(ip)
+
+	return web.json_response({"status": "received"})

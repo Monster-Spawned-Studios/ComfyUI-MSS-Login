@@ -11,16 +11,42 @@
     const TIPS_URL = "/mss-login/loading-tips.json";
     const TIP_INTERVAL_MS = 5000;
     const _metaTimeout = document.querySelector('meta[name="mss-loading-timeout-ms"]');
-    const AUTO_REDIRECT_MS = _metaTimeout ? (parseInt(_metaTimeout.content, 10) || 15000) : 15000;
+    // Enforce hard minimum 15 seconds (15000ms), default 30 seconds
+    const MIN_LOADING_MS = 15000;
+    const _rawTimeout = _metaTimeout ? (parseInt(_metaTimeout.content, 10) || 30000) : 30000;
+    const AUTO_REDIRECT_MS = Math.max(MIN_LOADING_MS, _rawTimeout);
 
     const tipEl = document.getElementById("loading-tip");
     const bannerEl = document.getElementById("loading-update-banner");
     const continueBtn = document.getElementById("loading-continue-btn");
+    const countdownEl = document.getElementById("countdown-seconds");
+
+    const pageLoadTime = Date.now();
+    let humanEntropyCount = 0;
+    let hasPointerMovement = false;
+    let hasKeyOrTouch = false;
+
+    function registerEntropy(e) {
+        humanEntropyCount++;
+        if (e.type === "pointermove" || e.type === "mousemove") {
+            hasPointerMovement = true;
+        }
+        if (e.type === "touchstart" || e.type === "keydown") {
+            hasKeyOrTouch = true;
+        }
+    }
+
+    window.addEventListener("pointermove", registerEntropy, { passive: true });
+    window.addEventListener("mousemove", registerEntropy, { passive: true });
+    window.addEventListener("touchstart", registerEntropy, { passive: true });
+    window.addEventListener("keydown", registerEntropy, { passive: true });
+    window.addEventListener("scroll", registerEntropy, { passive: true });
 
     let tips = [];
     let tipIndex = 0;
     let tipTimer = null;
     let autoRedirectTimer = null;
+    let countdownInterval = null;
     let randomPool = [];
 
     function setTip(text) {
@@ -216,19 +242,96 @@
             });
     }
 
+    function detectHeadlessOrWebDriver() {
+        try {
+            if (navigator.webdriver === true) return true;
+            if (window.document && window.document.documentElement && window.document.documentElement.getAttribute("webdriver") !== null) return true;
+            if (window._phantom || window.__nightmare || window.callPhantom || window.__fxdriver_unwrapped) return true;
+            if (typeof navigator.userAgent === "string" && /HeadlessChrome/.test(navigator.userAgent)) return true;
+        } catch (_) {}
+        return false;
+    }
+
     function goToApp() {
         if (autoRedirectTimer) {
             clearTimeout(autoRedirectTimer);
             autoRedirectTimer = null;
         }
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
         window.location.href = "/";
     }
 
-    if (continueBtn) continueBtn.addEventListener("click", goToApp);
+    function handleContinue(event) {
+        const elapsed = Date.now() - pageLoadTime;
+        const isWebdriver = detectHeadlessOrWebDriver();
+        const isUntrusted = !event || event.isTrusted === false;
+        const isTooFast = elapsed < 800;
+        const isZeroEntropy = !hasPointerMovement && !hasKeyOrTouch && humanEntropyCount < 2;
+
+        let botReason = null;
+        if (isUntrusted) {
+            botReason = "synthetic_click";
+        } else if (isTooFast) {
+            botReason = "subhuman_speed";
+        } else if (isWebdriver) {
+            botReason = "webdriver_detected";
+        } else if (isZeroEntropy && elapsed < 2000) {
+            botReason = "zero_entropy_anomaly";
+        }
+
+        if (botReason) {
+            try {
+                const payload = JSON.stringify({
+                    reason: botReason,
+                    elapsed_ms: elapsed,
+                    entropy: humanEntropyCount,
+                    webdriver: isWebdriver,
+                });
+                if (navigator.sendBeacon) {
+                    navigator.sendBeacon("/mss-login/api/anti-bot/telemetry", new Blob([payload], { type: "application/json" }));
+                } else {
+                    fetch("/mss-login/api/anti-bot/telemetry", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: payload,
+                        credentials: "same-origin"
+                    }).catch(function () {});
+                }
+            } catch (_) {}
+
+            if (continueBtn) {
+                continueBtn.disabled = true;
+                continueBtn.textContent = "Verifying…";
+            }
+            if (tipEl) {
+                setTip("Verifying human interaction… please wait.");
+            }
+            return;
+        }
+
+        goToApp();
+    }
+
+    if (continueBtn) continueBtn.addEventListener("click", handleContinue);
 
     fetchTips();
     checkUpdateBanner();
 
-    // Auto-redirect to main ComfyUI after a short display time; Continue button still works for immediate navigation
+    let remainingSeconds = Math.ceil(AUTO_REDIRECT_MS / 1000);
+    if (countdownEl) countdownEl.textContent = remainingSeconds;
+    countdownInterval = setInterval(function () {
+        remainingSeconds--;
+        if (remainingSeconds < 0) remainingSeconds = 0;
+        if (countdownEl) countdownEl.textContent = remainingSeconds;
+        if (remainingSeconds <= 0) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
+    }, 1000);
+
+    // Auto-redirect to main ComfyUI after lobby duration; Continue button allows verified humans to proceed immediately
     autoRedirectTimer = setTimeout(goToApp, AUTO_REDIRECT_MS);
 })();

@@ -61,6 +61,16 @@
         .loading-update-apply:hover { background: #7c60fa; border-color: #7c60fa; }
         .loading-update-apply:disabled { opacity: 0.5; cursor: not-allowed; }
         .loading-continue { margin-top: 1rem; }
+        .loading-countdown {
+            font-size: 0.85rem;
+            color: #71717a;
+            margin: 0.5rem 0;
+            text-align: center;
+        }
+        .loading-countdown span {
+            color: #a1a1aa;
+            font-weight: 600;
+        }
     </style>
 </head>
 
@@ -78,6 +88,9 @@
 
         <div class="loading-spinner" aria-hidden="true"></div>
         <p id="loading-tip" class="loading-tip">Preparing ComfyUI…</p>
+        <div id="loading-countdown" class="loading-countdown" aria-live="polite">
+            Entering workspace in <span id="countdown-seconds">--</span>s…
+        </div>
 
         <div class="form-field loading-continue">
             <button id="loading-continue-btn" class="btn" type="button">Continue</button>
