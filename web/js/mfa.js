@@ -96,6 +96,8 @@
 			const qrContainer = document.getElementById("mfa-qr-container");
 			const backupDisplay = document.getElementById("mfa-backup-display");
 			const backupCodeEl = document.getElementById("mfa-backup-code");
+			const secretDisplay = document.getElementById("mfa-secret-display");
+			const secretKeyEl = document.getElementById("mfa-secret-key");
 
 			fetch("/mss-login/api/mfa/setup", {
 				method: "POST",
@@ -112,17 +114,42 @@
 					}
 					if (qrContainer) {
 						qrContainer.innerHTML = "";
-						if (typeof QRCode !== "undefined") {
-							new QRCode(qrContainer, {
-								text: data.provisioning_uri,
-								width: 200,
-								height: 200,
-							});
-						} else {
-							qrContainer.innerText = DOMPurify.sanitize(
-								`<p><a href="${data.provisioning_uri || ""}" target="_blank">Open in authenticator</a></p>`
+						let qrRendered = false;
+						if (typeof QRCode !== "undefined" && data.provisioning_uri) {
+							try {
+								new QRCode(qrContainer, {
+									text: data.provisioning_uri,
+									width: 200,
+									height: 200,
+									colorDark: "#000000",
+									colorLight: "#ffffff",
+									correctLevel:
+										typeof QRCode.CorrectLevel !== "undefined"
+											? QRCode.CorrectLevel.M
+											: 0,
+								});
+								qrRendered = true;
+							} catch (qrErr) {
+								console.error("Failed to render QR code:", qrErr);
+							}
+						}
+						if (!qrRendered) {
+							qrContainer.innerHTML = DOMPurify.sanitize(
+								`<p style="margin: 0.5rem 0; text-align: center;"><a class="btn mss-auth-btn" href="${encodeURI(
+									data.provisioning_uri || ""
+								)}" target="_blank" rel="noopener noreferrer">Open in Authenticator App</a></p>`
 							);
 						}
+					}
+					// Display secret key for manual entry if available or parsed from URI
+					let secretKey = data.secret;
+					if (!secretKey && data.provisioning_uri) {
+						const match = /[?&]secret=([A-Z0-9]+)/i.exec(data.provisioning_uri);
+						if (match) secretKey = match[1];
+					}
+					if (secretKey && secretKeyEl && secretDisplay) {
+						secretKeyEl.textContent = secretKey;
+						secretDisplay.style.display = "block";
 					}
 					if (data.backup_code && backupCodeEl && backupDisplay) {
 						backupCodeEl.textContent = data.backup_code;

@@ -135,11 +135,25 @@ def run_tests():
 		sys.modules["utils.input_sanitizer"] = input_sanitizer
 	sanitizer = _load_module("utils.sanitizer", os.path.join(_utils, "sanitizer.py"))
 	ok(sanitizer.is_password_field("password") is True, "password key detected")
+	ok(sanitizer.is_password_field("mfa_temp_token") is True, "mfa_temp_token key detected")
+	ok(sanitizer.is_password_field("backup_code") is True, "backup_code key detected")
 	ok(sanitizer.is_password_field("label") is False, "label not password key")
 	pw = "Amp1&'(test)"
 	ok(
 		sanitizer.Sanitizer._sanitize_field("password", pw) == pw,
 		"middleware-style password field not XSS-mutated",
+	)
+	mfa_token_with_hyphen = "sec-token_abc-123_xyz"
+	ok(
+		sanitizer.Sanitizer._sanitize_field("mfa_temp_token", mfa_token_with_hyphen)
+		== mfa_token_with_hyphen,
+		"mfa_temp_token with hyphens not mutated by XSS sanitizer",
+	)
+	backup_code_sample = "ABCD-1234"
+	ok(
+		sanitizer.Sanitizer._sanitize_field("backup_code", backup_code_sample)
+		== backup_code_sample,
+		"backup_code with hyphens not mutated by XSS sanitizer",
 	)
 	ok(
 		sanitizer.apply_legacy_xss_sanitize(pw) != pw,

@@ -1,6 +1,7 @@
 # --- START OF FILE routes/auth.py ---
 import json
 import os
+import random
 import re
 import sqlite3
 import uuid
@@ -311,13 +312,20 @@ async def get_loading_tips(request: web.Request) -> web.Response:
 	ComfyUI_frontend or extension scripts that reference this URL) do not see a failed
 	request and get stuck in a loading state.
 	"""
+	no_cache_headers = {"Cache-Control": "no-cache, no-store, must-revalidate"}
 	if not experimental_loading_screen_enabled():
-		return web.json_response(["Preparing ComfyUI…"])
+		return web.json_response(["Preparing ComfyUI…"], headers=no_cache_headers)
 	tips_data = _parse_tips_file(os.path.join(DATA_DIR, "loading-tips.json"))
 	if not tips_data:
 		tips_data = _parse_tips_file(os.path.join(WEB_DIR, "data", "loading-tips.json"))
+	if tips_data and len(tips_data) > 2:
+		# First 2 messages display in strict sequential order:
+		# 0: "Preparing ComfyUI…", 1: "Loading your workspace…"
+		# Followed by randomized messages picked from index 2 onwards
+		shuffled_tail = random.sample(tips_data[2:], len(tips_data[2:]))
+		tips_data = tips_data[:2] + shuffled_tail
 	payload = tips_data if tips_data else ["Preparing ComfyUI…"]
-	return web.json_response(payload)
+	return web.json_response(payload, headers=no_cache_headers)
 
 
 @routes.get("/loading")
@@ -341,6 +349,8 @@ async def get_loading(request: web.Request) -> web.Response:
 	except OSError:
 		return web.Response(text="loading.html not found", status=404)
 	html = html.replace("{{LOADING_TIMEOUT_MS}}", str(timeout_ms))
+	version = get_local_version() or "1.0.0"
+	html = html.replace("{{VERSION}}", version)
 	resp = web.Response(text=html, content_type="text/html")
 	resp.headers["Content-Security-Policy"] = LOADING_CSP
 	return resp
@@ -475,7 +485,14 @@ async def get_mfa(request: web.Request) -> web.Response:
 	path = os.path.join(HTML_DIR, "mfa.html")
 	if not os.path.exists(path):
 		return web.Response(text="mfa.html not found", status=404)
-	return web.FileResponse(path)
+	try:
+		with open(path, "r", encoding="utf-8") as f:
+			html = f.read()
+	except OSError:
+		return web.Response(text="mfa.html not found", status=404)
+	version = get_local_version() or "1.0.0"
+	html = html.replace("{{VERSION}}", version)
+	return web.Response(text=html, content_type="text/html")
 
 
 @routes.get("/passkeys")

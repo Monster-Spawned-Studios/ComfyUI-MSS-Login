@@ -64,7 +64,11 @@
         <div id="mfa-setup-section" style="display:none;">
             <h1 class="title mss-auth-title">Set Up Two-Factor Authentication</h1>
             <p>Scan the QR code with Google Authenticator (or any TOTP app), then enter the 6-digit code.</p>
-            <div id="mfa-qr-container" class="form-field" style="margin:1rem 0;"></div>
+            <div id="mfa-qr-container" class="form-field" style="display:flex; justify-content:center; align-items:center; margin:1.25rem auto; padding:12px; background:#ffffff; border-radius:8px; width:fit-content; min-width:200px; min-height:200px; box-shadow:0 4px 12px rgba(0,0,0,0.4);"></div>
+            <div id="mfa-secret-display" class="form-field" style="display:none; text-align:center; margin:0.5rem 0;">
+                <label class="mss-auth-label">Manual entry key:</label>
+                <code id="mfa-secret-key" style="letter-spacing:0.1em; font-size:0.95rem; color:#c4b5fd; user-select:all;"></code>
+            </div>
             <div id="mfa-backup-display" class="form-field" style="display:none;">
                 <strong>Backup code (save this):</strong> <code id="mfa-backup-code"></code>
             </div>
@@ -87,10 +91,10 @@
     </div>
     <div class="toast-container" id="toasts"></div>
 </body>
-<script src="/mss-login/vendor/purify.min.js"></script>
+<script src="/mss-login/vendor/purify.min.js?v={{VERSION}}"></script>
 <!-- QRCode.js for MFA setup - generates QR locally (no third-party API) -->
-<script src="/mss-login/vendor/qrcode.min.js"></script>
-<script src="/mss-login/js/mfa.js"></script>
-<script type="module" src="/mss-login/dist/auth-app.js"></script>
+<script src="/mss-login/vendor/qrcode.min.js?v={{VERSION}}"></script>
+<script src="/mss-login/js/mfa.js?v={{VERSION}}"></script>
+<script type="module" src="/mss-login/dist/auth-app.js?v={{VERSION}}"></script>
 
 </html>

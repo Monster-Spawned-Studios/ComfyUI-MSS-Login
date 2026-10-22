@@ -1,6 +1,7 @@
 # --- START OF FILE routes/mfa.py ---
 """MFA: setup, verify-setup, verify (login second step), recovery codes, owner reset."""
 
+import re
 from datetime import UTC, datetime
 
 from aiohttp import web
@@ -140,12 +141,15 @@ async def api_mfa_setup(request: web.Request) -> web.Response:
 	if not result:
 		return web.json_response({"error": "MFA setup failed or user not found"}, status=400)
 	provisioning_uri, recovery_codes = result
+	secret_match = re.search(r"[?&]secret=([A-Z0-9]+)", provisioning_uri, re.IGNORECASE)
+	secret_key = secret_match.group(1) if secret_match else ""
 	return web.json_response(
 		{
 			"provisioning_uri": provisioning_uri,
 			"recovery_codes": recovery_codes,
 			# Compat: first code as backup_code for older UI
 			"backup_code": recovery_codes[0] if recovery_codes else "",
+			"secret": secret_key,
 			"message": "Scan QR with authenticator app, then call verify-setup with a code.",
 		}
 	)

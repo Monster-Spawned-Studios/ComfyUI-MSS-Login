@@ -74,7 +74,10 @@
                 randomPool.push(i);
             }
         }
-        const randIdx = Math.floor(Math.random() * randomPool.length);
+        let randIdx = Math.floor(Math.random() * randomPool.length);
+        if (randomPool.length > 1 && randomPool[randIdx] === tipIndex) {
+            randIdx = (randIdx + 1) % randomPool.length;
+        }
         const chosen = randomPool.splice(randIdx, 1)[0];
         tipIndex = chosen;
         setTip(tips[chosen]);

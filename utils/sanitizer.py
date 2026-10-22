@@ -7,9 +7,25 @@ from bleach import clean
 
 from .input_sanitizer import sanitize_password_input
 
-# Fields that must never go through XSS transforms (bcrypt / credential verification).
+# Fields that must never go through XSS transforms (bcrypt / credential verification / token checks).
 _PASSWORD_FIELD_NAMES = frozenset(
-	{"password", "new_user_password", "old_password", "confirm_password", "current_password"}
+	{
+		"password",
+		"new_user_password",
+		"old_password",
+		"confirm_password",
+		"current_password",
+		"mfa_temp_token",
+		"backup_code",
+		"code",
+		"totp_code",
+		"setup_code",
+		"token",
+		"jwt_token",
+		"api_token",
+		"refresh_token",
+		"secret",
+	}
 )
 
 

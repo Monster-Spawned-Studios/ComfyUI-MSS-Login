@@ -74,12 +74,28 @@ class EmbeddedBrowserManager:
 			return False
 
 	def _get_comfyui_url(self) -> str:
-		from server import PromptServer
+		try:
+			from server import PromptServer
 
-		server_instance = PromptServer.instance
-		address = server_instance.address or "127.0.0.1"
-		port = server_instance.port
-		if address in ("0.0.0.0", "::", "[::]"):
+			server_instance = getattr(PromptServer, "instance", None)
+		except Exception:
+			server_instance = None
+
+		address = None
+		port = None
+		if server_instance is not None:
+			address = getattr(server_instance, "address", None) or getattr(
+				server_instance, "host", None
+			)
+			port = getattr(server_instance, "port", None)
+
+		env_port = os.environ.get("MSS_LOGIN_LOCAL_PORT", "").strip()
+		if env_port.isdigit():
+			port = int(env_port)
+		elif not port:
+			port = 8188
+
+		if not address or address in ("0.0.0.0", "::", "[::]"):
 			address = "127.0.0.1"
 		return f"http://{address}:{port}"
 
@@ -258,6 +274,32 @@ class EmbeddedBrowserManager:
 		except Exception as exc:
 			logger.debug("[MSS-Login CPE] Context clear error: %s", exc)
 
+	async def _wait_for_server_ready(self, comfyui_url: str, timeout: float = 30.0) -> bool:
+		"""Wait until the ComfyUI server TCP port is accepting connections."""
+		parsed = urlparse(comfyui_url)
+		host = parsed.hostname or "127.0.0.1"
+		port = parsed.port or 8188
+
+		try:
+			loop = asyncio.get_running_loop()
+		except RuntimeError:
+			return False
+
+		start_time = loop.time()
+		delay = 0.5
+		while (loop.time() - start_time) < timeout:
+			try:
+				_reader, writer = await asyncio.wait_for(
+					asyncio.open_connection(host, port), timeout=1.0
+				)
+				writer.close()
+				await writer.wait_closed()
+				return True
+			except Exception:
+				await asyncio.sleep(delay)
+				delay = min(delay * 1.5, 2.0)
+		return False
+
 	async def prewarm(self, auth_token: str | None = None) -> None:
 		"""Pre-warm browser instance and page pool in the background."""
 		if not self.playwright_available():
@@ -265,6 +307,15 @@ class EmbeddedBrowserManager:
 		if self._status in (BrowserStatus.READY, BrowserStatus.INITIALIZING):
 			return
 		try:
+			comfyui_url = self._get_comfyui_url()
+			ready = await self._wait_for_server_ready(comfyui_url, timeout=30.0)
+			if not ready:
+				logger.warning(
+					"[MSS-Login CPE] Background browser pre-warm skipped: "
+					"ComfyUI server at %s not responding after 30s",
+					comfyui_url,
+				)
+				return
 			await self.initialize(auth_token=auth_token)
 		except Exception as exc:
 			logger.warning("[MSS-Login CPE] Background browser pre-warm failed: %s", exc)
