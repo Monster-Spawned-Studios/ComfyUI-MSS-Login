@@ -8,7 +8,7 @@
 # - COMFYUI_IMAGE: Docker image to run (default: yanwk/comfyui-boot:cu124)
 # - CPE_EMBEDDED_CONVERT: Enable embedded headless graph parser & browser pool for Comfy Portal & mobile apps (true/false)
 
-version: "3.8"
+name: comfyui-server
 
 services:
   comfyui:
@@ -16,19 +16,19 @@ services:
     container_name: comfyui-mss-login
     restart: unless-stopped
     ports:
-      - "${PORT:-8188}:8188"
+      - "${HOST:-127.0.0.1}:${PORT:-8188}:${PORT:-8188}/tcp"
     environment:
-      - HOST_BASE_URL=${HOST_BASE_URL:-http://localhost:8188}
+      - HOST_BASE_URL=${HOST_BASE_URL:-http://${HOST:-127.0.0.1}:${PORT:-8188}}
       - SECRET_KEY=${SECRET_KEY:-}
-      - MSS_LOGIN_DATA_DIR=/data/mss-login
+      - MSS_LOGIN_DATA_DIR=${MSS_LOGIN_DATA_DIR:-/data/mss-login}
       - CPE_EMBEDDED_CONVERT=${CPE_EMBEDDED_CONVERT:-true}
       - EXPERIMENTAL_LOGIN_BACKGROUND=${EXPERIMENTAL_LOGIN_BACKGROUND:-true}
       - WEBAUTHN_RP_ID=${WEBAUTHN_RP_ID:-}
       - WEBAUTHN_ORIGINS=${WEBAUTHN_ORIGINS:-}
       - PYTHONUNBUFFERED=1
-      - CLI_ARGS=--listen 0.0.0.0 --port 8188
+      - CLI_ARGS=--listen ${HOST:-127.0.0.1} --port ${PORT:-8188}
     volumes:
-      - mss_login_data:/data/mss-login
+      - mss_login_data:${MSS_LOGIN_DATA_DIR:-/data/mss-login}
       - comfyui_models:/root/ComfyUI/models
       - comfyui_output:/root/ComfyUI/output
       - comfyui_input:/root/ComfyUI/input
