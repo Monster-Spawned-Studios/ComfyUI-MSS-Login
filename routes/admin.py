@@ -23,6 +23,7 @@ from ..constants import (
 	get_domain,
 	get_experimental_failsafe_settings,
 	get_experimental_flags,
+	get_isolation_folder_naming,
 	reload_allow_guest_jwt,
 	reload_api_token_store_config,
 	reload_experimental_failsafe,
@@ -30,6 +31,7 @@ from ..constants import (
 	reload_local_network_cidrs,
 	reload_users_db_config,
 	save_experimental_failsafe_settings,
+	save_isolation_folder_naming,
 )
 from ..globals import access_control, ip_filter, jwt_auth, logger, routes, users_db
 from ..utils.admin_logic import delete_user_record, patch_user_group
@@ -211,6 +213,60 @@ routes.get("/api/mss-login/api/settings/model-isolation-download-patterns")(
 routes.put("/api/mss-login/api/settings/model-isolation-download-patterns")(
 	api_put_model_isolation_download_patterns
 )
+
+
+@routes.get("/mss-login/api/settings/model-isolation")
+async def api_get_model_isolation_settings(request):
+	"""Return model isolation settings (folder_naming, patterns, is_owner)."""
+	token = jwt_auth.get_token_from_request(request)
+	if not token or not jwt_auth.is_token_valid(token):
+		return web.json_response({"error": "Authentication required"}, status=401)
+	return web.json_response(
+		{
+			"folder_naming": get_isolation_folder_naming(),
+			"configured_patterns": get_configured_route_patterns(),
+			"effective_patterns": get_effective_route_patterns(),
+			"is_owner": is_owner(request),
+		}
+	)
+
+
+@routes.put("/mss-login/api/settings/model-isolation")
+async def api_put_model_isolation_settings(request):
+	"""Update model isolation settings (strictly Owner only)."""
+	if not is_owner(request):
+		return web.json_response({"error": "Owner only"}, status=403)
+	try:
+		data = await request.json()
+		if not isinstance(data, dict):
+			return web.json_response({"error": "Invalid body"}, status=400)
+		if "folder_naming" in data:
+			naming = str(data["folder_naming"]).strip().lower()
+			if naming not in ("username", "user_id", "uuid"):
+				return web.json_response(
+					{"error": "folder_naming must be 'username' or 'user_id'"}, status=400
+				)
+			save_isolation_folder_naming(naming)
+		if "patterns" in data and isinstance(data["patterns"], list):
+			normalized = [str(x).strip().lower() for x in data["patterns"] if str(x).strip()]
+			if len(normalized) > 200:
+				return web.json_response({"error": "Too many patterns (max 200)"}, status=400)
+			save_configured_route_patterns(normalized)
+		return web.json_response(
+			{
+				"status": "ok",
+				"folder_naming": get_isolation_folder_naming(),
+				"configured_patterns": get_configured_route_patterns(),
+				"effective_patterns": get_effective_route_patterns(),
+				"is_owner": True,
+			}
+		)
+	except Exception as e:
+		return web.json_response({"error": str(e)}, status=500)
+
+
+routes.get("/api/mss-login/api/settings/model-isolation")(api_get_model_isolation_settings)
+routes.put("/api/mss-login/api/settings/model-isolation")(api_put_model_isolation_settings)
 
 
 @routes.get("/mss-login/api/settings/ntfy")

@@ -13,7 +13,7 @@ from typing import Any
 
 from ..constants import experimental_model_isolation_enabled
 from .isolation_resolver import foreign_uuid_prefix, is_uuid_segment, resolve_model_name
-from .model_isolation import sanitize_user_segment
+from .model_isolation import sanitize_user_segment, user_isolation_candidate_segments
 from .model_visibility_policy import normalize_model_name
 from .prompt_model_validator import (
 	NODE_MODEL_INPUTS,
@@ -55,10 +55,10 @@ def to_display_name(
 	name = _norm_path(item_name)
 	if not name:
 		return item_name
-	viewer_seg = sanitize_user_segment(viewer_user_id)
-	prefix = f"{viewer_seg}/"
-	if name.startswith(prefix) or name.lower().startswith(prefix.lower()):
-		return name[len(viewer_seg) + 1 :]
+	for seg in user_isolation_candidate_segments(viewer_user_id):
+		prefix = f"{seg}/"
+		if name.startswith(prefix) or name.lower().startswith(prefix.lower()):
+			return name[len(seg) + 1 :]
 	parts = name.split("/")
 	if len(parts) >= 2 and is_uuid_segment(parts[0]):
 		# Never show other users' UUID prefixes in loader-facing lists

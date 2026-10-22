@@ -2704,6 +2704,19 @@ async renderModelDownload(container) {
     const folderOptions = folders.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}</option>`).join("");
     const ownerPatternSection = isOwner ? `
         <div class="mss-login-section" style="margin-top:24px;">
+            <h3>Model isolation folder naming</h3>
+            <p>Choose whether user model isolation folders use the <code>username</code> (recommended for persistence across reinstalls/restores) or unique <code>user_id</code> (UUID). Changes take effect on next model action.</p>
+            <div class="mss-login-row" style="margin-top:12px; gap:12px; align-items:center;">
+                <label class="mss-login-field-label">Folder naming convention</label>
+                <select id="mss-login-model-isolation-naming" class="mss-login-select">
+                    <option value="username">Username (e.g. models/checkpoints/alice/...)</option>
+                    <option value="user_id">User ID (e.g. models/checkpoints/019234a.../...)</option>
+                </select>
+                <button class="mss-login-btn btn-save" id="mss-login-model-isolation-naming-save">Save naming convention</button>
+                <span id="mss-login-model-isolation-naming-status" class="mss-login-note"></span>
+            </div>
+        </div>
+        <div class="mss-login-section" style="margin-top:24px;">
             <h3>Model isolation download redirect patterns</h3>
             <p>Owner override patterns used to detect third-party/core model download routes that should be redirected to per-user model folders while <code>experimental.model_isolation</code> is enabled.</p>
             <p class="mss-login-note">Defaults and launch-time auto-detected patterns (such as Civicomfy, when present) are always applied. Add one custom pattern per line below.</p>
@@ -2723,7 +2736,12 @@ async renderModelDownload(container) {
             </div>
             <p id="mss-login-model-isolation-patterns-status" class="mss-login-note" style="margin-top:8px;"></p>
         </div>
-    ` : "";
+    ` : `
+        <div class="mss-login-section" style="margin-top:24px;">
+            <h3>Model isolation folder naming</h3>
+            <p class="mss-login-note">Model isolation folder naming convention is managed by the server owner.</p>
+        </div>
+    `;
     container.innerHTML = `
         <div class="mss-login-section">
             <h3>API keys (CivitAI / HuggingFace)</h3>
@@ -3206,6 +3224,42 @@ async renderModelDownload(container) {
     }, 1500);
 
     if (isOwner) {
+        const namingSelect = container.querySelector("#mss-login-model-isolation-naming");
+        const namingSaveBtn = container.querySelector("#mss-login-model-isolation-naming-save");
+        const namingStatus = container.querySelector("#mss-login-model-isolation-naming-status");
+
+        const loadNaming = async () => {
+            if (!namingSelect) return;
+            try {
+                const res = await api.fetchApi("/mss-login/api/settings/model-isolation", { method: "GET" });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok && data.folder_naming) {
+                    namingSelect.value = data.folder_naming;
+                }
+            } catch (e) {}
+        };
+        loadNaming();
+
+        if (namingSaveBtn && namingSelect) {
+            namingSaveBtn.onclick = async () => {
+                if (namingStatus) namingStatus.textContent = "Saving...";
+                try {
+                    const res = await api.fetchApi("/mss-login/api/settings/model-isolation", {
+                        method: "PUT",
+                        body: JSON.stringify({ folder_naming: namingSelect.value })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (res.ok) {
+                        if (namingStatus) namingStatus.textContent = "Saved. Active convention: " + (data.folder_naming || namingSelect.value);
+                    } else {
+                        if (namingStatus) namingStatus.textContent = "Error: " + (data.error || res.status);
+                    }
+                } catch (e) {
+                    if (namingStatus) namingStatus.textContent = "Error: " + e.message;
+                }
+            };
+        }
+
         const cfgArea = container.querySelector("#mss-login-model-isolation-patterns");
         const effArea = container.querySelector("#mss-login-model-isolation-effective-patterns");
         const statusEl = container.querySelector("#mss-login-model-isolation-patterns-status");
@@ -4992,6 +5046,28 @@ app.ui.settings.addSetting({
         };
         actionsWrap.appendChild(exportLogBtn);
 
+        // Two-Factor Authentication (MFA)
+        const mfaBtn = document.createElement("button");
+        mfaBtn.innerText = "Two-Factor Auth (MFA)";
+        mfaBtn.className = "mss-login-launch-btn";
+        mfaBtn.style.minWidth = "280px";
+        mfaBtn.title = "Configure authenticator app (TOTP) or manage two-factor authentication.";
+        mfaBtn.onclick = () => {
+            window.location.href = "/mfa";
+        };
+        actionsWrap.appendChild(mfaBtn);
+
+        // Passkey / WebAuthn management
+        const passkeyBtn = document.createElement("button");
+        passkeyBtn.innerText = "Passkeys & Devices";
+        passkeyBtn.className = "mss-login-launch-btn";
+        passkeyBtn.style.minWidth = "280px";
+        passkeyBtn.title = "Manage biometric passkeys and WebAuthn credentials.";
+        passkeyBtn.onclick = () => {
+            window.location.href = "/passkeys";
+        };
+        actionsWrap.appendChild(passkeyBtn);
+
         // Logout
         const logoutBtn = document.createElement("button");
         logoutBtn.innerText = "Logout Current User";
@@ -5033,6 +5109,17 @@ app.ui.settings.addSetting({
                     if (me.is_admin) {
                         const isOwner = Array.isArray(me.groups) && me.groups.map(g => String(g).toLowerCase()).includes("owner");
                         if (isOwner) registerBtn.style.display = "block";
+                    }
+                    if (me.mfa_enabled) {
+                        mfaBtn.innerText = "Two-Factor Auth: Enabled (Manage)";
+                    } else if (me.mfa_required) {
+                        if (me.mfa_grace && me.mfa_grace.in_grace) {
+                            mfaBtn.innerText = `Two-Factor Auth: Setup Due (${me.mfa_grace.days_remaining}d left)`;
+                            mfaBtn.style.borderColor = "#f59e0b";
+                        } else {
+                            mfaBtn.innerText = "Two-Factor Auth: Setup Required";
+                            mfaBtn.style.borderColor = "#ef4444";
+                        }
                     }
                 }
             } catch (_) {}
