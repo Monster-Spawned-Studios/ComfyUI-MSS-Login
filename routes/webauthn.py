@@ -82,9 +82,34 @@ async def _json_body(request: web.Request) -> dict:
 	return data
 
 
+def _extract_origin(request: web.Request) -> str:
+	origin = (request.headers.get("Origin") or "").strip()
+	if not origin:
+		referer = (request.headers.get("Referer") or "").strip()
+		if referer:
+			try:
+				from urllib.parse import urlsplit
+
+				parts = urlsplit(referer)
+				if parts.scheme and parts.netloc:
+					origin = f"{parts.scheme}://{parts.netloc}"
+			except Exception:
+				pass
+	if not origin:
+		scheme = request.headers.get("X-Forwarded-Proto") or request.scheme or "http"
+		host = (
+			request.headers.get("X-Forwarded-Host")
+			or request.headers.get("Host")
+			or getattr(request, "host", "")
+		)
+		if host:
+			origin = f"{scheme}://{host}"
+	return origin.rstrip("/")
+
+
 @routes.get("/mss-login/api/webauthn/status")
 async def webauthn_status(request: web.Request) -> web.Response:
-	origin = (request.headers.get("Origin") or "").strip()
+	origin = _extract_origin(request)
 	cfg = get_webauthn_config()
 	rp_id = get_rp_id_for_origin(origin) if origin else cfg["rp_id"]
 	return web.json_response(
@@ -112,7 +137,7 @@ async def register_options(request: web.Request) -> web.Response:
 	user_id, user_rec = users_db.get_user(username)
 	if not user_id:
 		return web.json_response({"error": "User not found"}, status=404)
-	origin = (request.headers.get("Origin") or "").strip()
+	origin = _extract_origin(request)
 	if not origin_allowed(origin):
 		return web.json_response({"error": "Origin not allowed for passkeys"}, status=403)
 	cfg = get_webauthn_config()
@@ -223,7 +248,7 @@ async def passwordless_options(request: web.Request) -> web.Response:
 	guard = _require_passkeys()
 	if guard:
 		return guard
-	origin = (request.headers.get("Origin") or "").strip()
+	origin = _extract_origin(request)
 	cfg = get_webauthn_config()
 	if not origin_allowed(origin):
 		return web.json_response({"error": "Origin not allowed"}, status=403)
@@ -362,7 +387,7 @@ async def auth_options(request: web.Request) -> web.Response:
 		return guard
 	body = await _json_body(request)
 	username = (body.get("username") or "").strip()
-	origin = (request.headers.get("Origin") or "").strip()
+	origin = _extract_origin(request)
 	cfg = get_webauthn_config()
 	rp_id = get_rp_id_for_origin(origin) if origin else cfg["rp_id"]
 	# Always return options-shaped payload; empty allowCredentials for unknown users

@@ -137,6 +137,18 @@
                 <button class="btn mss-auth-btn" type="submit">Login</button>
                 {{GUEST_LOGIN_BLOCK}}
             </div>
+            <!-- Passkey login option (shown when passkeys are available on origin) -->
+            <div id="passkey-login-section" class="form-field" style="display:none; text-align:center; margin-top:0.75rem;">
+                <div style="display:flex; align-items:center; margin:0.75rem 0 0.5rem; gap:10px;">
+                    <div style="flex:1; height:1px; background:rgba(255,255,255,0.12);"></div>
+                    <span style="font-size:0.75rem; color:#a1a1aa; text-transform:uppercase; letter-spacing:0.05em;">or</span>
+                    <div style="flex:1; height:1px; background:rgba(255,255,255,0.12);"></div>
+                </div>
+                <button type="button" id="passkey-login-btn" class="btn mss-auth-btn" style="background:rgba(150,96,250,0.15); border:1px solid rgba(150,96,250,0.4); color:#e4e4e7; width:100%; display:flex; align-items:center; justify-content:center; gap:8px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>
+                    Sign in with a Passkey
+                </button>
+            </div>
             <!-- Version info -->
             <div>
                 <p class="version-info mss-auth-version" id="login-version">
