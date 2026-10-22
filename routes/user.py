@@ -140,6 +140,25 @@ async def api_me(request: web.Request) -> web.Response:
 		can_update = user_can_update_mss_login(role, {})
 		can_download = user_can_download_models(role, {})
 
+	mfa_required = False
+	mfa_grace = None
+	if username and username.lower() != "guest":
+		try:
+			from ..utils.groups_config import load_groups_config
+			from ..utils.login_finalize import evaluate_mfa_gate
+
+			cfg = load_groups_config()
+			gate = evaluate_mfa_gate(username, users_db, cfg)
+			mfa_required = gate.required
+			if gate.in_grace_period:
+				mfa_grace = {
+					"in_grace": True,
+					"due_date": gate.due_date,
+					"days_remaining": gate.days_remaining,
+				}
+		except Exception:
+			pass
+
 	return web.json_response(
 		{
 			"username": username,
@@ -147,6 +166,8 @@ async def api_me(request: web.Request) -> web.Response:
 			"groups": groups,
 			"is_admin": is_admin,
 			"mfa_enabled": mfa_enabled,
+			"mfa_required": mfa_required,
+			"mfa_grace": mfa_grace,
 			"can_update_mss_login": can_update,
 			"can_download_models": can_download,
 			"experimental_features": EXPERIMENTAL_FEATURES,

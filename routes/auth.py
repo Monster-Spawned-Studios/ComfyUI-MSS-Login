@@ -652,14 +652,19 @@ async def post_login(request: web.Request) -> web.Response:
 			resp = web.HTTPFound(redirect_url)
 			_apply_login_cookie(resp, token, request, remember_me=remember_me)
 			return resp
-		resp = web.json_response(
-			{
-				"message": "Login successful",
-				"jwt_token": token,
-				"redirect_url": redirect_url,
-				"remember_me": remember_me,
+		resp_payload = {
+			"message": "Login successful",
+			"jwt_token": token,
+			"redirect_url": redirect_url,
+			"remember_me": remember_me,
+		}
+		if getattr(gate, "in_grace_period", False):
+			resp_payload["mfa_grace"] = {
+				"in_grace_period": True,
+				"due_date": gate.due_date,
+				"days_remaining": gate.days_remaining,
 			}
-		)
+		resp = web.json_response(resp_payload)
 		_apply_login_cookie(resp, token, request, remember_me=remember_me)
 		return resp
 

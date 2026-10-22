@@ -25,6 +25,9 @@ class MfaGateResult:
 	needs_setup: bool = False
 	username: str = ""
 	reason: str = ""
+	in_grace_period: bool = False
+	due_date: str = ""
+	days_remaining: int = 0
 
 
 def _load_group_config() -> dict:
@@ -104,7 +107,11 @@ def mfa_disabled_applies_to_user(user_rec: dict | None) -> bool:
 
 
 def evaluate_mfa_gate(
-	username: str, users_db: Any, *, experimental_on: bool | None = None
+	username: str,
+	users_db: Any,
+	group_cfg: dict | None = None,
+	*,
+	experimental_on: bool | None = None,
 ) -> MfaGateResult:
 	"""
 	Decide whether interactive issuance must stop for MFA verify or setup.
@@ -142,10 +149,51 @@ def evaluate_mfa_gate(
 		return MfaGateResult(username=username, reason="experimental_off")
 
 	is_priv = user_is_admin_or_owner(user_rec)
-	role_req = any_group_requires_mfa(username, users_db)
+	role_req = any_group_requires_mfa(username, users_db, group_cfg)
 	if is_priv or role_req:
+		try:
+			from datetime import UTC, datetime, timedelta
+			from ..constants import (
+				get_mfa_enforced_at,
+				get_mfa_grace_period_days,
+				set_mfa_enforced_at,
+			)
+		except ImportError:
+			from datetime import UTC, datetime, timedelta
+			from constants import (  # type: ignore
+				get_mfa_enforced_at,
+				get_mfa_grace_period_days,
+				set_mfa_enforced_at,
+			)
+
+		grace_days = get_mfa_grace_period_days()
+		if grace_days > 0:
+			enforced_at_str = get_mfa_enforced_at()
+			if not enforced_at_str:
+				enforced_at_str = set_mfa_enforced_at()
+			try:
+				enforced_dt = datetime.fromisoformat(enforced_at_str.replace("Z", "+00:00"))
+			except Exception:
+				enforced_dt = datetime.now(UTC)
+			due_dt = enforced_dt + timedelta(days=grace_days)
+			now = datetime.now(UTC)
+			if now < due_dt:
+				remaining_days = max(
+					1, (due_dt - now).days + (1 if (due_dt - now).seconds > 0 else 0)
+				)
+				due_date_str = due_dt.strftime("%Y-%m-%d")
+				return MfaGateResult(
+					needs_setup=False,
+					username=username,
+					reason="mfa_grace_period",
+					in_grace_period=True,
+					due_date=due_date_str,
+					days_remaining=remaining_days,
+				)
 		return MfaGateResult(
-			needs_setup=True, username=username, reason="admin" if is_priv else "role_mfa_required"
+			needs_setup=True,
+			username=username,
+			reason="admin" if is_priv else "role_mfa_required",
 		)
 	return MfaGateResult(username=username, reason="ok")
 

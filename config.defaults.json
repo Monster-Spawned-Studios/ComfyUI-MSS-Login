@@ -36,9 +36,9 @@
 	"trusted_proxies": [],
 	"trusted_identity_header": null,
 	"webauthn": {
-		"rp_id": "tmd-nas.win",
+		"rp_id": "example.com",
 		"rp_name": "MSS-Login",
-		"origins": ["https://comfyui.tmd-nas.win"],
+		"origins": ["https://comfyui.example.com"],
 		"require_device_bound_for_admins": false
 	},
 	"seperate_users": true,
@@ -69,6 +69,14 @@
 	},
 
 	"mfa_disabled": true,
+	"mfa": {
+		"grace_period_days": 7,
+		"enforced_at": ""
+	},
+	"model_isolation": {
+		"folder_naming": "username",
+		"download_redirect_patterns": []
+	},
 	"auto_install_deps": true,
 	"session_token_store": {
 		"legacy_json_path": "data/session_tokens.json"

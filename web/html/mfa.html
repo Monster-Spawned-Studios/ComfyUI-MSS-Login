@@ -63,11 +63,17 @@
         <!-- MFA Setup (mode: setup) -->
         <div id="mfa-setup-section" style="display:none;">
             <h1 class="title mss-auth-title">Set Up Two-Factor Authentication</h1>
-            <p>Scan the QR code with Google Authenticator (or any TOTP app), then enter the 6-digit code.</p>
-            <div id="mfa-qr-container" class="form-field" style="display:flex; justify-content:center; align-items:center; margin:1.25rem auto; padding:12px; background:#ffffff; border-radius:8px; width:fit-content; min-width:200px; min-height:200px; box-shadow:0 4px 12px rgba(0,0,0,0.4);"></div>
-            <div id="mfa-secret-display" class="form-field" style="display:none; text-align:center; margin:0.5rem 0;">
-                <label class="mss-auth-label">Manual entry key:</label>
-                <code id="mfa-secret-key" style="letter-spacing:0.1em; font-size:0.95rem; color:#c4b5fd; user-select:all;"></code>
+            <p>Scan the QR code with Bitwarden, Google Authenticator, Microsoft Authenticator, or 1Password, then enter the 6-digit code.</p>
+            <div id="mfa-qr-container" class="form-field" style="display:flex; justify-content:center; align-items:center; margin:1.25rem auto; padding:14px; background:#ffffff; border-radius:10px; width:fit-content; min-width:200px; min-height:200px; box-shadow:0 4px 16px rgba(0,0,0,0.5);"></div>
+            <div style="text-align:center; margin-bottom:0.75rem;">
+                <button type="button" id="mfa-toggle-secret-btn" class="btn mss-auth-btn" style="background:transparent; border:1px solid rgba(150,96,250,0.4); color:#c4b5fd; font-size:0.85rem; padding:5px 14px; cursor:pointer; border-radius:6px;">Can't scan QR code? Show manual secret key</button>
+            </div>
+            <div id="mfa-secret-display" class="form-field" style="display:none; text-align:center; margin:0.5rem 0; padding:12px; background:rgba(150,96,250,0.08); border-radius:8px; border:1px solid rgba(150,96,250,0.3);">
+                <label class="mss-auth-label" style="display:block; margin-bottom:6px; font-weight:600;">Manual Authenticator Secret Key:</label>
+                <div style="display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;">
+                    <code id="mfa-secret-key" style="letter-spacing:0.18em; font-size:1.1rem; font-weight:700; color:#c4b5fd; user-select:all; background:rgba(0,0,0,0.3); padding:4px 10px; border-radius:4px;"></code>
+                    <button type="button" id="mfa-copy-secret-btn" class="btn mss-auth-btn" style="padding:4px 12px; font-size:0.82rem; background:#9660fa; border-radius:4px; border:none; cursor:pointer;" title="Copy key to clipboard">Copy</button>
+                </div>
             </div>
             <div id="mfa-backup-display" class="form-field" style="display:none;">
                 <strong>Backup code (save this):</strong> <code id="mfa-backup-code"></code>

@@ -11,8 +11,12 @@ import warnings
 from datetime import UTC, datetime, timezone
 
 # External data directory (~/.comfyui-mss-login or MSS_LOGIN_DATA_DIR); untouched by git pull.
-from .utils.data_dir import ensure_data_dir, get_data_dir
-from .utils.install_deps import install_dependencies
+try:
+	from .utils.data_dir import ensure_data_dir, get_data_dir
+	from .utils.install_deps import install_dependencies
+except ImportError:
+	from utils.data_dir import ensure_data_dir, get_data_dir
+	from utils.install_deps import install_dependencies
 
 # --- Base Directories ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -29,7 +33,10 @@ def _resolve_data_path(rel_or_abs: str) -> str:
 		return rel_or_abs
 	if os.path.isabs(rel_or_abs):
 		return rel_or_abs
-	from .utils.path_safety import resolve_path_under
+	try:
+		from .utils.path_safety import resolve_path_under
+	except ImportError:
+		from utils.path_safety import resolve_path_under
 
 	resolved = resolve_path_under(DATA_DIR, rel_or_abs)
 	return resolved if resolved is not None else DATA_DIR
@@ -363,7 +370,10 @@ def get_host_base_url(use_https: bool = True, use_port: bool = False, port: int 
 			if _host_base_url_cache
 			else _localhost_fallback(use_https=use_https, use_port=use_port, port=port)
 		)
-	from .utils.app_settings_store import get_app_settings_store
+	try:
+		from .utils.app_settings_store import get_app_settings_store
+	except ImportError:
+		from utils.app_settings_store import get_app_settings_store
 
 	store = get_app_settings_store(USERS_DB_CONFIG)
 	val = (store.get("host_base_url") or "").strip().rstrip("/")
@@ -900,6 +910,93 @@ def reload_mfa_disabled() -> bool:
 	MFA_DISABLED = _get_mfa_disabled()
 	MFA_DISABLED_FORCE_ALL = _get_mfa_disabled_force_all()
 	return MFA_DISABLED
+
+
+def get_isolation_folder_naming() -> str:
+	"""Return active isolation folder naming convention: 'username' or 'user_id' (default: 'username')."""
+	env_val = str(os.environ.get("MSS_LOGIN_ISOLATION_FOLDER_NAMING", "")).strip().lower()
+	if env_val in ("user_id", "uuid", "id"):
+		return "user_id"
+	if env_val in ("username", "user", "name"):
+		return "username"
+	cfg = _load_config(CONFIG_FILE_PATH)
+	block = cfg.get("model_isolation") if isinstance(cfg, dict) else None
+	if isinstance(block, dict):
+		val = str(block.get("folder_naming", "")).strip().lower()
+		if val in ("user_id", "uuid", "id"):
+			return "user_id"
+		if val in ("username", "user", "name"):
+			return "username"
+	return "username"
+
+
+def save_isolation_folder_naming(mode: str) -> str:
+	"""Persist model isolation folder naming convention ('username' or 'user_id')."""
+	normalized = (
+		"user_id"
+		if str(mode or "").strip().lower() in ("user_id", "uuid", "id")
+		else "username"
+	)
+	cfg = _load_config(CONFIG_FILE_PATH)
+	if not isinstance(cfg, dict):
+		cfg = {}
+	block = cfg.get("model_isolation")
+	if not isinstance(block, dict):
+		block = {}
+	block["folder_naming"] = normalized
+	cfg["model_isolation"] = block
+	with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
+		json.dump(cfg, f, indent=4)
+	return normalized
+
+
+def get_mfa_grace_period_days() -> int:
+	"""Return enrollment grace period in days before MFA is strictly required (default: 7)."""
+	env_val = str(os.environ.get("MSS_LOGIN_MFA_GRACE_PERIOD_DAYS", "")).strip()
+	if env_val.isdigit():
+		return max(0, int(env_val))
+	cfg = _load_config(CONFIG_FILE_PATH)
+	if isinstance(cfg, dict):
+		mfa_block = cfg.get("mfa")
+		if isinstance(mfa_block, dict) and "grace_period_days" in mfa_block:
+			try:
+				return max(0, int(mfa_block["grace_period_days"]))
+			except (ValueError, TypeError):
+				pass
+		if "mfa_grace_period_days" in cfg:
+			try:
+				return max(0, int(cfg["mfa_grace_period_days"]))
+			except (ValueError, TypeError):
+				pass
+	return 7
+
+
+def get_mfa_enforced_at() -> str:
+	"""Return ISO timestamp when MFA was enforced, or empty string."""
+	cfg = _load_config(CONFIG_FILE_PATH)
+	if isinstance(cfg, dict):
+		mfa_block = cfg.get("mfa")
+		if isinstance(mfa_block, dict):
+			return str(mfa_block.get("enforced_at", "") or "").strip()
+		return str(cfg.get("mfa_enforced_at", "") or "").strip()
+	return ""
+
+
+def set_mfa_enforced_at(timestamp: str | None = None) -> str:
+	"""Persist timestamp when MFA enforcement was turned on."""
+	ts = timestamp or datetime.now(UTC).isoformat()
+	cfg = _load_config(CONFIG_FILE_PATH)
+	if not isinstance(cfg, dict):
+		cfg = {}
+	mfa_block = cfg.get("mfa")
+	if not isinstance(mfa_block, dict):
+		mfa_block = {}
+	mfa_block["enforced_at"] = ts
+	cfg["mfa"] = mfa_block
+	cfg["mfa_enforced_at"] = ts
+	with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
+		json.dump(cfg, f, indent=4)
+	return ts
 
 
 # Recovery mode: locally-only endpoint to reset MFA when SECRET_KEY changed without migration
