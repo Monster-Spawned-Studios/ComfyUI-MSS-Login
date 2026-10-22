@@ -88,7 +88,7 @@ class Timeout:
 			self._state_path = _default_timeout_state_path()
 		else:
 			self._state_path = state_path or None
-		self._save_lock = threading.Lock()
+		self._save_lock = threading.RLock()
 		self._save_timer: threading.Timer | None = None
 		self._load_state()
 
@@ -296,6 +296,19 @@ class Timeout:
 		self._remove_key(_pair_key(username, ip), save=False)
 		self._remove_key(_pair_key("*", ip), save=True)
 
+	def clear_all_for_user(self, username: str) -> None:
+		"""Clear all failed attempts and timeouts associated with a specific username across all IPs."""
+		if not username:
+			return
+		with self._save_lock:
+			target = f"{username.strip().lower()}|"
+			keys_to_remove = [k for k in list(self._failed_attempts) if k.startswith(target)] + [
+				k for k in list(self._timeout_end_time) if k.startswith(target)
+			]
+			for k in set(keys_to_remove):
+				self._remove_key(k, save=False)
+			self._schedule_save()
+
 	def get_timeout_end_time(self, ip: str, username: str | None = None) -> datetime | None:
 		"""Get the timeout end time for (username, IP), preferring the later of pair/wildcard."""
 		pair = self._timeout_end_time.get(_pair_key(username, ip))
@@ -324,6 +337,13 @@ class Timeout:
 		async def time_out_middleware(request: web.Request, handler) -> web.Response:
 			path = request.path
 			if path in paths and request.method in ("POST", "PUT"):
+				try:
+					from .emergency_recovery import check_and_execute_emergency_recovery
+
+					check_and_execute_emergency_recovery(timeout_instance=self)
+				except Exception:
+					pass
+
 				peer = getattr(request, "remote", "") or ""
 				if is_trusted_proxy_peer(peer):
 					return await handler(request)
