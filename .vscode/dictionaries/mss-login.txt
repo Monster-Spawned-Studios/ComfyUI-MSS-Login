@@ -12,6 +12,7 @@ axios
 backblaze
 backblazeb
 bavail
+Bitwarden
 blocklist
 Blocklist
 cand
@@ -111,6 +112,8 @@ rclone
 realpaths
 RECOVRY
 redactions
+referer
+Referer
 reenrollment
 regen
 rejectbutton
