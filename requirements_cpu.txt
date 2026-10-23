@@ -1,9 +1,8 @@
 --index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://pypi.org/simple
-# Linux / Windows CPU-only (no usable NVIDIA driver). PyTorch CPU wheels
-# are downloaded from the official PyTorch CPU wheel index using --index-url,
+# Linux / Windows / Intel Mac CPU-only (no usable GPU acceleration).
+# PyTorch CPU wheels are downloaded from the official PyTorch CPU wheel index using --index-url,
 # while general dependencies are resolved from PyPI via --extra-index-url.
-# Do not use this file on macOS; use requirements_metal.txt (PyPI MPS wheels) instead.
 aiohttp>=3.14.3
 PyJWT>=2.15.0
 bleach>=6.4.0
@@ -13,9 +12,10 @@ bcrypt
 cryptography>=50.0.0
 python-dotenvx>=0.3.0
 pyotp
+webauthn>=3.0.1,<4
 sqlcipher3
 argon2-cffi
-pillow>=12.3.0
+pillow>=13.0.0
 numpy
 torch>=2.13.0
 torchvision
@@ -23,4 +23,5 @@ torchaudio
 uv
 transformers>=5.10.0
 boto3
+huggingface_hub>=0.23.0,<2
 comfyui-frontend-package>=1.40.0
