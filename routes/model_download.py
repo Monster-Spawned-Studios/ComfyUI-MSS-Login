@@ -670,6 +670,16 @@ async def _run_job(job_id: str) -> None:
 			_upload_s3_staged_download(dest_dir, saved_rel)
 
 		if success:
+			# Invalidate ComfyUI folder_paths cache so new models are immediately seen
+			try:
+				import folder_paths
+
+				if hasattr(folder_paths, "filename_list_cache"):
+					folder_paths.filename_list_cache.clear()
+				if hasattr(folder_paths, "cache"):
+					folder_paths.cache.clear()
+			except Exception:
+				pass
 			# Always refresh cache so shared-library destinations pick up the new file.
 			try:
 				cache = get_model_cache(USERS_DB_CONFIG)

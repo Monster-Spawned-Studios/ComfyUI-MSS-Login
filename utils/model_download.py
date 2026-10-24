@@ -38,7 +38,10 @@ _HF_CDN_HOST_RE = re.compile(
 _CIVITAI_CDN_HOST_RE = re.compile(
 	r"^(?:image|orchestration|civitai-delivery)[^/]*\.civitai\.com$|"
 	r"^.*\.civitai\.com$|"
-	r"^.*\.civitai\.red$",
+	r"^.*\.civitai\.red$|"
+	r"^civitai-delivery[-a-z0-9]*\.(?:[a-z0-9]+\.)?r2\.cloudflarestorage\.com$|"
+	r"^civitai[-a-z0-9]*\.(?:[a-z0-9]+\.)?r2\.cloudflarestorage\.com$|"
+	r"^civitai[-a-z0-9]*\.(?:s3[.-][a-z0-9-]+\.amazonaws\.com|s3\.amazonaws\.com)$",
 	re.IGNORECASE,
 )
 
@@ -272,6 +275,7 @@ async def fetch_allowlisted(
 	Returns the final ClientResponse (caller must close / use as context).
 	"""
 	current = url
+	current_headers = dict(headers) if headers else {}
 	for _ in range(max_redirects + 1):
 		parsed = urlparse(current)
 		err = _reject_ssrf_url(parsed)
@@ -279,8 +283,18 @@ async def fetch_allowlisted(
 			raise ValueError(err)
 		if not is_download_redirect_host_allowed(parsed.hostname):
 			raise ValueError(f"Redirect host not allowlisted: {parsed.hostname}")
+		hop_host = (parsed.hostname or "").lower().removeprefix("www.")
+		hop_headers = current_headers
+		if (
+			hop_headers
+			and hop_host not in ALLOWED_CIVITAI_HOSTS
+			and hop_host not in ALLOWED_HF_HOSTS
+		):
+			hop_headers = {
+				k: v for k, v in hop_headers.items() if k.lower() != "authorization"
+			}
 		resp = await session.get(
-			current, params=params, headers=headers or None, allow_redirects=False
+			current, params=params, headers=hop_headers or None, allow_redirects=False
 		)
 		params = None  # query only on first hop
 		if resp.status in (301, 302, 303, 307, 308):
