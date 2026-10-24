@@ -8,13 +8,12 @@ import os
 import sys
 
 try:
-	from ..constants import (
-		DATA_DIR,
-		experimental_model_isolation_enabled,
-	)
+	from ..constants import DATA_DIR, experimental_model_isolation_enabled
+
 	try:
 		from ..constants import get_isolation_folder_naming
 	except (ImportError, AttributeError):
+
 		def get_isolation_folder_naming() -> str:
 			for mod_name in ("mss_login.constants", "constants"):
 				mod = sys.modules.get(mod_name)
@@ -23,13 +22,12 @@ try:
 			return "username"
 except ImportError:
 	try:
-		from constants import (
-			DATA_DIR,
-			experimental_model_isolation_enabled,
-		)
+		from constants import DATA_DIR, experimental_model_isolation_enabled
+
 		try:
 			from constants import get_isolation_folder_naming
 		except (ImportError, AttributeError):
+
 			def get_isolation_folder_naming() -> str:
 				return "username"
 	except ImportError:
@@ -40,6 +38,7 @@ except ImportError:
 
 		def get_isolation_folder_naming() -> str:
 			return "username"
+
 
 # Common ComfyUI asset folder types registered at startup when isolation is on.
 _COMMON_ISOLATION_FOLDERS = frozenset(
@@ -264,9 +263,7 @@ def register_all_isolation_folders() -> list[str]:
 	return registered
 
 
-def list_isolation_items_for_user(
-	user_id: str | None, username: str | None = None
-) -> list[dict]:
+def list_isolation_items_for_user(user_id: str | None, username: str | None = None) -> list[dict]:
 	"""
 	List storage-shaped model paths already on disk under this user's isolation folders.
 	Implements bidirectional dual-read across both username and UUID directories.

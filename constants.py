@@ -933,9 +933,7 @@ def get_isolation_folder_naming() -> str:
 def save_isolation_folder_naming(mode: str) -> str:
 	"""Persist model isolation folder naming convention ('username' or 'user_id')."""
 	normalized = (
-		"user_id"
-		if str(mode or "").strip().lower() in ("user_id", "uuid", "id")
-		else "username"
+		"user_id" if str(mode or "").strip().lower() in ("user_id", "uuid", "id") else "username"
 	)
 	cfg = _load_config(CONFIG_FILE_PATH)
 	if not isinstance(cfg, dict):

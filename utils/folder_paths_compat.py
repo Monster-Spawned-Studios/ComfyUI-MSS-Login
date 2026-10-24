@@ -28,10 +28,7 @@ def get_models_root() -> str:
 
 
 def resolve_local_model_destination(
-	folder_type: str,
-	target_user_id: str,
-	isolate: bool = True,
-	target_username: str | None = None,
+	folder_type: str, target_user_id: str, isolate: bool = True, target_username: str | None = None
 ) -> tuple[str, str]:
 	"""
 	Resolve a local download destination under ComfyUI models.

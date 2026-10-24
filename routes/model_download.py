@@ -43,6 +43,7 @@ from ..utils.model_download_history_store import (
 	extract_civitai_metadata,
 	get_model_download_history_store,
 )
+
 try:
 	from ..utils.model_isolation import sanitize_user_segment, user_isolation_candidate_segments
 except ImportError:
@@ -51,6 +52,8 @@ except ImportError:
 	def user_isolation_candidate_segments(uid: str | None, uname: str | None = None) -> list[str]:
 		seg = sanitize_user_segment(uname or uid)
 		return [seg] if seg else []
+
+
 from ..utils.model_source_api_keys_store import SOURCES, get_model_source_api_keys_store
 from ..utils.model_download_errors import (
 	ALREADY_EXISTS,
