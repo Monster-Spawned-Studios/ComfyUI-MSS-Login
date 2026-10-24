@@ -15,6 +15,7 @@ try:
 	from ..constants import experimental_model_isolation_enabled
 	from .model_isolation import (
 		isolation_folder_root,
+		isolation_models_base,
 		isolation_user_folder,
 		sanitize_user_segment,
 		user_isolation_candidate_segments,
@@ -24,6 +25,7 @@ except (ImportError, ValueError):
 	from constants import experimental_model_isolation_enabled  # type: ignore
 	from utils.model_isolation import (
 		isolation_folder_root,
+		isolation_models_base,
 		isolation_user_folder,
 		sanitize_user_segment,
 		user_isolation_candidate_segments,
@@ -233,17 +235,27 @@ def _grant_storage_for_suffix(
 
 def foreign_uuid_prefix(name: str, user_id: str | None) -> bool:
 	"""
-	True when name starts with a UUID segment that is not the current user's segment.
+	True when name starts with a foreign user isolation segment (UUID or foreign user folder).
 	Used by middleware to reject with a generic MODEL_NOT_ALLOWED (no existence leak).
 	"""
 	path = _norm_path(name)
 	if "/" not in path:
 		return False
 	seg, _rest = path.split("/", 1)
-	if not is_uuid_segment(seg):
-		return False
 	candidate_segments = [s.lower() for s in user_isolation_candidate_segments(user_id)]
-	return seg.lower() not in candidate_segments
+	if seg.lower() in candidate_segments:
+		return False
+	if is_uuid_segment(seg):
+		return True
+	base = isolation_models_base()
+	if os.path.isdir(base):
+		try:
+			for ft in os.listdir(base):
+				if os.path.isdir(os.path.join(base, ft, seg)):
+					return True
+		except OSError:
+			pass
+	return False
 
 
 def resolve_model_name(
@@ -289,8 +301,8 @@ def resolve_model_name(
 				)
 			# Own prefix but missing → None (generic miss)
 			return None
-		if is_uuid_segment(seg):
-			# Foreign UUID prefix: denial
+		if is_uuid_segment(seg) or foreign_uuid_prefix(raw, user_id):
+			# Foreign UUID or user isolation prefix: denial
 			return None
 		# Non-UUID subfolder (e.g. SDXL/foo.safetensors): check own isolation first!
 		match = _own_isolation_match(folder_norm, user_id, raw, username=username)

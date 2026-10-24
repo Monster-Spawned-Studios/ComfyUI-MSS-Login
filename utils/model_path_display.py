@@ -210,10 +210,11 @@ def map_object_info_combos_to_display(
 	return payload
 
 
-def _normalize_own_prefix(raw: str, viewer_seg: str) -> str:
-	own_prefix = f"{viewer_seg}/"
-	if raw.startswith(own_prefix) or raw.lower().startswith(own_prefix.lower()):
-		return raw[len(viewer_seg) + 1 :]
+def _normalize_own_prefix(raw: str, viewer_id_or_seg: str) -> str:
+	for seg in user_isolation_candidate_segments(viewer_id_or_seg):
+		own_prefix = f"{seg}/"
+		if raw.startswith(own_prefix) or raw.lower().startswith(own_prefix.lower()):
+			return raw[len(seg) + 1 :]
 	# Any UUID first segment → strip to plain for display/outbound (own handled above;
 	# foreign cases are rejected separately before this runs on /prompt).
 	parts = raw.split("/", 1)
@@ -243,8 +244,6 @@ def rewrite_prompt_model_names(
 	if not experimental_model_isolation_enabled() or not isinstance(prompt, dict):
 		return prompt
 
-	viewer_seg = sanitize_user_segment(viewer_user_id)
-
 	for _node_id, node in prompt.items():
 		if not isinstance(node, dict):
 			continue
@@ -262,7 +261,7 @@ def rewrite_prompt_model_names(
 				raw = value.strip().replace("\\", "/")
 				folder_norm = _normalize_folder(folder)
 				if normalize_only:
-					inputs[input_key] = _normalize_own_prefix(raw, viewer_seg)
+					inputs[input_key] = _normalize_own_prefix(raw, viewer_user_id or "")
 				else:
 					inputs[input_key] = to_storage_name(
 						raw, viewer_user_id, grants, folder=folder_norm
@@ -278,7 +277,7 @@ def rewrite_prompt_model_names(
 				if not _looks_like_model_file(value):
 					continue
 				raw = value.strip().replace("\\", "/")
-				inputs[key] = _normalize_own_prefix(raw, viewer_seg)
+				inputs[key] = _normalize_own_prefix(raw, viewer_user_id or "")
 
 	return prompt
 
