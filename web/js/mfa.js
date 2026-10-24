@@ -29,6 +29,22 @@
 		}, 5500);
 	}
 
+	function _fallbackCopyText(text) {
+		try {
+			const ta = document.createElement("textarea");
+			ta.value = text;
+			ta.style.position = "fixed";
+			ta.style.opacity = "0";
+			document.body.appendChild(ta);
+			ta.select();
+			document.execCommand("copy");
+			document.body.removeChild(ta);
+			addToast("Secret key copied to clipboard!", "success");
+		} catch (e) {
+			addToast("Could not copy automatically. Please copy manually.", "info");
+		}
+	}
+
 	function clearMfaStorage() {
 		sessionStorage.removeItem(STORAGE_KEY_TOKEN);
 		sessionStorage.removeItem(STORAGE_KEY_MODE);
@@ -141,15 +157,48 @@
 							);
 						}
 					}
-					// Display secret key for manual entry if available or parsed from URI
+					// Display secret key for manual entry with formatting and copy support
 					let secretKey = data.secret;
 					if (!secretKey && data.provisioning_uri) {
 						const match = /[?&]secret=([A-Z0-9]+)/i.exec(data.provisioning_uri);
 						if (match) secretKey = match[1];
 					}
-					if (secretKey && secretKeyEl && secretDisplay) {
-						secretKeyEl.textContent = secretKey;
-						secretDisplay.style.display = "block";
+					if (secretKey && secretKeyEl) {
+						const cleanKey = secretKey.replace(/\s+/g, "").toUpperCase();
+						secretKeyEl.dataset.raw = cleanKey;
+						// Format with spaces every 4 characters for readability
+						secretKeyEl.textContent = cleanKey.replace(/(.{4})/g, "$1 ").trim();
+
+						const toggleBtn = document.getElementById("mfa-toggle-secret-btn");
+						if (toggleBtn && secretDisplay) {
+							toggleBtn.onclick = function () {
+								if (secretDisplay.style.display === "none" || !secretDisplay.style.display) {
+									secretDisplay.style.display = "block";
+									toggleBtn.textContent = "Hide manual secret key";
+								} else {
+									secretDisplay.style.display = "none";
+									toggleBtn.textContent = "Can't scan QR code? Show manual secret key";
+								}
+							};
+						}
+						const copyBtn = document.getElementById("mfa-copy-secret-btn");
+						if (copyBtn) {
+							copyBtn.onclick = function () {
+								const toCopy = secretKeyEl.dataset.raw || cleanKey;
+								if (navigator.clipboard && navigator.clipboard.writeText) {
+									navigator.clipboard
+										.writeText(toCopy)
+										.then(function () {
+											addToast("Secret key copied to clipboard!", "success");
+										})
+										.catch(function () {
+											_fallbackCopyText(toCopy);
+										});
+								} else {
+									_fallbackCopyText(toCopy);
+								}
+							};
+						}
 					}
 					if (data.backup_code && backupCodeEl && backupDisplay) {
 						backupCodeEl.textContent = data.backup_code;

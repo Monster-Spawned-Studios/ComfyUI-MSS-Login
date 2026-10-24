@@ -139,6 +139,12 @@ def origin_allowed(origin: str) -> bool:
 	inferred_origin, _ = _get_host_base_url_parsed()
 	if inferred_origin and o == inferred_origin:
 		return True
+	if o.startswith("https://") or o.startswith("http://"):
+		p = urlparse(o)
+		host = (p.hostname or "").lower()
+		rp_id = str(cfg.get("rp_id", "") or "").strip().lower()
+		if host and rp_id and (host == rp_id or host.endswith("." + rp_id)):
+			return True
 	return False
 
 

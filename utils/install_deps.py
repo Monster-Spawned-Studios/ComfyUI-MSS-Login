@@ -84,27 +84,55 @@ def detect_torch_install_plan(
 	system: str | None = None,
 	cuda_major: int | None | object = _UNSET,
 	env: dict[str, str] | None = None,
+	machine: str | None = None,
 ) -> dict[str, str | None]:
 	"""Choose the PyTorch backend for this host.
 
 	Preference order:
-	- macOS: Metal (PyPI wheels; CUDA indexes are not published for darwin)
+	- macOS Apple Silicon (arm64): Metal (PyPI wheels; MPS hardware acceleration).
+	- macOS Intel (x86_64): CPU (PyPI wheels; Intel x86_64 CPU mode without MPS).
 	- Linux/Windows: cu130 if the NVIDIA driver reports CUDA 13+, else cu128
-	  if any CUDA driver is present, else CPU
+	  if any CUDA driver is present, else CPU.
 	Env overrides: ``USE_CPU=1`` forces CPU; ``USE_CUDA=1`` prefers CUDA when a
 	driver is found (still requires a CUDA major >= 13 for cu130).
+	``USE_METAL=1`` or ``DEVICE_TYPE=metal`` forces Metal.
 	"""
 	system = system or platform.system()
 	environ = env if env is not None else os.environ
 	force_cpu = str(environ.get("USE_CPU", "")).strip() == "1"
 	force_cuda = str(environ.get("USE_CUDA", "")).strip() == "1"
+	force_metal = (
+		str(environ.get("USE_METAL", "")).strip() == "1"
+		or str(environ.get("DEVICE_TYPE", "")).strip().lower() == "metal"
+	)
 
 	if system == "Darwin":
-		return {
-			"backend": "metal",
-			"requirements_file": "requirements_metal.txt",
-			"extra_index_url": None,
-		}
+		if force_cpu:
+			return {
+				"backend": "cpu",
+				"requirements_file": "requirements_cpu.txt",
+				"extra_index_url": None,
+			}
+		current_machine = machine
+		if current_machine is None:
+			if system == platform.system():
+				current_machine = platform.machine()
+			else:
+				current_machine = "arm64"
+
+		is_apple_silicon = str(current_machine).lower() in ("arm64", "aarch64") or force_metal
+		if is_apple_silicon:
+			return {
+				"backend": "metal",
+				"requirements_file": "requirements_metal.txt",
+				"extra_index_url": None,
+			}
+		else:
+			return {
+				"backend": "cpu",
+				"requirements_file": "requirements_cpu.txt",
+				"extra_index_url": None,
+			}
 
 	if force_cpu:
 		return {

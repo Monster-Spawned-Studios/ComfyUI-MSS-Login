@@ -34,7 +34,7 @@ def get_extension_root() -> str:
 	return os.path.abspath(os.path.join(here, ".."))
 
 
-def _copy_tree_missing(src: str, dst: str) -> bool:
+def _copy_tree_missing(src: str, dst: str, allow_downloaders: bool = True) -> bool:
 	"""Copy files/dirs from src into dst without overwriting existing entries."""
 	if not src or not os.path.isdir(src):
 		return False
@@ -44,6 +44,14 @@ def _copy_tree_missing(src: str, dst: str) -> bool:
 	os.makedirs(dst, exist_ok=True)
 	try:
 		for name in os.listdir(src):
+			if not allow_downloaders:
+				try:
+					from .shared_workflows import is_model_downloader_workflow
+
+					if is_model_downloader_workflow(name):
+						continue
+				except Exception:
+					pass
 			src_item = os.path.join(src, name)
 			dst_item = os.path.join(dst, name)
 			if os.path.exists(dst_item):
@@ -359,7 +367,9 @@ def _legacy_data_users_workflow_dirs(username: str) -> list[str]:
 	return [os.path.join(legacy_root, "default"), legacy_root]
 
 
-def _copy_workflows_if_empty(sources: list[str], target_dir: str) -> None:
+def _copy_workflows_if_empty(
+	sources: list[str], target_dir: str, username: str | None = None
+) -> None:
 	"""
 	One-time helper: copy workflows from the first non-empty source directory
 	into target_dir if target_dir is currently empty. Non-destructive.
@@ -372,6 +382,15 @@ def _copy_workflows_if_empty(sources: list[str], target_dir: str) -> None:
 	except OSError:
 		return
 
+	allow_downloaders = True
+	if username is not None:
+		try:
+			from .shared_workflows import user_has_download_permission
+
+			allow_downloaders = user_has_download_permission(username)
+		except Exception:
+			allow_downloaders = False
+
 	for src in sources:
 		if not src or not os.path.isdir(src) or os.path.abspath(src) == os.path.abspath(target_dir):
 			continue
@@ -383,6 +402,14 @@ def _copy_workflows_if_empty(sources: list[str], target_dir: str) -> None:
 				continue
 			os.makedirs(target_dir, exist_ok=True)
 			for name in valid_items:
+				if not allow_downloaders:
+					try:
+						from .shared_workflows import is_model_downloader_workflow
+
+						if is_model_downloader_workflow(name):
+							continue
+					except Exception:
+						pass
 				src_item = os.path.join(src, name)
 				dst_item = os.path.join(target_dir, name)
 				if os.path.isfile(src_item) and not os.path.exists(dst_item):
@@ -392,6 +419,28 @@ def _copy_workflows_if_empty(sources: list[str], target_dir: str) -> None:
 			break
 		except OSError:
 			continue
+
+
+def seed_default_workflows(target_dir: str, username: str | None = None) -> None:
+	"""Seed shipped default template workflows (e.g. model downloaders) into target_dir if missing."""
+	if not target_dir or not os.path.isdir(target_dir):
+		return
+	allow_downloaders = True
+	if username is not None:
+		try:
+			from .shared_workflows import user_has_download_permission
+
+			allow_downloaders = user_has_download_permission(username)
+		except Exception:
+			allow_downloaders = False
+
+	root = get_extension_root()
+	for src in (
+		os.path.join(root, "users", "defaults", "workflows"),
+		os.path.join(root, "workflows"),
+	):
+		if os.path.isdir(src):
+			_copy_tree_missing(src, target_dir, allow_downloaders=allow_downloaders)
 
 
 def get_user_workflow_dir(username: str) -> str:
@@ -422,7 +471,8 @@ def get_user_workflow_dir(username: str) -> str:
 			os.path.join(get_extension_root(), "users", "defaults", "workflows"),
 			os.path.join(get_extension_root(), "workflows"),
 		]
-		_copy_workflows_if_empty(sources, target_dir)
+		_copy_workflows_if_empty(sources, target_dir, username=username)
+		seed_default_workflows(target_dir, username=username)
 		return target_dir
 	else:
 		target_dir = get_data_subdir("users", safe, "workflows", "default")
@@ -434,7 +484,8 @@ def get_user_workflow_dir(username: str) -> str:
 			os.path.join(get_extension_root(), "users", "defaults", "workflows"),
 			os.path.join(get_extension_root(), "workflows"),
 		]
-		_copy_workflows_if_empty(sources, target_dir)
+		_copy_workflows_if_empty(sources, target_dir, username=username)
+		seed_default_workflows(target_dir, username=username)
 		return target_dir
 
 

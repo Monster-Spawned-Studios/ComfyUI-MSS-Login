@@ -136,6 +136,14 @@ except ImportError:
 ensure_groups_config()
 initialize_redirect_pattern_cache(logger=logger)
 
+# Check for host-placed emergency unlock trigger file on startup
+try:
+	from .utils.emergency_recovery import check_and_execute_emergency_recovery
+
+	check_and_execute_emergency_recovery(users_db_instance=users_db, timeout_instance=timeout)
+except Exception as _em_err:
+	logger.debug("[mss-login] Emergency recovery startup check: %s", _em_err)
+
 # Verify config file integrity (SHA-256) on startup; log warnings for mismatches
 try:
 	from .utils.config_integrity import verify_local_hashes

@@ -282,6 +282,142 @@ if (window.location.pathname === "/login") {
         })
         .catch(function () {});
     }
+
+    // Passkey / WebAuthn passwordless login
+    (function initPasskeyLogin() {
+      const section = document.getElementById("passkey-login-section");
+      const btn = document.getElementById("passkey-login-btn");
+      if (!section || !btn) return;
+      if (!window.PublicKeyCredential) return;
+
+      function bufferToBase64url(buf) {
+        const bytes = new Uint8Array(buf);
+        let str = "";
+        for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+        return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      }
+
+      function base64urlToBuffer(b64) {
+        const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+        const s = (b64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+        const raw = atob(s);
+        const out = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+        return out.buffer;
+      }
+
+      function publicKeyFromJson(opts) {
+        const o = Object.assign({}, opts);
+        o.challenge = base64urlToBuffer(o.challenge);
+        if (o.user && o.user.id) o.user.id = base64urlToBuffer(o.user.id);
+        if (o.excludeCredentials) {
+          o.excludeCredentials = o.excludeCredentials.map(function (c) {
+            return Object.assign({}, c, { id: base64urlToBuffer(c.id) });
+          });
+        }
+        if (o.allowCredentials) {
+          o.allowCredentials = o.allowCredentials.map(function (c) {
+            return Object.assign({}, c, { id: base64urlToBuffer(c.id) });
+          });
+        }
+        return o;
+      }
+
+      function credentialToJson(cred) {
+        return {
+          id: cred.id,
+          rawId: bufferToBase64url(cred.rawId),
+          type: cred.type,
+          response: {
+            clientDataJSON: bufferToBase64url(cred.response.clientDataJSON),
+            authenticatorData: cred.response.authenticatorData
+              ? bufferToBase64url(cred.response.authenticatorData)
+              : undefined,
+            signature: cred.response.signature
+              ? bufferToBase64url(cred.response.signature)
+              : undefined,
+            userHandle: cred.response.userHandle
+              ? bufferToBase64url(cred.response.userHandle)
+              : undefined,
+          },
+        };
+      }
+
+      fetch("/mss-login/api/webauthn/status", { credentials: "same-origin" })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (status) {
+          if (!status || !status.available) return;
+          const secureOrigin = status.origins !== undefined
+            ? Boolean(
+                window.isSecureContext &&
+                  (status.origins.includes(location.origin) ||
+                    status.origins.includes("*") ||
+                    status.origins.some(function (o) {
+                      return o.replace(/\/+$/, "") === location.origin;
+                    }))
+              )
+            : Boolean(status.secure_origin);
+          if (!secureOrigin) return;
+
+          section.style.display = "block";
+
+          btn.addEventListener("click", async function () {
+            btn.disabled = true;
+            const origHtml = btn.innerHTML;
+            btn.textContent = "Verifying passkey...";
+            try {
+              const optRes = await fetch("/mss-login/webauthn/passwordless/options", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" }
+              });
+              if (!optRes.ok) {
+                const err = await optRes.json().catch(function () { return {}; });
+                addToast(err.error || "Passkey login not available", "error");
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                return;
+              }
+              const optData = await optRes.json();
+              const publicKey = publicKeyFromJson(optData);
+              const cred = await navigator.credentials.get({ publicKey: publicKey });
+              if (!cred) {
+                addToast("No passkey selected", "error");
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+                return;
+              }
+              const rememberMe = document.getElementById("remember_me") && document.getElementById("remember_me").checked;
+              const verifyRes = await fetch("/mss-login/webauthn/passwordless/verify", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  credential: credentialToJson(cred),
+                  remember_me: rememberMe
+                })
+              });
+              const verifyData = await verifyRes.json().catch(function () { return {}; });
+              if (verifyRes.ok && verifyData.redirect_url) {
+                window.location.href = verifyData.redirect_url;
+              } else if (verifyData.mfa_required) {
+                window.location.href = "/mfa";
+              } else {
+                addToast(verifyData.error || "Passkey verification failed", "error");
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+              }
+            } catch (e) {
+              if (e.name !== "NotAllowedError") {
+                addToast(e.message || "Passkey error", "error");
+              }
+              btn.disabled = false;
+              btn.innerHTML = origHtml;
+            }
+          });
+        })
+        .catch(function () {});
+    })();
   });
 }
 

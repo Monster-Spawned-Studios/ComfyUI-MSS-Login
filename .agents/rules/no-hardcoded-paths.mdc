@@ -1,0 +1,30 @@
+---
+description: No hardcoded full system paths in agent instructions, rules, skills, or scripts
+always_on: true
+trigger: always_on
+applyTo: "**"
+alwaysApply: true
+---
+
+# No Hardcoded Full System Paths
+
+For security, portability, and least-privilege operations across diverse environments (local developer machines, CI runners, container deployments, and remote cloud VMs), agents and contributors must **never hardcode absolute system paths**.
+
+## Rules
+
+1. **No Absolute User or Host Paths**:
+   - Never embed system paths such as `/home/...`, `/mnt/...`, `/Users/...`, `C:\Users\...`, or machine-specific mount paths in any agent rules, instructions, prompts, skills, or scripts.
+   - Never reference specific home directories or developer usernames in code or configuration.
+
+2. **Strict Use of Relative Paths**:
+   - All repository-internal files must be referenced relative to the repository/workspace root (e.g. `tests/run_ci.py`, `.venv/bin/python`, `utils/`, `deploy/`).
+   - In shell scripts and CI tools, dynamically resolve the repository root if an absolute reference is strictly required:
+     ```bash
+     REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+     # or
+     REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+     ```
+
+3. **Standard System and Data Directories**:
+   - Use standard environment variables (`$HOME`, `$TMPDIR`, `$XDG_CONFIG_HOME`, `$DATA_DIR`, `$MSS_LOGIN_DATA_DIR`) or fallback relative directories.
+   - Inside container environments, use standardized container-internal paths (e.g. `/app`, `/data/mss-login`) documented in container manifests.

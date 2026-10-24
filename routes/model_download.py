@@ -43,7 +43,14 @@ from ..utils.model_download_history_store import (
 	extract_civitai_metadata,
 	get_model_download_history_store,
 )
-from ..utils.model_isolation import sanitize_user_segment
+try:
+	from ..utils.model_isolation import sanitize_user_segment, user_isolation_candidate_segments
+except ImportError:
+	from ..utils.model_isolation import sanitize_user_segment  # type: ignore
+
+	def user_isolation_candidate_segments(uid: str | None, uname: str | None = None) -> list[str]:
+		seg = sanitize_user_segment(uname or uid)
+		return [seg] if seg else []
 from ..utils.model_source_api_keys_store import SOURCES, get_model_source_api_keys_store
 from ..utils.model_download_errors import (
 	ALREADY_EXISTS,
@@ -467,9 +474,10 @@ def _resolve_destination_path(job: dict, target_user_id: str) -> tuple[str, str]
 	destination_type = job.get("destination_type", "local")
 	folder_type = job.get("folder_type", "checkpoints")
 	isolate = job.get("isolate", True)
+	target_username = (job.get("target_username") or job.get("username") or "").strip() or None
 	if destination_type == "local":
 		dest_dir, base_dir = resolve_local_model_destination(
-			folder_type, target_user_id, isolate=isolate
+			folder_type, target_user_id, isolate=isolate, target_username=target_username
 		)
 	else:
 		mgr = get_mount_manager()
@@ -479,9 +487,8 @@ def _resolve_destination_path(job: dict, target_user_id: str) -> tuple[str, str]
 		if not mgr.is_mounted() and not mgr._in_boto3_mode():
 			raise RuntimeError("S3 mount is not active")
 		if experimental_model_isolation_enabled() and isolate:
-			dest_dir = mgr.get_models_folder_path(
-				f"{folder_type}/{sanitize_user_segment(target_user_id)}"
-			)
+			user_segments = user_isolation_candidate_segments(target_user_id, target_username)
+			dest_dir = mgr.get_models_folder_path(f"{folder_type}/{user_segments[0]}")
 		else:
 			dest_dir = mgr.get_models_folder_path(folder_type)
 		os.makedirs(dest_dir, exist_ok=True)
@@ -517,6 +524,7 @@ def _auto_grant_downloaded_item(
 	destination_type: str,
 	granted_by_user_id: str,
 	granted_by_role: str,
+	target_username: str | None = None,
 ) -> None:
 	"""Grant only the single downloaded item when model isolation is enabled."""
 	if not experimental_model_isolation_enabled() or not target_user_id or not saved_rel:
@@ -524,8 +532,9 @@ def _auto_grant_downloaded_item(
 	rel = (saved_rel or "").replace("\\", "/").lstrip("/")
 	if not rel or ".." in rel.split("/"):
 		return
-	user_seg = sanitize_user_segment(target_user_id)
-	item_name = f"{user_seg}/{rel}"
+	user_segments = user_isolation_candidate_segments(target_user_id, target_username)
+	user_segment = user_segments[0]
+	item_name = f"{user_segment}/{rel}"
 	shared_store = get_shared_items_store(USERS_DB_CONFIG)
 	shared_store.add(
 		target_user_id,
@@ -677,6 +686,7 @@ async def _run_job(job_id: str) -> None:
 						destination_type=destination_type,
 						granted_by_user_id=user_id or "",
 						granted_by_role=role or "",
+						target_username=target_username or job.get("username"),
 					)
 				except Exception as e:
 					logger.warning(f"[MSS-Login] model isolation auto-grant failed: {e}")
@@ -812,7 +822,7 @@ async def enqueue_download_job(
 
 	provided_key = (body.get("api_key") or body.get("token") or "").strip()
 	token = provided_key or _source_token(user_id, source)
-	if not token:
+	if source != "direct_url" and not token:
 		return None, error_payload(
 			AUTH_REQUIRED_UPSTREAM,
 			f"No API key configured for {source}. Please save your API key in your MSS-Login profile (Settings -> Model Download) or enter it in the node's api_key field.",
@@ -829,7 +839,13 @@ async def enqueue_download_job(
 			pass
 
 	raw_isolate = body.get("isolate")
-	isolate = True if raw_isolate is None else bool(raw_isolate)
+	if raw_isolate is None:
+		isolate = True
+	elif isinstance(raw_isolate, bool):
+		isolate = raw_isolate
+	else:
+		s = str(raw_isolate).strip().lower()
+		isolate = False if s in ("false", "0", "off", "no") else True
 	if not isolate:
 		if not (
 			user_can_manage_model_sharing(role, perms) or user_can_view_all_models(role, perms)

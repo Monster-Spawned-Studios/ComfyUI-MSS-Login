@@ -1149,8 +1149,18 @@ class UsersDB:
 		user.pop("_totp_secret_plain", None)
 		self._backend.update(user_id, user, self._secret_key)
 		self.users[user_id] = user
-		totp = pyotp.TOTP(secret)
-		provisioning_uri = totp.provisioning_uri(name=username, issuer_name="mss-login")
+		totp = pyotp.TOTP(secret, digits=6, interval=30)
+		provisioning_uri = totp.provisioning_uri(name=username, issuer_name="MSS-Login")
+		sep = "&" if "?" in provisioning_uri else "?"
+		if "algorithm=" not in provisioning_uri:
+			provisioning_uri += f"{sep}algorithm=SHA1"
+			sep = "&"
+		if "digits=" not in provisioning_uri:
+			provisioning_uri += f"{sep}digits=6"
+			sep = "&"
+		if "period=" not in provisioning_uri:
+			provisioning_uri += f"{sep}period=30"
+			sep = "&"
 		return (provisioning_uri, plain_codes)
 
 	def mfa_verify_setup(self, username: str, code: str) -> bool:

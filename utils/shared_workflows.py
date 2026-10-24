@@ -24,22 +24,44 @@ SHARED_READONLY_BODY = {
 	"message": "Shared workflows are read-only",
 }
 
+DOWNLOADER_WORKFLOW_FILENAMES = {
+	"civitai_model_downloader.json",
+	"huggingface_model_downloader.json",
+	"universal_model_downloader.json",
+}
+
+
+def is_model_downloader_workflow(name: str | None) -> bool:
+	"""Return True if filename matches a shipped model downloader workflow."""
+	if not name:
+		return False
+	base = os.path.basename(str(name)).strip().lower()
+	if base in DOWNLOADER_WORKFLOW_FILENAMES:
+		return True
+	return base.endswith("_model_downloader.json") or base == "model_downloader.json"
+
+
 # Test overrides (None = use live config / env)
 _settings_override: dict[str, Any] | None = None
 _owner_username_override: str | None = None
 _workflow_dir_override: Callable[[str], str | None] | None = None
 _legacy_dirs_override: list[str] | None = None
 _guest_enabled_override: bool | None = None
+_user_can_download_override: Callable[[str], bool] | dict[str, bool] | bool | None = None
+_shipped_dir_override: str | None = None
 
 
 def reset_test_overrides() -> None:
 	global _settings_override, _owner_username_override
 	global _workflow_dir_override, _legacy_dirs_override, _guest_enabled_override
+	global _user_can_download_override, _shipped_dir_override
 	_settings_override = None
 	_owner_username_override = None
 	_workflow_dir_override = None
 	_legacy_dirs_override = None
 	_guest_enabled_override = None
+	_user_can_download_override = None
+	_shipped_dir_override = None
 
 
 def set_test_overrides(
@@ -49,9 +71,12 @@ def set_test_overrides(
 	workflow_dir_fn: Callable[[str], str | None] | None = None,
 	legacy_dirs: list[str] | None = None,
 	guest_enabled: bool | None = None,
+	can_download: Callable[[str], bool] | dict[str, bool] | bool | None = None,
+	shipped_dir: str | None = None,
 ) -> None:
 	global _settings_override, _owner_username_override
 	global _workflow_dir_override, _legacy_dirs_override, _guest_enabled_override
+	global _user_can_download_override, _shipped_dir_override
 	if settings is not None:
 		_settings_override = dict(settings)
 	if owner_username is not None:
@@ -62,6 +87,10 @@ def set_test_overrides(
 		_legacy_dirs_override = list(legacy_dirs)
 	if guest_enabled is not None:
 		_guest_enabled_override = guest_enabled
+	if can_download is not None:
+		_user_can_download_override = can_download
+	if shipped_dir is not None:
+		_shipped_dir_override = shipped_dir
 
 
 def _load_config_dict() -> dict[str, Any]:
@@ -147,6 +176,13 @@ def workflow_dir_path(username: str, *, must_exist: bool = True) -> str | None:
 	if must_exist and not os.path.isdir(target):
 		return None
 	try:
+		if os.path.isdir(target):
+			try:
+				from .user_env import seed_default_workflows
+
+				seed_default_workflows(target, username=username)
+			except Exception:
+				pass
 		return os.path.realpath(target) if os.path.isdir(target) else target
 	except OSError:
 		return target if not must_exist else None
@@ -156,7 +192,17 @@ def shared_workflow_dir() -> str | None:
 	"""Realpath of the shared guest workflow dir, or None if missing / disabled."""
 	if not _shared_library_enabled():
 		return None
-	return workflow_dir_path(shared_user_name(), must_exist=True)
+	shared_dir = workflow_dir_path(shared_user_name(), must_exist=True)
+	if not shared_dir and _workflow_dir_override is None:
+		try:
+			from .user_env import get_user_workflow_dir
+
+			shared_dir = get_user_workflow_dir(shared_user_name())
+			if shared_dir and os.path.isdir(shared_dir):
+				return os.path.realpath(shared_dir)
+		except Exception:
+			pass
+	return shared_dir
 
 
 def potential_legacy_global_dirs() -> list[str]:
@@ -209,6 +255,118 @@ def caller_is_owner(username: str) -> bool:
 	if not owner or not username:
 		return False
 	return str(username).strip().lower() == str(owner).strip().lower()
+
+
+def shipped_workflows_dir() -> str | None:
+	"""Realpath of shipped workflows directory (e.g. extension root/workflows)."""
+	if _shipped_dir_override is not None:
+		return _shipped_dir_override if os.path.isdir(_shipped_dir_override) else None
+	try:
+		from .user_env import get_extension_root
+
+		root = get_extension_root()
+		wf_dir = os.path.join(root, "workflows")
+		if os.path.isdir(wf_dir):
+			return os.path.realpath(wf_dir)
+	except Exception:
+		pass
+	return None
+
+
+def user_has_download_permission(username: str | None) -> bool:
+	"""Return True if username is allowed to view/load/run model download workflows."""
+	if not username:
+		return False
+	clean_user = str(username).strip().lower()
+	if clean_user in ("guest", ""):
+		return False
+
+	if _user_can_download_override is not None:
+		if callable(_user_can_download_override):
+			return bool(_user_can_download_override(clean_user))
+		if isinstance(_user_can_download_override, dict):
+			if clean_user in _user_can_download_override:
+				return bool(_user_can_download_override[clean_user])
+			if username in _user_can_download_override:
+				return bool(_user_can_download_override[username])
+		if isinstance(_user_can_download_override, bool):
+			return _user_can_download_override
+
+	if caller_is_owner(username):
+		return True
+
+	try:
+		try:
+			from ..globals import users_db
+		except Exception:
+			try:
+				from globals import users_db
+			except Exception:
+				users_db = None
+
+		rec = None
+		if users_db and hasattr(users_db, "get_user"):
+			_uid, u = users_db.get_user(username)
+			rec = u
+
+		if not rec:
+			return False
+
+		if rec.get("can_download_models") is True:
+			return True
+
+		groups = rec.get("groups") or rec.get("group") or []
+		if isinstance(groups, str):
+			groups = [groups]
+		groups_clean = [str(g).strip().lower() for g in groups if g]
+		is_admin = bool(rec.get("admin")) or "admin" in groups_clean or "owner" in groups_clean
+
+		role = groups_clean[0] if groups_clean else ("admin" if is_admin else "user")
+		if is_admin and role not in ("owner", "admin"):
+			role = "admin"
+
+		cfg = None
+		try:
+			from ..globals import access_control
+
+			if access_control and hasattr(access_control, "_load_group_config"):
+				cfg = access_control._load_group_config()
+		except Exception:
+			pass
+
+		if not cfg:
+			try:
+				from ..constants import DEFAULT_GROUP_CONFIG_PATH, GROUPS_CONFIG_FILE
+				from .json_utils import load_json_file
+
+				if GROUPS_CONFIG_FILE and os.path.exists(GROUPS_CONFIG_FILE):
+					cfg = load_json_file(GROUPS_CONFIG_FILE, None)
+				if (
+					not cfg
+					and DEFAULT_GROUP_CONFIG_PATH
+					and os.path.exists(DEFAULT_GROUP_CONFIG_PATH)
+				):
+					cfg = load_json_file(DEFAULT_GROUP_CONFIG_PATH, None)
+			except Exception:
+				pass
+
+		perms = cfg.get(role, {}) if isinstance(cfg, dict) else {}
+		try:
+			from .model_visibility_policy import user_can_download_models
+		except Exception:
+			try:
+				from utils.model_visibility_policy import user_can_download_models
+			except Exception:
+
+				def user_can_download_models(r: str, p: dict) -> bool:
+					val = p.get("can_download_models")
+					if val is None:
+						return r in ("admin", "owner")
+					return val is True
+
+		return user_can_download_models(role, perms)
+	except Exception:
+		return False
 
 
 def _is_archive_dir_name(name: str) -> bool:
@@ -333,6 +491,10 @@ def search_roots(username: str) -> list[tuple[str, str]]:
 		if shared_real and legacy == shared_real:
 			continue
 		roots.append((ORIGIN_LEGACY, legacy))
+	shipped = shipped_workflows_dir()
+	if shipped and shipped != own_real and shipped != shared_real:
+		if shipped not in [r[1] for r in roots]:
+			roots.append((ORIGIN_LEGACY, shipped))
 	return roots
 
 
@@ -340,6 +502,8 @@ def resolve_workflow(username: str, rel: str) -> tuple[str, str] | None:
 	"""Return ``(abs_path, origin)`` using own > shared > legacy precedence."""
 	clean = sanitize_workflow_rel(rel)
 	if not clean:
+		return None
+	if is_model_downloader_workflow(clean) and not user_has_download_permission(username):
 		return None
 	own = workflow_dir_path(username, must_exist=True)
 	shared = shared_workflow_dir()
@@ -357,6 +521,11 @@ def resolve_workflow(username: str, rel: str) -> tuple[str, str] | None:
 		path = _safe_file_under_root(legacy, clean)
 		if path:
 			return path, ORIGIN_LEGACY
+	shipped = shipped_workflows_dir()
+	if shipped:
+		path = _safe_file_under_root(shipped, clean)
+		if path:
+			return path, ORIGIN_LEGACY
 	return None
 
 
@@ -370,8 +539,11 @@ def collect_entries(
 	if hide_api_format is None:
 		hide_api_format = False
 
-	# Build lowest→highest so later overwrites: legacy, shared, own
+	# Build lowest→highest so later overwrites: shipped, legacy, shared, own
 	layers: list[tuple[str, str]] = []
+	shipped = shipped_workflows_dir()
+	if shipped:
+		layers.append((ORIGIN_LEGACY, shipped))
 	for legacy in legacy_global_dirs():
 		layers.append((ORIGIN_LEGACY, legacy))
 	shared = shared_workflow_dir()
@@ -406,6 +578,8 @@ def collect_entries(
 	entries = [files_map[key] for key in sorted(files_map)]
 	if hide_api_format:
 		entries = [e for e in entries if e.get("format") != "api"]
+	if not user_has_download_permission(username):
+		entries = [e for e in entries if not is_model_downloader_workflow(e.get("filename"))]
 	return entries
 
 

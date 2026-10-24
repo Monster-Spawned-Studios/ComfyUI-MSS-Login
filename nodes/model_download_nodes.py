@@ -238,11 +238,16 @@ class MSSModelDownload:
 		if not user_can_download_models(role, perms):
 			raise RuntimeError(f"{DOWNLOAD_NOT_ALLOWED}: {DOWNLOAD_NOT_ALLOWED_MESSAGE}")
 
+		isolate_val = (
+			isolate
+			if isinstance(isolate, bool)
+			else (str(isolate).strip().lower() not in ("false", "0", "off", "no"))
+		)
 		body = {
 			"source": source,
 			"folder_type": folder_type,
 			"destination_type": "local",
-			"isolate": bool(isolate),
+			"isolate": isolate_val,
 		}
 		if (url or "").strip():
 			body["url"] = url.strip()

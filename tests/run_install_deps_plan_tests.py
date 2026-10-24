@@ -41,6 +41,17 @@ def run_tests():
 	ok(plan["extra_index_url"] is None, "macOS uses PyPI (no CUDA/CPU index)")
 	ok(plan["requirements_file"] == "requirements_metal.txt", "macOS requirements_metal.txt")
 
+	print("TestDarwinAppleSiliconMetal")
+	plan_arm = install_deps.detect_torch_install_plan(system="Darwin", machine="arm64", env={})
+	ok(plan_arm["backend"] == "metal", "macOS Apple Silicon (arm64) uses Metal")
+	ok(plan_arm["requirements_file"] == "requirements_metal.txt", "Apple Silicon uses requirements_metal.txt")
+
+	print("TestDarwinIntelCpu")
+	plan_intel = install_deps.detect_torch_install_plan(system="Darwin", machine="x86_64", env={})
+	ok(plan_intel["backend"] == "cpu", "macOS Intel (x86_64) uses CPU mode")
+	ok(plan_intel["requirements_file"] == "requirements_cpu.txt", "Intel Mac uses requirements_cpu.txt")
+	ok(plan_intel["extra_index_url"] is None, "Intel Mac on Darwin uses PyPI index (not linux/win cpu index)")
+
 	print("TestCuda130PreferredWhenSupported")
 	plan = install_deps.detect_torch_install_plan(system="Linux", cuda_major=13, env={})
 	ok(plan["backend"] == "cuda130", "Linux CUDA 13 uses cu130")

@@ -106,6 +106,7 @@ After every project or task is complete, verify dependencies against the OSV dat
 - Nested MSS-Login configuration pages should offer back navigation to the main MSS-Login config menu without closing and reopening the dialog.
 - For local ComfyUI debugging, support a manually specified test-instance path plus a toggleable auto-install when that path has no `main.py`.
 - Agent-agnostic project rules belong in `.agents/rules/` (cross-agent); keep AGENTS.md in sync when adding always-on rules. Put project status, planning notes, and agent prompts under `_planning/` (gitignored), not the repo root.
+- Never hardcode full system paths (e.g. `/home/...`, `/mnt/...`, `/Users/...`) in any agent instructions, rules, skills, or scripts (for security and portability). Use repository-relative paths or dynamic `${REPO_ROOT:-$(git rev-parse --show-toplevel)}`; see [`.agents/rules/no-hardcoded-paths.mdc`](.agents/rules/no-hardcoded-paths.mdc).
 
 - Do not commit or push unless the user explicitly authorizes it in the turn’s instructions or after the changes are done; see [`.agents/rules/no-auto-commit.mdc`](.agents/rules/no-auto-commit.mdc).
 - Never commit Cursor memory / local agent state (`.cursor/`, continual-learning hook index files under `.cursor/hooks/state/`, transcript/store dumps); keep them gitignored and out of `git add`.

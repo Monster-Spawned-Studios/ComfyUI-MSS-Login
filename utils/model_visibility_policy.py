@@ -8,8 +8,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from ..constants import experimental_model_isolation_enabled
-from .model_isolation import list_isolation_items_for_user
+try:
+	from ..constants import experimental_model_isolation_enabled
+	from .model_isolation import list_isolation_items_for_user
+except (ImportError, ValueError):
+	from constants import experimental_model_isolation_enabled  # type: ignore
+	from utils.model_isolation import list_isolation_items_for_user
 
 
 def user_can_access_s3(role: str, perms: dict) -> bool:

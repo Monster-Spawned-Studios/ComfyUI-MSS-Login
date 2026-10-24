@@ -146,6 +146,18 @@ def main() -> int:
 			("Lockout hardening", os.path.join(TESTS_DIR, "run_lockout_hardening_tests.py"))
 		)
 		steps.append(("MFA hardening", os.path.join(TESTS_DIR, "run_mfa_tests.py")))
+		steps.append(
+			(
+				"MFA passkeys and isolation",
+				os.path.join(TESTS_DIR, "run_mfa_passkeys_isolation_tests.py"),
+			)
+		)
+		steps.append(
+			(
+				"Model downloader workflow visibility",
+				os.path.join(TESTS_DIR, "run_model_downloader_workflow_visibility_tests.py"),
+			)
+		)
 		steps.append(("WebAuthn second factor", os.path.join(TESTS_DIR, "run_webauthn_tests.py")))
 		steps.append(("Passkey UI routes", os.path.join(TESTS_DIR, "run_passkey_ui_tests.py")))
 		steps.append(

@@ -11,9 +11,24 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from ..constants import experimental_model_isolation_enabled
-from .model_isolation import isolation_folder_root, isolation_user_folder, sanitize_user_segment
-from .model_visibility_policy import normalize_model_name
+try:
+	from ..constants import experimental_model_isolation_enabled
+	from .model_isolation import (
+		isolation_folder_root,
+		isolation_user_folder,
+		sanitize_user_segment,
+		user_isolation_candidate_segments,
+	)
+	from .model_visibility_policy import normalize_model_name
+except (ImportError, ValueError):
+	from constants import experimental_model_isolation_enabled  # type: ignore
+	from utils.model_isolation import (
+		isolation_folder_root,
+		isolation_user_folder,
+		sanitize_user_segment,
+		user_isolation_candidate_segments,
+	)
+	from utils.model_visibility_policy import normalize_model_name
 
 # ComfyUI legacy folder aliases (bidirectional)
 _FOLDER_ALIASES: dict[str, str] = {
@@ -154,20 +169,33 @@ def _file_exists_under_shared(folder: str, rel_name: str) -> bool:
 	return False
 
 
-def _own_isolation_rel(folder: str, user_id: str | None, rel_name: str) -> str | None:
-	"""If own isolation file exists safely, return relative path under user dir."""
+def _own_isolation_match(
+	folder: str, user_id: str | None, rel_name: str, username: str | None = None
+) -> tuple[str, str] | None:
+	"""If own isolation file exists safely, return (rel_path_under_user_dir, matched_user_segment)."""
 	rel = _norm_path(rel_name)
 	if not rel or rel.startswith("/") or ".." in rel.split("/"):
 		return None
+	segments = user_isolation_candidate_segments(user_id, username)
 	for f in folder_aliases(folder) or [(folder or "").strip()]:
 		if not f:
 			continue
-		user_dir = isolation_user_folder(f, user_id)
-		candidate = os.path.join(user_dir, *rel.split("/"))
-		safe = _safe_relpath_under(user_dir, candidate)
-		if safe is not None:
-			return safe
+		root = isolation_folder_root(f)
+		for seg in segments:
+			user_dir = os.path.join(root, seg)
+			candidate = os.path.join(user_dir, *rel.split("/"))
+			safe = _safe_relpath_under(user_dir, candidate)
+			if safe is not None:
+				return safe, seg
 	return None
+
+
+def _own_isolation_rel(
+	folder: str, user_id: str | None, rel_name: str, username: str | None = None
+) -> str | None:
+	"""If own isolation file exists safely, return relative path under user dir."""
+	match = _own_isolation_match(folder, user_id, rel_name, username)
+	return match[0] if match is not None else None
 
 
 def _folder_matches(grant_folder: str, folder: str) -> bool:
@@ -214,8 +242,8 @@ def foreign_uuid_prefix(name: str, user_id: str | None) -> bool:
 	seg, _rest = path.split("/", 1)
 	if not is_uuid_segment(seg):
 		return False
-	viewer = sanitize_user_segment(user_id)
-	return seg.lower() != viewer.lower()
+	candidate_segments = [s.lower() for s in user_isolation_candidate_segments(user_id)]
+	return seg.lower() not in candidate_segments
 
 
 def resolve_model_name(
@@ -225,6 +253,7 @@ def resolve_model_name(
 	*,
 	grants: list[dict] | None = None,
 	view_all: bool = False,
+	username: str | None = None,
 ) -> ResolvedName | None:
 	"""
 	Map a client-facing model name to the storage name ComfyUI must load.
@@ -245,23 +274,31 @@ def resolve_model_name(
 	if not raw:
 		return None
 
-	viewer_seg = sanitize_user_segment(user_id)
+	candidate_segments = [s.lower() for s in user_isolation_candidate_segments(user_id, username)]
 
 	# Prefixed inbound
 	if "/" in raw:
 		seg, rest = raw.split("/", 1)
-		if is_uuid_segment(seg):
-			if seg.lower() != viewer_seg.lower():
-				return None
-			# Own legacy prefix: resolve rest as own file
-			own_rel = _own_isolation_rel(folder_norm, user_id, rest)
-			if own_rel is not None:
+		if seg.lower() in candidate_segments:
+			# Own prefix (either UUID or username): resolve rest as own file
+			match = _own_isolation_match(folder_norm, user_id, rest, username=username)
+			if match is not None:
+				own_rel, actual_seg = match
 				return ResolvedName(
-					storage_name=f"{viewer_seg}/{own_rel}", origin="user", folder=folder_norm
+					storage_name=f"{actual_seg}/{own_rel}", origin="user", folder=folder_norm
 				)
 			# Own prefix but missing → None (generic miss)
 			return None
-		# Non-UUID subfolder (e.g. SDXL/foo.safetensors): shared / grant
+		if is_uuid_segment(seg):
+			# Foreign UUID prefix: denial
+			return None
+		# Non-UUID subfolder (e.g. SDXL/foo.safetensors): check own isolation first!
+		match = _own_isolation_match(folder_norm, user_id, raw, username=username)
+		if match is not None:
+			own_rel, actual_seg = match
+			return ResolvedName(
+				storage_name=f"{actual_seg}/{own_rel}", origin="user", folder=folder_norm
+			)
 		grant = _grant_storage_for_suffix(folder_norm, raw, grants)
 		if grant is not None:
 			return ResolvedName(storage_name=grant, origin="granted", folder=folder_norm)
@@ -270,10 +307,11 @@ def resolve_model_name(
 		return None
 
 	# Plain name
-	own_rel = _own_isolation_rel(folder_norm, user_id, raw)
-	if own_rel is not None:
+	match = _own_isolation_match(folder_norm, user_id, raw, username=username)
+	if match is not None:
+		own_rel, actual_seg = match
 		return ResolvedName(
-			storage_name=f"{viewer_seg}/{own_rel}", origin="user", folder=folder_norm
+			storage_name=f"{actual_seg}/{own_rel}", origin="user", folder=folder_norm
 		)
 
 	grant = _grant_storage_for_suffix(folder_norm, raw, grants)
@@ -288,24 +326,32 @@ def resolve_model_name(
 
 def _walk_own_display_names(folder: str, user_id: str | None) -> list[str]:
 	out: list[str] = []
+	seen: set[str] = set()
+	segments = user_isolation_candidate_segments(user_id)
 	for f in folder_aliases(folder) or [(folder or "").strip()]:
 		if not f:
 			continue
-		user_dir = isolation_user_folder(f, user_id)
-		if not os.path.isdir(user_dir):
-			continue
-		try:
-			for dirpath, _dirnames, filenames in os.walk(user_dir):
-				for fn in filenames:
-					if not fn or fn.startswith("."):
-						continue
-					full = os.path.join(dirpath, fn)
-					rel = _safe_relpath_under(user_dir, full)
-					if rel is None:
-						continue
-					out.append(rel)
-		except OSError:
-			continue
+		root = isolation_folder_root(f)
+		for seg in segments:
+			user_dir = os.path.join(root, seg)
+			if not os.path.isdir(user_dir):
+				continue
+			try:
+				for dirpath, _dirnames, filenames in os.walk(user_dir):
+					for fn in filenames:
+						if not fn or fn.startswith("."):
+							continue
+						full = os.path.join(dirpath, fn)
+						rel = _safe_relpath_under(user_dir, full)
+						if rel is None:
+							continue
+						key = rel.lower()
+						if key in seen:
+							continue
+						seen.add(key)
+						out.append(rel)
+			except OSError:
+				continue
 	return out
 
 

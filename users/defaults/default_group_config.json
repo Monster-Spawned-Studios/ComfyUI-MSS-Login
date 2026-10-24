@@ -15,7 +15,8 @@
         "can_manage_model_sharing": true,
         "can_download_models": true,
         "can_login_locally_without_auth": true,
-        "can_update_mss_login": true
+        "can_update_mss_login": true,
+        "passwordless_passkey": true
     },
     "admin": {
         "can_run": true,
@@ -33,7 +34,8 @@
         "can_manage_model_sharing": true,
         "can_download_models": true,
         "can_login_locally_without_auth": true,
-        "can_update_mss_login": true
+        "can_update_mss_login": true,
+        "passwordless_passkey": true
     },
     "power": {
         "can_run": true,
