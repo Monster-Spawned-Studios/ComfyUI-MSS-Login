@@ -1,8 +1,20 @@
 /* Passkey + recovery-code management UI (no inline scripts). */
 (function () {
 	function toast(msg, kind) {
-		if (window.addToast) window.addToast(msg, kind || "info");
-		else console.log(kind || "info", msg);
+		var toasts = document.getElementById("toasts");
+		if (toasts) {
+			var t = document.createElement("div");
+			t.className = "toast hide " + (kind || "info");
+			t.textContent = msg;
+			toasts.appendChild(t);
+			setTimeout(function () { t.classList.replace("hide", "show"); }, 50);
+			setTimeout(function () { t.classList.replace("show", "hide"); }, 4000);
+			setTimeout(function () { t.remove(); }, 4600);
+		} else if (window.addToast) {
+			window.addToast(msg, kind || "info");
+		} else {
+			console.log(kind || "info", msg);
+		}
 	}
 
 	function sanitize(text) {
@@ -77,22 +89,68 @@
 	async function refreshList() {
 		var res = await api("/mss-login/webauthn/credentials");
 		var ul = document.getElementById("passkey-list");
+		var badge = document.getElementById("passkey-count-badge");
+		if (!ul) return;
 		ul.innerHTML = "";
 		if (!res.ok) {
 			toast(res.data.error || "Could not list passkeys", "error");
 			return;
 		}
-		(res.data.credentials || []).forEach(function (c) {
+		var creds = res.data.credentials || [];
+		if (badge) {
+			badge.textContent = creds.length + " registered";
+		}
+		if (creds.length === 0) {
+			var empty = document.createElement("div");
+			empty.className = "passkey-empty";
+			empty.textContent = "No passkeys registered yet. Add a passkey below to enable biometric or hardware security key login.";
+			ul.appendChild(empty);
+			return;
+		}
+		creds.forEach(function (c) {
 			var li = document.createElement("li");
-			li.textContent =
-				sanitize(c.name) +
-				" — " +
-				(c.synced ? "synced" : "device-bound") +
-				(c.last_used_at ? " · last used " + new Date(c.last_used_at * 1000).toISOString() : "");
+			li.className = "passkey-card";
+
+			var infoDiv = document.createElement("div");
+			if (infoDiv.style) infoDiv.style.flex = "1";
+
+			var titleRow = document.createElement("div");
+			if (titleRow.style) {
+				titleRow.style.display = "flex";
+				titleRow.style.alignItems = "center";
+				titleRow.style.flexWrap = "wrap";
+				titleRow.style.gap = "6px";
+			}
+
+			var nameSpan = document.createElement("strong");
+			if (nameSpan.style) nameSpan.style.color = "#f4f4f5";
+			nameSpan.textContent = sanitize(c.name);
+
+			var badgeSpan = document.createElement("span");
+			badgeSpan.className = "passkey-badge";
+			badgeSpan.textContent = c.synced ? "Synced Passkey" : "Hardware Device";
+
+			titleRow.appendChild(nameSpan);
+			titleRow.appendChild(badgeSpan);
+			infoDiv.appendChild(titleRow);
+
+			var metaDiv = document.createElement("div");
+			if (metaDiv.style) {
+				metaDiv.style.fontSize = "0.78rem";
+				metaDiv.style.color = "#71717a";
+				metaDiv.style.marginTop = "4px";
+			}
+			metaDiv.textContent = c.last_used_at
+				? "Last used: " + new Date(c.last_used_at * 1000).toLocaleString()
+				: "Never used yet";
+			infoDiv.appendChild(metaDiv);
+
 			var btn = document.createElement("button");
 			btn.type = "button";
-			btn.textContent = "Delete";
+			btn.className = "passkey-delete-btn";
+			btn.textContent = "Revoke";
 			btn.addEventListener("click", async function () {
+				if (typeof confirm === "function" && !confirm('Are you sure you want to revoke passkey "' + c.name + '"?')) return;
 				var del = await api("/mss-login/webauthn/credentials", {
 					method: "DELETE",
 					headers: { "Content-Type": "application/json" },
@@ -104,7 +162,8 @@
 					refreshList();
 				}
 			});
-			li.appendChild(document.createTextNode(" "));
+
+			li.appendChild(infoDiv);
 			li.appendChild(btn);
 			ul.appendChild(li);
 		});
@@ -126,52 +185,108 @@
 								}))
 				  )
 				: Boolean(data.secure_origin);
+
 		if (!data.available || !secureOrigin) {
-			insecure.hidden = false;
-			section.hidden = true;
+			if (insecure) {
+				insecure.hidden = false;
+				if (insecure.style) insecure.style.display = "block";
+			}
+			if (section) {
+				section.hidden = true;
+				if (section.style) section.style.display = "none";
+			}
 		} else {
-			insecure.hidden = true;
-			section.hidden = false;
-			await refreshList();
+			if (insecure) {
+				insecure.hidden = true;
+				if (insecure.style) insecure.style.display = "none";
+			}
+			if (section) {
+				section.hidden = false;
+				if (section.style) section.style.display = "block";
+			}
+		}
+		await refreshList();
+
+		var regBtn = document.getElementById("passkey-register");
+		if (regBtn) {
+			regBtn.addEventListener("click", async function () {
+				regBtn.disabled = true;
+				var origText = regBtn.innerHTML;
+				regBtn.textContent = "Waiting for device...";
+				var opt = await api("/mss-login/webauthn/register/options", { method: "POST" });
+				if (!opt.ok) {
+					toast(opt.data.error || opt.data.message || "Passkeys registration failed", "error");
+					regBtn.disabled = false;
+					regBtn.innerHTML = origText;
+					return;
+				}
+				try {
+					var cred = await navigator.credentials.create({
+						publicKey: publicKeyFromJson(opt.data),
+					});
+					var name = (document.getElementById("passkey-name").value || "").trim() || "Passkey";
+					var ver = await api("/mss-login/webauthn/register/verify", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ credential: credentialToJson(cred), name: name }),
+					});
+					if (!ver.ok) toast(ver.data.error || "Registration verification failed", "error");
+					else {
+						toast("Passkey successfully registered!", "success");
+						var nameInput = document.getElementById("passkey-name");
+						if (nameInput) nameInput.value = "";
+						refreshList();
+					}
+				} catch (e) {
+					if (e.name !== "NotAllowedError") {
+						toast(e.message || "Passkey registration cancelled", "error");
+					}
+				} finally {
+					regBtn.disabled = false;
+					regBtn.innerHTML = origText;
+				}
+			});
 		}
 
-		document.getElementById("passkey-register").addEventListener("click", async function () {
-			var opt = await api("/mss-login/webauthn/register/options", { method: "POST" });
-			if (!opt.ok) {
-				toast(opt.data.error || opt.data.message || "Step-up required", "error");
-				return;
-			}
-			try {
-				var cred = await navigator.credentials.create({
-					publicKey: publicKeyFromJson(opt.data),
-				});
-				var name = document.getElementById("passkey-name").value || "Passkey";
-				var ver = await api("/mss-login/webauthn/register/verify", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ credential: credentialToJson(cred), name: name }),
-				});
-				if (!ver.ok) toast(ver.data.error || "Register failed", "error");
-				else {
-					toast("Passkey registered", "success");
-					refreshList();
+		var regenBtn = document.getElementById("recovery-regen");
+		if (regenBtn) {
+			regenBtn.addEventListener("click", async function () {
+				regenBtn.disabled = true;
+				var res = await api("/mss-login/api/mfa/recovery-codes/regenerate", { method: "POST" });
+				regenBtn.disabled = false;
+				if (!res.ok) {
+					toast(res.data.error || res.data.message || "Could not generate recovery codes", "error");
+					return;
 				}
-			} catch (e) {
-				toast("Passkey cancelled or failed", "error");
-			}
-		});
+				var wrapper = document.getElementById("recovery-codes-wrapper");
+				var pre = document.getElementById("recovery-codes");
+				if (pre) {
+					pre.hidden = false;
+					pre.textContent = (res.data.recovery_codes || []).join("\n");
+				}
+				if (wrapper) {
+					wrapper.hidden = false;
+					if (wrapper.style) wrapper.style.display = "block";
+				}
+				toast("Save these codes now — shown once!", "success");
+			});
+		}
 
-		document.getElementById("recovery-regen").addEventListener("click", async function () {
-			var res = await api("/mss-login/api/mfa/recovery-codes/regenerate", { method: "POST" });
-			if (!res.ok) {
-				toast(res.data.error || res.data.message || "Re-authenticate and try again", "error");
-				return;
-			}
-			var pre = document.getElementById("recovery-codes");
-			pre.hidden = false;
-			pre.textContent = (res.data.recovery_codes || []).join("\n");
-			toast("Save these codes now — shown once", "success");
-		});
+		var copyBtn = document.getElementById("recovery-copy");
+		if (copyBtn) {
+			copyBtn.addEventListener("click", function () {
+				var pre = document.getElementById("recovery-codes");
+				if (pre && pre.textContent) {
+					if (navigator.clipboard && navigator.clipboard.writeText) {
+						navigator.clipboard.writeText(pre.textContent).then(function () {
+							toast("Recovery codes copied to clipboard!", "success");
+						}).catch(function () {
+							toast("Please copy codes manually from box.", "info");
+						});
+					}
+				}
+			});
+		}
 	}
 
 	if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

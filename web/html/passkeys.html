@@ -1,34 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<title>MSS-Login — Passkeys &amp; MFA</title>
-	<link rel="stylesheet" href="/mss-login/css/styles.css" />
-	<link rel="stylesheet" href="/mss-login/dist/auth.css" />
+	<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+	<meta name="theme-color" content="#05060a" media="(prefers-color-scheme: dark)">
+
+	<title>MSS-Login — Passkeys &amp; Security</title>
+
+	<link rel="icon" href="/mss-login/assets/mss_logo.png" type="image/png">
+	<link rel="icon" type="image/png" href="/mss-login/assets/mss_logo.png" media="(prefers-color-scheme: light)">
+	<link rel="icon" type="image/png" href="/mss-login/assets/mss_logo.png" media="(prefers-color-scheme: dark)">
+
+	<link rel="stylesheet" type="text/css" href="/mss-login/css/styles.css" />
+	<link rel="stylesheet" type="text/css" href="/mss-login/dist/auth.css" />
+	<style>
+		.passkey-card {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			background: rgba(255, 255, 255, 0.04);
+			border: 1px solid rgba(255, 255, 255, 0.1);
+			border-radius: 8px;
+			padding: 12px 16px;
+			margin-bottom: 8px;
+			transition: background 0.2s, border-color 0.2s;
+		}
+		.passkey-card:hover {
+			background: rgba(255, 255, 255, 0.07);
+			border-color: rgba(150, 96, 250, 0.4);
+		}
+		.passkey-badge {
+			display: inline-block;
+			font-size: 0.72rem;
+			padding: 2px 8px;
+			border-radius: 999px;
+			background: rgba(150, 96, 250, 0.2);
+			color: #c4b5fd;
+			border: 1px solid rgba(150, 96, 250, 0.4);
+			margin-left: 8px;
+			text-transform: uppercase;
+			letter-spacing: 0.04em;
+		}
+		.passkey-empty {
+			padding: 18px;
+			text-align: center;
+			color: #a1a1aa;
+			font-size: 0.9rem;
+			background: rgba(255, 255, 255, 0.02);
+			border: 1px dashed rgba(255, 255, 255, 0.15);
+			border-radius: 8px;
+			margin-bottom: 12px;
+		}
+		.passkey-delete-btn {
+			background: transparent;
+			border: 1px solid rgba(239, 68, 68, 0.4);
+			color: #fca5a5;
+			border-radius: 6px;
+			padding: 5px 12px;
+			font-size: 0.8rem;
+			cursor: pointer;
+			transition: background 0.2s, color 0.2s;
+		}
+		.passkey-delete-btn:hover {
+			background: #ef4444;
+			color: #ffffff;
+		}
+	</style>
 </head>
-<body class="mss-auth-shell">
-	<main class="mss-auth-card" id="passkeys-app">
-		<h1>Security credentials</h1>
-		<p class="mss-muted">Manage passkeys and recovery codes. Passkeys require HTTPS on an allowed origin.</p>
-		<section id="passkey-insecure" hidden>
-			<p>Passkeys are hidden on insecure or bare-IP origins. Use password + TOTP.</p>
-		</section>
-		<section id="passkey-section">
-			<h2>Passkeys</h2>
-			<ul id="passkey-list"></ul>
-			<label>Name <input id="passkey-name" type="text" maxlength="64" placeholder="Laptop" /></label>
-			<button type="button" id="passkey-register">Register passkey</button>
-		</section>
-		<section id="recovery-section">
-			<h2>Recovery codes</h2>
-			<p>Codes are shown once. Regenerating invalidates the old set.</p>
-			<button type="button" id="recovery-regen">Regenerate recovery codes</button>
-			<pre id="recovery-codes" hidden></pre>
-		</section>
-		<p><a href="/">Back to ComfyUI</a></p>
-	</main>
+
+<body>
+	<div id="mss-login-auth-app"></div>
+	<div class="container mss-auth-shell" style="max-width: 540px; margin: 2rem auto; padding: 20px;">
+		<picture>
+			<source srcset="/mss-login/assets/mss_logo.png" media="(prefers-color-scheme: dark)">
+			<source srcset="/mss-login/assets/mss_logo.png" media="(prefers-color-scheme: light)">
+			<img class="logo" src="/mss-login/assets/mss_logo.png" alt="MSS-Login Logo">
+		</picture>
+
+		<main class="mss-auth-card" id="passkeys-app" style="width: 100%; box-sizing: border-box;">
+			<h1 class="title mss-auth-title" style="margin-bottom: 6px;">Security Credentials</h1>
+			<p class="mss-muted" style="color: #a1a1aa; font-size: 0.88rem; margin-bottom: 1.25rem;">Manage biometric passkeys, hardware security keys, and emergency recovery codes.</p>
+
+			<!-- Origin notice (shown when origin is insecure or bare-IP) -->
+			<section id="passkey-insecure" style="display:none; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 8px; padding: 12px 14px; margin-bottom: 1.25rem; color: #fca5a5; font-size: 0.88rem; line-height: 1.4;">
+				<p style="margin: 0; font-weight: 500;">Passkeys require a secure connection (HTTPS) on an allowed domain.</p>
+				<p style="margin: 6px 0 0; font-size: 0.82rem; color: #fecaca;">When accessing via plain HTTP or bare IP, use your password and <a href="/mfa" style="color: #c4b5fd; text-decoration: underline;">authenticator app (TOTP)</a>.</p>
+			</section>
+
+			<!-- Passkey management section -->
+			<section id="passkey-section" style="margin-bottom: 1.75rem;">
+				<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+					<h2 style="font-size: 1.1rem; color: #f4f4f5; font-weight: 600; margin: 0;">Registered Passkeys</h2>
+					<span id="passkey-count-badge" style="font-size: 0.75rem; background: rgba(150,96,250,0.25); color: #c4b5fd; border: 1px solid rgba(150,96,250,0.4); padding: 2px 8px; border-radius: 12px;">0 registered</span>
+				</div>
+
+				<ul id="passkey-list" style="list-style: none; padding: 0; margin: 0 0 14px 0;"></ul>
+
+				<div class="form-field" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 14px;">
+					<label class="mss-auth-label" for="passkey-name" style="display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem; color: #d4d4d8;">Add new passkey:</label>
+					<div style="display: flex; gap: 8px; flex-wrap: wrap;">
+						<input class="mss-auth-input" id="passkey-name" type="text" maxlength="64" placeholder="Key nickname (e.g. MacBook, iPhone, YubiKey)" style="flex: 1; min-width: 200px;" />
+						<button type="button" id="passkey-register" class="btn mss-auth-btn" style="background: #9660fa; border: 1px solid #b794f4; color: #ffffff; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; padding: 8px 16px; white-space: nowrap;">
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>
+							Register Passkey
+						</button>
+					</div>
+				</div>
+			</section>
+
+			<!-- Recovery codes section -->
+			<section id="recovery-section" style="border-top: 1px solid rgba(255, 255, 255, 0.1); padding-top: 1.25rem; margin-bottom: 1.5rem;">
+				<h2 style="font-size: 1.1rem; color: #f4f4f5; font-weight: 600; margin-bottom: 6px;">Emergency Recovery Codes</h2>
+				<p style="color: #a1a1aa; font-size: 0.84rem; margin-bottom: 10px;">Recovery codes can be used to log in if you lose your device or security key. Store them in a secure password manager.</p>
+				<button type="button" id="recovery-regen" class="btn mss-auth-btn" style="background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.2); color: #e4e4e7; font-size: 0.85rem; padding: 8px 16px;">
+					Regenerate Recovery Codes
+				</button>
+				<div id="recovery-codes-wrapper" style="display: none; margin-top: 12px; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(150, 96, 250, 0.3); border-radius: 8px; padding: 12px;">
+					<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+						<span style="font-size: 0.8rem; color: #c4b5fd; font-weight: 600;">Save these codes now (shown once):</span>
+						<button type="button" id="recovery-copy" class="btn mss-auth-btn" style="padding: 4px 10px; font-size: 0.78rem; background: #9660fa; border: none; border-radius: 4px;">Copy All</button>
+					</div>
+					<pre id="recovery-codes" style="margin: 0; font-family: monospace; font-size: 0.92rem; color: #e4e4e7; line-height: 1.6; user-select: all; white-space: pre-wrap; word-break: break-all;"></pre>
+				</div>
+			</section>
+
+			<!-- Navigation -->
+			<div style="text-align: center; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 1rem;">
+				<a class="btn mss-auth-btn" href="/" style="background: transparent; border: 1px solid rgba(255, 255, 255, 0.2); color: #a1a1aa; padding: 8px 22px; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; font-size: 0.88rem;">
+					&larr; Back to ComfyUI
+				</a>
+			</div>
+		</main>
+	</div>
+	<div class="toast-container" id="toasts"></div>
+
 	<script src="/mss-login/vendor/purify.min.js"></script>
 	<script src="/mss-login/js/passkeys.js"></script>
 </body>
+
 </html>

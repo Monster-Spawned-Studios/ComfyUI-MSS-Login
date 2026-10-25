@@ -55,6 +55,59 @@
 		window.location.href = "/login";
 	}
 
+	function bufferToBase64url(buf) {
+		const bytes = new Uint8Array(buf);
+		let str = "";
+		for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+		return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+	}
+
+	function base64urlToBuffer(b64) {
+		const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+		const s = (b64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+		const raw = atob(s);
+		const out = new Uint8Array(raw.length);
+		for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+		return out.buffer;
+	}
+
+	function publicKeyFromJson(opts) {
+		const o = Object.assign({}, opts);
+		o.challenge = base64urlToBuffer(o.challenge);
+		if (o.user && o.user.id) o.user.id = base64urlToBuffer(o.user.id);
+		if (o.excludeCredentials) {
+			o.excludeCredentials = o.excludeCredentials.map(function (c) {
+				return Object.assign({}, c, { id: base64urlToBuffer(c.id) });
+			});
+		}
+		if (o.allowCredentials) {
+			o.allowCredentials = o.allowCredentials.map(function (c) {
+				return Object.assign({}, c, { id: base64urlToBuffer(c.id) });
+			});
+		}
+		return o;
+	}
+
+	function credentialToJson(cred) {
+		return {
+			id: cred.id,
+			rawId: bufferToBase64url(cred.rawId),
+			type: cred.type,
+			response: {
+				clientDataJSON: bufferToBase64url(cred.response.clientDataJSON),
+				authenticatorData: cred.response.authenticatorData
+					? bufferToBase64url(cred.response.authenticatorData)
+					: undefined,
+				signature: cred.response.signature
+					? bufferToBase64url(cred.response.signature)
+					: undefined,
+				userHandle: cred.response.userHandle
+					? bufferToBase64url(cred.response.userHandle)
+					: undefined,
+			},
+		};
+	}
+
 	const mfaPage = {
 		token: null,
 		mode: null,
@@ -76,7 +129,21 @@
 			if (loadingEl) loadingEl.style.display = "none";
 
 			if (!this.token || !this.mode) {
-				redirectToLogin();
+				var self = this;
+				fetch("/mss-login/api/me", { credentials: "same-origin" })
+					.then(function (r) { return r.ok ? r.json() : null; })
+					.then(function (me) {
+						if (me && me.username && me.username.toLowerCase() !== "guest") {
+							self.mode = "setup";
+							self.token = "";
+							self.loadSetup();
+						} else {
+							redirectToLogin();
+						}
+					})
+					.catch(function () {
+						redirectToLogin();
+					});
 				return;
 			}
 
@@ -97,12 +164,97 @@
 				if (verifySection) verifySection.style.display = "block";
 				var codeInput = document.getElementById("mfa-code");
 				if (codeInput) codeInput.focus();
+				this.initPasskeyVerify();
 			} else if (this.mode === "setup") {
 				this.loadSetup();
 			} else {
 				clearMfaStorage();
 				redirectToLogin();
 			}
+		},
+
+		initPasskeyVerify: function () {
+			const container = document.getElementById("mfa-passkey-container");
+			const btn = document.getElementById("mfa-passkey-btn");
+			if (!container || !btn || !window.PublicKeyCredential) return;
+			const self = this;
+
+			fetch("/mss-login/api/webauthn/status", { credentials: "same-origin" })
+				.then(function (r) { return r.ok ? r.json() : null; })
+				.then(function (status) {
+					if (!status || !status.available) return;
+					const secureOrigin = status.origins !== undefined
+						? Boolean(
+								window.isSecureContext &&
+									(status.origins.includes(location.origin) ||
+										status.origins.includes("*") ||
+										status.origins.some(function (o) {
+											return o.replace(/\/+$/, "") === location.origin;
+										}))
+						  )
+						: Boolean(status.secure_origin);
+					if (!secureOrigin) return;
+
+					container.style.display = "block";
+
+					btn.addEventListener("click", async function () {
+						btn.disabled = true;
+						const origHtml = btn.innerHTML;
+						btn.textContent = "Verifying passkey...";
+						try {
+							const optRes = await fetch("/mss-login/webauthn/auth/options", {
+								method: "POST",
+								credentials: "same-origin",
+								headers: { "Content-Type": "application/json" },
+								body: JSON.stringify({ mfa_temp_token: self.token })
+							});
+							if (!optRes.ok) {
+								const err = await optRes.json().catch(function () { return {}; });
+								addToast(err.error || "Passkey verification not available", "error");
+								btn.disabled = false;
+								btn.innerHTML = origHtml;
+								return;
+							}
+							const optData = await optRes.json();
+							const publicKey = publicKeyFromJson(optData);
+							const cred = await navigator.credentials.get({ publicKey: publicKey });
+							if (!cred) {
+								addToast("No passkey selected", "error");
+								btn.disabled = false;
+								btn.innerHTML = origHtml;
+								return;
+							}
+							const rememberMe = sessionStorage.getItem("mss_login_remember_me") === "1";
+							const verifyRes = await fetch("/mss-login/webauthn/auth/verify", {
+								method: "POST",
+								credentials: "same-origin",
+								headers: { "Content-Type": "application/json" },
+								body: JSON.stringify({
+									credential: credentialToJson(cred),
+									mfa_temp_token: self.token,
+									remember_me: rememberMe
+								})
+							});
+							const verifyData = await verifyRes.json().catch(function () { return {}; });
+							if (verifyRes.ok && (verifyData.jwt_token || verifyData.redirect_url)) {
+								clearMfaStorage();
+								addToast(verifyData.message || "Passkey verified. Login successful.", "success");
+								window.location.href = verifyData.redirect_url || "/";
+							} else {
+								addToast(verifyData.error || "Passkey verification failed", "error");
+								btn.disabled = false;
+								btn.innerHTML = origHtml;
+							}
+						} catch (e) {
+							if (e.name !== "NotAllowedError") {
+								addToast(e.message || "Passkey error", "error");
+							}
+							btn.disabled = false;
+							btn.innerHTML = origHtml;
+						}
+					});
+				})
+				.catch(function () {});
 		},
 
 		loadSetup: function () {
@@ -118,7 +270,8 @@
 			fetch("/mss-login/api/mfa/setup", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ mfa_temp_token: this.token }),
+				credentials: "same-origin",
+				body: JSON.stringify(this.token ? { mfa_temp_token: this.token } : {}),
 			})
 				.then(function (r) {
 					return r.json();
@@ -281,16 +434,17 @@
 				btn.disabled = true;
 				btn.textContent = "Verifying...";
 			}
+			var setupPayload = {
+				code: code,
+				remember_me: sessionStorage.getItem("mss_login_remember_me") === "1",
+			};
+			if (this.token) setupPayload.mfa_temp_token = this.token;
 			// verify-setup issues the session on success — never reuse the same TOTP on /verify.
 			fetch("/mss-login/api/mfa/verify-setup", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				credentials: "same-origin",
-				body: JSON.stringify({
-					mfa_temp_token: this.token,
-					code: code,
-					remember_me: sessionStorage.getItem("mss_login_remember_me") === "1",
-				}),
+				body: JSON.stringify(setupPayload),
 			})
 				.then(function (r) {
 					return r.json().then(function (data) {
