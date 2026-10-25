@@ -142,7 +142,26 @@ def evaluate_mfa_gate(
 	except Exception:
 		mfa_enabled = False
 
-	if mfa_enabled:
+	has_passkeys = False
+	try:
+		import sys
+
+		wc = sys.modules.get("utils.webauthn_credentials") or sys.modules.get(
+			"mss_login.utils.webauthn_credentials"
+		)
+		if wc is None:
+			try:
+				from . import webauthn_credentials as wc
+			except ImportError:
+				from utils import webauthn_credentials as wc  # type: ignore
+		repo = wc.get_webauthn_repo()
+		user_id = user_rec.get("user_id") or user_rec.get("id") or _uid
+		if user_id and repo.count_active_for_user(user_id) > 0:
+			has_passkeys = True
+	except Exception:
+		has_passkeys = False
+
+	if mfa_enabled or has_passkeys:
 		return MfaGateResult(needs_verify=True, username=username, reason="enrolled")
 
 	if not experimental_on:
