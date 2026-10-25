@@ -258,9 +258,7 @@ def test_username_storage_and_migration(failed: list[str]) -> None:
 	tmpdir = tempfile.mkdtemp()
 	try:
 		ctrl = _make_ctrl(ac, {"user": {"can_run": True}}, role="user")
-		fake_users = {
-			"uuid-1234": {"username": "bob", "groups": ["user"]},
-		}
+		fake_users = {"uuid-1234": {"username": "bob", "groups": ["user"]}}
 
 		def mock_get_user(username=None, user_id=None, **_k):
 			if user_id and user_id in fake_users:
@@ -293,7 +291,11 @@ def test_username_storage_and_migration(failed: list[str]) -> None:
 		# Check filename_prefix prepending username
 		prompt_req = {"filename_prefix": "MyGen"}
 		mod_prompt = ctrl.add_user_specific_folder_paths(prompt_req)
-		_ok(mod_prompt.get("filename_prefix") == "bob/MyGen", "filename_prefix prepends username bob", failed)
+		_ok(
+			mod_prompt.get("filename_prefix") == "bob/MyGen",
+			"filename_prefix prepends username bob",
+			failed,
+		)
 
 		# Check legacy UUID folder migration
 		legacy_uuid_dir = os.path.join(tmpdir, "output", "uuid-1234")
@@ -306,14 +308,30 @@ def test_username_storage_and_migration(failed: list[str]) -> None:
 		migrated_out = ctrl.get_user_output_directory()
 		target_file = os.path.join(migrated_out, "old_render.png")
 		_ok(os.path.isfile(target_file), "legacy file in uuid-1234 migrated to bob folder", failed)
-		_ok(not os.path.exists(legacy_uuid_dir), "legacy uuid-1234 directory removed after migration", failed)
+		_ok(
+			not os.path.exists(legacy_uuid_dir),
+			"legacy uuid-1234 directory removed after migration",
+			failed,
+		)
 
 		# Check dual-read _user_id_matches
-		_ok(ctrl._user_id_matches("uuid-1234", "bob"), "dual-read matches uuid with username", failed)
-		_ok(ctrl._user_id_matches("bob", "uuid-1234"), "dual-read matches username with uuid", failed)
+		_ok(
+			ctrl._user_id_matches("uuid-1234", "bob"),
+			"dual-read matches uuid with username",
+			failed,
+		)
+		_ok(
+			ctrl._user_id_matches("bob", "uuid-1234"),
+			"dual-read matches username with uuid",
+			failed,
+		)
 		_ok(ctrl._user_id_matches("bob", "bob"), "direct username match works", failed)
 		_ok(ctrl._user_id_matches("uuid-1234", "uuid-1234"), "direct uuid match works", failed)
-		_ok(not ctrl._user_id_matches("uuid-1234", "unknown_user"), "unmatched user returns False", failed)
+		_ok(
+			not ctrl._user_id_matches("uuid-1234", "unknown_user"),
+			"unmatched user returns False",
+			failed,
+		)
 	finally:
 		import shutil
 

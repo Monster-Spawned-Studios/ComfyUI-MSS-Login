@@ -337,10 +337,7 @@ def convert_manual_user_folders_to_isolation() -> int:
 	# 1. Check ComfyUI shared models root for <models_root>/<folder_type>/<username>
 	try:
 		models_root = None
-		for mod_name in (
-			"mss_login.utils.folder_paths_compat",
-			"utils.folder_paths_compat",
-		):
+		for mod_name in ("mss_login.utils.folder_paths_compat", "utils.folder_paths_compat"):
 			mod = sys.modules.get(mod_name)
 			if mod and hasattr(mod, "get_models_root"):
 				models_root = mod.get_models_root()

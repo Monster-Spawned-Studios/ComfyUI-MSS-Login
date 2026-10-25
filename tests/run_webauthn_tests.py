@@ -265,24 +265,34 @@ def test_passkey_enrolled_requires_mfa_gate():
 		old_get_repo = cred_mod.get_webauthn_repo
 		cred_mod.get_webauthn_repo = lambda: test_repo
 		import constants
+
 		old_mfa_disabled = getattr(constants, "MFA_DISABLED", False)
 		constants.MFA_DISABLED = False
 		try:
+
 			class FakeDBWithPasskeys:
 				def get_user(self, username):
 					if username == "dave":
-						return ("uid_dave", {"username": "dave", "groups": ["user"], "admin": False})
+						return (
+							"uid_dave",
+							{"username": "dave", "groups": ["user"], "admin": False},
+						)
 					return (None, None)
 
 				def get_mfa_enabled(self, username):
 					return False  # No TOTP!
 
 			gate = lf.evaluate_mfa_gate("dave", FakeDBWithPasskeys(), experimental_on=True)
-			_ok(gate.needs_verify is True, "user with passkey requires MFA verify even with TOTP off")
+			_ok(
+				gate.needs_verify is True,
+				"user with passkey requires MFA verify even with TOTP off",
+			)
 			_ok(gate.reason == "enrolled", "reason is enrolled")
 
 			# Verify mfa.html contains passkey button
-			mfa_html = open(os.path.join(_PROJECT_ROOT, "web", "html", "mfa.html"), encoding="utf-8").read()
+			mfa_html = open(
+				os.path.join(_PROJECT_ROOT, "web", "html", "mfa.html"), encoding="utf-8"
+			).read()
 			_ok("mfa-passkey-btn" in mfa_html, "mfa.html has mfa-passkey-btn")
 			_ok("mfa-passkey-container" in mfa_html, "mfa.html has mfa-passkey-container")
 		finally:

@@ -199,10 +199,7 @@ def test_authorization_header_stripped_on_r2_redirect(failed: list[str]) -> None
 
 	async def run():
 		sess = _Session()
-		headers = {
-			"Authorization": "Bearer secret_civitai_token",
-			"User-Agent": "MSS-Login/Test",
-		}
+		headers = {"Authorization": "Bearer secret_civitai_token", "User-Agent": "MSS-Login/Test"}
 		resp = await md.fetch_allowlisted(
 			sess, "https://civitai.com/api/download/models/12345", headers=headers
 		)
@@ -214,11 +211,7 @@ def test_authorization_header_stripped_on_r2_redirect(failed: list[str]) -> None
 	# Hop 1: civitai.com has Authorization
 	hop1_url, hop1_hdrs = captured_headers[0]
 	_ok("civitai.com" in hop1_url, "hop 1 requested civitai.com", failed)
-	_ok(
-		"Authorization" in hop1_hdrs,
-		"hop 1 contained Authorization header",
-		failed,
-	)
+	_ok("Authorization" in hop1_hdrs, "hop 1 contained Authorization header", failed)
 	# Hop 2: R2 storage has Authorization STRIPPED, User-Agent kept
 	hop2_url, hop2_hdrs = captured_headers[1]
 	_ok("r2.cloudflarestorage.com" in hop2_url, "hop 2 requested R2 storage", failed)

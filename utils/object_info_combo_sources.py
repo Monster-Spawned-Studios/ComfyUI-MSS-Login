@@ -253,9 +253,7 @@ def build_combo_from_sources(
 
 def _norm_for_overlap(name: str, viewer_user_id: str | None) -> str:
 	n = name.replace("\\", "/").strip().lower()
-	for seg in (
-		user_isolation_candidate_segments(viewer_user_id) if viewer_user_id else []
-	):
+	for seg in user_isolation_candidate_segments(viewer_user_id) if viewer_user_id else []:
 		prefix = f"{seg.lower()}/"
 		if n.startswith(prefix):
 			return n[len(prefix) :]

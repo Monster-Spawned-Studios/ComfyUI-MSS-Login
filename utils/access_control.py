@@ -317,9 +317,7 @@ class AccessControl:
 
 	# --- Folder & User Context Methods ---
 
-	def set_current_user_id(
-		self, user_id: str, set_fallback=False, username: str | None = None
-	):
+	def set_current_user_id(self, user_id: str, set_fallback=False, username: str | None = None):
 		self._current_user.set(user_id)
 		if username:
 			self._current_username.set(username)
@@ -328,9 +326,7 @@ class AccessControl:
 			if username:
 				self.__current_username = username
 
-	def set_current_user(
-		self, user_id: str, username: str | None = None, set_fallback=False
-	):
+	def set_current_user(self, user_id: str, username: str | None = None, set_fallback=False):
 		self.set_current_user_id(user_id, set_fallback=set_fallback, username=username)
 
 	def get_current_user_id(self):
@@ -429,16 +425,9 @@ class AccessControl:
 		return get_data_subdir("input")
 
 	@staticmethod
-	def _migrate_user_storage_folder(
-		base_dir: str, uuid_seg: str, uname_seg: str
-	) -> None:
+	def _migrate_user_storage_folder(base_dir: str, uuid_seg: str, uname_seg: str) -> None:
 		"""Consolidate legacy <base>/<uuid> into <base>/<username>."""
-		if (
-			not uuid_seg
-			or not uname_seg
-			or uuid_seg == uname_seg
-			or uuid_seg == "public"
-		):
+		if not uuid_seg or not uname_seg or uuid_seg == uname_seg or uuid_seg == "public":
 			return
 		src = os.path.join(base_dir, uuid_seg)
 		dst = os.path.join(base_dir, uname_seg)
@@ -475,7 +464,11 @@ class AccessControl:
 
 	def get_user_output_directory(self):
 		get_uname = getattr(self, "get_current_username", None)
-		username = safe_user_dir_segment(get_uname()) if callable(get_uname) else safe_user_dir_segment(self.get_current_user_id())
+		username = (
+			safe_user_dir_segment(get_uname())
+			if callable(get_uname)
+			else safe_user_dir_segment(self.get_current_user_id())
+		)
 		user_id = safe_user_dir_segment(self.get_current_user_id())
 		self._migrate_user_storage_folder(self._get_output_base(), user_id, username)
 		directory = os.path.join(self._get_output_base(), username)
@@ -484,7 +477,11 @@ class AccessControl:
 
 	def get_user_temp_directory(self):
 		get_uname = getattr(self, "get_current_username", None)
-		username = safe_user_dir_segment(get_uname()) if callable(get_uname) else safe_user_dir_segment(self.get_current_user_id())
+		username = (
+			safe_user_dir_segment(get_uname())
+			if callable(get_uname)
+			else safe_user_dir_segment(self.get_current_user_id())
+		)
 		user_id = safe_user_dir_segment(self.get_current_user_id())
 		self._migrate_user_storage_folder(self._get_temp_base(), user_id, username)
 		directory = os.path.join(self._get_temp_base(), username)
@@ -493,7 +490,11 @@ class AccessControl:
 
 	def get_user_input_directory(self):
 		get_uname = getattr(self, "get_current_username", None)
-		username = safe_user_dir_segment(get_uname()) if callable(get_uname) else safe_user_dir_segment(self.get_current_user_id())
+		username = (
+			safe_user_dir_segment(get_uname())
+			if callable(get_uname)
+			else safe_user_dir_segment(self.get_current_user_id())
+		)
 		user_id = safe_user_dir_segment(self.get_current_user_id())
 		self._migrate_user_storage_folder(self._get_input_base(), user_id, username)
 		directory = os.path.join(self._get_input_base(), username)

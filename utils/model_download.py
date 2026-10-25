@@ -290,9 +290,7 @@ async def fetch_allowlisted(
 			and hop_host not in ALLOWED_CIVITAI_HOSTS
 			and hop_host not in ALLOWED_HF_HOSTS
 		):
-			hop_headers = {
-				k: v for k, v in hop_headers.items() if k.lower() != "authorization"
-			}
+			hop_headers = {k: v for k, v in hop_headers.items() if k.lower() != "authorization"}
 		resp = await session.get(
 			current, params=params, headers=hop_headers or None, allow_redirects=False
 		)

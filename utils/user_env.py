@@ -154,9 +154,7 @@ def migrate_users_dir_if_needed() -> bool:
 			if len(entry) >= 32 and "-" in entry:
 				_uid, resolved_uname = resolve_user_identity(entry)
 				if resolved_uname and resolved_uname != entry:
-					uname_dest = os.path.join(
-						dest, sanitize_username_for_path(resolved_uname)
-					)
+					uname_dest = os.path.join(dest, sanitize_username_for_path(resolved_uname))
 					if _copy_tree_missing(entry_path, uname_dest):
 						migrated = True
 					shutil.rmtree(entry_path, ignore_errors=True)
