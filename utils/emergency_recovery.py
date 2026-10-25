@@ -34,8 +34,7 @@ def get_emergency_unlock_path() -> str:
 
 
 def check_and_execute_emergency_recovery(
-	users_db_instance: Any = None,
-	timeout_instance: Any = None,
+	users_db_instance: Any = None, timeout_instance: Any = None
 ) -> bool:
 	"""
 	Check for the presence of the emergency trigger file and execute recovery if found.
@@ -46,7 +45,7 @@ def check_and_execute_emergency_recovery(
 		return False
 
 	logger.warning(
-		f"[emergency_recovery] Emergency unlock trigger detected at %s! Initiating owner unlock.",
+		"[emergency_recovery] Emergency unlock trigger detected at %s! Initiating owner unlock.",
 		trigger_path,
 	)
 

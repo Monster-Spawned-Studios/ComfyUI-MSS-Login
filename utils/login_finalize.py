@@ -210,9 +210,7 @@ def evaluate_mfa_gate(
 					days_remaining=remaining_days,
 				)
 		return MfaGateResult(
-			needs_setup=True,
-			username=username,
-			reason="admin" if is_priv else "role_mfa_required",
+			needs_setup=True, username=username, reason="admin" if is_priv else "role_mfa_required"
 		)
 	return MfaGateResult(username=username, reason="ok")
 
