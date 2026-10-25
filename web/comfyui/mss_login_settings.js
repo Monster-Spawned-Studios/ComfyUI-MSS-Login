@@ -5053,7 +5053,7 @@ app.ui.settings.addSetting({
         mfaBtn.style.minWidth = "280px";
         mfaBtn.title = "Configure authenticator app (TOTP) or manage two-factor authentication.";
         mfaBtn.onclick = () => {
-            window.location.href = "/mfa";
+            window.open("/mfa", "_blank");
         };
         actionsWrap.appendChild(mfaBtn);
 
@@ -5064,7 +5064,7 @@ app.ui.settings.addSetting({
         passkeyBtn.style.minWidth = "280px";
         passkeyBtn.title = "Manage biometric passkeys and WebAuthn credentials.";
         passkeyBtn.onclick = () => {
-            window.location.href = "/passkeys";
+            window.open("/passkeys", "_blank");
         };
         actionsWrap.appendChild(passkeyBtn);
 
@@ -5109,6 +5109,10 @@ app.ui.settings.addSetting({
                     if (me.is_admin) {
                         const isOwner = Array.isArray(me.groups) && me.groups.map(g => String(g).toLowerCase()).includes("owner");
                         if (isOwner) registerBtn.style.display = "block";
+                    }
+                    if (me.has_passkeys || me.passkeys_count > 0) {
+                        passkeyBtn.innerText = `Passkeys: ${me.passkeys_count} Active (Manage)`;
+                        passkeyBtn.style.borderColor = "#9660fa";
                     }
                     if (me.mfa_enabled) {
                         mfaBtn.innerText = "Two-Factor Auth: Enabled (Manage)";

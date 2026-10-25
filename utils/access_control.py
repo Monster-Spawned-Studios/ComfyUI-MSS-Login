@@ -4,6 +4,7 @@ import copy
 import heapq
 import json
 import os
+import shutil
 
 import folder_paths
 from aiohttp import web
@@ -80,6 +81,8 @@ class AccessControl:
 
 		self._current_user = contextvars.ContextVar("user_id", default=None)
 		self.__current_user_id = None
+		self._current_username = contextvars.ContextVar("access_control_username", default=None)
+		self.__current_username = None
 		self.__get_output_directory = folder_paths.get_output_directory
 		self.__get_temp_directory = folder_paths.get_temp_directory
 		self.__get_input_directory = folder_paths.get_input_directory
@@ -314,13 +317,51 @@ class AccessControl:
 
 	# --- Folder & User Context Methods ---
 
-	def set_current_user_id(self, user_id: str, set_fallback=False):
+	def set_current_user_id(
+		self, user_id: str, set_fallback=False, username: str | None = None
+	):
 		self._current_user.set(user_id)
+		if username:
+			self._current_username.set(username)
 		if set_fallback:
 			self.__current_user_id = user_id
+			if username:
+				self.__current_username = username
+
+	def set_current_user(
+		self, user_id: str, username: str | None = None, set_fallback=False
+	):
+		self.set_current_user_id(user_id, set_fallback=set_fallback, username=username)
 
 	def get_current_user_id(self):
 		return self._current_user.get() or self.__current_user_id
+
+	def get_current_username(self) -> str:
+		"""Resolve the current active username (falls back to lookup or user_id or 'public')."""
+		uname = self._current_username.get()
+		if uname and uname not in ("guest", "unknown", "public"):
+			return safe_user_dir_segment(uname)
+		try:
+			from ..globals import current_username_var
+
+			g_uname = current_username_var.get(None)
+			if g_uname and g_uname not in ("guest", "unknown", "public"):
+				return safe_user_dir_segment(g_uname)
+		except Exception:
+			pass
+		if self.__current_username and self.__current_username not in (
+			"guest",
+			"unknown",
+			"public",
+		):
+			return safe_user_dir_segment(self.__current_username)
+		uid = self.get_current_user_id()
+		if uid:
+			rec = self._lookup_user_record(uid)
+			if rec and rec.get("username"):
+				return safe_user_dir_segment(rec["username"])
+			return safe_user_dir_segment(uid)
+		return "public"
 
 	@staticmethod
 	def _normalize_user_id(user_id) -> str | None:
@@ -335,7 +376,21 @@ class AccessControl:
 		right = self._normalize_user_id(current_user_id)
 		if left is None or right is None:
 			return False
-		return left == right
+		if left == right:
+			return True
+		# Dual-read match: one may be UUID and the other may be username
+		rec_left = self._lookup_user_record(left)
+		rec_right = self._lookup_user_record(right)
+		if rec_left and rec_right:
+			left_uname = (rec_left.get("username") or "").strip().lower()
+			right_uname = (rec_right.get("username") or "").strip().lower()
+			if left_uname and left_uname == right_uname:
+				return True
+		if rec_left and (rec_left.get("username") or "").strip().lower() == right.lower():
+			return True
+		if rec_right and (rec_right.get("username") or "").strip().lower() == left.lower():
+			return True
+		return False
 
 	def _lookup_user_record(self, user_key: str | None) -> dict | None:
 		"""Resolve a users_db record from a user_id (UUID) or username."""
@@ -373,35 +428,92 @@ class AccessControl:
 		"""Base directory for user input under MSS_LOGIN_DATA_DIR."""
 		return get_data_subdir("input")
 
+	@staticmethod
+	def _migrate_user_storage_folder(
+		base_dir: str, uuid_seg: str, uname_seg: str
+	) -> None:
+		"""Consolidate legacy <base>/<uuid> into <base>/<username>."""
+		if (
+			not uuid_seg
+			or not uname_seg
+			or uuid_seg == uname_seg
+			or uuid_seg == "public"
+		):
+			return
+		src = os.path.join(base_dir, uuid_seg)
+		dst = os.path.join(base_dir, uname_seg)
+		if not os.path.isdir(src):
+			return
+		os.makedirs(dst, exist_ok=True)
+		try:
+			for item in os.listdir(src):
+				if not item or item in (".", ".."):
+					continue
+				s_item = os.path.join(src, item)
+				d_item = os.path.join(dst, item)
+				if os.path.isdir(s_item):
+					shutil.copytree(s_item, d_item, dirs_exist_ok=True)
+					shutil.rmtree(s_item, ignore_errors=True)
+				elif os.path.isfile(s_item):
+					if not os.path.exists(d_item):
+						try:
+							os.replace(s_item, d_item)
+						except OSError:
+							shutil.copy2(s_item, d_item)
+							os.remove(s_item)
+					else:
+						try:
+							os.remove(s_item)
+						except OSError:
+							pass
+			try:
+				os.rmdir(src)
+			except OSError:
+				pass
+		except OSError:
+			pass
+
 	def get_user_output_directory(self):
-		directory = os.path.join(
-			self._get_output_base(), safe_user_dir_segment(self.get_current_user_id())
-		)
+		get_uname = getattr(self, "get_current_username", None)
+		username = safe_user_dir_segment(get_uname()) if callable(get_uname) else safe_user_dir_segment(self.get_current_user_id())
+		user_id = safe_user_dir_segment(self.get_current_user_id())
+		self._migrate_user_storage_folder(self._get_output_base(), user_id, username)
+		directory = os.path.join(self._get_output_base(), username)
 		os.makedirs(directory, exist_ok=True)
 		return directory
 
 	def get_user_temp_directory(self):
-		directory = os.path.join(
-			self._get_temp_base(), safe_user_dir_segment(self.get_current_user_id())
-		)
+		get_uname = getattr(self, "get_current_username", None)
+		username = safe_user_dir_segment(get_uname()) if callable(get_uname) else safe_user_dir_segment(self.get_current_user_id())
+		user_id = safe_user_dir_segment(self.get_current_user_id())
+		self._migrate_user_storage_folder(self._get_temp_base(), user_id, username)
+		directory = os.path.join(self._get_temp_base(), username)
 		os.makedirs(directory, exist_ok=True)
 		return directory
 
 	def get_user_input_directory(self):
-		directory = os.path.join(
-			self._get_input_base(), safe_user_dir_segment(self.get_current_user_id())
-		)
+		get_uname = getattr(self, "get_current_username", None)
+		username = safe_user_dir_segment(get_uname()) if callable(get_uname) else safe_user_dir_segment(self.get_current_user_id())
+		user_id = safe_user_dir_segment(self.get_current_user_id())
+		self._migrate_user_storage_folder(self._get_input_base(), user_id, username)
+		directory = os.path.join(self._get_input_base(), username)
 		os.makedirs(directory, exist_ok=True)
 		return directory
 
 	def add_user_specific_folder_paths(self, json_data):
-		user_id = safe_user_dir_segment(self.get_current_user_id())
+		get_uname = getattr(self, "get_current_username", None)
+		if callable(get_uname):
+			raw_user = get_uname()
+		else:
+			get_uid = getattr(self, "get_current_user_id", None)
+			raw_user = get_uid() if callable(get_uid) else "public"
+		user_seg = safe_user_dir_segment(raw_user)
 		if isinstance(json_data, dict):
 			for k, v in json_data.items():
 				if k in ("extra_data", "extra_pnginfo", "workflow"):
 					continue
 				if k == "filename_prefix":
-					json_data[k] = f"{user_id}/{v}"
+					json_data[k] = f"{user_seg}/{v}"
 				else:
 					self.add_user_specific_folder_paths(v)
 		elif isinstance(json_data, list):
@@ -474,6 +586,10 @@ class AccessControl:
 		stamp_username = None
 		if user_rec:
 			stamp_username = user_rec.get("username")
+		if not stamp_username:
+			cand = self.get_current_username()
+			if cand and cand != "public":
+				stamp_username = cand
 		# Always stamp a normalized string user_id so SEPERATE_USERS queue/history
 		# filters match Portal Bearer/API-token identity comparisons.
 		stamp = {"user_id": current_user_id, "username": stamp_username}
@@ -497,10 +613,12 @@ class AccessControl:
 			# this job's user onto the worker so SaveImage/LoadImage and
 			# get_output_directory() resolve the submitter's isolated folders.
 			job_user = user_id_from_queue_item(entry)
-			if job_user:
-				self.set_current_user_id(job_user, set_fallback=True)
 			job_name = username_from_queue_item(entry)
+			if job_user:
+				self.set_current_user_id(job_user, set_fallback=True, username=job_name)
 			if job_name:
+				self._current_username.set(job_name)
+				self.__current_username = job_name
 				try:
 					from ..globals import current_username_var
 

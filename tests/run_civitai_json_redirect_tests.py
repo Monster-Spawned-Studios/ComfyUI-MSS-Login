@@ -129,11 +129,118 @@ def test_redirect_off_allowlist_rejected(failed: list[str]) -> None:
 	)
 
 
+def test_cloudflare_r2_redirect_allowed(failed: list[str]) -> None:
+	print("TestCloudflareR2RedirectAllowed")
+	md = _load_model_download()
+
+	r2_host = (
+		"civitai-delivery-worker-prod.5ac0637cfd0766c97916cefa3764fbdf.r2.cloudflarestorage.com"
+	)
+	_ok(
+		md.is_download_redirect_host_allowed(r2_host),
+		"civitai-delivery-worker-prod R2 host is allowed",
+		failed,
+	)
+	_ok(
+		md.is_download_redirect_host_allowed("civitai.r2.cloudflarestorage.com"),
+		"civitai R2 host is allowed",
+		failed,
+	)
+	_ok(
+		md.is_download_redirect_host_allowed("civitai-models.s3.amazonaws.com"),
+		"civitai S3 host is allowed",
+		failed,
+	)
+	_ok(
+		not md.is_download_redirect_host_allowed("malicious.r2.cloudflarestorage.com"),
+		"non-civitai R2 host is rejected",
+		failed,
+	)
+	_ok(
+		not md.is_download_redirect_host_allowed("attacker-s3.amazonaws.com"),
+		"non-civitai S3 host is rejected",
+		failed,
+	)
+
+
+def test_authorization_header_stripped_on_r2_redirect(failed: list[str]) -> None:
+	print("TestAuthorizationHeaderStrippedOnR2Redirect")
+	md = _load_model_download()
+
+	captured_headers = []
+
+	class _RedirectResp:
+		def __init__(self, location):
+			self.status = 307
+			self.headers = {"Location": location}
+
+		async def release(self):
+			return None
+
+	class _FinalResp:
+		status = 200
+		headers = {}
+
+		async def release(self):
+			return None
+
+	class _Session:
+		def __init__(self):
+			self.call_count = 0
+
+		async def get(self, url, params=None, headers=None, allow_redirects=False):
+			self.call_count += 1
+			captured_headers.append((url, dict(headers or {})))
+			if self.call_count == 1:
+				return _RedirectResp(
+					"https://civitai-delivery-worker-prod.5ac0637cfd0766c97916cefa3764fbdf.r2.cloudflarestorage.com/model.safetensors?X-Amz-Signature=abc"
+				)
+			return _FinalResp()
+
+	async def run():
+		sess = _Session()
+		headers = {
+			"Authorization": "Bearer secret_civitai_token",
+			"User-Agent": "MSS-Login/Test",
+		}
+		resp = await md.fetch_allowlisted(
+			sess, "https://civitai.com/api/download/models/12345", headers=headers
+		)
+		await resp.release()
+
+	asyncio.run(run())
+
+	_ok(len(captured_headers) == 2, "followed 1 redirect (2 total requests)", failed)
+	# Hop 1: civitai.com has Authorization
+	hop1_url, hop1_hdrs = captured_headers[0]
+	_ok("civitai.com" in hop1_url, "hop 1 requested civitai.com", failed)
+	_ok(
+		"Authorization" in hop1_hdrs,
+		"hop 1 contained Authorization header",
+		failed,
+	)
+	# Hop 2: R2 storage has Authorization STRIPPED, User-Agent kept
+	hop2_url, hop2_hdrs = captured_headers[1]
+	_ok("r2.cloudflarestorage.com" in hop2_url, "hop 2 requested R2 storage", failed)
+	_ok(
+		"Authorization" not in hop2_hdrs and "authorization" not in hop2_hdrs,
+		"hop 2 stripped Authorization header on R2 redirect",
+		failed,
+	)
+	_ok(
+		hop2_hdrs.get("User-Agent") == "MSS-Login/Test",
+		"hop 2 preserved non-auth User-Agent header",
+		failed,
+	)
+
+
 def main() -> int:
 	failed: list[str] = []
 	try:
 		test_civitai_json_uses_fetch_allowlisted(failed)
 		test_redirect_off_allowlist_rejected(failed)
+		test_cloudflare_r2_redirect_allowed(failed)
+		test_authorization_header_stripped_on_r2_redirect(failed)
 	except Exception as e:
 		print(f"FAIL: {e}")
 		import traceback

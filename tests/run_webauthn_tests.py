@@ -235,6 +235,61 @@ def test_passwordless_routes_public():
 	)
 
 
+def test_passkey_enrolled_requires_mfa_gate():
+	print("TestPasskeyEnrolledRequiresMfaGate")
+	if _PROJECT_ROOT not in sys.path:
+		sys.path.insert(0, _PROJECT_ROOT)
+	lf = _load("login_finalize", "login_finalize.py")
+	cred_mod = _load("webauthn_credentials", "webauthn_credentials.py")
+
+	with tempfile.TemporaryDirectory() as td:
+		repo_path = os.path.join(td, "creds.json")
+		test_repo = cred_mod.FileWebAuthnRepo(repo_path)
+		c = cred_mod.WebAuthnCredential(
+			id="c_dave",
+			user_id="uid_dave",
+			credential_id=b"\x99\x88\x77",
+			public_key=b"\x11\x22",
+			sign_count=0,
+			transports=["internal"],
+			aaguid="",
+			backup_eligible=True,
+			backup_state=False,
+			rp_id="tmd-nas.win",
+			name="YubiKey",
+			created_at=time.time(),
+			last_used_at=None,
+			revoked_at=None,
+		)
+		test_repo.add(c)
+		old_get_repo = cred_mod.get_webauthn_repo
+		cred_mod.get_webauthn_repo = lambda: test_repo
+		import constants
+		old_mfa_disabled = getattr(constants, "MFA_DISABLED", False)
+		constants.MFA_DISABLED = False
+		try:
+			class FakeDBWithPasskeys:
+				def get_user(self, username):
+					if username == "dave":
+						return ("uid_dave", {"username": "dave", "groups": ["user"], "admin": False})
+					return (None, None)
+
+				def get_mfa_enabled(self, username):
+					return False  # No TOTP!
+
+			gate = lf.evaluate_mfa_gate("dave", FakeDBWithPasskeys(), experimental_on=True)
+			_ok(gate.needs_verify is True, "user with passkey requires MFA verify even with TOTP off")
+			_ok(gate.reason == "enrolled", "reason is enrolled")
+
+			# Verify mfa.html contains passkey button
+			mfa_html = open(os.path.join(_PROJECT_ROOT, "web", "html", "mfa.html"), encoding="utf-8").read()
+			_ok("mfa-passkey-btn" in mfa_html, "mfa.html has mfa-passkey-btn")
+			_ok("mfa-passkey-container" in mfa_html, "mfa.html has mfa-passkey-container")
+		finally:
+			cred_mod.get_webauthn_repo = old_get_repo
+			constants.MFA_DISABLED = old_mfa_disabled
+
+
 def main() -> int:
 	test_guarded_import()
 	test_file_repo_contract()
@@ -244,6 +299,7 @@ def main() -> int:
 	test_missing_dep_message()
 	test_passwordless_policy_default_off()
 	test_passwordless_routes_public()
+	test_passkey_enrolled_requires_mfa_gate()
 	print("---")
 	if failed:
 		for f in failed:

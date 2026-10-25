@@ -92,6 +92,28 @@ def isolation_folder_root(folder_type: str) -> str:
 	return os.path.join(isolation_models_base(), folder_type)
 
 
+def _get_users_db():
+	for mod_name in ("..globals", "globals"):
+		try:
+			mod = __import__(mod_name, fromlist=["users_db"])
+			if hasattr(mod, "users_db"):
+				return mod.users_db
+		except Exception:
+			pass
+	for mod_name in ("..utils.access_control", "utils.access_control"):
+		try:
+			mod = __import__(mod_name, fromlist=["access_control"])
+			if hasattr(mod, "access_control") and hasattr(mod.access_control, "users_db"):
+				return mod.access_control.users_db
+		except Exception:
+			pass
+	for mod_name in ("mss_login.globals", "globals"):
+		mod = sys.modules.get(mod_name)
+		if mod and hasattr(mod, "users_db"):
+			return mod.users_db
+	return None
+
+
 def resolve_user_identity(
 	user_id: str | None, username: str | None = None
 ) -> tuple[str | None, str | None]:
@@ -101,19 +123,43 @@ def resolve_user_identity(
 	if uid and uname:
 		return uid, uname
 
-	try:
-		from .users_db import users_db
-
-		if uid and not uname:
-			_u, user_record = users_db.get_user(user_id=uid)
-			if user_record and user_record.get("username"):
-				uname = str(user_record["username"]).strip() or None
-		elif uname and not uid:
-			resolved_id, _record = users_db.get_user(username=uname)
-			if resolved_id:
-				uid = str(resolved_id).strip() or None
-	except Exception:
-		pass
+	udb = _get_users_db()
+	if udb is not None:
+		try:
+			if uid and not uname:
+				# Check if uid is actually a username
+				try:
+					resolved_id, user_record = udb.get_user(username=uid)
+					if resolved_id and user_record:
+						return str(resolved_id).strip(), uid
+				except Exception:
+					pass
+				# Look up by user_id
+				try:
+					_u, user_record = udb.get_user(user_id=uid)
+					if user_record and user_record.get("username"):
+						uname = str(user_record["username"]).strip() or None
+				except Exception:
+					try:
+						res = udb.get_user(uid)
+						if isinstance(res, tuple) and len(res) >= 2 and isinstance(res[1], dict):
+							uname = str(res[1].get("username") or "").strip() or None
+					except Exception:
+						pass
+			elif uname and not uid:
+				try:
+					resolved_id, _record = udb.get_user(username=uname)
+					if resolved_id:
+						uid = str(resolved_id).strip() or None
+				except Exception:
+					try:
+						res = udb.get_user(uname)
+						if isinstance(res, tuple) and len(res) >= 1 and res[0]:
+							uid = str(res[0]).strip() or None
+					except Exception:
+						pass
+		except Exception:
+			pass
 	return uid, uname
 
 
@@ -234,6 +280,184 @@ def ensure_isolation_folder_registered(folder_type: str) -> str | None:
 	return root
 
 
+def _is_isolation_enabled() -> bool:
+	for mod_name in ("mss_login.constants", "constants"):
+		mod = sys.modules.get(mod_name)
+		if mod and hasattr(mod, "experimental_model_isolation_enabled"):
+			try:
+				return bool(mod.experimental_model_isolation_enabled())
+			except Exception:
+				pass
+	try:
+		return bool(experimental_model_isolation_enabled())
+	except Exception:
+		return False
+
+
+def convert_manual_user_folders_to_isolation() -> int:
+	"""
+	Automatically detect manually created user folders on the host OS
+	(under <models_root>/<folder_type>/<username>, DATA_DIR/users/<username>/models,
+	or legacy DATA_DIR/model_isolation/models/<folder_type>/<uuid>)
+	and convert/migrate them into proper model isolation folders
+	(DATA_DIR/model_isolation/models/<folder_type>/<username>) with shared item grants.
+	Returns count of converted/granted files.
+	"""
+	if not _is_isolation_enabled():
+		return 0
+
+	udb = _get_users_db()
+	if udb is None:
+		return 0
+
+	try:
+		if hasattr(udb, "load_users"):
+			udb.load_users()
+	except Exception:
+		pass
+
+	users = getattr(udb, "users", {})
+	if not users or not isinstance(users, dict):
+		return 0
+
+	user_map: dict[str, str] = {}  # username -> user_id
+	uid_map: dict[str, str] = {}  # user_id -> username
+	for uid, data in users.items():
+		if isinstance(data, dict):
+			uname = (data.get("username") or "").strip()
+			if uname:
+				user_map[uname] = str(uid)
+				uid_map[str(uid)] = uname
+
+	if not user_map:
+		return 0
+
+	converted_count = 0
+
+	# 1. Check ComfyUI shared models root for <models_root>/<folder_type>/<username>
+	try:
+		models_root = None
+		for mod_name in (
+			"mss_login.utils.folder_paths_compat",
+			"utils.folder_paths_compat",
+		):
+			mod = sys.modules.get(mod_name)
+			if mod and hasattr(mod, "get_models_root"):
+				models_root = mod.get_models_root()
+				break
+		if not models_root:
+			from .folder_paths_compat import get_models_root
+
+			models_root = get_models_root()
+		if models_root and os.path.isdir(models_root):
+			for ft in os.listdir(models_root):
+				ft_path = os.path.join(models_root, ft)
+				if not os.path.isdir(ft_path):
+					continue
+				for uname, uid in user_map.items():
+					user_cand_dir = os.path.join(ft_path, uname)
+					if os.path.isdir(user_cand_dir):
+						target_iso = isolation_user_folder(ft, uid, uname)
+						_migrate_folder_contents(user_cand_dir, target_iso)
+						try:
+							os.rmdir(user_cand_dir)
+						except OSError:
+							pass
+						ensure_isolation_folder_registered(ft)
+	except Exception:
+		pass
+
+	# 2. Check DATA_DIR/users/<username>/models/<folder_type>
+	users_root = os.path.join(DATA_DIR, "users")
+	if os.path.isdir(users_root):
+		for uname, uid in user_map.items():
+			user_models = os.path.join(users_root, uname, "models")
+			if os.path.isdir(user_models):
+				try:
+					for ft in os.listdir(user_models):
+						ft_dir = os.path.join(user_models, ft)
+						if os.path.isdir(ft_dir):
+							target_iso = isolation_user_folder(ft, uid, uname)
+							_migrate_folder_contents(ft_dir, target_iso)
+							try:
+								os.rmdir(ft_dir)
+							except OSError:
+								pass
+							ensure_isolation_folder_registered(ft)
+					try:
+						os.rmdir(user_models)
+					except OSError:
+						pass
+				except OSError:
+					pass
+
+	# 3. Check legacy UUID folders in DATA_DIR/model_isolation/models/<folder_type>/<uuid>
+	base = isolation_models_base()
+	if os.path.isdir(base):
+		try:
+			for ft in os.listdir(base):
+				ft_dir = os.path.join(base, ft)
+				if not os.path.isdir(ft_dir):
+					continue
+				for uid, uname in uid_map.items():
+					legacy_uid_dir = os.path.join(ft_dir, uid)
+					if os.path.isdir(legacy_uid_dir):
+						target_iso = isolation_user_folder(ft, uid, uname)
+						if os.path.abspath(legacy_uid_dir) != os.path.abspath(target_iso):
+							_migrate_folder_contents(legacy_uid_dir, target_iso)
+							try:
+								os.rmdir(legacy_uid_dir)
+							except OSError:
+								pass
+		except OSError:
+			pass
+
+	# 4. Auto-grant all files found in isolation folders for each user
+	try:
+		from .shared_items_store import get_shared_items_store
+
+		try:
+			from ..constants import USERS_DB_CONFIG
+		except ImportError:
+			from constants import USERS_DB_CONFIG
+
+		shared_store = get_shared_items_store(USERS_DB_CONFIG)
+		if shared_store is not None and os.path.isdir(base):
+			for ft in os.listdir(base):
+				ft_dir = os.path.join(base, ft)
+				if not os.path.isdir(ft_dir):
+					continue
+				for uname, uid in user_map.items():
+					u_dir = os.path.join(ft_dir, uname)
+					if not os.path.isdir(u_dir):
+						continue
+					for dirpath, _dirnames, filenames in os.walk(u_dir):
+						for fn in filenames:
+							if not fn or fn.startswith("."):
+								continue
+							full_path = os.path.join(dirpath, fn)
+							if not os.path.isfile(full_path):
+								continue
+							rel = os.path.relpath(full_path, u_dir).replace("\\", "/")
+							item_name = f"{uname}/{rel}"
+							try:
+								shared_store.add(
+									uid,
+									ft,
+									item_name,
+									source_backend="local",
+									granted_by_user_id=uid,
+									granted_by_role="isolation_manual",
+								)
+								converted_count += 1
+							except Exception:
+								pass
+	except Exception:
+		pass
+
+	return converted_count
+
+
 def register_all_isolation_folders() -> list[str]:
 	"""
 	Register isolation roots for existing on-disk folder types plus common asset folders.
@@ -243,6 +467,10 @@ def register_all_isolation_folders() -> list[str]:
 	"""
 	if not experimental_model_isolation_enabled():
 		return []
+	try:
+		convert_manual_user_folders_to_isolation()
+	except Exception:
+		pass
 	folder_types: set[str] = set(_COMMON_ISOLATION_FOLDERS)
 	base = isolation_models_base()
 	if os.path.isdir(base):

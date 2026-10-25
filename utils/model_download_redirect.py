@@ -15,7 +15,11 @@ from typing import Any
 from ..constants import CONFIG_FILE_PATH
 from .folder_paths_compat import get_models_root
 from .json_utils import load_json_file, save_json_file
-from .model_isolation import isolation_models_base, sanitize_user_segment
+from .model_isolation import (
+	isolation_models_base,
+	sanitize_user_segment,
+	user_isolation_candidate_segments,
+)
 
 _PATHISH_KEYWORDS = ("path", "dir", "folder", "destination", "dest", "download", "save", "output")
 
@@ -160,7 +164,8 @@ def _to_isolated_path(value: str, user_id: str) -> str:
 
 	global_root = _global_models_root().replace("\\", "/").rstrip("/")
 	isolation_base = isolation_models_base().replace("\\", "/")
-	user_seg = sanitize_user_segment(user_id)
+	user_segs = user_isolation_candidate_segments(user_id)
+	user_seg = user_segs[0]
 
 	# Matches direct references to "models" root.
 	if raw in ("models", "/models", "./models"):
@@ -173,7 +178,7 @@ def _to_isolated_path(value: str, user_id: str) -> str:
 		if not parts:
 			return os.path.join(isolation_base, user_seg).replace("\\", "/")
 		folder = parts[0]
-		if len(parts) > 1 and parts[1] == user_seg:
+		if len(parts) > 1 and parts[1] in user_segs:
 			return os.path.join(isolation_base, folder, *parts[1:]).replace("\\", "/")
 		return os.path.join(isolation_base, folder, user_seg, *parts[1:]).replace("\\", "/")
 
@@ -187,7 +192,7 @@ def _to_isolated_path(value: str, user_id: str) -> str:
 			if not parts:
 				return os.path.join(isolation_base, user_seg).replace("\\", "/")
 			folder = parts[0]
-			if len(parts) > 1 and parts[1] == user_seg:
+			if len(parts) > 1 and parts[1] in user_segs:
 				return os.path.join(isolation_base, folder, *parts[1:]).replace("\\", "/")
 			return os.path.join(isolation_base, folder, user_seg, *parts[1:]).replace("\\", "/")
 	return value

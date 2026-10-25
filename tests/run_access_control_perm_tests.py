@@ -252,12 +252,81 @@ def test_queue_put_default_deny(failed: list[str]) -> None:
 	_ok(hasattr(pq2, "last"), "user_queue_put allows when can_run True", failed)
 
 
+def test_username_storage_and_migration(failed: list[str]) -> None:
+	print("TestUsernameStorageAndMigration")
+	ac = _load_access_control()
+	tmpdir = tempfile.mkdtemp()
+	try:
+		ctrl = _make_ctrl(ac, {"user": {"can_run": True}}, role="user")
+		fake_users = {
+			"uuid-1234": {"username": "bob", "groups": ["user"]},
+		}
+
+		def mock_get_user(username=None, user_id=None, **_k):
+			if user_id and user_id in fake_users:
+				return user_id, fake_users[user_id]
+			if username:
+				for uid, udata in fake_users.items():
+					if udata.get("username") == username:
+						return uid, udata
+			return None, None
+
+		ctrl.users_db = types.SimpleNamespace(get_user=mock_get_user)
+		ctrl._current_user = types.SimpleNamespace(get=lambda: "uuid-1234", set=lambda *_: None)
+		ctrl._AccessControl__current_user_id = "uuid-1234"
+		ctrl._current_username = types.SimpleNamespace(get=lambda: "bob", set=lambda *_: None)
+		ctrl._AccessControl__current_username = "bob"
+		ctrl._get_output_base = lambda: os.path.join(tmpdir, "output")
+		ctrl._get_temp_base = lambda: os.path.join(tmpdir, "temp")
+		ctrl._get_input_base = lambda: os.path.join(tmpdir, "input")
+
+		# Check username resolution
+		_ok(ctrl.get_current_username() == "bob", "get_current_username resolves bob", failed)
+
+		out_dir = ctrl.get_user_output_directory()
+		_ok(out_dir.endswith("bob"), f"output directory ends with username bob ({out_dir})", failed)
+		temp_dir = ctrl.get_user_temp_directory()
+		_ok(temp_dir.endswith("bob"), f"temp directory ends with username bob ({temp_dir})", failed)
+		in_dir = ctrl.get_user_input_directory()
+		_ok(in_dir.endswith("bob"), f"input directory ends with username bob ({in_dir})", failed)
+
+		# Check filename_prefix prepending username
+		prompt_req = {"filename_prefix": "MyGen"}
+		mod_prompt = ctrl.add_user_specific_folder_paths(prompt_req)
+		_ok(mod_prompt.get("filename_prefix") == "bob/MyGen", "filename_prefix prepends username bob", failed)
+
+		# Check legacy UUID folder migration
+		legacy_uuid_dir = os.path.join(tmpdir, "output", "uuid-1234")
+		os.makedirs(legacy_uuid_dir, exist_ok=True)
+		dummy_file = os.path.join(legacy_uuid_dir, "old_render.png")
+		with open(dummy_file, "w") as f:
+			f.write("content")
+
+		# Access output dir to trigger migration
+		migrated_out = ctrl.get_user_output_directory()
+		target_file = os.path.join(migrated_out, "old_render.png")
+		_ok(os.path.isfile(target_file), "legacy file in uuid-1234 migrated to bob folder", failed)
+		_ok(not os.path.exists(legacy_uuid_dir), "legacy uuid-1234 directory removed after migration", failed)
+
+		# Check dual-read _user_id_matches
+		_ok(ctrl._user_id_matches("uuid-1234", "bob"), "dual-read matches uuid with username", failed)
+		_ok(ctrl._user_id_matches("bob", "uuid-1234"), "dual-read matches username with uuid", failed)
+		_ok(ctrl._user_id_matches("bob", "bob"), "direct username match works", failed)
+		_ok(ctrl._user_id_matches("uuid-1234", "uuid-1234"), "direct uuid match works", failed)
+		_ok(not ctrl._user_id_matches("uuid-1234", "unknown_user"), "unmatched user returns False", failed)
+	finally:
+		import shutil
+
+		shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def main() -> int:
 	failed: list[str] = []
 	try:
 		test_sensitive_perm_helper(failed)
 		test_middleware_default_deny_missing_flags(failed)
 		test_queue_put_default_deny(failed)
+		test_username_storage_and_migration(failed)
 	except Exception as e:
 		print(f"FAIL: {e}")
 		import traceback

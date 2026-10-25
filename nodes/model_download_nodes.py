@@ -78,13 +78,25 @@ def _emit_progress(
 
 
 def _plain_model_name(name: str) -> str:
-	"""Strip isolation UUID first segment so loaders/Portal see a plain filename."""
+	"""Strip isolation user/UUID first segment so loaders/Portal see a plain filename."""
 	raw = (name or "").replace("\\", "/").strip()
 	if not raw:
 		return name
 	parts = raw.split("/")
-	if len(parts) >= 2 and is_uuid_segment(parts[0]):
-		return "/".join(parts[1:])
+	if len(parts) >= 2:
+		first = parts[0]
+		if is_uuid_segment(first):
+			return "/".join(parts[1:])
+		try:
+			from ..utils.model_isolation import user_isolation_candidate_segments
+
+			uid, uname, _, _ = _resolve_prompt_user()
+			if uid or uname:
+				candidates = user_isolation_candidate_segments(uid, uname)
+				if first in candidates:
+					return "/".join(parts[1:])
+		except Exception:
+			pass
 	return raw
 
 

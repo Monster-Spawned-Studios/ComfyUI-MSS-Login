@@ -387,6 +387,13 @@ async def auth_options(request: web.Request) -> web.Response:
 		return guard
 	body = await _json_body(request)
 	username = (body.get("username") or "").strip()
+	mfa_temp = (body.get("mfa_temp_token") or "").strip()
+	ip = get_ip(request)
+	ua = (request.headers.get("User-Agent") or "").strip()
+	if not username and mfa_temp:
+		entry = peek_mfa_temp_token(mfa_temp, purpose="mfa_verify", ip=ip, user_agent=ua)
+		if entry:
+			username = entry.username
 	origin = _extract_origin(request)
 	cfg = get_webauthn_config()
 	rp_id = get_rp_id_for_origin(origin) if origin else cfg["rp_id"]

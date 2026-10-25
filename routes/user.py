@@ -126,8 +126,24 @@ async def api_me(request: web.Request) -> web.Response:
 			role = candidate
 			break
 
+	has_passkeys = False
+	passkeys_count = 0
+	if username and username.lower() != "guest":
+		try:
+			from ..utils.webauthn_credentials import get_webauthn_repo
+
+			repo = get_webauthn_repo()
+			user_id, _ = users_db.get_user(username)
+			if user_id:
+				passkeys_count = repo.count_active_for_user(user_id)
+				has_passkeys = passkeys_count > 0
+		except Exception:
+			has_passkeys = False
+
 	mfa_enabled = (
-		users_db.get_mfa_enabled(username) if username and username.lower() != "guest" else False
+		(bool(users_db.get_mfa_enabled(username)) or has_passkeys)
+		if username and username.lower() != "guest"
+		else False
 	)
 
 	can_update = False
@@ -166,6 +182,8 @@ async def api_me(request: web.Request) -> web.Response:
 			"groups": groups,
 			"is_admin": is_admin,
 			"mfa_enabled": mfa_enabled,
+			"has_passkeys": has_passkeys,
+			"passkeys_count": passkeys_count,
 			"mfa_required": mfa_required,
 			"mfa_grace": mfa_grace,
 			"can_update_mss_login": can_update,

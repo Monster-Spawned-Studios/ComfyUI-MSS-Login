@@ -254,7 +254,9 @@ class JWTAuth:
 					request["user_id"] = user_id
 					request["user"] = username
 					set_fallback = is_prompt_execution_path(request.path)
-					self.access_control.set_current_user_id(user_id, set_fallback)
+					self.access_control.set_current_user_id(
+						user_id, set_fallback, username=username
+					)
 				else:
 					# API token not found: if token doesn't look like a JWT (no dots), return clear message
 					if token.count(".") < 2:
@@ -296,7 +298,9 @@ class JWTAuth:
 					request["user"] = username
 
 					set_fallback = is_prompt_execution_path(request.path)
-					self.access_control.set_current_user_id(user_id, set_fallback)
+					self.access_control.set_current_user_id(
+						user_id, set_fallback, username=username
+					)
 
 			except jwt.ExpiredSignatureError:
 				debug_write(

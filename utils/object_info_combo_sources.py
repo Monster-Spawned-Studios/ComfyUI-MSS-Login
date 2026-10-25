@@ -9,8 +9,8 @@ folder list — callers strip UUID prefixes only.
 from __future__ import annotations
 
 import logging
-from .isolation_resolver import is_uuid_segment, list_display_names
-from .model_isolation import sanitize_user_segment
+from .isolation_resolver import foreign_uuid_prefix, is_uuid_segment, list_display_names
+from .model_isolation import sanitize_user_segment, user_isolation_candidate_segments
 from .model_visibility_policy import normalize_model_name
 from .prompt_model_validator import NODE_MODEL_INPUTS, _looks_like_model_file
 
@@ -151,12 +151,15 @@ def strip_uid_prefixes(combo: list[str], viewer_user_id: str | None) -> list[str
 	"""
 	Uid-strip-only for unmapped combos.
 
-	- Strip the viewer's own UUID prefix.
-	- Drop entries whose first segment is another user's UUID.
+	- Strip the viewer's own isolation prefix (username or UUID).
+	- Drop entries whose first segment is another user's isolation folder.
 	- Leave HF repo IDs, bbox/…, sentinels like None, and plain names untouched.
 	"""
-	viewer_seg = sanitize_user_segment(viewer_user_id) if viewer_user_id else ""
-	own_prefix = f"{viewer_seg}/" if viewer_seg else ""
+	candidate_segs = (
+		[s.lower() for s in user_isolation_candidate_segments(viewer_user_id)]
+		if viewer_user_id
+		else []
+	)
 	out: list[str] = []
 	for item in combo:
 		if not isinstance(item, str):
@@ -165,15 +168,20 @@ def strip_uid_prefixes(combo: list[str], viewer_user_id: str | None) -> list[str
 		if not name:
 			out.append(item)
 			continue
-		if own_prefix and (
-			name.startswith(own_prefix) or name.lower().startswith(own_prefix.lower())
-		):
-			out.append(name[len(viewer_seg) + 1 :])
+		matched_own = False
+		for seg in candidate_segs:
+			prefix = f"{seg}/"
+			if name.lower().startswith(prefix):
+				out.append(name[len(seg) + 1 :])
+				matched_own = True
+				break
+		if matched_own:
 			continue
 		parts = name.split("/", 1)
-		if len(parts) >= 2 and is_uuid_segment(parts[0]):
-			# Foreign UUID — never expose
-			continue
+		if len(parts) >= 2:
+			if is_uuid_segment(parts[0]) or foreign_uuid_prefix(name, viewer_user_id):
+				# Foreign isolation directory — never expose
+				continue
 		out.append(name)
 	return out
 
@@ -245,11 +253,12 @@ def build_combo_from_sources(
 
 def _norm_for_overlap(name: str, viewer_user_id: str | None) -> str:
 	n = name.replace("\\", "/").strip().lower()
-	viewer_seg = sanitize_user_segment(viewer_user_id) if viewer_user_id else ""
-	if viewer_seg:
-		prefix = f"{viewer_seg.lower()}/"
+	for seg in (
+		user_isolation_candidate_segments(viewer_user_id) if viewer_user_id else []
+	):
+		prefix = f"{seg.lower()}/"
 		if n.startswith(prefix):
-			n = n[len(prefix) :]
+			return n[len(prefix) :]
 	return n
 
 

@@ -53,7 +53,8 @@
         "can_manage_model_sharing": false,
         "can_download_models": false,
         "can_login_locally_without_auth": false,
-        "can_update_mss_login": false
+        "can_update_mss_login": false,
+        "passwordless_passkey": true
     },
     "user": {
         "can_run": true,
@@ -63,6 +64,7 @@
         "can_see_restricted_settings": false,
         "can_have_api_tokens": false,
         "can_have_non_expiring_jwt": false,
+        "passwordless_passkey": true,
         "ui_clear": true,
         "cat_Appearance": true,
         "cat_LiteGraph": false,

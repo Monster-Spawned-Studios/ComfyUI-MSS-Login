@@ -143,6 +143,26 @@ def migrate_users_dir_if_needed() -> bool:
 			if _remove_legacy_users_tree(legacy):
 				migrated = True
 
+	# Consolidate any legacy UUID folders in DATA_DIR/users/ to username
+	try:
+		from .model_isolation import resolve_user_identity
+
+		for entry in os.listdir(dest):
+			entry_path = os.path.join(dest, entry)
+			if not os.path.isdir(entry_path):
+				continue
+			if len(entry) >= 32 and "-" in entry:
+				_uid, resolved_uname = resolve_user_identity(entry)
+				if resolved_uname and resolved_uname != entry:
+					uname_dest = os.path.join(
+						dest, sanitize_username_for_path(resolved_uname)
+					)
+					if _copy_tree_missing(entry_path, uname_dest):
+						migrated = True
+					shutil.rmtree(entry_path, ignore_errors=True)
+	except Exception:
+		pass
+
 	try:
 		if not os.path.isfile(marker):
 			with open(marker, "w", encoding="utf-8") as f:

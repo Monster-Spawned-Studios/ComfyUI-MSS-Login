@@ -267,6 +267,43 @@ def run_tests():
 			username="carol",
 		)
 		ok(res_foreign is None, "Foreign UUID prefix is denied")
+
+		# Test manual folder conversion from ComfyUI shared models root
+		import utils.folder_paths_compat as fpc
+
+		orig_models_root_fn = getattr(fpc, "get_models_root", None)
+		tmp_shared_models = tempfile.mkdtemp()
+		orig_get_udb = getattr(mi, "_get_users_db", None)
+		try:
+			fpc.get_models_root = lambda: tmp_shared_models
+			manual_user_dir = os.path.join(tmp_shared_models, "loras", "carol")
+			os.makedirs(manual_user_dir, exist_ok=True)
+			with open(os.path.join(manual_user_dir, "my_manual.safetensors"), "w") as f:
+				f.write("weights")
+
+			fake_udb = type(
+				"FakeUDB",
+				(),
+				{
+					"users": {"user_carol_uuid": {"username": "carol"}},
+					"load_users": lambda self: None,
+				},
+			)()
+			mi._get_users_db = lambda: fake_udb
+
+			count = mi.convert_manual_user_folders_to_isolation()
+			ok(count >= 0, "convert_manual_user_folders_to_isolation ran")
+			target_converted = os.path.join(
+				tmp_iso_root, "model_isolation", "models", "loras", "carol", "my_manual.safetensors"
+			)
+			ok(os.path.isfile(target_converted), "Manual host folder model converted to isolation")
+			ok(not os.path.exists(manual_user_dir), "Original manual folder removed")
+		finally:
+			if orig_models_root_fn is not None:
+				fpc.get_models_root = orig_models_root_fn
+			if orig_get_udb is not None:
+				mi._get_users_db = orig_get_udb
+			shutil.rmtree(tmp_shared_models, ignore_errors=True)
 	finally:
 		if orig_data_dir is not None:
 			constants.DATA_DIR = orig_data_dir
