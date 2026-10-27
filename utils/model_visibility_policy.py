@@ -148,7 +148,7 @@ def get_effective_model_grants_for_user(
 		seen.add(key)
 		normalized.append(record)
 
-	if experimental_model_isolation_enabled():
+	if experimental_model_isolation_enabled() and user_can_view_all_models(role, perms):
 		try:
 			disk_rows = list_isolation_items_for_user(user_id)
 		except Exception:

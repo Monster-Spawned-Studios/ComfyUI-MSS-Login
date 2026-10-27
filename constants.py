@@ -913,39 +913,23 @@ def reload_mfa_disabled() -> bool:
 
 
 def get_isolation_folder_naming() -> str:
-	"""Return active isolation folder naming convention: 'username' or 'user_id' (default: 'username')."""
-	env_val = str(os.environ.get("MSS_LOGIN_ISOLATION_FOLDER_NAMING", "")).strip().lower()
-	if env_val in ("user_id", "uuid", "id"):
-		return "user_id"
-	if env_val in ("username", "user", "name"):
-		return "username"
-	cfg = _load_config(CONFIG_FILE_PATH)
-	block = cfg.get("model_isolation") if isinstance(cfg, dict) else None
-	if isinstance(block, dict):
-		val = str(block.get("folder_naming", "")).strip().lower()
-		if val in ("user_id", "uuid", "id"):
-			return "user_id"
-		if val in ("username", "user", "name"):
-			return "username"
+	"""Return active isolation folder naming convention: strictly 'username'."""
 	return "username"
 
 
 def save_isolation_folder_naming(mode: str) -> str:
-	"""Persist model isolation folder naming convention ('username' or 'user_id')."""
-	normalized = (
-		"user_id" if str(mode or "").strip().lower() in ("user_id", "uuid", "id") else "username"
-	)
+	"""Persist model isolation folder naming convention (strictly 'username')."""
 	cfg = _load_config(CONFIG_FILE_PATH)
 	if not isinstance(cfg, dict):
 		cfg = {}
 	block = cfg.get("model_isolation")
 	if not isinstance(block, dict):
 		block = {}
-	block["folder_naming"] = normalized
+	block["folder_naming"] = "username"
 	cfg["model_isolation"] = block
 	with open(CONFIG_FILE_PATH, "w", encoding="utf-8") as f:
 		json.dump(cfg, f, indent=4)
-	return normalized
+	return "username"
 
 
 def get_mfa_grace_period_days() -> int:
