@@ -3991,8 +3991,9 @@ async renderS3Settings(container) {
         if (app.extensions) app.extensions.forEach(e => { if(e.name) categories.add(e.name); });
         
         // 2. Scan Settings (Sidebar Buttons)
-        if (app.ui.settings.settings) {
-            const items = (app.ui.settings.settings instanceof Map) ? Array.from(app.ui.settings.settings.values()) : Object.values(app.ui.settings.settings);
+        const settingsObj = app?.ui?.settings?.settings || app?.extensionManager?.setting?.settings;
+        if (settingsObj) {
+            const items = (settingsObj instanceof Map) ? Array.from(settingsObj.values()) : Object.values(settingsObj);
             items.forEach(s => {
                 let c = s.category;
                 if(Array.isArray(c)) c = c[0];
@@ -4945,9 +4946,11 @@ app.registerExtension({
         window._mss_loginEnforcementInterval = enforcementInterval;
 
         // Register "Manage mss-login" Button in Settings
-app.ui.settings.addSetting({
-    id: "MSS-Login.Configuration",
-    name: "",
+        const settingsMgr = app?.ui?.settings || app?.extensionManager?.setting;
+        if (settingsMgr?.addSetting) {
+            settingsMgr.addSetting({
+                id: "MSS-Login.Configuration",
+                name: "",
     type: () => {
         const wrapper = document.createElement("div");
         wrapper.className = "mss-login-settings-card";
@@ -5143,6 +5146,7 @@ app.ui.settings.addSetting({
         return wrapper;
     }
 });
+}
 
     }
 });
