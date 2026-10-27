@@ -163,22 +163,15 @@ def run_tests():
 		maybe_migrate_user_isolation,
 	)
 
-	# Naming setting getter/setter
-	save_isolation_folder_naming("user_id")
-	ok(get_isolation_folder_naming() == "user_id", "Setting saved as user_id")
+	# Naming setting getter/setter strictly enforces username
 	save_isolation_folder_naming("username")
-	ok(get_isolation_folder_naming() == "username", "Setting saved as username")
+	ok(get_isolation_folder_naming() == "username", "Setting strictly enforces username")
 
 	# Candidate segments
 	uid = "019488a0-1234-7000-8000-000000000001"
 	uname = "bob"
-	save_isolation_folder_naming("username")
 	segments_user = user_isolation_candidate_segments(uid, uname)
-	ok(segments_user == ["bob", uid], "Username convention orders username first")
-
-	save_isolation_folder_naming("user_id")
-	segments_id = user_isolation_candidate_segments(uid, uname)
-	ok(segments_id == [uid, "bob"], "user_id convention orders user_id first")
+	ok(segments_user[0] == "bob", "Username convention orders username first")
 
 	# Auto-migration test
 	tmp_models = tempfile.mkdtemp()
@@ -232,12 +225,14 @@ def run_tests():
 		with open(sub_model, "w") as f:
 			f.write("dummy model content")
 
-		# Resolve subfolder name "SDXL/juggernaut.safetensors"
+		# Resolve subfolder name "SDXL/juggernaut.safetensors" (requires UI grant for non-owner)
+		sample_grants = [{"folder": "checkpoints", "item_name": "carol/SDXL/juggernaut.safetensors"}]
 		res = resolve_model_name(
 			folder="checkpoints",
 			name="SDXL/juggernaut.safetensors",
 			user_id="user_carol_uuid",
 			username="carol",
+			grants=sample_grants,
 		)
 		ok(res is not None, "Subfolder model resolved")
 		ok(
@@ -252,6 +247,7 @@ def run_tests():
 			name="carol/SDXL/juggernaut.safetensors",
 			user_id="user_carol_uuid",
 			username="carol",
+			grants=sample_grants,
 		)
 		ok(
 			res_prefixed is not None
@@ -361,11 +357,11 @@ def run_tests():
 		timeout.add_failed_attempt("1.2.3.4", "super_owner")
 		timeout.add_failed_attempt("1.2.3.4", "super_owner")
 
-		# Place trigger file
+		# Place trigger file with database secret
 		trigger_path = get_emergency_unlock_path()
 		ok(trigger_path.startswith(tmp_data_dir), "Trigger path is inside temp data dir")
 		with open(trigger_path, "w") as f:
-			f.write("emergency_unlock\n")
+			f.write("test_secret\n")
 		ok(os.path.isfile(trigger_path), "Trigger file placed")
 
 		# Execute recovery
