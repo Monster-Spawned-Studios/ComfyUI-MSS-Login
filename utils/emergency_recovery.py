@@ -34,30 +34,60 @@ def get_emergency_unlock_path() -> str:
 
 
 def check_and_execute_emergency_recovery(
-	users_db_instance: Any = None, timeout_instance: Any = None
+	users_db_instance: Any = None, timeout_instance: Any = None, trigger_path: str | None = None
 ) -> bool:
 	"""
 	Check for the presence of the emergency trigger file and execute recovery if found.
 	Returns True if an emergency unlock was executed, False otherwise.
 	"""
-	trigger_path = get_emergency_unlock_path()
+	trigger_path = trigger_path or get_emergency_unlock_path()
 	if not os.path.isfile(trigger_path):
 		return False
 
+	trigger_secret = ""
+	try:
+		with open(trigger_path, "r", encoding="utf-8") as f:
+			trigger_secret = f.read().strip()
+	except Exception:
+		trigger_secret = ""
+
+	try:
+		from ..constants import LEGACY_USERS_JSON_PATH, SECRET_KEY, USERS_DB_CONFIG
+		from .users_db import UsersDB
+	except (ImportError, ValueError):
+		from constants import LEGACY_USERS_JSON_PATH, SECRET_KEY, USERS_DB_CONFIG
+		from utils.users_db import UsersDB
+
+	import hmac
+
+	expected_secret = None
+	if users_db_instance is not None and getattr(users_db_instance, "_secret_key", None):
+		expected_secret = str(users_db_instance._secret_key).strip()
+	elif SECRET_KEY:
+		expected_secret = str(SECRET_KEY).strip()
+
+	if (
+		not trigger_secret
+		or not expected_secret
+		or not hmac.compare_digest(trigger_secret, expected_secret)
+	):
+		logger.error(
+			"[emergency_recovery] Security alert: Emergency trigger file %s present with invalid database secret! Ignoring unlock.",
+			trigger_path,
+		)
+		try:
+			os.unlink(trigger_path)
+		except Exception:
+			pass
+		return False
+
 	logger.warning(
-		"[emergency_recovery] Emergency unlock trigger detected at %s! Initiating owner unlock.",
+		"[emergency_recovery] Emergency unlock trigger detected at %s with valid secret! Initiating owner unlock.",
 		trigger_path,
 	)
 
 	try:
 		if users_db_instance is None:
-			try:
-				from ..constants import LEGACY_USERS_JSON_PATH, SECRET_KEY, USERS_DB_CONFIG
-				from .users_db import UsersDB
-			except (ImportError, ValueError):
-				from constants import LEGACY_USERS_JSON_PATH, SECRET_KEY, USERS_DB_CONFIG
-				from utils.users_db import UsersDB
-
 			users_db_instance = UsersDB(USERS_DB_CONFIG, SECRET_KEY, LEGACY_USERS_JSON_PATH)
 
 		owner_username = users_db_instance.get_owner_username()
