@@ -24,21 +24,31 @@ _README_VERSION_RE = re.compile(
 	r"(<strong>Version\s+)([0-9]+\.[0-9]+\.[0-9]+(?:-[a-zA-Z0-9.]+)?)(</strong>)", re.IGNORECASE
 )
 
-# Paths copied into the GitHub/Gitea release zip (repo-relative).
+# Paths copied into the GitHub/Gitea release zip and ComfyUI registry publish staging tree (repo-relative).
+# Excludes CI tests (tests/), offline/dev tools (tools/, scripts/ci/, dev scripts), uncompiled frontend
+# sources (web/frontend/), deployment configs (deploy/), docs (docs/), and planning (_planning/).
 RELEASE_ZIP_ITEMS = (
+	"nodes",
 	"readme",
 	"routes",
-	"scripts",
+	"scripts/emergency_unlock.py",
 	"users",
-	"web",
 	"utils",
+	"web/assets",
+	"web/comfyui",
+	"web/css",
+	"web/data",
+	"web/dist",
+	"web/html",
+	"web/js",
+	"web/vendor",
+	"workflows",
 	"__init__.py",
 	"api.py",
 	"config.defaults.json",
 	"constants.py",
 	"globals.py",
 	"mss_login.py",
-	"nodes.py",
 	"pyproject.toml",
 	"requirements.txt",
 	"requirements_cpu.txt",
@@ -47,7 +57,19 @@ RELEASE_ZIP_ITEMS = (
 	"README.md",
 	".env.example",
 )
-_ZIP_SKIP_DIR_NAMES = {"__pycache__", "node_modules", ".git", ".venv"}
+_ZIP_SKIP_DIR_NAMES = {
+	"__pycache__",
+	"node_modules",
+	".git",
+	".venv",
+	"frontend",
+	"tests",
+	"tools",
+	"deploy",
+	"docs",
+	"_planning",
+	"ci",
+}
 
 
 def _repo_root(explicit: str | None) -> Path:
@@ -212,41 +234,35 @@ def inject_login_version(html: str, version: str) -> str:
 	return updated if replaced else html
 
 
-def package_release_zip(repo_root: Path, version: str, dest_zip: Path) -> Path:
-	"""Copy release files, run add_copyright.py on the staging tree, then zip.
-
-	Copyright headers are applied only to the zip payload, not the git tree.
-	"""
+def stage_release_tree(repo_root: Path, stage: Path, *, apply_copyright: bool = True) -> Path:
+	"""Copy finalized runtime node files into ``stage``, excluding CI tests, dev tools, and uncompiled sources."""
 	import shutil
-	import tempfile
-	import zipfile
 
-	version = validate_version(version)
-	dest_zip = Path(dest_zip)
-	if not dest_zip.is_absolute():
-		dest_zip = (repo_root / dest_zip).resolve()
-	dest_zip.parent.mkdir(parents=True, exist_ok=True)
+	stage = Path(stage).resolve()
+	stage.mkdir(parents=True, exist_ok=True)
 
 	copyright_script = repo_root / "scripts" / "add_copyright.py"
 	notice = repo_root / "docs" / "COPYRIGHT"
-	if not copyright_script.is_file():
+	if apply_copyright and not copyright_script.is_file():
 		raise FileNotFoundError(f"add_copyright.py not found: {copyright_script}")
 
-	with tempfile.TemporaryDirectory(prefix="mss-login-release-") as tmp:
-		stage = Path(tmp)
-		for item in RELEASE_ZIP_ITEMS:
-			src = repo_root / item
-			if not src.exists():
-				continue
-			dest = stage / item
-			if src.is_dir():
-				shutil.copytree(
-					src, dest, ignore=shutil.ignore_patterns(*_ZIP_SKIP_DIR_NAMES, "*.pyc")
-				)
-			else:
-				dest.parent.mkdir(parents=True, exist_ok=True)
-				shutil.copy2(src, dest)
+	for item in RELEASE_ZIP_ITEMS:
+		src = repo_root / item
+		if not src.exists():
+			continue
+		dest = stage / item
+		if src.is_dir():
+			shutil.copytree(
+				src,
+				dest,
+				ignore=shutil.ignore_patterns(*_ZIP_SKIP_DIR_NAMES, "*.pyc", "*.pyo", "*.map"),
+				dirs_exist_ok=True,
+			)
+		else:
+			dest.parent.mkdir(parents=True, exist_ok=True)
+			shutil.copy2(src, dest)
 
+	if apply_copyright:
 		cmd = [
 			sys.executable,
 			str(copyright_script),
@@ -261,6 +277,26 @@ def package_release_zip(repo_root: Path, version: str, dest_zip: Path) -> Path:
 		if result.returncode != 0:
 			detail = (result.stderr or result.stdout or "").strip() or f"exit {result.returncode}"
 			raise RuntimeError(f"add_copyright.py failed: {detail}")
+
+	return stage
+
+
+def package_release_zip(repo_root: Path, version: str, dest_zip: Path) -> Path:
+	"""Copy release files, run add_copyright.py on the staging tree, then zip.
+
+	Copyright headers are applied only to the zip payload, not the git tree.
+	"""
+	import tempfile
+	import zipfile
+
+	version = validate_version(version)
+	dest_zip = Path(dest_zip)
+	if not dest_zip.is_absolute():
+		dest_zip = (repo_root / dest_zip).resolve()
+	dest_zip.parent.mkdir(parents=True, exist_ok=True)
+
+	with tempfile.TemporaryDirectory(prefix="mss-login-release-") as tmp:
+		stage = stage_release_tree(repo_root, Path(tmp), apply_copyright=True)
 
 		if dest_zip.exists():
 			dest_zip.unlink()
