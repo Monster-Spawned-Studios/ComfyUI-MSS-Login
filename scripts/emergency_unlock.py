@@ -124,25 +124,15 @@ def main():
 			print(f"{uname:<20} {groups_str:<25} {adm:<8} {mfa}")
 		return 0
 
-	if args.unlock_owner:
-		owner = users_db.get_owner_username()
-		if not owner:
-			print("[ERROR] No owner account found in database!", file=sys.stderr)
-			return 1
-		print(f"[*] Found owner account: {owner}")
-		ok = users_db.reset_mfa_for_user(owner)
-		if not ok:
-			print(f"[ERROR] Failed to reset MFA for owner {owner}!", file=sys.stderr)
-			return 1
-		# Clear lockout state file if present
+	def _clear_timeout_state_for_user(target_user: str) -> None:
 		try:
 			timeout_file = os.path.join(DATA_DIR, "data", "login_timeout_state.json")
 			if os.path.isfile(timeout_file):
 				import json
 
-				with open(timeout_file, "r") as f:
+				with open(timeout_file, "r", encoding="utf-8") as f:
 					state = json.load(f)
-				prefix = f"{owner.lower()}:"
+				prefix = f"{target_user.lower()}:"
 				state["failed_attempts"] = {
 					k: v
 					for k, v in state.get("failed_attempts", {}).items()
@@ -153,11 +143,23 @@ def main():
 					for k, v in state.get("timeout_end_time", {}).items()
 					if not k.startswith(prefix)
 				}
-				with open(timeout_file, "w") as f:
+				with open(timeout_file, "w", encoding="utf-8") as f:
 					json.dump(state, f, indent=2)
-				print(f"[*] Cleared persistent timeout lockouts for {owner}")
+				print(f"[*] Cleared persistent timeout lockouts for {target_user}")
 		except Exception as e:
 			print(f"[!] Warning: Could not clear timeout state file: {e}")
+
+	if args.unlock_owner:
+		owner = users_db.get_owner_username()
+		if not owner:
+			print("[ERROR] No owner account found in database!", file=sys.stderr)
+			return 1
+		print(f"[*] Found owner account: {owner}")
+		ok = users_db.reset_mfa_for_user(owner)
+		if not ok:
+			print(f"[ERROR] Failed to reset MFA for owner {owner}!", file=sys.stderr)
+			return 1
+		_clear_timeout_state_for_user(owner)
 
 		print(f"[SUCCESS] Owner account '{owner}' has been unlocked and MFA reset!")
 		return 0
@@ -170,6 +172,7 @@ def main():
 			return 1
 		ok = users_db.reset_mfa_for_user(uname)
 		if ok:
+			_clear_timeout_state_for_user(uname)
 			print(f"[SUCCESS] MFA reset successfully for user '{uname}'.")
 			return 0
 		else:
