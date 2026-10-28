@@ -86,10 +86,7 @@ def main() -> int:
 			("Isolation plain names", os.path.join(TESTS_DIR, "run_isolation_plain_names_tests.py"))
 		)
 		steps.append(
-			(
-				"Isolation migration",
-				os.path.join(TESTS_DIR, "run_isolation_migration_tests.py"),
-			)
+			("Isolation migration", os.path.join(TESTS_DIR, "run_isolation_migration_tests.py"))
 		)
 		steps.append(
 			(

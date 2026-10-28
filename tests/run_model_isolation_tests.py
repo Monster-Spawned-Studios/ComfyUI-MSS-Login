@@ -227,7 +227,9 @@ def run_tests():
 		users_db_config={},
 	)
 	ok(
-		not any(g.get("item_name") == "alice/legacy_existing.safetensors" for g in grants_disk_user),
+		not any(
+			g.get("item_name") == "alice/legacy_existing.safetensors" for g in grants_disk_user
+		),
 		"non-owner without shared_items row is not auto-granted on-disk isolation files",
 	)
 	grants_disk_owner = policy_disk.get_effective_model_grants_for_user(
