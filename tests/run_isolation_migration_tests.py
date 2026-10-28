@@ -344,6 +344,57 @@ def run_tests():
 		ok("END-OK" in proc_restore.stdout, "restore reported END-OK")
 		ok(os.path.exists(carol_ckpt), "restore reinstated original uuid-carol folder")
 
+		# 7. Test existing username folder classification (never classified as 'unknown')
+		alice_ckpt = os.path.join(mig_models_dir, "checkpoints", "alice")
+		os.makedirs(alice_ckpt, exist_ok=True)
+		with open(os.path.join(alice_ckpt, "alice_model.safetensors"), "w") as f:
+			f.write("alice content")
+
+		cmd_user_folder = [
+			sys.executable,
+			migrate_script,
+			"--dry-run",
+			"--data-dir",
+			mig_data_dir,
+			"--db-path",
+			db_path,
+		]
+		proc_user_folder = subprocess.run(cmd_user_folder, capture_output=True, text=True)
+		ok(proc_user_folder.returncode == 0, "dry-run on existing username folder exited 0")
+		ok(
+			"unknown" not in proc_user_folder.stdout,
+			"existing username folder is NOT marked unknown",
+		)
+		ok(
+			"adopt" in proc_user_folder.stdout or "skip" in proc_user_folder.stdout,
+			"existing username folder marked adopt or skip",
+		)
+
+		# 8. Test fallback user discovery from DATA_DIR/users/ when DB is unreadable
+		os.makedirs(os.path.join(mig_data_dir, "users", "dave"), exist_ok=True)
+		dave_ckpt = os.path.join(mig_models_dir, "checkpoints", "dave")
+		os.makedirs(dave_ckpt, exist_ok=True)
+		with open(os.path.join(dave_ckpt, "dave_model.safetensors"), "w") as f:
+			f.write("dave content")
+
+		bogus_db = os.path.join(mig_data_dir, "nonexistent.db")
+		cmd_fallback = [
+			sys.executable,
+			migrate_script,
+			"--dry-run",
+			"--data-dir",
+			mig_data_dir,
+			"--db-path",
+			bogus_db,
+		]
+		proc_fallback = subprocess.run(cmd_fallback, capture_output=True, text=True)
+		ok(proc_fallback.returncode == 0, "dry-run with unreadable DB exited 0")
+		ok(
+			"unknown" not in proc_fallback.stdout,
+			"fallback discovers user from users/ dir, not marked unknown",
+		)
+		ok("dave" in proc_fallback.stdout, "dave discovered via filesystem fallback")
+
 		print("=== TestStrictUIGrantEnforcementAndBackwardCompat ===")
 		# Set up environment for isolation resolver
 		const_mod = sys.modules.get("mss_login.constants")
