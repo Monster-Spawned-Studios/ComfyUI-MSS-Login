@@ -58,7 +58,7 @@ cuda-deps = ["torch>=2.13.0", "torchvision", "torchaudio"]
 # CPU-only wheels from the PyTorch CPU index (Linux/Windows without a usable NVIDIA driver).
 cpu-deps = ["torch>=2.13.0", "torchvision", "torchaudio"]
 # Testing/development: add tools with `uv add --dev pytest` etc.
-dev = ["pytest", "pip-audit", "ruff", "uv", "pip>=26.2", "setuptools>=83.0.0"]
+dev = ["pytest", "pip-audit", "ruff", "uv", "pip>=26.2", "setuptools>=84.1.0"]
 # Optional Comfy Portal UI→API convert (Playwright). Also run: playwright install chromium
 cpe-convert = ["playwright"]
 # Production dependency group:
@@ -101,6 +101,7 @@ constraint-dependencies = [
 	"anyio>=4.14.2",
 	"bleach>=6.4.0",
 	"cryptography>=50.0.0",
+	"filelock>=4.2.1",
 	"fsspec>=2026.6.0",
 	"gitpython>=3.1.62",
 	"mkdocs-material>=9.7.7",
@@ -110,7 +111,7 @@ constraint-dependencies = [
 	"pip>=26.2",
 	"PyJWT>=2.15.0",
 	"pymdown-extensions>=11.0.1",
-	"setuptools>=83.0.0",
+	"setuptools>=84.1.0",
 	"torch>=2.13.0",
 	"transformers>=5.10.0",
 	"urllib3>=2.8.0",
@@ -160,8 +161,20 @@ Documentation = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/wi
 PublisherId = "monsterspawnedstudios"
 DisplayName = "MSS-Login"
 Icon = "https://github.com/Monster-Spawned-Studios/ComfyUI-MSS-Login/raw/production/web/assets/mss_logo.png"
-includes = []
+includes = ["web/dist", "web/comfyui", "web/html", "web/js", "web/css", "web/assets", "web/data", "web/vendor"]
 requires-comfyui = ">=0.10.0"                                                                                # ComfyUI version compatibility
+
+[tool.setuptools.packages.find]
+include = ["nodes*", "routes*", "utils*"]
+exclude = [
+	"tests*",
+	"tools*",
+	"docs*",
+	"deploy*",
+	"scripts*",
+	"web*",
+	"_planning*",
+]
 
 [tool.ruff]
 target-version = "py313"

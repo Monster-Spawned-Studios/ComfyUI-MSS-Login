@@ -620,6 +620,16 @@ class mss_loginFloatingButton {
                     onClick: async () => {
                         console.log("[mss-login] Settings button clicked");
                         
+                        const showNotice = (msg) => {
+                            if (app?.ui?.dialog?.show) {
+                                app.ui.dialog.show(msg);
+                            } else if (app?.extensionManager?.toast?.add) {
+                                app.extensionManager.toast.add({ severity: "warn", summary: "MSS-Login", detail: msg, life: 5000 });
+                            } else if (typeof alert === "function") {
+                                alert(msg);
+                            }
+                        };
+
                         // Function to try opening the dialog
                         const tryOpenDialog = () => {
                             // Check if dialog is already open
@@ -639,16 +649,12 @@ class mss_loginFloatingButton {
                                     const dialog = new window.mss_loginDialog();
                                     dialog.show().catch(err => {
                                         console.error("[mss-login] Error in dialog.show():", err);
-                                        if (app && app.ui && app.ui.dialog) {
-                                            app.ui.dialog.show("Error opening mss-login settings: " + (err.message || String(err)));
-                                        }
+                                        showNotice("Error opening mss-login settings: " + (err.message || String(err)));
                                     });
                                     return true;
                                 } catch (err) {
                                     console.error("[mss-login] Error creating dialog:", err);
-                                    if (app && app.ui && app.ui.dialog) {
-                                        app.ui.dialog.show("Error creating mss-login settings dialog: " + (err.message || String(err)));
-                                    }
+                                    showNotice("Error creating mss-login settings dialog: " + (err.message || String(err)));
                                     return false;
                                 }
                             }
@@ -680,9 +686,7 @@ class mss_loginFloatingButton {
                                 if (retries >= maxRetries) {
                                     clearInterval(retryInterval);
                                     console.error("[mss-login] Could not open mss-login settings - dialog not available after retries");
-                                    if (app && app.ui && app.ui.dialog) {
-                                        app.ui.dialog.show("mss-login settings dialog is not available. Please ensure the mss-login extension is loaded.");
-                                    }
+                                    showNotice("mss-login settings dialog is not available. Please ensure the mss-login extension is loaded.");
                                     resolve(false);
                                 }
                             }, 100);

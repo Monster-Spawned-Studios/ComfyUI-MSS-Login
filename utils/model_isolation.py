@@ -4,6 +4,8 @@ Helpers for experimental per-user model isolation paths.
 
 from __future__ import annotations
 
+import errno
+import json
 import os
 import sys
 
@@ -76,12 +78,63 @@ _COMMON_ISOLATION_FOLDERS = frozenset(
 )
 
 
+_RESERVED_NAMES = frozenset(
+	{
+		"con",
+		"prn",
+		"aux",
+		"nul",
+		*(f"com{i}" for i in range(1, 10)),
+		*(f"lpt{i}" for i in range(1, 10)),
+	}
+)
+
+
+def validate_username_for_isolation(username: str | None) -> str:
+	"""
+	Strictly validate a username for model isolation folders.
+
+	Rejects unsafe names instead of normalizing to avoid silent collisions:
+	- empty or whitespace
+	- path separators ('/', '\\', '..')
+	- NUL and control characters
+	- leading dot ('.')
+	- Windows/POSIX reserved names ('CON', 'NUL', 'PRN', etc.)
+	- over-long names (> 64 chars)
+	- disallowed special characters
+	"""
+	raw = username or ""
+	if any(c.isspace() for c in raw):
+		raise ValueError("Username cannot contain whitespace")
+	if not raw:
+		raise ValueError("Username cannot be empty")
+	if len(raw) > 64:
+		raise ValueError(f"Username is too long ({len(raw)} > 64 chars)")
+	if any(ord(c) < 32 or ord(c) == 127 for c in raw):
+		raise ValueError("Username cannot contain control or NUL characters")
+	if "/" in raw or "\\" in raw or ".." in raw:
+		raise ValueError("Username cannot contain path characters ('/', '\\', '..')")
+	if raw.startswith("."):
+		raise ValueError("Username cannot start with a dot")
+	if raw.endswith("."):
+		raise ValueError("Username cannot end with a dot")
+	if raw.lower() in _RESERVED_NAMES:
+		raise ValueError(f"Username '{raw}' is a reserved system name")
+	for c in raw:
+		if not (c.isalnum() or c in ("_", "-", ".")):
+			raise ValueError(f"Username contains disallowed character: {c!r}")
+	return raw
+
+
 def sanitize_user_segment(user_id: str | None) -> str:
 	raw = (user_id or "").strip()
 	if not raw:
 		return "public"
-	safe = "".join(c if c.isalnum() or c in ("_", "-") else "_" for c in raw)
-	return safe or "public"
+	try:
+		return validate_username_for_isolation(raw)
+	except ValueError:
+		safe = "".join(c if c.isalnum() or c in ("_", "-") else "_" for c in raw)
+		return safe.strip("._-") or "public"
 
 
 def isolation_models_base() -> str:
@@ -90,6 +143,71 @@ def isolation_models_base() -> str:
 
 def isolation_folder_root(folder_type: str) -> str:
 	return os.path.join(isolation_models_base(), folder_type)
+
+
+def uuid_folder_mapping_path() -> str:
+	return os.path.join(DATA_DIR, "model_isolation", "uuid_folder_map.json")
+
+
+def load_uuid_folder_mapping(path: str | None = None) -> dict[str, str]:
+	target_path = path or uuid_folder_mapping_path()
+	if not os.path.isfile(target_path):
+		return {}
+	try:
+		with open(target_path, "r", encoding="utf-8") as f:
+			data = json.load(f)
+			if isinstance(data, dict):
+				return {str(k): str(v) for k, v in data.items()}
+	except Exception:
+		pass
+	return {}
+
+
+def save_uuid_folder_mapping(mapping: dict[str, str], path: str | None = None) -> None:
+	target_path = path or uuid_folder_mapping_path()
+	os.makedirs(os.path.dirname(target_path), exist_ok=True)
+	# Check for case collisions across mapped names
+	lower_map: dict[str, str] = {}
+	for uid, name in mapping.items():
+		norm = name.lower()
+		if norm in lower_map and lower_map[norm] != name:
+			raise ValueError(
+				f"Case collision detected in mapping: '{name}' collides with '{lower_map[norm]}'"
+			)
+		lower_map[norm] = name
+	tmp = f"{target_path}.tmp.{os.getpid()}"
+	with open(tmp, "w", encoding="utf-8") as f:
+		json.dump(mapping, f, indent=2)
+	os.replace(tmp, target_path)
+
+
+def copy_ownership_and_mode(target: str, reference_parent: str) -> None:
+	"""Apply reference parent directory's uid:gid and mode to target (prevent root-owned leftovers)."""
+	try:
+		st = os.stat(reference_parent)
+		try:
+			os.chmod(target, st.st_mode & 0o777)
+		except OSError:
+			pass
+		if hasattr(os, "chown") and hasattr(os, "geteuid") and os.geteuid() == 0:
+			try:
+				os.chown(target, st.st_uid, st.st_gid)
+			except (OSError, PermissionError):
+				pass
+	except OSError:
+		pass
+
+
+def is_safe_contained_path(base_root: str, candidate_path: str) -> bool:
+	"""Return True if candidate_path is strictly within base_root after realpath resolution."""
+	if not base_root or not candidate_path:
+		return False
+	try:
+		real_root = os.path.realpath(base_root)
+		real_cand = os.path.realpath(candidate_path)
+		return real_cand == real_root or real_cand.startswith(real_root + os.sep)
+	except OSError:
+		return False
 
 
 def _get_users_db():
@@ -163,28 +281,146 @@ def resolve_user_identity(
 	return uid, uname
 
 
+def get_folder_for_user(user_id: str | None, username: str | None = None) -> str:
+	"""Return the authoritative folder name for this user from persisted mapping or username."""
+	uid, uname = resolve_user_identity(user_id, username)
+	mapping = load_uuid_folder_mapping()
+	if uid and uid in mapping:
+		return mapping[uid]
+	target_uname = uname or uid or "public"
+	try:
+		validated = validate_username_for_isolation(target_uname)
+	except ValueError:
+		validated = sanitize_user_segment(target_uname)
+	if uid and validated:
+		mapping[uid] = validated
+		try:
+			save_uuid_folder_mapping(mapping)
+		except Exception:
+			pass
+	return validated
+
+
+def rename_user_isolation_folders(
+	old_name: str,
+	new_name: str,
+	user_id: str | None = None,
+	models_root: str | None = None,
+	folder_types: list[str] | None = None,
+	mapping_path: str | None = None,
+) -> bool:
+	"""
+	Atomically rename a user's isolation folders across all folder_types using a journal.
+	Rolls back completed moves on partial failure. Refuses if any target exists.
+	Aborts on EXDEV (never falls back to copy+delete).
+	Preserves parent directory ownership and mode.
+	"""
+	validated_new = validate_username_for_isolation(new_name)
+	if old_name == validated_new:
+		return True
+	base = models_root or isolation_models_base()
+	if not os.path.isdir(base):
+		return True
+
+	if folder_types is None:
+		folder_types = []
+		for name in os.listdir(base):
+			p = os.path.join(base, name)
+			if os.path.isdir(p) and not name.startswith("."):
+				folder_types.append(name)
+
+	# 1. Refuse if ANY target folder already exists
+	for ft in folder_types:
+		target_dir = os.path.join(base, ft, validated_new)
+		if os.path.exists(target_dir):
+			raise FileExistsError(f"Target isolation folder already exists for {ft}: {target_dir}")
+
+	# 2. Plan journal
+	journal_dir = base if models_root else os.path.join(DATA_DIR, "model_isolation")
+	journal_path = os.path.join(journal_dir, ".rename_journal.json")
+	os.makedirs(os.path.dirname(journal_path), exist_ok=True)
+	steps: list[dict] = []
+	for ft in folder_types:
+		src = os.path.join(base, ft, old_name)
+		dst = os.path.join(base, ft, validated_new)
+		if os.path.exists(src):
+			steps.append({"folder_type": ft, "src": src, "dst": dst, "status": "pending"})
+
+	if not steps:
+		return True
+
+	journal = {"old_name": old_name, "new_name": validated_new, "user_id": user_id, "steps": steps}
+	with open(journal_path, "w", encoding="utf-8") as f:
+		json.dump(journal, f, indent=2)
+
+	# 3. Apply moves with rollback on error
+	completed: list[dict] = []
+	try:
+		for step in steps:
+			src = step["src"]
+			dst = step["dst"]
+			parent = os.path.dirname(dst)
+			os.replace(src, dst)
+			copy_ownership_and_mode(dst, parent)
+			step["status"] = "done"
+			completed.append(step)
+			with open(journal_path, "w", encoding="utf-8") as f:
+				json.dump(journal, f, indent=2)
+	except Exception as exc:
+		# Roll back completed steps in reverse order
+		for step in reversed(completed):
+			try:
+				os.replace(step["dst"], step["src"])
+			except OSError:
+				pass
+		try:
+			os.remove(journal_path)
+		except OSError:
+			pass
+		raise exc
+
+	# 4. Clean up journal and update mapping
+	try:
+		os.remove(journal_path)
+	except OSError:
+		pass
+
+	if user_id:
+		mapping = load_uuid_folder_mapping(mapping_path)
+		mapping[user_id] = validated_new
+		save_uuid_folder_mapping(mapping, mapping_path)
+
+	# 5. Invalidate ComfyUI caches
+	try:
+		import folder_paths  # pyright: ignore[reportMissingImports]
+
+		if hasattr(folder_paths, "filename_list_cache") and isinstance(
+			folder_paths.filename_list_cache, dict
+		):
+			folder_paths.filename_list_cache.clear()
+	except Exception:
+		pass
+	return True
+
+
 def user_isolation_candidate_segments(
 	user_id: str | None, username: str | None = None
 ) -> list[str]:
 	"""Return ordered list of folder segments for user (primary active first, alternate second)."""
 	uid, uname = resolve_user_identity(user_id, username)
-	mode = get_isolation_folder_naming()
 	segments: list[str] = []
-	if mode == "user_id":
-		if uid:
-			segments.append(sanitize_user_segment(uid))
-		if uname:
-			seg = sanitize_user_segment(uname)
-			if seg not in segments:
-				segments.append(seg)
-	else:
-		# default: username
-		if uname:
-			segments.append(sanitize_user_segment(uname))
-		if uid:
-			seg = sanitize_user_segment(uid)
-			if seg not in segments:
-				segments.append(seg)
+	# Primary is always the authoritative folder (username)
+	primary = get_folder_for_user(uid, uname)
+	if primary:
+		segments.append(primary)
+	if uname:
+		seg = sanitize_user_segment(uname)
+		if seg not in segments:
+			segments.append(seg)
+	if uid:
+		seg = sanitize_user_segment(uid)
+		if seg not in segments:
+			segments.append(seg)
 	if not segments:
 		fallback = sanitize_user_segment(user_id or username or "public")
 		segments.append(fallback)
@@ -409,48 +645,22 @@ def convert_manual_user_folders_to_isolation() -> int:
 		except OSError:
 			pass
 
-	# 4. Auto-grant all files found in isolation folders for each user
-	try:
-		from .shared_items_store import get_shared_items_store
-
-		try:
-			from ..constants import USERS_DB_CONFIG
-		except ImportError:
-			from constants import USERS_DB_CONFIG
-
-		shared_store = get_shared_items_store(USERS_DB_CONFIG)
-		if shared_store is not None and os.path.isdir(base):
-			for ft in os.listdir(base):
-				ft_dir = os.path.join(base, ft)
-				if not os.path.isdir(ft_dir):
+	# 4. Count discovered files without adding grants (Hard Rule: folder placement is never a grant)
+	if os.path.isdir(base):
+		for ft in os.listdir(base):
+			ft_dir = os.path.join(base, ft)
+			if not os.path.isdir(ft_dir):
+				continue
+			for uname in user_map:
+				u_dir = os.path.join(ft_dir, uname)
+				if not os.path.isdir(u_dir):
 					continue
-				for uname, uid in user_map.items():
-					u_dir = os.path.join(ft_dir, uname)
-					if not os.path.isdir(u_dir):
-						continue
-					for dirpath, _dirnames, filenames in os.walk(u_dir):
-						for fn in filenames:
-							if not fn or fn.startswith("."):
-								continue
-							full_path = os.path.join(dirpath, fn)
-							if not os.path.isfile(full_path):
-								continue
-							rel = os.path.relpath(full_path, u_dir).replace("\\", "/")
-							item_name = f"{uname}/{rel}"
-							try:
-								shared_store.add(
-									uid,
-									ft,
-									item_name,
-									source_backend="local",
-									granted_by_user_id=uid,
-									granted_by_role="isolation_manual",
-								)
-								converted_count += 1
-							except Exception:
-								pass
-	except Exception:
-		pass
+				for dirpath, _dirnames, filenames in os.walk(u_dir):
+					for fn in filenames:
+						if not fn or fn.startswith("."):
+							continue
+						if os.path.isfile(os.path.join(dirpath, fn)):
+							converted_count += 1
 
 	return converted_count
 
@@ -558,8 +768,10 @@ def maybe_isolated_destination(
 	"""Return destination directory for isolated storage, or None when feature is disabled."""
 	if not experimental_model_isolation_enabled():
 		return None
-	ensure_isolation_folder_registered(folder_type)
+	parent = ensure_isolation_folder_registered(folder_type)
 	maybe_migrate_user_isolation(folder_type, user_id, target_username)
 	dest = isolation_user_folder(folder_type, user_id, target_username)
 	os.makedirs(dest, exist_ok=True)
+	if parent and os.path.isdir(parent):
+		copy_ownership_and_mode(dest, parent)
 	return dest

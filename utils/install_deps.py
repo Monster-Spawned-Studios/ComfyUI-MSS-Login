@@ -24,7 +24,47 @@ _install_attempted = False
 
 PYTORCH_INDEX_CU130 = "https://download.pytorch.org/whl/cu130"
 PYTORCH_INDEX_CU128 = "https://download.pytorch.org/whl/cu128"
+PYTORCH_INDEX_ROCM = "https://download.pytorch.org/whl/rocm6.2.4"
+PYTORCH_INDEX_XPU = "https://download.pytorch.org/whl/xpu"
 PYTORCH_INDEX_CPU = "https://download.pytorch.org/whl/cpu"
+
+
+def detect_rocm_available() -> bool:
+	"""Return True if an AMD ROCm GPU/runtime is available on the host/container."""
+	if platform.system() != "Linux":
+		return False
+	if os.path.exists("/dev/kfd"):
+		return True
+	for tool in ("amd-smi", "rocm-smi", "rocminfo"):
+		try:
+			res = subprocess.run([tool], capture_output=True, text=True, timeout=5, check=False)
+			if res.returncode == 0:
+				return True
+		except Exception:
+			continue
+	return False
+
+
+def detect_xpu_available() -> bool:
+	"""Return True if an Intel Arc / XPU accelerator runtime is available."""
+	if platform.system() not in ("Linux", "Windows"):
+		return False
+	import ctypes
+
+	for soname in ("libze_intel_gpu.so.1", "ze_intel_gpu64.dll"):
+		try:
+			ctypes.CDLL(soname)
+			return True
+		except OSError:
+			continue
+	for tool in ("xpu-smi", "sycl-ls"):
+		try:
+			res = subprocess.run([tool], capture_output=True, text=True, timeout=5, check=False)
+			if res.returncode == 0 and ("Intel" in (res.stdout or "") or tool == "xpu-smi"):
+				return True
+		except Exception:
+			continue
+	return False
 
 
 def detect_cuda_major() -> int | None:
@@ -83,6 +123,8 @@ def detect_torch_install_plan(
 	*,
 	system: str | None = None,
 	cuda_major: int | None | object = _UNSET,
+	rocm_available: bool | object = _UNSET,
+	xpu_available: bool | object = _UNSET,
 	env: dict[str, str] | None = None,
 	machine: str | None = None,
 ) -> dict[str, str | None]:
@@ -92,19 +134,22 @@ def detect_torch_install_plan(
 	- macOS Apple Silicon (arm64): Metal (PyPI wheels; MPS hardware acceleration).
 	- macOS Intel (x86_64): CPU (PyPI wheels; Intel x86_64 CPU mode without MPS).
 	- Linux/Windows: cu130 if the NVIDIA driver reports CUDA 13+, else cu128
-	  if any CUDA driver is present, else CPU.
-	Env overrides: ``USE_CPU=1`` forces CPU; ``USE_CUDA=1`` prefers CUDA when a
-	driver is found (still requires a CUDA major >= 13 for cu130).
+	  if any CUDA driver is present, else AMD ROCm if available, else Intel XPU
+	  if available, else CPU.
+	Env overrides: ``USE_CPU=1`` or ``DEVICE_TYPE=cpu`` forces CPU;
+	``USE_CUDA=1`` or ``DEVICE_TYPE=cuda`` prefers CUDA;
+	``USE_ROCM=1`` or ``DEVICE_TYPE=rocm`` forces ROCm;
+	``USE_XPU=1`` or ``DEVICE_TYPE=xpu`` forces Intel XPU;
 	``USE_METAL=1`` or ``DEVICE_TYPE=metal`` forces Metal.
 	"""
 	system = system or platform.system()
 	environ = env if env is not None else os.environ
-	force_cpu = str(environ.get("USE_CPU", "")).strip() == "1"
-	force_cuda = str(environ.get("USE_CUDA", "")).strip() == "1"
-	force_metal = (
-		str(environ.get("USE_METAL", "")).strip() == "1"
-		or str(environ.get("DEVICE_TYPE", "")).strip().lower() == "metal"
-	)
+	dev_type = str(environ.get("DEVICE_TYPE", "")).strip().lower()
+	force_cpu = str(environ.get("USE_CPU", "")).strip() == "1" or dev_type == "cpu"
+	force_cuda = str(environ.get("USE_CUDA", "")).strip() == "1" or dev_type in ("cuda", "nvidia")
+	force_rocm = str(environ.get("USE_ROCM", "")).strip() == "1" or dev_type in ("rocm", "amd")
+	force_xpu = str(environ.get("USE_XPU", "")).strip() == "1" or dev_type in ("xpu", "intel")
+	force_metal = str(environ.get("USE_METAL", "")).strip() == "1" or dev_type == "metal"
 
 	if system == "Darwin":
 		if force_cpu:
@@ -141,6 +186,21 @@ def detect_torch_install_plan(
 			"extra_index_url": PYTORCH_INDEX_CPU,
 		}
 
+	if force_rocm:
+		return {
+			"backend": "rocm",
+			"requirements_file": "requirements.txt",
+			"extra_index_url": PYTORCH_INDEX_ROCM,
+		}
+
+	if force_xpu:
+		return {
+			"backend": "xpu",
+			"requirements_file": "requirements.txt",
+			"extra_index_url": PYTORCH_INDEX_XPU,
+		}
+
+	probe_secondary = cuda_major is _UNSET
 	if cuda_major is _UNSET:
 		cuda_major = detect_cuda_major()
 
@@ -164,6 +224,25 @@ def detect_torch_install_plan(
 			"requirements_file": "requirements_cuda.txt",
 			"extra_index_url": PYTORCH_INDEX_CU128,
 		}
+
+	if rocm_available is _UNSET:
+		rocm_available = detect_rocm_available() if probe_secondary else False
+	if rocm_available:
+		return {
+			"backend": "rocm",
+			"requirements_file": "requirements.txt",
+			"extra_index_url": PYTORCH_INDEX_ROCM,
+		}
+
+	if xpu_available is _UNSET:
+		xpu_available = detect_xpu_available() if probe_secondary else False
+	if xpu_available:
+		return {
+			"backend": "xpu",
+			"requirements_file": "requirements.txt",
+			"extra_index_url": PYTORCH_INDEX_XPU,
+		}
+
 	return {
 		"backend": "cpu",
 		"requirements_file": "requirements_cpu.txt",

@@ -125,3 +125,7 @@ tests/_tmp_s3_mount/
 _planning/
 # Security audit reports (local only; keep under _planning/security/)
 docs/security/
+
+
+# Temporary test data:
+.tmp_test_data/

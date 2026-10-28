@@ -73,6 +73,10 @@
 		"grace_period_days": 7,
 		"enforced_at": ""
 	},
+	"emergency_recovery": {
+		"enabled": false,
+		"require_owner_approval": true
+	},
 	"model_isolation": {
 		"folder_naming": "username",
 		"download_redirect_patterns": []

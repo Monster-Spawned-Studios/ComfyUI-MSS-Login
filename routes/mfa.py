@@ -356,6 +356,195 @@ async def api_mfa_reset_user(request: web.Request) -> web.Response:
 	return web.json_response({"message": f"MFA reset for {target}; sessions revoked."})
 
 
+def _actor_roles(request: web.Request) -> tuple[str | None, bool, bool]:
+	"""Return (username, is_owner, is_admin) for the authenticated caller."""
+	_uid, actor = jwt_auth.resolve_request_identity(request, touch_idle=False)
+	if not actor:
+		return None, False, False
+	_aid, actor_rec = users_db.get_user(actor)
+	groups = [str(g).lower() for g in (actor_rec or {}).get("groups", [])]
+	is_owner = "owner" in groups
+	is_admin = is_owner or "admin" in groups or bool((actor_rec or {}).get("is_admin"))
+	return actor, is_owner, is_admin
+
+
+@routes.get("/mss-login/api/mfa/emergency-recovery/status")
+async def api_mfa_emergency_recovery_status(request: web.Request) -> web.Response:
+	"""Return emergency recovery setup status and (for owner/admin) pending requests without reading secret env vars."""
+	from ..utils.emergency_recovery import (
+		has_secret_env_var_configured,
+		is_emergency_recovery_enabled,
+		list_emergency_recovery_requests,
+	)
+
+	actor, is_owner, is_admin = _actor_roles(request)
+	if not actor or not is_admin:
+		return web.json_response({"error": "Administrator or Owner access required"}, status=403)
+
+	enabled = is_emergency_recovery_enabled()
+	secret_configured = has_secret_env_var_configured()
+	requests_list = (
+		list_emergency_recovery_requests()
+		if is_owner
+		else list_emergency_recovery_requests(status="pending_owner_approval")
+	)
+	return web.json_response(
+		{
+			"enabled": enabled,
+			"secret_env_configured": secret_configured,
+			"require_owner_approval": True,
+			"is_owner": is_owner,
+			"requests": requests_list,
+		}
+	)
+
+
+@routes.put("/mss-login/api/mfa/emergency-recovery/config")
+async def api_mfa_emergency_recovery_config(request: web.Request) -> web.Response:
+	"""Admin/Owner: toggle emergency recovery setup enabled state without reading/writing secret env vars."""
+	from ..utils.emergency_recovery import (
+		has_secret_env_var_configured,
+		set_emergency_recovery_enabled,
+	)
+
+	actor, is_owner, is_admin = _actor_roles(request)
+	if not actor or not is_admin:
+		return web.json_response({"error": "Administrator or Owner access required"}, status=403)
+
+	data = await _get_request_data(request)
+	raw_enabled = data.get("enabled")
+	enabled = (
+		str(raw_enabled).strip().lower() in ("1", "true", "yes", "on")
+		if isinstance(raw_enabled, str)
+		else bool(raw_enabled)
+	)
+	if not set_emergency_recovery_enabled(enabled):
+		return web.json_response(
+			{"error": "Failed to update emergency recovery configuration"}, status=500
+		)
+
+	return web.json_response(
+		{
+			"enabled": enabled,
+			"secret_env_configured": has_secret_env_var_configured(),
+			"require_owner_approval": True,
+		}
+	)
+
+
+@routes.post("/mss-login/api/mfa/emergency-recovery/request")
+async def api_mfa_emergency_recovery_request(request: web.Request) -> web.Response:
+	"""Queue an emergency MFA recovery request awaiting Owner approval (never reads/writes secret env var)."""
+	from ..utils.emergency_recovery import create_emergency_recovery_request
+
+	actor, _is_owner, is_admin = _actor_roles(request)
+	if not actor or not is_admin:
+		return web.json_response({"error": "Administrator or Owner access required"}, status=403)
+
+	data = await _get_request_data(request)
+	target = (data.get("username") or "").strip()
+	reason = (data.get("reason") or "").strip()
+	if not target:
+		return web.json_response({"error": "username required"}, status=400)
+	if not users_db.get_user(target)[0]:
+		return web.json_response({"error": "User not found"}, status=404)
+
+	try:
+		req_rec = create_emergency_recovery_request(target, requested_by=actor, reason=reason)
+	except PermissionError as exc:
+		return web.json_response({"error": str(exc)}, status=403)
+	except RuntimeError as exc:
+		return web.json_response({"error": str(exc)}, status=400)
+
+	try:
+		send_notification(
+			"security_alert",
+			"mss-login: Emergency MFA Recovery Requested",
+			f"Admin '{actor}' requested emergency MFA unlock for '{target}'. Owner approval required.",
+		)
+	except Exception:
+		pass
+
+	return web.json_response(
+		{
+			"message": "Emergency recovery request created and awaiting Owner approval.",
+			"request": req_rec,
+		}
+	)
+
+
+@routes.post("/mss-login/api/mfa/emergency-recovery/approve")
+async def api_mfa_emergency_recovery_approve(request: web.Request) -> web.Response:
+	"""Owner-only: approve and deploy a pending emergency MFA recovery request via scripts/emergency_unlock.py."""
+	from ..utils.emergency_recovery import approve_and_execute_emergency_recovery
+
+	actor, is_owner, _is_admin = _actor_roles(request)
+	if not actor:
+		return web.json_response({"error": "Authentication required"}, status=401)
+	if not is_owner:
+		return web.json_response(
+			{
+				"error": "Owner only: only the server owner can approve and deploy emergency recovery."
+			},
+			status=403,
+		)
+
+	data = await _get_request_data(request)
+	request_id = (data.get("request_id") or "").strip()
+	if not request_id:
+		return web.json_response({"error": "request_id required"}, status=400)
+
+	try:
+		executed = approve_and_execute_emergency_recovery(
+			request_id,
+			actor,
+			is_owner_verified=True,
+			users_db_instance=users_db,
+			timeout_instance=timeout,
+		)
+	except KeyError as exc:
+		return web.json_response({"error": str(exc)}, status=404)
+	except PermissionError as exc:
+		return web.json_response({"error": str(exc)}, status=403)
+	except (ValueError, RuntimeError, FileNotFoundError) as exc:
+		return web.json_response({"error": str(exc)}, status=400)
+
+	return web.json_response(
+		{
+			"message": f"Emergency MFA recovery approved and executed for {executed.get('target_username')}.",
+			"request": executed,
+		}
+	)
+
+
+@routes.post("/mss-login/api/mfa/emergency-recovery/reject")
+async def api_mfa_emergency_recovery_reject(request: web.Request) -> web.Response:
+	"""Owner-only: reject a pending emergency MFA recovery request without touching secret env vars."""
+	from ..utils.emergency_recovery import reject_emergency_recovery_request
+
+	actor, is_owner, _is_admin = _actor_roles(request)
+	if not actor:
+		return web.json_response({"error": "Authentication required"}, status=401)
+	if not is_owner:
+		return web.json_response({"error": "Owner only"}, status=403)
+
+	data = await _get_request_data(request)
+	request_id = (data.get("request_id") or "").strip()
+	if not request_id:
+		return web.json_response({"error": "request_id required"}, status=400)
+
+	try:
+		rejected = reject_emergency_recovery_request(request_id, actor, is_owner_verified=True)
+	except KeyError as exc:
+		return web.json_response({"error": str(exc)}, status=404)
+	except (PermissionError, ValueError) as exc:
+		return web.json_response({"error": str(exc)}, status=400)
+
+	return web.json_response(
+		{"message": "Emergency MFA recovery request rejected.", "request": rejected}
+	)
+
+
 def _user_can_have_non_expiring_jwt(username: str) -> bool:
 	_user_id, user_rec = users_db.get_user(username)
 	if not user_rec:

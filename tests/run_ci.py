@@ -87,6 +87,12 @@ def main() -> int:
 		)
 		steps.append(
 			(
+				"Isolation migration",
+				os.path.join(TESTS_DIR, "run_isolation_migration_tests.py"),
+			)
+		)
+		steps.append(
+			(
 				"Object info combo mapping",
 				os.path.join(TESTS_DIR, "run_object_info_combo_mapping_tests.py"),
 			)

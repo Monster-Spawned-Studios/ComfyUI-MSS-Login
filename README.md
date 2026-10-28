@@ -662,6 +662,44 @@ If the client sends a Bearer token but the server returns "API token not found o
 - **Unset SECRET_KEY:** If the `SECRET_KEY` environment variable is not set, a random key is used and persisted to `users/.ephemeral_secret_key` (do not commit this file). Sessions and MFA data use this key until restart.
 - **Setting a permanent SECRET_KEY:** When you later set `SECRET_KEY` in the environment and restart, the extension will automatically migrate TOTP secrets from the ephemeral key to the new key and then remove the ephemeral file. No manual action needed if the file is still present.
 - **Recovery mode:** If the ephemeral file was deleted or migration failed, users with MFA may be unable to log in. Enable recovery mode: set `RECOVERY_MODE=1`, then from an allowed host (default: localhost only), send `POST /api/mss-login/recovery/reset-mfa`. This clears MFA for all users so they can log in with password and re-enroll MFA. Override allowed hosts with `RECOVERY_MODE_HOST` or `RECOVERY_MODE_HOST` (comma-separated IPs). Recovery is only accessible when `RECOVERY_MODE` is enabled and the client IP is in the allowed list.
+- **Emergency Unlock Tool (`scripts/emergency_unlock.py`):** Unlocking the owner or recovering credentials requires the database secret (`SECRET_KEY`). Provide it via `--secret <key>`, the `SECRET_KEY` environment variable, or interactive prompt. Constant-time HMAC comparison prevents offline tampering.
+
+---
+
+## Model Isolation by Username & Offline Migration
+
+### Overview & Security Model
+
+Model isolation stores user models under clean, readable username-based folders:
+```
+DATA_DIR/model_isolation/models/<folder_type>/<username>/...
+```
+
+- **Strict Access Control:** Placing a model in `<folder_type>/<username>/` is **never** an automatic access grant. Non-owners without universal model permissions (`can_view_all_comfyui_items: true`) require explicit grants configured in the MSS-Login permissions UI (`shared_items` store). Users with universal model permissions (like the `owner` role) retain full access by default.
+- **Backward Compatibility:** Workflows referencing legacy `<uuid>/...` paths continue to resolve transparently for the owning user, while foreign users are strictly rejected with `MODEL_NOT_ALLOWED`.
+- **ComfyUI Frontend Compatibility:** Tested against ComfyUI frontend `1.57.4` and newer (including ComfyUI v1.x frontend). Features graceful degradation for dialogs, settings, and notifications.
+
+### Offline Migration Tool (`tools/migrate_isolation.py`)
+
+A standalone, dependency-free offline tool is provided to migrate existing UUID folders to username-based folders:
+
+```bash
+# 1. Preview changes (Dry Run - default, safe, makes no changes)
+python tools/migrate_isolation.py --dry-run
+
+# 2. Check active server port (ensures ComfyUI container is stopped before applying)
+python tools/migrate_isolation.py --dry-run --lock-port 9008
+
+# 3. Apply migration (creates backup manifest + SHA256 checksums, atomically renames directories, rewrites DB grants 1:1)
+python tools/migrate_isolation.py --apply --lock-port 9008
+
+# 4. Verify migration integrity
+python tools/migrate_isolation.py --verify
+
+# 5. Rollback / Restore if needed
+python tools/migrate_isolation.py --restore <path_to_backup_directory>
+```
+
 
 ---
 

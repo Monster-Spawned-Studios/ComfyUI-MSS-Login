@@ -163,22 +163,15 @@ def run_tests():
 		maybe_migrate_user_isolation,
 	)
 
-	# Naming setting getter/setter
-	save_isolation_folder_naming("user_id")
-	ok(get_isolation_folder_naming() == "user_id", "Setting saved as user_id")
+	# Naming setting getter/setter strictly enforces username
 	save_isolation_folder_naming("username")
-	ok(get_isolation_folder_naming() == "username", "Setting saved as username")
+	ok(get_isolation_folder_naming() == "username", "Setting strictly enforces username")
 
 	# Candidate segments
 	uid = "019488a0-1234-7000-8000-000000000001"
 	uname = "bob"
-	save_isolation_folder_naming("username")
 	segments_user = user_isolation_candidate_segments(uid, uname)
-	ok(segments_user == ["bob", uid], "Username convention orders username first")
-
-	save_isolation_folder_naming("user_id")
-	segments_id = user_isolation_candidate_segments(uid, uname)
-	ok(segments_id == [uid, "bob"], "user_id convention orders user_id first")
+	ok(segments_user[0] == "bob", "Username convention orders username first")
 
 	# Auto-migration test
 	tmp_models = tempfile.mkdtemp()
@@ -232,12 +225,16 @@ def run_tests():
 		with open(sub_model, "w") as f:
 			f.write("dummy model content")
 
-		# Resolve subfolder name "SDXL/juggernaut.safetensors"
+		# Resolve subfolder name "SDXL/juggernaut.safetensors" (requires UI grant for non-owner)
+		sample_grants = [
+			{"folder": "checkpoints", "item_name": "carol/SDXL/juggernaut.safetensors"}
+		]
 		res = resolve_model_name(
 			folder="checkpoints",
 			name="SDXL/juggernaut.safetensors",
 			user_id="user_carol_uuid",
 			username="carol",
+			grants=sample_grants,
 		)
 		ok(res is not None, "Subfolder model resolved")
 		ok(
@@ -252,6 +249,7 @@ def run_tests():
 			name="carol/SDXL/juggernaut.safetensors",
 			user_id="user_carol_uuid",
 			username="carol",
+			grants=sample_grants,
 		)
 		ok(
 			res_prefixed is not None
@@ -361,11 +359,11 @@ def run_tests():
 		timeout.add_failed_attempt("1.2.3.4", "super_owner")
 		timeout.add_failed_attempt("1.2.3.4", "super_owner")
 
-		# Place trigger file
+		# Place trigger file with database secret
 		trigger_path = get_emergency_unlock_path()
 		ok(trigger_path.startswith(tmp_data_dir), "Trigger path is inside temp data dir")
 		with open(trigger_path, "w") as f:
-			f.write("emergency_unlock\n")
+			f.write("test_secret\n")
 		ok(os.path.isfile(trigger_path), "Trigger file placed")
 
 		# Execute recovery
@@ -375,6 +373,128 @@ def run_tests():
 		ok(recovered is True, "Recovery reported True")
 		ok(not os.path.isfile(trigger_path), "Trigger file was removed")
 		ok(users_db.get_mfa_enabled("super_owner") is False, "Owner MFA was disabled")
+
+		# Test Owner-Approved Automated Emergency MFA Recovery (zero secret reads/writes before owner approval)
+		from utils.emergency_recovery import (
+			approve_and_execute_emergency_recovery,
+			create_emergency_recovery_request,
+			has_secret_env_var_configured,
+			list_emergency_recovery_requests,
+		)
+
+		users_db.add_user(uuid.uuid4().hex, "locked_user", "Pass123!", False, groups=["user"])
+		users_db.mfa_setup_start("locked_user")
+		_luid, lu = users_db.get_user("locked_user")
+		lu["mfa_enabled"] = True
+		users_db._backend.update(_luid, lu, users_db._secret_key)
+		ok(users_db.get_mfa_enabled("locked_user") is True, "locked_user has MFA enabled")
+
+		class _TrackedEnv(dict):
+			def __init__(self, *args, **kwargs):
+				super().__init__(*args, **kwargs)
+				self.secret_reads = 0
+				self.secret_writes = 0
+
+			def __getitem__(self, key):
+				if key in ("SECRET_KEY", "MSS_LOGIN_SECRET_KEY"):
+					self.secret_reads += 1
+				return super().__getitem__(key)
+
+			def get(self, key, default=None):
+				if key in ("SECRET_KEY", "MSS_LOGIN_SECRET_KEY"):
+					self.secret_reads += 1
+				return super().get(key, default)
+
+			def __setitem__(self, key, value):
+				if key in ("SECRET_KEY", "MSS_LOGIN_SECRET_KEY"):
+					self.secret_writes += 1
+				return super().__setitem__(key, value)
+
+		tracked_env = _TrackedEnv(
+			{"MSS_LOGIN_EMERGENCY_RECOVERY_ENABLED": "true", "SECRET_KEY": "test_secret"}
+		)
+		ok(
+			has_secret_env_var_configured(env=tracked_env) is True,
+			"has_secret_env_var_configured detects key presence",
+		)
+		ok(
+			tracked_env.secret_reads == 0 and tracked_env.secret_writes == 0,
+			"Checking secret env presence does not read or write SECRET_KEY",
+		)
+
+		req_rec = create_emergency_recovery_request(
+			"locked_user", requested_by="admin_actor", reason="Lost phone", env=tracked_env
+		)
+		ok(
+			req_rec["status"] == "pending_owner_approval" and req_rec["owner_approved"] is False,
+			"Request queued in pending_owner_approval state",
+		)
+		ok(
+			tracked_env.secret_reads == 0 and tracked_env.secret_writes == 0,
+			"Creating recovery request does not read or write SECRET_KEY",
+		)
+
+		# Non-owner approval must be blocked without reading SECRET_KEY
+		blocked_non_owner = False
+		try:
+			approve_and_execute_emergency_recovery(
+				req_rec["request_id"],
+				"admin_actor",
+				is_owner_verified=False,
+				users_db_instance=users_db,
+				timeout_instance=timeout,
+				env=tracked_env,
+			)
+		except PermissionError:
+			blocked_non_owner = True
+		ok(blocked_non_owner is True, "Non-owner is blocked from approving emergency recovery")
+		ok(
+			tracked_env.secret_reads == 0 and tracked_env.secret_writes == 0,
+			"Blocked non-owner attempt did not read or write SECRET_KEY",
+		)
+
+		# Owner approves -> SECRET_KEY is read once, never written, and user MFA is unlocked
+		approved_rec = approve_and_execute_emergency_recovery(
+			req_rec["request_id"],
+			"super_owner",
+			is_owner_verified=True,
+			users_db_instance=users_db,
+			timeout_instance=timeout,
+			env=tracked_env,
+		)
+		ok(
+			approved_rec["status"] == "approved_and_executed"
+			and approved_rec["owner_approved"] is True,
+			"Owner approval executes emergency recovery",
+		)
+		ok(
+			tracked_env.secret_reads >= 1 and tracked_env.secret_writes == 0,
+			"SECRET_KEY read only after owner approval and never written",
+		)
+		ok(
+			users_db.get_mfa_enabled("locked_user") is False,
+			"locked_user MFA disabled after owner-approved emergency recovery",
+		)
+
+		# 7. Clean Node Packaging & Release Staging Filter
+		from pathlib import Path
+		from scripts.release_prepare import stage_release_tree
+
+		stage_dir = Path(tmp_data_dir) / "staged_node"
+		stage_release_tree(Path(_PROJECT_ROOT), stage_dir, apply_copyright=False)
+		ok((stage_dir / "__init__.py").is_file(), "Staged node includes __init__.py")
+		ok(
+			(stage_dir / "scripts" / "emergency_unlock.py").is_file(),
+			"Staged node includes runtime scripts/emergency_unlock.py",
+		)
+		ok(
+			not (stage_dir / "scripts" / "release_prepare.py").exists(),
+			"Staged node excludes dev script scripts/release_prepare.py",
+		)
+		ok(not (stage_dir / "tests").exists(), "Staged node excludes CI tests/")
+		ok(not (stage_dir / "tools").exists(), "Staged node excludes offline tools/")
+		ok(not (stage_dir / "web" / "frontend").exists(), "Staged node excludes web/frontend/")
+		ok(not (stage_dir / "deploy").exists(), "Staged node excludes deploy/")
 	finally:
 		if orig_env_data_dir is not None:
 			os.environ["MSS_LOGIN_DATA_DIR"] = orig_env_data_dir

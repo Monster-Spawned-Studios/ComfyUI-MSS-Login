@@ -17,6 +17,7 @@ try:
 		isolation_folder_root,
 		isolation_models_base,
 		isolation_user_folder,
+		load_uuid_folder_mapping,
 		sanitize_user_segment,
 		user_isolation_candidate_segments,
 	)
@@ -27,6 +28,7 @@ except (ImportError, ValueError):
 		isolation_folder_root,
 		isolation_models_base,
 		isolation_user_folder,
+		load_uuid_folder_mapping,
 		sanitize_user_segment,
 		user_isolation_candidate_segments,
 	)
@@ -171,6 +173,27 @@ def _file_exists_under_shared(folder: str, rel_name: str) -> bool:
 	return False
 
 
+def _file_exists_under_isolation(folder: str, rel_name: str) -> bool:
+	rel = _norm_path(rel_name)
+	if not rel or rel.startswith("/") or ".." in rel.split("/"):
+		return False
+	for f in folder_aliases(folder) or [(folder or "").strip()]:
+		if not f:
+			continue
+		root = isolation_folder_root(f)
+		candidate = os.path.join(root, *rel.split("/"))
+		try:
+			root_real = os.path.realpath(root)
+			cand_real = os.path.realpath(candidate)
+			if not os.path.isfile(cand_real):
+				continue
+			if cand_real == root_real or cand_real.startswith(root_real + os.sep):
+				return True
+		except OSError:
+			continue
+	return False
+
+
 def _own_isolation_match(
 	folder: str, user_id: str | None, rel_name: str, username: str | None = None
 ) -> tuple[str, str] | None:
@@ -233,7 +256,23 @@ def _grant_storage_for_suffix(
 	return None
 
 
-def foreign_uuid_prefix(name: str, user_id: str | None) -> bool:
+def _is_item_granted(folder: str, item_name: str, grants: list[dict] | None) -> bool:
+	"""True if item_name (or its suffix) is explicitly in grants for folder."""
+	norm = normalize_model_name(item_name)
+	for g in grants or []:
+		if not _folder_matches(g.get("folder") or "", folder):
+			continue
+		item = _norm_path(g.get("item_name") or "")
+		if not item:
+			continue
+		if normalize_model_name(item) == norm:
+			return True
+		if "/" in item and normalize_model_name(item.split("/", 1)[1]) == norm:
+			return True
+	return False
+
+
+def foreign_uuid_prefix(name: str, user_id: str | None, username: str | None = None) -> bool:
 	"""
 	True when name starts with a foreign user isolation segment (UUID or foreign user folder).
 	Used by middleware to reject with a generic MODEL_NOT_ALLOWED (no existence leak).
@@ -242,7 +281,7 @@ def foreign_uuid_prefix(name: str, user_id: str | None) -> bool:
 	if "/" not in path:
 		return False
 	seg, _rest = path.split("/", 1)
-	candidate_segments = [s.lower() for s in user_isolation_candidate_segments(user_id)]
+	candidate_segments = [s.lower() for s in user_isolation_candidate_segments(user_id, username)]
 	if seg.lower() in candidate_segments:
 		return False
 	if is_uuid_segment(seg):
@@ -273,8 +312,9 @@ def resolve_model_name(
 	Order for plain names: own isolation → grant suffix → shared library.
 	Never fabricates a UUID prefix. Foreign UUID prefixes return None
 	(callers should emit a generic denial without probing disk).
+	For non-owners (view_all=False), files in own isolation folder strictly require
+	an explicit grant in the UI (shared_items store).
 	"""
-	_ = view_all  # list/build uses view_all; resolve treats grants the same for all
 	if not experimental_model_isolation_enabled():
 		n = _norm_path(name)
 		if not n:
@@ -296,42 +336,74 @@ def resolve_model_name(
 			match = _own_isolation_match(folder_norm, user_id, rest, username=username)
 			if match is not None:
 				own_rel, actual_seg = match
-				return ResolvedName(
-					storage_name=f"{actual_seg}/{own_rel}", origin="user", folder=folder_norm
-				)
+				storage_name = f"{actual_seg}/{own_rel}"
+				if (
+					view_all
+					or _is_item_granted(folder_norm, own_rel, grants)
+					or _is_item_granted(folder_norm, storage_name, grants)
+				):
+					return ResolvedName(
+						storage_name=storage_name, origin="user", folder=folder_norm
+					)
+				# Non-owner without explicit grant: denied
+				return None
 			# Own prefix but missing → None (generic miss)
 			return None
-		if is_uuid_segment(seg) or foreign_uuid_prefix(raw, user_id):
+		if not view_all and (is_uuid_segment(seg) or foreign_uuid_prefix(raw, user_id, username)):
 			# Foreign UUID or user isolation prefix: denial
 			return None
+
+		# If view_all is True, universal model access allows loading other users' isolated models directly
+		if view_all:
+			if _file_exists_under_isolation(folder_norm, raw):
+				return ResolvedName(storage_name=raw, origin="user", folder=folder_norm)
+			if is_uuid_segment(seg):
+				mapping = load_uuid_folder_mapping()
+				mapped_uname = mapping.get(seg)
+				if mapped_uname:
+					candidate_mapped = f"{mapped_uname}/{rest}"
+					if _file_exists_under_isolation(folder_norm, candidate_mapped):
+						return ResolvedName(
+							storage_name=candidate_mapped, origin="user", folder=folder_norm
+						)
 		# Non-UUID subfolder (e.g. SDXL/foo.safetensors): check own isolation first!
 		match = _own_isolation_match(folder_norm, user_id, raw, username=username)
 		if match is not None:
 			own_rel, actual_seg = match
-			return ResolvedName(
-				storage_name=f"{actual_seg}/{own_rel}", origin="user", folder=folder_norm
-			)
+			storage_name = f"{actual_seg}/{own_rel}"
+			if (
+				view_all
+				or _is_item_granted(folder_norm, own_rel, grants)
+				or _is_item_granted(folder_norm, storage_name, grants)
+			):
+				return ResolvedName(storage_name=storage_name, origin="user", folder=folder_norm)
 		grant = _grant_storage_for_suffix(folder_norm, raw, grants)
 		if grant is not None:
 			return ResolvedName(storage_name=grant, origin="granted", folder=folder_norm)
 		if _file_exists_under_shared(folder_norm, raw):
-			return ResolvedName(storage_name=raw, origin="shared", folder=folder_norm)
+			if view_all or _is_item_granted(folder_norm, raw, grants):
+				return ResolvedName(storage_name=raw, origin="shared", folder=folder_norm)
 		return None
 
 	# Plain name
 	match = _own_isolation_match(folder_norm, user_id, raw, username=username)
 	if match is not None:
 		own_rel, actual_seg = match
-		return ResolvedName(
-			storage_name=f"{actual_seg}/{own_rel}", origin="user", folder=folder_norm
-		)
+		storage_name = f"{actual_seg}/{own_rel}"
+		if (
+			view_all
+			or _is_item_granted(folder_norm, own_rel, grants)
+			or _is_item_granted(folder_norm, storage_name, grants)
+		):
+			return ResolvedName(storage_name=storage_name, origin="user", folder=folder_norm)
 
 	grant = _grant_storage_for_suffix(folder_norm, raw, grants)
 	if grant is not None:
 		return ResolvedName(storage_name=grant, origin="granted", folder=folder_norm)
 
 	if _file_exists_under_shared(folder_norm, raw):
-		return ResolvedName(storage_name=raw, origin="shared", folder=folder_norm)
+		if view_all or _is_item_granted(folder_norm, raw, grants):
+			return ResolvedName(storage_name=raw, origin="shared", folder=folder_norm)
 
 	return None
 
@@ -433,12 +505,13 @@ def list_display_names(
 		except Exception:
 			return []
 
-	own = _walk_own_display_names(folder, user_id)
 	granted = _grant_display_suffixes(folder, grants, user_id)
 
 	if view_all:
+		own = _walk_own_display_names(folder, user_id)
 		shared = _list_shared_display_names(folder)
 	else:
+		own_all = _walk_own_display_names(folder, user_id)
 		shared_all = _list_shared_display_names(folder)
 		allowed_norms: set[str] = set()
 		for g in grants or []:
@@ -450,6 +523,7 @@ def list_display_names(
 			allowed_norms.add(normalize_model_name(item))
 			if "/" in item:
 				allowed_norms.add(normalize_model_name(item.split("/", 1)[1]))
+		own = [o for o in own_all if normalize_model_name(o) in allowed_norms]
 		shared = [s for s in shared_all if normalize_model_name(s) in allowed_norms]
 
 	# Own first (shadows shared), then granted, then shared

@@ -95,6 +95,32 @@ def run_tests():
 	)
 	ok(plan["backend"] == "metal", "macOS ignores USE_CUDA")
 
+	print("TestRocmAndXpuDetection")
+	plan_rocm = install_deps.detect_torch_install_plan(
+		system="Linux", cuda_major=None, rocm_available=True, env={}
+	)
+	ok(plan_rocm["backend"] == "rocm", "Linux with ROCm uses rocm backend")
+	ok(
+		plan_rocm["extra_index_url"] == install_deps.PYTORCH_INDEX_ROCM,
+		"ROCm uses PyTorch ROCm index",
+	)
+	plan_xpu = install_deps.detect_torch_install_plan(
+		system="Linux", cuda_major=None, rocm_available=False, xpu_available=True, env={}
+	)
+	ok(plan_xpu["backend"] == "xpu", "Linux with Intel XPU uses xpu backend")
+	ok(
+		plan_xpu["extra_index_url"] == install_deps.PYTORCH_INDEX_XPU,
+		"Intel XPU uses PyTorch XPU index",
+	)
+	plan_dev_rocm = install_deps.detect_torch_install_plan(
+		system="Linux", cuda_major=None, env={"DEVICE_TYPE": "rocm"}
+	)
+	ok(plan_dev_rocm["backend"] == "rocm", "DEVICE_TYPE=rocm forces rocm backend")
+	plan_dev_xpu = install_deps.detect_torch_install_plan(
+		system="Linux", cuda_major=None, env={"DEVICE_TYPE": "xpu"}
+	)
+	ok(plan_dev_xpu["backend"] == "xpu", "DEVICE_TYPE=xpu forces xpu backend")
+
 	print(f"\n{run - failed}/{run} passed")
 	return failed == 0
 

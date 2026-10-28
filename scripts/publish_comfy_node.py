@@ -138,12 +138,13 @@ if args.dry_run:
 
 
 # Validate the node
-def validate_node() -> bool:
+def validate_node(cwd_path: str) -> bool:
 	"""Validate the node using the ComfyUI CLI. Returns True on success, False on failure (non-fatal)."""
 	print("Validating node...", file=stdout if args.verbose else stderr)
 	try:
 		result = run(
 			["comfy", *_COMFY_CLI_NON_INTERACTIVE_FLAGS, "node", "validate"],
+			cwd=cwd_path,
 			check=False,
 			stdout=None if args.quiet else stdout,
 			stderr=None if args.quiet else stderr,
@@ -164,10 +165,13 @@ def validate_node() -> bool:
 
 
 # Publish the node
-def publish_node() -> bool:
-	"""Publish the node to the ComfyUI Registry."""
+def publish_node(cwd_path: str) -> bool:
+	"""Publish the node to the ComfyUI Registry from the staged directory."""
 	if args.dry_run:
-		print("Dry run enabled. No changes will be made.", file=stdout)
+		print(
+			f"Dry run enabled. Staged clean node at {cwd_path}; no changes will be made.",
+			file=stdout,
+		)
 		return True
 	print("Publishing node...", file=stdout if args.verbose else stderr)
 	try:
@@ -181,6 +185,7 @@ def publish_node() -> bool:
 					"--token",
 					args.registry_access_token,
 				],
+				cwd=cwd_path,
 				check=True,
 				stdout=None if args.quiet else stdout,
 				stderr=None if args.quiet else stderr,
@@ -195,12 +200,27 @@ def publish_node() -> bool:
 
 # Main function
 def main() -> int:
-	"""Main function"""
-	if not validate_node():
-		print("Node validation failed (non-fatal). Proceeding with publish.", file=stderr)
-	if not publish_node():
-		print("Node publication failed.", file=stderr)
-		return 1
+	"""Stage clean runtime files (excluding tests, dev tools, and uncompiled sources) and publish."""
+	import sys
+	import tempfile
+	from pathlib import Path
+
+	scripts_dir = os.path.dirname(os.path.abspath(__file__))
+	if scripts_dir not in sys.path:
+		sys.path.insert(0, scripts_dir)
+	from release_prepare import stage_release_tree
+
+	source_root = Path(args.node_path).resolve()
+	with tempfile.TemporaryDirectory(prefix="mss-login-publish-") as tmp_root:
+		staged_node_dir = Path(tmp_root) / args.node_name
+		stage_release_tree(source_root, staged_node_dir, apply_copyright=True)
+		if args.verbose or args.debug:
+			print(f"Staged clean runtime package in {staged_node_dir}", file=stdout)
+		if not validate_node(str(staged_node_dir)):
+			print("Node validation failed (non-fatal). Proceeding with publish.", file=stderr)
+		if not publish_node(str(staged_node_dir)):
+			print("Node publication failed.", file=stderr)
+			return 1
 	return 0
 
 

@@ -1519,6 +1519,139 @@ renderUsers(list, container) {
             }
         };
     });
+
+    // --- Emergency 2FA / MFA Recovery Section (Admin Setup + Mandatory Owner Approval) ---
+    const erSection = document.createElement("div");
+    erSection.className = "mss-login-card";
+    erSection.style.margin = "18px 18px 14px";
+    erSection.innerHTML = `
+        <div class="mss-login-card-header">Emergency 2FA / MFA Recovery (Owner-Approved)</div>
+        <p class="mss-login-note" style="margin-bottom:10px;">
+            Automatically invokes the emergency recovery tool (<code>scripts/emergency_unlock.py</code>) to unlock users from 2FA/MFA when enabled by an administrator and <code>SECRET_KEY</code> is set in system environment variables.
+            <strong>The server owner must approve every recovery request before deployment</strong> so the secret encryption variable is never read or written unless required.
+        </p>
+        <div class="mss-login-row" style="align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:10px;">
+            <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px;">
+                <input type="checkbox" id="mss-login-er-enabled-toggle">
+                Enable Emergency MFA Recovery Setup
+            </label>
+            <span id="mss-login-er-env-badge" class="mss-login-chip">Checking env...</span>
+            <span id="mss-login-er-status-msg" class="mss-login-note"></span>
+        </div>
+        <div class="mss-login-row" style="align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+            <select id="mss-login-er-target-user" class="mss-login-select">
+                ${(list || []).map(u => {
+                    const name = typeof u === "string" ? u : (u.username || "");
+                    return name ? `<option value="${name}">${name}</option>` : "";
+                }).join("")}
+            </select>
+            <input type="text" id="mss-login-er-reason" class="mss-login-input" placeholder="Reason for MFA recovery request" style="min-width:220px;">
+            <button class="mss-login-btn" id="mss-login-er-request-btn">Request MFA Unlock</button>
+        </div>
+        <div id="mss-login-er-requests-list" style="margin-top:8px;"></div>
+    `;
+    container.appendChild(erSection);
+
+    const erToggle = erSection.querySelector("#mss-login-er-enabled-toggle");
+    const erEnvBadge = erSection.querySelector("#mss-login-er-env-badge");
+    const erStatusMsg = erSection.querySelector("#mss-login-er-status-msg");
+    const erTargetUser = erSection.querySelector("#mss-login-er-target-user");
+    const erReason = erSection.querySelector("#mss-login-er-reason");
+    const erRequestBtn = erSection.querySelector("#mss-login-er-request-btn");
+    const erRequestsList = erSection.querySelector("#mss-login-er-requests-list");
+
+    const loadEmergencyRecoveryState = async () => {
+        try {
+            const res = await api.fetchApi("/mss-login/api/mfa/emergency-recovery/status", { method: "GET" });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) return;
+            if (erToggle) erToggle.checked = Boolean(data.enabled);
+            if (erEnvBadge) {
+                erEnvBadge.textContent = data.secret_env_configured ? "SECRET_KEY env present" : "SECRET_KEY env missing";
+                erEnvBadge.style.borderColor = data.secret_env_configured ? "#22c55e" : "#f59e0b";
+            }
+            const reqs = Array.isArray(data.requests) ? data.requests : [];
+            const viewerIsOwner = Boolean(data.is_owner);
+            if (!reqs.length) {
+                erRequestsList.innerHTML = `<span class="mss-login-note">No emergency recovery requests queued.</span>`;
+            } else {
+                erRequestsList.innerHTML = reqs.map(r => {
+                    const pending = r.status === "pending_owner_approval";
+                    const actionsHtml = (pending && viewerIsOwner)
+                        ? `<button class="mss-login-btn er-approve-btn" data-req-id="${r.request_id}" style="margin-right:6px;">Approve & Deploy Unlock</button>
+                           <button class="mss-login-btn danger er-reject-btn" data-req-id="${r.request_id}">Reject</button>`
+                        : (pending ? `<span class="mss-login-note">Awaiting Owner approval</span>` : `<span class="mss-login-chip">${r.status}</span>`);
+                    return `<div class="mss-login-row-space" style="padding:6px 0; border-top:1px solid rgba(255,255,255,0.1);">
+                        <span style="font-size:12px;">User: <strong>${r.target_username}</strong> (requested by ${r.requested_by || "admin"}) ${r.reason ? "— " + r.reason : ""}</span>
+                        <div>${actionsHtml}</div>
+                    </div>`;
+                }).join("");
+
+                erRequestsList.querySelectorAll(".er-approve-btn").forEach(b => {
+                    b.onclick = async () => {
+                        const reqId = b.dataset.reqId;
+                        if (!window.confirm("Approve and deploy emergency 2FA/MFA recovery now? This will read SECRET_KEY from system env vars and run emergency_unlock.py.")) return;
+                        b.disabled = true;
+                        const r = await api.fetchApi("/mss-login/api/mfa/emergency-recovery/approve", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ request_id: reqId }),
+                        });
+                        const d = await r.json().catch(() => ({}));
+                        if (erStatusMsg) erStatusMsg.textContent = d.message || d.error || "";
+                        await loadEmergencyRecoveryState();
+                    };
+                });
+                erRequestsList.querySelectorAll(".er-reject-btn").forEach(b => {
+                    b.onclick = async () => {
+                        const reqId = b.dataset.reqId;
+                        b.disabled = true;
+                        const r = await api.fetchApi("/mss-login/api/mfa/emergency-recovery/reject", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ request_id: reqId }),
+                        });
+                        const d = await r.json().catch(() => ({}));
+                        if (erStatusMsg) erStatusMsg.textContent = d.message || d.error || "";
+                        await loadEmergencyRecoveryState();
+                    };
+                });
+            }
+        } catch (err) {
+            console.warn("[mss-login] Emergency recovery status check failed:", err);
+        }
+    };
+
+    if (erToggle) {
+        erToggle.onchange = async () => {
+            const r = await api.fetchApi("/mss-login/api/mfa/emergency-recovery/config", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ enabled: erToggle.checked }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (erStatusMsg) erStatusMsg.textContent = r.ok ? (d.enabled ? "Emergency recovery enabled." : "Emergency recovery disabled.") : (d.error || "Update failed");
+            await loadEmergencyRecoveryState();
+        };
+    }
+
+    if (erRequestBtn) {
+        erRequestBtn.onclick = async () => {
+            const target = erTargetUser ? erTargetUser.value : "";
+            const reason = erReason ? erReason.value : "";
+            if (!target) return;
+            const r = await api.fetchApi("/mss-login/api/mfa/emergency-recovery/request", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username: target, reason }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (erStatusMsg) erStatusMsg.textContent = d.message || d.error || "";
+            await loadEmergencyRecoveryState();
+        };
+    }
+
+    loadEmergencyRecoveryState();
 }
 
         async renderIpRules(container) {
@@ -3991,8 +4124,9 @@ async renderS3Settings(container) {
         if (app.extensions) app.extensions.forEach(e => { if(e.name) categories.add(e.name); });
         
         // 2. Scan Settings (Sidebar Buttons)
-        if (app.ui.settings.settings) {
-            const items = (app.ui.settings.settings instanceof Map) ? Array.from(app.ui.settings.settings.values()) : Object.values(app.ui.settings.settings);
+        const settingsObj = app?.ui?.settings?.settings || app?.extensionManager?.setting?.settings;
+        if (settingsObj) {
+            const items = (settingsObj instanceof Map) ? Array.from(settingsObj.values()) : Object.values(settingsObj);
             items.forEach(s => {
                 let c = s.category;
                 if(Array.isArray(c)) c = c[0];
@@ -4945,9 +5079,11 @@ app.registerExtension({
         window._mss_loginEnforcementInterval = enforcementInterval;
 
         // Register "Manage mss-login" Button in Settings
-app.ui.settings.addSetting({
-    id: "MSS-Login.Configuration",
-    name: "",
+        const settingsMgr = app?.ui?.settings || app?.extensionManager?.setting;
+        if (settingsMgr?.addSetting) {
+            settingsMgr.addSetting({
+                id: "MSS-Login.Configuration",
+                name: "",
     type: () => {
         const wrapper = document.createElement("div");
         wrapper.className = "mss-login-settings-card";
@@ -5143,6 +5279,7 @@ app.ui.settings.addSetting({
         return wrapper;
     }
 });
+}
 
     }
 });

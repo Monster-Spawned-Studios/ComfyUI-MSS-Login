@@ -37,6 +37,12 @@ def main():
 	parser = argparse.ArgumentParser(
 		description="Emergency unlock and MFA recovery tool for ComfyUI-MSS-Login."
 	)
+	parser.add_argument(
+		"--secret",
+		type=str,
+		default="",
+		help="Database secret key (SECRET_KEY). If omitted, read from SECRET_KEY env or prompted.",
+	)
 	group = parser.add_mutually_exclusive_group(required=True)
 	group.add_argument(
 		"--unlock-owner",
@@ -57,11 +63,39 @@ def main():
 
 	args = parser.parse_args()
 
+	import getpass
+	import hmac
+
+	provided_secret = (
+		args.secret or os.environ.get("MSS_LOGIN_SECRET_KEY") or os.environ.get("SECRET_KEY") or ""
+	).strip()
+	if not provided_secret:
+		if sys.stdin.isatty():
+			try:
+				provided_secret = getpass.getpass("Enter MSS-Login database SECRET_KEY: ").strip()
+			except (KeyboardInterrupt, EOFError):
+				print("\nAborted.", file=sys.stderr)
+				return 1
+		else:
+			print(
+				"[ERROR] Database secret is required. Provide via --secret or SECRET_KEY env var.",
+				file=sys.stderr,
+			)
+			return 1
+
+	if not SECRET_KEY or not hmac.compare_digest(provided_secret, str(SECRET_KEY).strip()):
+		print("[ERROR] Invalid database secret provided.", file=sys.stderr)
+		return 1
+
 	if args.create_trigger:
 		trigger_path = get_emergency_unlock_path()
 		try:
-			with open(trigger_path, "w") as f:
-				f.write("emergency_unlock\n")
+			with open(trigger_path, "w", encoding="utf-8") as f:
+				f.write(f"{provided_secret}\n")
+			try:
+				os.chmod(trigger_path, 0o600)
+			except OSError:
+				pass
 			print(f"[OK] Emergency trigger created at: {trigger_path}")
 			print("MSS-Login will automatically reset the owner MFA on next request or restart.")
 			return 0
@@ -90,25 +124,15 @@ def main():
 			print(f"{uname:<20} {groups_str:<25} {adm:<8} {mfa}")
 		return 0
 
-	if args.unlock_owner:
-		owner = users_db.get_owner_username()
-		if not owner:
-			print("[ERROR] No owner account found in database!", file=sys.stderr)
-			return 1
-		print(f"[*] Found owner account: {owner}")
-		ok = users_db.reset_mfa_for_user(owner)
-		if not ok:
-			print(f"[ERROR] Failed to reset MFA for owner {owner}!", file=sys.stderr)
-			return 1
-		# Clear lockout state file if present
+	def _clear_timeout_state_for_user(target_user: str) -> None:
 		try:
 			timeout_file = os.path.join(DATA_DIR, "data", "login_timeout_state.json")
 			if os.path.isfile(timeout_file):
 				import json
 
-				with open(timeout_file, "r") as f:
+				with open(timeout_file, "r", encoding="utf-8") as f:
 					state = json.load(f)
-				prefix = f"{owner.lower()}:"
+				prefix = f"{target_user.lower()}:"
 				state["failed_attempts"] = {
 					k: v
 					for k, v in state.get("failed_attempts", {}).items()
@@ -119,11 +143,23 @@ def main():
 					for k, v in state.get("timeout_end_time", {}).items()
 					if not k.startswith(prefix)
 				}
-				with open(timeout_file, "w") as f:
+				with open(timeout_file, "w", encoding="utf-8") as f:
 					json.dump(state, f, indent=2)
-				print(f"[*] Cleared persistent timeout lockouts for {owner}")
+				print(f"[*] Cleared persistent timeout lockouts for {target_user}")
 		except Exception as e:
 			print(f"[!] Warning: Could not clear timeout state file: {e}")
+
+	if args.unlock_owner:
+		owner = users_db.get_owner_username()
+		if not owner:
+			print("[ERROR] No owner account found in database!", file=sys.stderr)
+			return 1
+		print(f"[*] Found owner account: {owner}")
+		ok = users_db.reset_mfa_for_user(owner)
+		if not ok:
+			print(f"[ERROR] Failed to reset MFA for owner {owner}!", file=sys.stderr)
+			return 1
+		_clear_timeout_state_for_user(owner)
 
 		print(f"[SUCCESS] Owner account '{owner}' has been unlocked and MFA reset!")
 		return 0
@@ -136,6 +172,7 @@ def main():
 			return 1
 		ok = users_db.reset_mfa_for_user(uname)
 		if ok:
+			_clear_timeout_state_for_user(uname)
 			print(f"[SUCCESS] MFA reset successfully for user '{uname}'.")
 			return 0
 		else:

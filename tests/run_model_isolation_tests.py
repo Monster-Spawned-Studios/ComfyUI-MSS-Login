@@ -218,7 +218,7 @@ def run_tests():
 		def list_for_user(self, user_id):
 			return []  # no shared_items rows — disk-only legacy file
 
-	grants_disk = policy_disk.get_effective_model_grants_for_user(
+	grants_disk_user = policy_disk.get_effective_model_grants_for_user(
 		role="user",
 		perms={},
 		username="alice",
@@ -227,8 +227,20 @@ def run_tests():
 		users_db_config={},
 	)
 	ok(
-		any(g.get("item_name") == "alice/legacy_existing.safetensors" for g in grants_disk),
-		"effective grants include on-disk isolation files without shared_items row",
+		not any(g.get("item_name") == "alice/legacy_existing.safetensors" for g in grants_disk_user),
+		"non-owner without shared_items row is not auto-granted on-disk isolation files",
+	)
+	grants_disk_owner = policy_disk.get_effective_model_grants_for_user(
+		role="owner",
+		perms={},
+		username="alice",
+		users_db=_FakeUsersDb(),
+		shared_items_store_getter=lambda _cfg: _FakeStore(),
+		users_db_config={},
+	)
+	ok(
+		any(g.get("item_name") == "alice/legacy_existing.safetensors" for g in grants_disk_owner),
+		"universal model access (owner) includes on-disk isolation files without shared_items row",
 	)
 	ok(
 		policy_disk.grant_matches_item(
