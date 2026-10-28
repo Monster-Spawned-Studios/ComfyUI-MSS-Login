@@ -29,6 +29,29 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+# Add parent dir to sys.path so utils can be imported if running standalone
+_repo_parent = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _repo_parent not in sys.path:
+	sys.path.insert(0, _repo_parent)
+
+try:
+	from utils.db_key_derivation import derive_db_key
+except ImportError:
+	derive_db_key = None
+
+
+def is_plain_sqlite(path: str) -> bool:
+	"""Check if file starts with the standard SQLite header."""
+	if not os.path.isfile(path) or os.path.getsize(path) == 0:
+		return False
+	try:
+		with open(path, "rb") as f:
+			header = f.read(16)
+		return header.startswith(b"SQLite format 3\x00")
+	except OSError:
+		return False
+
+
 # Common model folders recognized by ComfyUI
 COMMON_FOLDER_TYPES = (
 	"checkpoints",
@@ -137,23 +160,91 @@ class MigrationContext:
 		lock_port: int = 9008,
 		confirm_merge_uuid: Optional[str] = None,
 		remove_empty_source: bool = False,
+		secret: Optional[str] = None,
 	):
 		self.data_dir = os.path.abspath(data_dir)
 		self.models_dir = os.path.abspath(models_dir) if models_dir else ""
 		self.lock_port = lock_port
 		self.confirm_merge_uuid = confirm_merge_uuid
 		self.remove_empty_source = remove_empty_source
+		self.secret = secret
 
 		self.isolation_base = os.path.join(self.data_dir, "model_isolation", "models")
 		self.map_file = os.path.join(self.data_dir, "model_isolation", "uuid_folder_map.json")
 		self.lock_file = os.path.join(self.data_dir, "model_isolation", ".migrate.lock")
 
+		# Check config.json for users_db config and encryption
+		self.encryption_level = ""
+		self.secret_key_env = "SECRET_KEY"
+		cfg_db_path = ""
+		cfg_file = os.path.join(self.data_dir, "config.json")
+		if os.path.isfile(cfg_file):
+			try:
+				with open(cfg_file, "r", encoding="utf-8") as f:
+					cfg = json.load(f)
+					if isinstance(cfg, dict):
+						udb = cfg.get("users_db", {})
+						if isinstance(udb, dict):
+							self.encryption_level = (
+								str(udb.get("encryption_level", "")).strip().lower()
+							)
+							cfg_db_path = str(udb.get("sqlite_path", "")).strip()
+						self.secret_key_env = str(cfg.get("secret_key_env", "SECRET_KEY")).strip()
+			except Exception:
+				pass
+
+		if not self.secret:
+			self.secret = os.environ.get(self.secret_key_env) or os.environ.get("SECRET_KEY", "")
+
+		# Check ephemeral key file if still no secret
+		if not self.secret:
+			for ephem_cand in (
+				os.path.join(self.data_dir, "data", ".ephemeral_secret_key"),
+				os.path.join(self.data_dir, ".ephemeral_secret_key"),
+			):
+				if os.path.isfile(ephem_cand):
+					try:
+						with open(ephem_cand, "r", encoding="utf-8") as f:
+							self.secret = f.read().strip()
+						if self.secret:
+							break
+					except OSError:
+						pass
+
+		# Resolve users_db_path
 		if users_db_path:
 			self.users_db_path = os.path.abspath(users_db_path)
 		else:
-			cand1 = os.path.join(self.data_dir, "users", "users.db")
-			cand2 = os.path.join(self.data_dir, "users.db")
-			self.users_db_path = cand1 if os.path.isfile(cand1) else cand2
+			resolved = None
+			candidates = []
+			if cfg_db_path:
+				if os.path.isabs(cfg_db_path):
+					if os.path.isfile(cfg_db_path):
+						candidates.append(cfg_db_path)
+					for marker in ("data/", "users/"):
+						idx = cfg_db_path.find(marker)
+						if idx != -1:
+							candidates.append(os.path.join(self.data_dir, cfg_db_path[idx:]))
+				else:
+					candidates.append(os.path.join(self.data_dir, cfg_db_path))
+
+			candidates.extend(
+				[
+					os.path.join(self.data_dir, "data", "mss_login_data.db"),
+					os.path.join(self.data_dir, "mss_login_data.db"),
+					os.path.join(self.data_dir, "users", "users.db"),
+					os.path.join(self.data_dir, "users.db"),
+					os.path.join(self.data_dir, "data", "users.db"),
+				]
+			)
+
+			for cand in candidates:
+				if os.path.isfile(cand):
+					resolved = cand
+					break
+			self.users_db_path = (
+				resolved if resolved else os.path.join(self.data_dir, "data", "mss_login_data.db")
+			)
 
 		self.users: dict[str, str] = {}  # uuid -> username
 		self.uname_to_uuid: dict[str, str] = {}  # username -> uuid
@@ -184,29 +275,95 @@ class MigrationContext:
 			except OSError:
 				pass
 
-	def load_users(self) -> bool:
+	def _open_db(self, readonly: bool = True) -> Any:
+		"""Open SQLite or SQLCipher database with proper keying."""
 		if not os.path.isfile(self.users_db_path):
-			return False
+			raise FileNotFoundError(f"Database file not found: {self.users_db_path}")
+
+		if is_plain_sqlite(self.users_db_path):
+			if readonly:
+				return sqlite3.connect(f"file:{self.users_db_path}?mode=ro", uri=True)
+			return sqlite3.connect(self.users_db_path)
+
+		# Encrypted SQLCipher database
 		try:
-			conn = sqlite3.connect(f"file:{self.users_db_path}?mode=ro", uri=True)
-			cur = conn.cursor()
-			cur.execute("SELECT user_id, username FROM users")
-			for uid, uname in cur.fetchall():
-				if uid and uname:
-					suid = str(uid).strip()
-					suname = str(uname).strip()
-					try:
-						valid_uname = validate_username(suname)
-						self.users[suid] = valid_uname
-						self.uname_to_uuid[valid_uname.lower()] = suid
-					except ValueError:
-						self.users[suid] = suname
-						self.uname_to_uuid[suname.lower()] = suid
-			conn.close()
-			return True
-		except Exception as e:
-			print(f"[!] Warning: Could not read users table from {self.users_db_path}: {e}")
-			return False
+			import sqlcipher3
+		except ImportError:
+			raise RuntimeError(
+				f"Database at {self.users_db_path} is encrypted (SQLCipher), but 'sqlcipher3' is not installed."
+			)
+
+		secret = self.secret
+		if not secret:
+			raise RuntimeError(
+				f"Database at {self.users_db_path} is encrypted (SQLCipher), but no SECRET_KEY was provided via --secret or environment."
+			)
+
+		enc_level = self.encryption_level or "secure"
+		if derive_db_key is not None:
+			key_bytes = derive_db_key(secret, enc_level)
+			key_hex = key_bytes.hex()
+		else:
+			key_hex = hashlib.sha256(secret.encode("utf-8")).hexdigest()
+
+		conn = sqlcipher3.connect(self.users_db_path)
+		conn.execute(f"PRAGMA key = \"x'{key_hex}'\"")
+		conn.execute("PRAGMA cipher_compatibility = 4")
+		conn.execute("SELECT count(*) FROM sqlite_master")
+		return conn
+
+	def load_users(self) -> bool:
+		db_loaded = False
+		if os.path.isfile(self.users_db_path):
+			try:
+				conn = self._open_db(readonly=True)
+				cur = conn.cursor()
+				cur.execute("SELECT user_id, username FROM users")
+				for uid, uname in cur.fetchall():
+					if uid and uname:
+						suid = str(uid).strip()
+						suname = str(uname).strip()
+						try:
+							valid_uname = validate_username(suname)
+							self.users[suid] = valid_uname
+							self.uname_to_uuid[valid_uname.lower()] = suid
+						except ValueError:
+							self.users[suid] = suname
+							self.uname_to_uuid[suname.lower()] = suid
+				conn.close()
+				db_loaded = True
+			except Exception as e:
+				print(f"[!] Notice: Could not read users table from {self.users_db_path}: {e}")
+
+		# Multi-source user discovery fallback:
+		# 1. Existing uuid_folder_map.json
+		mapping = self.load_existing_mapping()
+		for uid, uname in mapping.items():
+			suid = str(uid).strip()
+			suname = str(uname).strip()
+			if suid and suname:
+				self.users.setdefault(suid, suname)
+				self.uname_to_uuid.setdefault(suname.lower(), suid)
+
+		# 2. DATA_DIR/users/ directory inspection
+		users_dir = os.path.join(self.data_dir, "users")
+		if os.path.isdir(users_dir):
+			try:
+				for dname in os.listdir(users_dir):
+					dpath = os.path.join(users_dir, dname)
+					if os.path.isdir(dpath) and not dname.startswith("."):
+						try:
+							vname = validate_username(dname)
+							if vname.lower() not in self.uname_to_uuid:
+								synthetic_uuid = f"user-{vname.lower()}"
+								self.users.setdefault(synthetic_uuid, vname)
+								self.uname_to_uuid.setdefault(vname.lower(), synthetic_uuid)
+						except ValueError:
+							pass
+			except OSError:
+				pass
+
+		return db_loaded or bool(self.users)
 
 	def load_existing_mapping(self) -> dict[str, str]:
 		if os.path.isfile(self.map_file):
@@ -262,10 +419,12 @@ class MigrationContext:
 
 				# 1. Does entry match an existing username?
 				entry_lower = entry.lower()
+				is_uuid_like = len(entry) >= 32 and "-" in entry
+
 				if entry_lower in self.uname_to_uuid:
 					matched_uuid = self.uname_to_uuid[entry_lower]
 					matched_uname = self.users.get(matched_uuid, entry)
-					if mapping.get(matched_uuid) == entry:
+					if mapping.get(matched_uuid) == entry or entry in mapping.values():
 						status = "skip"
 					else:
 						status = "adopt"
@@ -286,7 +445,27 @@ class MigrationContext:
 					)
 					continue
 
-				# 2. Is entry a recognized user UUID?
+				# 2. Is entry already in mapping.values()?
+				if entry in mapping.values():
+					matched_uuid = next((u for u, un in mapping.items() if un == entry), "")
+					actions.append(
+						{
+							"action": "skip",
+							"folder_type": ft,
+							"source": entry,
+							"target": entry,
+							"user_id": matched_uuid,
+							"username": entry,
+							"file_count": file_count,
+							"size_bytes": dir_size,
+							"src_path": entry_path,
+							"dst_path": entry_path,
+							"files": files_rel,
+						}
+					)
+					continue
+
+				# 3. Is entry a recognized user UUID?
 				if entry in self.users:
 					target_uname = self.users[entry]
 					target_path = os.path.join(ft_dir, target_uname)
@@ -365,15 +544,54 @@ class MigrationContext:
 							)
 					continue
 
-				# 3. Does not match any known user: Orphan UUID or unknown folder
-				is_uuid_like = len(entry) >= 32 and "-" in entry
+				# 4. If entry is NOT UUID-like, is it a valid username name?
+				if not is_uuid_like:
+					try:
+						valid_uname = validate_username(entry)
+						# It is already a valid username-formatted folder on disk!
+						actions.append(
+							{
+								"action": "adopt",
+								"folder_type": ft,
+								"source": entry,
+								"target": valid_uname,
+								"user_id": "",
+								"username": valid_uname,
+								"file_count": file_count,
+								"size_bytes": dir_size,
+								"src_path": entry_path,
+								"dst_path": entry_path,
+								"files": files_rel,
+							}
+						)
+						continue
+					except ValueError:
+						# Truly invalid/unsafe folder name
+						actions.append(
+							{
+								"action": "unknown",
+								"folder_type": ft,
+								"source": entry,
+								"target": "(invalid_name)",
+								"user_id": "",
+								"username": "",
+								"file_count": file_count,
+								"size_bytes": dir_size,
+								"src_path": entry_path,
+								"dst_path": "",
+								"files": files_rel,
+							}
+						)
+						continue
+
+				# 5. UUID-like entry not matching any known user: Orphan UUID
 				actions.append(
 					{
-						"action": "orphan" if is_uuid_like else "unknown",
+						"action": "orphan",
 						"folder_type": ft,
 						"source": entry,
 						"target": "(none)",
-						"user_id": entry if is_uuid_like else "",
+						"user_id": entry,
 						"username": "",
 						"file_count": file_count,
 						"size_bytes": dir_size,
@@ -434,7 +652,7 @@ class MigrationContext:
 		grants_list = []
 		if os.path.isfile(self.users_db_path):
 			try:
-				conn = sqlite3.connect(f"file:{self.users_db_path}?mode=ro", uri=True)
+				conn = self._open_db(readonly=True)
 				cur = conn.cursor()
 				cur.execute(
 					"SELECT user_id, folder, item_name, source_backend, granted_by_user_id, granted_by_role, created_at FROM shared_items"
@@ -601,7 +819,7 @@ class MigrationContext:
 		# 3. Rewrite database model grants 1:1 in shared_items table
 		if os.path.isfile(self.users_db_path):
 			try:
-				conn = sqlite3.connect(self.users_db_path)
+				conn = self._open_db(readonly=False)
 				cur = conn.cursor()
 				cur.execute("SELECT user_id, folder, item_name FROM shared_items")
 				rows = cur.fetchall()
@@ -658,7 +876,7 @@ class MigrationContext:
 		# Check DB grants for leftover UUID prefixes
 		if os.path.isfile(self.users_db_path):
 			try:
-				conn = sqlite3.connect(f"file:{self.users_db_path}?mode=ro", uri=True)
+				conn = self._open_db(readonly=True)
 				cur = conn.cursor()
 				cur.execute("SELECT user_id, folder, item_name FROM shared_items")
 				for r_uid, r_folder, r_item in cur.fetchall():
@@ -801,6 +1019,12 @@ def main():
 		default=False,
 		help="Remove source UUID directory after merging non-colliding files if directory is empty.",
 	)
+	parser.add_argument(
+		"--secret",
+		type=str,
+		default="",
+		help="Database secret key for SQLCipher decryption (defaults to SECRET_KEY env var).",
+	)
 
 	args = parser.parse_args()
 
@@ -811,6 +1035,7 @@ def main():
 		lock_port=args.lock_port,
 		confirm_merge_uuid=args.confirm_merge,
 		remove_empty_source=args.remove_empty_source,
+		secret=args.secret,
 	)
 
 	ctx.load_users()
