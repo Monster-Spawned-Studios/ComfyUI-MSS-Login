@@ -400,10 +400,62 @@ testAll().catch(e => {
 		print("Node test stderr:", res.stderr)
 
 
+def test_bitwarden_passkey_options_and_step_up():
+	print("TestBitwardenPasskeyOptionsAndStepUp")
+	mod = _load_webauthn_routes()
+	from aiohttp.test_utils import make_mocked_request
+
+	# Simulate a session older than 5 minutes (e.g., user has been in ComfyUI Web UI for 1 hour)
+	mod.jwt_auth.decode_access_token = lambda tok: {
+		"auth_time": time.time() - 3600,
+		"user_id": "uid1",
+		"username": "alice",
+	}
+
+	async def _run():
+		req_reg_ok = make_mocked_request(
+			"POST",
+			"/mss-login/webauthn/register/options",
+			headers={"Origin": "https://comfyui.tmd-nas.win"},
+		)
+		resp_reg_ok = await mod.register_options(req_reg_ok)
+		_ok(
+			resp_reg_ok.status == 200,
+			"register options succeeds for active session older than 5 minutes",
+		)
+		reg_data = json.loads(resp_reg_ok.text)
+		_ok(
+			reg_data.get("authenticatorSelection", {}).get("userVerification") == "preferred",
+			"register options sets userVerification to preferred for Bitwarden compatibility",
+		)
+
+	asyncio.run(_run())
+
+
+def test_jwt_token_login_no_mfa_or_passkey_required():
+	print("TestJwtTokenLoginNoMfaOrPasskeyRequired")
+	auth_src = open(os.path.join(_ROUTES_DIR, "auth.py"), encoding="utf-8").read()
+	_ok(
+		"is_api_token_login" in auth_src and "provided_token" in auth_src,
+		"post_login supports direct JWT/API token login and bypasses MFA/passkeys for programmatic API login",
+	)
+	webauthn_src = open(os.path.join(_ROUTES_DIR, "webauthn.py"), encoding="utf-8").read()
+	_ok(
+		"require_user_verification=False" in webauthn_src,
+		"webauthn verify endpoints allow Bitwarden uv=false credentials",
+	)
+	_ok(
+		"bump_token_version" not in webauthn_src,
+		"deleting a passkey does not bump token_version or revoke active JWT tokens",
+	)
+
+
 def main() -> int:
 	print("TestPasskeyBrowserCompatibility")
 	test_status_endpoint_origins()
 	test_strict_post_origin_checks()
+	test_bitwarden_passkey_options_and_step_up()
+	test_jwt_token_login_no_mfa_or_passkey_required()
 	test_js_api_and_visibility_with_node()
 	print("---")
 	if failed:

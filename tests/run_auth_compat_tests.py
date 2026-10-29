@@ -209,6 +209,26 @@ def run_tests():
 		"<" not in sanitized["username"] or "script" not in sanitized["username"].lower(),
 		"username still sanitized",
 	)
+	webauthn_cred = {
+		"id": "abc-123_def",
+		"rawId": "abc-123_def",
+		"type": "public-key",
+		"response": {
+			"clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIn0-xyz_123",
+			"attestationObject": "o2NmbXRkbm9uZWdhdHRTdG10oGhhdXRoRGF0YVj-abc_123",
+		},
+	}
+	sanitized_cred = Sanitizer._sanitize_field("credential", webauthn_cred)
+	ok(
+		sanitized_cred["type"] == "public-key",
+		"WebAuthn credential type 'public-key' is not corrupted by hyphen escaping",
+	)
+	ok(
+		sanitized_cred["id"] == "abc-123_def"
+		and sanitized_cred["response"]["clientDataJSON"]
+		== "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIn0-xyz_123",
+		"WebAuthn base64url strings retain '-' and '_'",
+	)
 
 	# --- auth cookie clear must emit Path=/ only (logout redirect-loop fix) ---
 	print("TestClearAuthCookiesPath")

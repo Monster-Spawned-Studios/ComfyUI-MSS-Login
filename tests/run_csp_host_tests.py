@@ -77,6 +77,24 @@ def run_tests():
 			"connect-src" in built and "https://comfy.tmd-nas.win" in built,
 			"full CSP includes host",
 		)
+		ok(
+			"script-src 'self' https://static.cloudflareinsights.com;" in built,
+			"cloudflareinsights beacon allowed in script-src",
+		)
+		ok(
+			"script-src-elem 'self' https://static.cloudflareinsights.com;" in built,
+			"cloudflareinsights beacon allowed in script-src-elem",
+		)
+		ok(
+			"https://cloudflareinsights.com" in directive,
+			"cloudflareinsights allowed in connect-src",
+		)
+		passkeys_csp = csp._build_csp_for_path("/passkeys", None)
+		ok(
+			passkeys_csp is not None
+			and "script-src-elem 'self' https://static.cloudflareinsights.com;" in passkeys_csp,
+			"passkeys page CSP allows cloudflareinsights beacon in script-src-elem",
+		)
 	finally:
 		if prev is None:
 			os.environ.pop("HOST_BASE_URL", None)
