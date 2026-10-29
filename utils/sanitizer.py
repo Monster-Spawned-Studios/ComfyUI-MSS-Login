@@ -94,7 +94,9 @@ class Sanitizer:
 
 	@staticmethod
 	def _sanitize_field(key, value):
-		"""Sanitize one key/value; passwords get control-char strip only."""
+		"""Sanitize one key/value; passwords get control-char strip only; WebAuthn credentials pass through."""
+		if isinstance(key, str) and key.strip().lower() == "credential":
+			return value
 		if is_password_field(key) and isinstance(value, str):
 			return sanitize_password_input(value)
 		return Sanitizer.sanitize_input(value)

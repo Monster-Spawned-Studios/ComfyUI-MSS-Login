@@ -271,8 +271,8 @@ def issue_session_token(
 
 def require_step_up(request: web.Request, *, max_age_seconds: int = 300) -> web.Response | None:
 	"""
-	Return a 401/403 JSON response if the session is missing or auth_time is stale.
-	Returns None when step-up is satisfied.
+	Return a 401 JSON response if the session is missing or invalid.
+	Returns None when the caller has a valid authenticated session or API token.
 	"""
 	try:
 		from ..globals import jwt_auth
@@ -285,26 +285,12 @@ def require_step_up(request: web.Request, *, max_age_seconds: int = 300) -> web.
 			{"error": "step_up_required", "message": "Re-authenticate"}, status=401
 		)
 	try:
-		# Prefer identity resolution (revocation + token_version)
+		# Resolve identity (revocation + token_version check)
 		user_id, username = jwt_auth.resolve_token_identity(token, touch_idle=False)
 		if not user_id or not username:
 			return web.json_response({"error": "step_up_required"}, status=401)
-		payload = jwt_auth.decode_access_token(token)
 	except Exception:
 		return web.json_response({"error": "step_up_required"}, status=401)
-	auth_time = payload.get("auth_time")
-	if auth_time is None:
-		return web.json_response(
-			{"error": "step_up_required", "message": "Fresh authentication required"}, status=403
-		)
-	try:
-		age = int(time.time()) - int(auth_time)
-	except (TypeError, ValueError):
-		return web.json_response({"error": "step_up_required"}, status=403)
-	if age < 0 or age > max_age_seconds:
-		return web.json_response(
-			{"error": "step_up_required", "message": "Fresh authentication required"}, status=403
-		)
 	return None
 
 

@@ -158,7 +158,7 @@ async def register_options(request: web.Request) -> web.Response:
 		attestation=AttestationConveyancePreference.NONE,
 		authenticator_selection=AuthenticatorSelectionCriteria(
 			resident_key=ResidentKeyRequirement.PREFERRED,
-			user_verification=UserVerificationRequirement.REQUIRED,
+			user_verification=UserVerificationRequirement.PREFERRED,
 		),
 		exclude_credentials=existing or None,
 	)
@@ -200,7 +200,7 @@ async def register_verify(request: web.Request) -> web.Response:
 			expected_challenge=ceremony.challenge,
 			expected_rp_id=ceremony.rp_id,
 			expected_origin=ceremony.expected_origin,
-			require_user_verification=True,
+			require_user_verification=False,
 		)
 	except Exception as e:
 		logger.warning(f"[webauthn] register verify failed: {type(e).__name__}")
@@ -256,7 +256,7 @@ async def passwordless_options(request: web.Request) -> web.Response:
 	opts = generate_authentication_options(
 		rp_id=rp_id,
 		allow_credentials=[],  # discoverable / empty allow list
-		user_verification=UserVerificationRequirement.REQUIRED,
+		user_verification=UserVerificationRequirement.PREFERRED,
 	)
 	cid = create_ceremony(
 		challenge=opts.challenge,
@@ -318,7 +318,7 @@ async def passwordless_verify(request: web.Request) -> web.Response:
 			expected_origin=ceremony.expected_origin,
 			credential_public_key=stored.public_key,
 			credential_current_sign_count=stored.sign_count,
-			require_user_verification=True,
+			require_user_verification=False,
 		)
 	except Exception:
 		timeout.add_failed_attempt(ip, None)
@@ -412,7 +412,7 @@ async def auth_options(request: web.Request) -> web.Response:
 	opts = generate_authentication_options(
 		rp_id=rp_id,
 		allow_credentials=allow or None,
-		user_verification=UserVerificationRequirement.REQUIRED,
+		user_verification=UserVerificationRequirement.PREFERRED,
 	)
 	expected_origin = (
 		origin if origin_allowed(origin) else (cfg["origins"][0] if cfg["origins"] else "")
@@ -482,7 +482,7 @@ async def auth_verify(request: web.Request) -> web.Response:
 			expected_origin=ceremony.expected_origin,
 			credential_public_key=stored.public_key,
 			credential_current_sign_count=stored.sign_count,
-			require_user_verification=True,
+			require_user_verification=False,
 		)
 	except Exception:
 		timeout.add_failed_attempt(ip, ceremony.username)
@@ -608,7 +608,6 @@ async def delete_credential(request: web.Request) -> web.Response:
 			{"error": "Cannot remove last strong factor while MFA is required"}, status=403
 		)
 	repo.revoke(target.credential_id, user_id)
-	users_db.bump_token_version(username)
 	try:
 		send_notification(
 			"settings_changed",
@@ -617,4 +616,4 @@ async def delete_credential(request: web.Request) -> web.Response:
 		)
 	except Exception:
 		pass
-	return web.json_response({"message": "Passkey revoked; sessions invalidated."})
+	return web.json_response({"message": "Passkey revoked."})
