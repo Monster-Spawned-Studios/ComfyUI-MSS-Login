@@ -16,7 +16,9 @@ _CSP_HTML_PATHS = frozenset(
 # are appended dynamically in _connect_src_directive().
 _CONNECT_SRC_STATIC = (
 	"'self' https://monsterspawned.studio https://*.monsterspawned.studio "
-	"wss://*.monsterspawned.studio"
+	"wss://*.monsterspawned.studio "
+	"https://cloudflareinsights.com https://*.cloudflareinsights.com "
+	"https://static.cloudflareinsights.com"
 )
 
 
@@ -103,13 +105,14 @@ def _build_csp_for_path(path: str, request: web.Request | None = None) -> str:
 				media_src = f"{media_src} {media_origin}"
 		except Exception:
 			pass
-	# script-src: self only (DOMPurify + qrcodejs are self-hosted under /mss-login/vendor/).
+	# script-src / script-src-elem: self + Cloudflare Web Analytics beacon (injected on Cloudflare tunnels).
 	# style-src: self + unsafe-inline for existing <style> blocks.
 	# connect-src: self + tunnel hosts + HOST_BASE_URL / request origin so reverse-proxy installs work.
 	# frame-ancestors: self to mitigate clickjacking.
 	return (
 		"default-src 'self'; "
-		"script-src 'self'; "
+		"script-src 'self' https://static.cloudflareinsights.com; "
+		"script-src-elem 'self' https://static.cloudflareinsights.com; "
 		"style-src 'self' 'unsafe-inline'; "
 		f"{_connect_src_directive(request)}; "
 		"frame-ancestors 'self'; "
