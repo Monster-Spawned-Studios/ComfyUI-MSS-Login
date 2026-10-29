@@ -822,11 +822,7 @@ async def api_local_login(request: web.Request) -> web.Response:
 
 	no_exp = _user_can_have_non_expiring_jwt(username)
 	token, _jti = issue_session_token(
-		username=username,
-		users_db=users_db,
-		jwt_auth=jwt_auth,
-		amr=["local"],
-		no_expiration=no_exp,
+		username=username, users_db=users_db, jwt_auth=jwt_auth, amr=["local"], no_expiration=no_exp
 	)
 
 	if DEBUG_MODE:
