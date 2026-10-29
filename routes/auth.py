@@ -274,9 +274,11 @@ async def post_register(request: web.Request) -> web.Response:
 # so Cloudflare Tunnel (cloudflared) at e.g. comfyui-server.monsterspawned.studio works.
 LOADING_CSP = (
 	"default-src 'self'; "
-	"script-src 'self'; "
+	"script-src 'self' https://static.cloudflareinsights.com; "
+	"script-src-elem 'self' https://static.cloudflareinsights.com; "
 	"style-src 'self' 'unsafe-inline'; "
-	"connect-src 'self' https://*.monsterspawned.studio wss://*.monsterspawned.studio; "
+	"connect-src 'self' https://*.monsterspawned.studio wss://*.monsterspawned.studio "
+	"https://cloudflareinsights.com https://*.cloudflareinsights.com https://static.cloudflareinsights.com; "
 	"img-src 'self'; "
 	"base-uri 'self'; "
 	"form-action 'self'"
@@ -431,22 +433,13 @@ async def get_login(request: web.Request) -> web.Response:
 						)
 						return web.Response(text=bridge, content_type="text/html")
 					no_exp = _user_can_have_non_expiring_jwt(candidate)
-					token = jwt_auth.create_access_token(
-						{"id": user_id, "username": candidate}, no_expiration=no_exp
+					token, _jti = issue_session_token(
+						username=candidate,
+						users_db=users_db,
+						jwt_auth=jwt_auth,
+						amr=["hdr"],
+						no_expiration=no_exp,
 					)
-					try:
-						payload = jwt_auth.decode_access_token(token)
-						jti = payload.get("jti")
-						exp = payload.get("exp")
-						exp_at_iso = (
-							datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
-						)
-						if jti:
-							get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
-								jti, user_id, candidate, exp_at_iso
-							)
-					except Exception:
-						pass
 					redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
 					resp = web.HTTPFound(redirect_url)
 					_apply_login_cookie(resp, token, request, remember_me=False)
@@ -591,40 +584,80 @@ async def post_login(request: web.Request) -> web.Response:
 	username = sanitize_username(sanitized_data.get("username"))
 	password = sanitize_password_input(sanitized_data.get("password"))
 
+	# Direct JWT / API token login: never require MFA or passkeys when authenticating
+	# with a valid token (e.g. Comfy Portal, WebSocket/HTTPS clients, API integrations).
+	provided_token = (
+		sanitized_data.get("jwt_token")
+		or sanitized_data.get("token")
+		or (jwt_auth.get_token_from_request(request) if not username and not password else None)
+	)
+	if isinstance(provided_token, str) and provided_token.strip():
+		provided_token = provided_token.strip()
+		tok_uid, tok_username = jwt_auth.resolve_token_identity(provided_token)
+		if tok_uid and tok_username:
+			user_env.get_user_workflow_dir(tok_username)
+			logger.login_success(ip, tok_username)
+			timeout.remove_failed_attempts(ip, tok_username)
+			redirect_url = "/loading" if experimental_loading_screen_enabled() else "/"
+			if is_browser_navigation(request):
+				resp = web.HTTPFound(redirect_url)
+				_apply_login_cookie(resp, provided_token, request, remember_me=remember_me)
+				return resp
+			resp = web.json_response(
+				{
+					"message": "Login successful",
+					"jwt_token": provided_token,
+					"redirect_url": redirect_url,
+					"remember_me": remember_me,
+				}
+			)
+			_apply_login_cookie(resp, provided_token, request, remember_me=remember_me)
+			return resp
+
 	if users_db.check_username_password(username, password):
 		user_id, user_rec = users_db.get_user(username)
 		user_env.get_user_workflow_dir(username)
 
-		gate = evaluate_mfa_gate(username, users_db)
-		if gate.needs_verify:
-			mfa_temp = _issue_mfa_temp(request, username, "mfa_verify")
-			return web.json_response(
-				{
-					"message": "MFA verification required",
-					"mfa_required": True,
-					"mfa_temp_token": mfa_temp,
-					"remember_me": remember_me,
-				},
-				status=200,
-			)
-		if gate.needs_setup:
-			mfa_temp = _issue_mfa_temp(request, username, "mfa_setup")
-			msg = (
-				"MFA setup required for admin accounts"
-				if gate.reason == "admin"
-				else "MFA setup required for your role"
-			)
-			return web.json_response(
-				{
-					"message": msg,
-					"mfa_setup_required": True,
-					"mfa_temp_token": mfa_temp,
-					"remember_me": remember_me,
-				},
-				status=200,
-			)
-		if gate.reason == "mfa_disabled":
-			log_mfa_disabled_emergency(username, ip)
+		# Programmatic / API / JSON token login (Comfy Portal, Krita AI Diffusion, WS/HTTPS clients)
+		# does not require interactive MFA or passkey step-up.
+		is_api_token_login = (
+			request.path in ("/mss-login/api/login", "/api/mss-login/api/login")
+			or "application/json" in (request.content_type or "").lower()
+			or str(sanitized_data.get("skip_mfa", "")).lower() in ("1", "true", "yes")
+			or str(sanitized_data.get("token_login", "")).lower() in ("1", "true", "yes")
+		)
+		gate = None
+		if not is_api_token_login:
+			gate = evaluate_mfa_gate(username, users_db)
+			if gate.needs_verify:
+				mfa_temp = _issue_mfa_temp(request, username, "mfa_verify")
+				return web.json_response(
+					{
+						"message": "MFA verification required",
+						"mfa_required": True,
+						"mfa_temp_token": mfa_temp,
+						"remember_me": remember_me,
+					},
+					status=200,
+				)
+			if gate.needs_setup:
+				mfa_temp = _issue_mfa_temp(request, username, "mfa_setup")
+				msg = (
+					"MFA setup required for admin accounts"
+					if gate.reason == "admin"
+					else "MFA setup required for your role"
+				)
+				return web.json_response(
+					{
+						"message": msg,
+						"mfa_setup_required": True,
+						"mfa_temp_token": mfa_temp,
+						"remember_me": remember_me,
+					},
+					status=200,
+				)
+			if gate.reason == "mfa_disabled":
+				log_mfa_disabled_emergency(username, ip)
 
 		no_exp = _user_can_have_non_expiring_jwt(username)
 		token, _jti = issue_session_token(
@@ -658,7 +691,7 @@ async def post_login(request: web.Request) -> web.Response:
 			"redirect_url": redirect_url,
 			"remember_me": remember_me,
 		}
-		if getattr(gate, "in_grace_period", False):
+		if gate is not None and getattr(gate, "in_grace_period", False):
 			resp_payload["mfa_grace"] = {
 				"in_grace_period": True,
 				"due_date": gate.due_date,
@@ -788,21 +821,13 @@ async def api_local_login(request: web.Request) -> web.Response:
 			)
 
 	no_exp = _user_can_have_non_expiring_jwt(username)
-	token = jwt_auth.create_access_token(
-		{"id": user_id, "username": username}, no_expiration=no_exp
+	token, _jti = issue_session_token(
+		username=username,
+		users_db=users_db,
+		jwt_auth=jwt_auth,
+		amr=["local"],
+		no_expiration=no_exp,
 	)
-
-	try:
-		payload = jwt_auth.decode_access_token(token)
-		jti = payload.get("jti")
-		exp = payload.get("exp")
-		exp_at_iso = datetime.fromtimestamp(exp, tz=UTC).isoformat() if exp else None
-		if jti:
-			get_session_token_store(SESSION_TOKEN_STORE_CONFIG).register_session(
-				jti, user_id, username, exp_at_iso
-			)
-	except Exception as e:
-		logger.error(f"[auth.py] api_local_login: register_session: {e}")
 
 	if DEBUG_MODE:
 		logger.log_jwt_if_debug(token, username)
@@ -1108,28 +1133,8 @@ async def post_generate_token(request: web.Request) -> web.Response:
 			status=403,
 		)
 
-	# MFA gate for token creation (unenrolled admins/required roles cannot mint tokens)
-	gate = evaluate_mfa_gate(username, users_db)
-	if gate.needs_verify:
-		mfa_temp = _issue_mfa_temp(request, username, "mfa_verify")
-		return web.json_response(
-			{
-				"message": "MFA verification required",
-				"mfa_required": True,
-				"mfa_temp_token": mfa_temp,
-				"expire_hours": expire_hours,
-			},
-			status=200,
-		)
-	if gate.needs_setup:
-		return web.json_response(
-			{
-				"error": "MFA enrollment required before creating API tokens.",
-				"mfa_setup_required": True,
-			},
-			status=403,
-		)
-
+	# MFA and passkeys are not required for generating API/JWT tokens (used by Comfy Portal
+	# and other WebSocket/HTTPS connected applications).
 	user_id, _ = users_db.get_user(username)
 	store = get_api_token_store(API_TOKEN_STORE_CONFIG)
 	raw_token = store.create_token(user_id, username, expire_hours, label=label)

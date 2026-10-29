@@ -105,11 +105,13 @@ class JWTAuth:
 			db_uid, db_user = self.users_db.get_user(username)
 			if user_id != db_uid:
 				return None, None
-			# Session epoch: missing claim treated as 0 (legacy dual-read)
-			claim_tv = int(user.get("token_version") or 0)
-			db_tv = int((db_user or {}).get("token_version") or 0)
-			if claim_tv != db_tv:
-				return None, None
+			# Session epoch: only enforce when token_version is explicitly present on the token
+			# so stateless/helper/legacy JWTs (e.g. CPE convert tokens) are not broken.
+			if user.get("token_version") is not None:
+				claim_tv = int(user.get("token_version") or 0)
+				db_tv = int((db_user or {}).get("token_version") or 0)
+				if claim_tv != db_tv:
+					return None, None
 			jti = user.get("jti")
 			if jti:
 				try:
@@ -122,8 +124,6 @@ class JWTAuth:
 						return None, None
 					if touch_idle:
 						store.update_last_used(jti)
-						if store.revoke_idle_sessions() > 0:
-							store.prune_old_sessions()
 				except Exception:
 					pass
 			return user_id, username
@@ -289,8 +289,6 @@ class JWTAuth:
 									request, "/login", message="Token has been revoked"
 								)
 							store.update_last_used(jti)
-							if store.revoke_idle_sessions() > 0:
-								store.prune_old_sessions()
 						except Exception:
 							pass
 
